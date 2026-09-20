@@ -177,7 +177,36 @@ git config core.hooksPath .githooks
 内核的假上游（`mock/fake_upstream.py`）**按路径复用**（`core/mock/…`），不复制：
 它是逐字节复刻真实上游行为的产物，复制必然漂移，而漂移出来的是「绿的假测试」。
 
-## 5. 发布
+## 5. 调试通路：架构图
+
+review 架构时看的图，**一个 test 生成**：
+
+```bash
+go test ./tools/archmap -run TestArchitectureMap -v   # → dist/architecture.html（离线双击就能开）
+```
+
+两张图，两个 tab，都是**从下往上**读（L0 在最底下 = 叶子机制，越往上越靠近组合根）：
+
+- **assembly (resolve)**：真跑一遍 `component.Resolve`（**图纸，不是 `New`**：一个
+  `Start` 都不跑，不起端口、不改全局注册表）。所以同一个进程里可以连问几张图——
+  每份规格书一张，下拉切换。实线是 `Need`，虚线是 `Optional`；**虚线连着虚框点**
+  是「这个发行版没装它」，那正是「关掉一个模块会怎样」的答案。
+- **imports (scanned)**：`go list` 扫出来的**编译器事实**。粉色边跨仓库——那就是
+  `replace` 那道缝。
+
+两张图对不上就是线索：import 了却没有任何依赖边，说明**有一条没人声明的依赖**
+（编译过、测试过、review 看不出来，改动时才发现拆不动）。
+
+它同时是三条棘轮，红了就不生成产物（画错的图比没图更糟）：
+
+- 图必须是 DAG，且分层方向正确（防的是工具自己算错——那种错画出来只是「有点难看」）；
+- 内核的包**绝不 import 发行版的包**（`app/independence_test.go` 那条规矩的编译期版）；
+- import 图必须真的扫到边（扫描坏了的话，上面那条会空转成绿的）。
+
+产物落在 `dist/`（进 .gitignore）：它是**这一刻**的图，不进版本控制——图和代码
+一样会过期，过期的那张会让人以为架构是那样。
+
+## 6. 发布
 
 ```bash
 git tag v0.1.0 && git push origin main --tags   # CI 编平台矩阵并挂到 GitHub Release
