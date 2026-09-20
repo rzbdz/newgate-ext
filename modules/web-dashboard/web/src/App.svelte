@@ -12,7 +12,7 @@
   // 开关」这件四步就能做完的事，第一步是滚三屏。现在：**左侧是节的目录**（点一下
   // 切一节）、**一节里多张卡走 tab**、**同一份文件的控件与原文并排**。验收线是
   // 「任何东西 4-5 次操作内到达」，操作数在下面每个动作旁边写着。
-  import { apply, snapshot, type Concept, type Conflict, type Section } from "./api";
+  import { apply, preview, snapshot, type Concept, type Conflict, type Section } from "./api";
   import { setLang, t } from "./i18n";
   import { emptyRoute, fileOf, parseHash, writeHash, type Action, type Route } from "./nav";
   import ConflictDialog from "./ConflictDialog.svelte";
@@ -250,8 +250,10 @@
         conflicts = [];
         // 整份重读之后，两半都从盘上重新读了一遍——「另一半的草稿被挤掉」这件事
         // 已经过去了（该看的人看过这一眼了），留着那句话只会变成一条永远擦不掉的
-        // 提示（它描述的是一个已经不存在的情况）。
+        // 提示（它描述的是一个已经不存在的情况）。预览同理：盘上的内容已经就是
+        // 「草稿生效之后」的样子，再拿草稿去覆盖显示就成了显示一份不存在的东西。
         dropped = "";
+        previews = {};
       }
       resolveRoute();
       note = localTime(doc.generated_at, doc.lang);
@@ -301,6 +303,69 @@
    */
   let dropped = $state("");
 
+  /**
+   * previews 是「原文那一半的草稿长这样时，**控件**那一半该显示成什么」——按控件
+   * 那张卡的 id 存（见 api.ts 的 preview、内核 lib/view 的 Concept.Preview）。
+   *
+   * 为什么必须有它：一份文件的两半都能改，而控件那一半的编辑载荷是**整份文件**
+   * （一张档位表整个交上去，不是那一格）。所以「在原文里粘一整份、再去动一个下拉
+   * 框」如果没有这一问，交上去的就是**改之前**那份旧表——刚粘的东西当场没了，而
+   * 屏幕上从头到尾没显示过它，用户不会觉得自己正在覆盖什么。
+   *
+   * 生命周期跟着**原文那份草稿**走：草稿在，预览在；草稿被挤掉/保存掉/撤销掉，
+   * 预览跟着消失（否则控件那一半会停在一份磁盘上并不存在的内容上）。
+   */
+  let previews = $state<Record<string, unknown>>({});
+
+  /** 这份文件上「控件那一半」：不是 code、且和它指同一份文件的那张卡。 */
+  function controlOf(f: string): Concept | undefined {
+    return concepts.find((c) => c.kind !== "code" && fileOf(c) === f);
+  }
+
+  /** 原文那一半此刻的草稿文本（没有草稿就是 undefined）。 */
+  function rawDraftOf(f: string): string | undefined {
+    const raw = concepts.find((c) => c.kind === "code" && fileOf(c) === f);
+    const d = raw ? (drafts[raw.id] as { text?: unknown } | undefined) : undefined;
+    return typeof d?.text === "string" ? d.text : undefined;
+  }
+
+  function dropPreview(f: string) {
+    const ctl = controlOf(f);
+    if (ctl && previews[ctl.id] !== undefined) {
+      delete previews[ctl.id];
+      previews = { ...previews };
+    }
+  }
+
+  /**
+   * 原文改了 → 问一句控件那一半现在该长什么样。
+   *
+   * **防抖 200ms**：CodeMirror 每敲一个字符就 onEdit 一次，而每敲一下就发一个请求
+   * 是白费——敲到一半的 KV 本来就解析不了（后端那时回 error，界面保持上一次的
+   * 样子，见 BFF 的 preview）。200ms 是「停手」的粗判：够短，看着像即时；够长，
+   * 一次连续的输入只问一次。
+   *
+   * 回来晚了就用**内容**判一次：这中间草稿可能已经被挤掉或改过了，那时这一问的
+   * 答案属于上一个版本，画上去就是在显示一份不存在的草稿。
+   */
+  let previewTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function schedulePreview(f: string, text: string) {
+    const ctl = controlOf(f);
+    if (!ctl?.previewable) return;
+    clearTimeout(previewTimer);
+    const id = ctl.id;
+    previewTimer = setTimeout(() => {
+      void (async () => {
+        if (rawDraftOf(f) !== text) return;
+        const res = await preview(id, text);
+        if (res.error || rawDraftOf(f) !== text) return;
+        previews[id] = res.data;
+        previews = { ...previews };
+      })();
+    }, 200);
+  }
+
   function edit(id: string, value: unknown) {
     const c = concepts.find((x) => x.id === id);
     const f = c ? fileOf(c) : undefined;
@@ -320,6 +385,14 @@
             file: lost,
           })
         : "";
+      // 改的是原文那一半 → 让控件那一半跟上（见 previews 的注释）。改的是控件那一
+      // 半 → 原文的草稿刚被挤掉，预览也就没有依据了，跟着撤掉。
+      if (side === "raw") {
+        const text = (value as { text?: unknown } | null)?.text;
+        if (typeof text === "string") schedulePreview(f, text);
+      } else if (lost) {
+        dropPreview(f);
+      }
     }
     drafts[id] = value;
     drafts = { ...drafts };
@@ -636,6 +709,7 @@
           left={leftCard}
           right={rightCard}
           {drafts}
+          {previews}
           split={route.split}
           onEdit={edit}
           onRevert={revert}

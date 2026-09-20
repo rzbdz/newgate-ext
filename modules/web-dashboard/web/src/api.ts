@@ -29,6 +29,10 @@ export interface Concept {
       标题画不画由 TabStrip 按「这一段底下有没有 ≥2 张卡」决定。
       **只影响排列**，不参与任何身份判断（路由与草稿都按 id 走）。 */
   group?: string;
+  /** true = 这张卡能拿**同一份文件另一半的草稿**问一句「我该显示成什么样」
+      （见 lib/view 的 Concept.Preview 与 api.ts 的 preview）。只有一半能问是
+      常态：原文那一半自己就是原文，没有第二半。 */
+  previewable?: boolean;
   data: any;
   /** 非空 = 这个概念此刻读不出来（文件删了、JSON 坏了）。卡片照常显示，写原因。 */
   error?: string;
@@ -163,6 +167,32 @@ export async function apply(id: string, base: string, edit: unknown): Promise<Ap
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, base, edit }),
+    }),
+  );
+}
+
+export interface PreviewResult {
+  /** 这个概念在「文件长这样」时该显示的数据（形状与快照里的 data 一样）。 */
+  data?: unknown;
+  /** 草稿还解析不出来（**打字途中的常态**，不是故障）：界面保持上一次的样子。 */
+  error?: string;
+}
+
+/**
+ * 问一句：「这份文件**还没落盘的草稿**长这样时，这张卡该显示成什么样？」
+ *
+ * 用途只有一处，但很要命：一份文件的两半（控件 + 原文）都能改。用户在原文里粘了
+ * 一整份档位、再去动一个下拉框——控件那一半手里还是**改之前**那份盘上内容，它交
+ * 上去的是整份旧表，刚粘的东西当场没了。有了这一问，两半始终说的是同一份内容。
+ *
+ * 解析是**贡献者**的事（那份文件的格式是它的知识），所以这里只搬字节。
+ */
+export async function preview(id: string, text: string): Promise<PreviewResult> {
+  return json<PreviewResult>(
+    await fetch(`${API}/preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, text }),
     }),
   );
 }

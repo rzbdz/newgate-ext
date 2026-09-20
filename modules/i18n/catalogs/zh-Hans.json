@@ -624,6 +624,14 @@
       "text": "opencode",
       "reviewed": true
     },
+    "previewing needs Content-Type: application/json (got {ct})": {
+      "text": "预览要求 Content-Type: application/json（这次是 {ct}）",
+      "reviewed": true
+    },
+    "previewing uses POST": {
+      "text": "预览使用 POST",
+      "reviewed": true
+    },
     "profile selection": {
       "text": "profile 选择",
       "reviewed": true

@@ -16,6 +16,7 @@
     left,
     right,
     drafts,
+    previews,
     split,
     onEdit,
     onRevert,
@@ -26,6 +27,9 @@
     left: Concept;
     right: Concept | undefined;
     drafts: Record<string, unknown>;
+    // 「同一份文件另一半的草稿长这样时，这张卡该显示成什么」，按卡片 id 存（见
+    // App.svelte 的 previews）。**只有控件那一半会有**——原文那一半自己就是原文。
+    previews: Record<string, unknown>;
     split: boolean;
     onEdit: (id: string, v: unknown) => void;
     onRevert: (id: string) => void;
@@ -51,6 +55,7 @@
       <ConceptCard
         concept={left}
         draft={drafts[left.id]}
+        preview={previews[left.id]}
         onEdit={(v) => onEdit(left.id, v)}
         onRevert={() => onRevert(left.id)}
         {onDeleteFile}

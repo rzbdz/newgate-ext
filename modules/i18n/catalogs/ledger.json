@@ -604,7 +604,7 @@
       ]
     },
     "no such concept: {id} — the page is probably stale, reload it": {
-      "where": "modules/web-dashboard/bff.go:281",
+      "where": "modules/web-dashboard/bff.go:293",
       "args": [
         "id"
       ]
@@ -653,6 +653,15 @@
     },
     "opencode": {
       "where": "modules/opencodeomo/module.go:77"
+    },
+    "previewing needs Content-Type: application/json (got {ct})": {
+      "where": "modules/web-dashboard/bff.go:348",
+      "args": [
+        "ct"
+      ]
+    },
+    "previewing uses POST": {
+      "where": "modules/web-dashboard/bff.go:78"
     },
     "profile selection": {
       "where": "modules/tui/tui.go:199"
@@ -709,7 +718,7 @@
       ]
     },
     "saving needs Content-Type: application/json (got {ct})": {
-      "where": "modules/web-dashboard/bff.go:268",
+      "where": "modules/web-dashboard/bff.go:280",
       "args": [
         "ct"
       ]
@@ -886,7 +895,7 @@
       "where": "modules/opencodeomo/diagnostics.go:30"
     },
     "the request body is not valid JSON: {err}": {
-      "where": "modules/web-dashboard/bff.go:273",
+      "where": "modules/web-dashboard/bff.go:285",
       "args": [
         "err"
       ]
@@ -1207,7 +1216,7 @@
       ]
     },
     "{title} is read-only": {
-      "where": "modules/web-dashboard/bff.go:290",
+      "where": "modules/web-dashboard/bff.go:302",
       "args": [
         "title"
       ]

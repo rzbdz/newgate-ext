@@ -603,6 +603,57 @@ if (!(await openSwitches())) {
   }
 }
 
+// —— 11.6. 改原文，控件那一半跟着变 ——
+//
+// 这是用户点名要的那条：「编辑完 raw 后马上刷新 ui controls」。没有它的话，控件
+// 那一半手里还是**改之前**那份盘上内容，而它的编辑载荷是**整份文件**——接着动
+// 一个下拉框交上去的就是整份旧表，刚粘进原文的东西当场没了，而屏幕上从头到尾
+// 没显示过它（见内核 lib/view 的 Concept.Preview）。
+//
+// 判据落在**控件那一栏真的多出一个档位**上，不是「后端回了 200」：回 200 而界面
+// 没换，与这条要的东西差着十万八千里。
+//
+// 用 `.kv` 的档位（沙箱脚本铺的 fill1..fill9）：往末尾加一行 `键=provider/model`
+// 就是合法 KV，而 JSON 那份要在花括号里面插，打字很难构造得干净。
+{
+  const kvProfile = snap.concepts.find((c) => c.kind === "mapping-editor" && c.data.file?.endsWith(".kv"));
+  if (!kvProfile) {
+    skip("这份装配里没有 .kv 档位，跳过 11.6");
+  } else {
+    await page.locator(`nav.side button[title="${kvProfile.source}"]`).click();
+    await page.waitForTimeout(250);
+    await page
+      .locator(`button.tab[title="${kvProfile.id}"], nav.v button[title="${kvProfile.id}"]`)
+      .first()
+      .click();
+    await page.waitForTimeout(400);
+
+    const before = await page.locator(".pane-l .role b.mono").allInnerTexts();
+    const cm = page.locator(".pane-r .cm-content").first();
+    await cm.click();
+    await page.keyboard.press("Control+End");
+    // `role.<名字>=` 是 KV 里「任意档位名」的写法（`zzprobe=` 会被解析器拒掉——
+    // 它不认识的键宁可报错，因为写错一个键原本会被静默忽略）。
+    await page.keyboard.type("\nrole.zzprobe=demo/demo-model");
+    // 防抖 200ms + 一个来回，留足余量（这是本地 BFF，正常几毫秒）。
+    await page.waitForTimeout(1200);
+    const after = await page.locator(".pane-l .role b.mono").allInnerTexts();
+    check(
+      "原文里加的那个档位，控件那一半跟着出现了",
+      after.includes("zzprobe") && !before.includes("zzprobe"),
+      `之前 [${before}] 之后 [${after}]`,
+    );
+    // 收尾：这份草稿不能留着（后面的键盘检查与保存段都指望一个干净页面）。
+    await page
+      .locator(".card.dirty button")
+      .filter({ hasText: /撤销|revert|Revert/ })
+      .first()
+      .click()
+      .catch(() => {});
+    await page.waitForTimeout(400);
+  }
+}
+
 // —— 12. 运行期开关画成「开关」，不是复选框 ——
 //
 // 用户的原话是「别搞那个傻逼钩啊，用一个可以 toggle 的开关」。判据落在

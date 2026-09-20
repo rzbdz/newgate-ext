@@ -17,6 +17,7 @@
   let {
     concept,
     draft,
+    preview,
     onEdit,
     onRevert,
     onDeleteFile,
@@ -24,6 +25,17 @@
   }: {
     concept: Concept;
     draft: unknown;
+    /**
+     * 「同一份文件**另一半**的草稿长这样时，这张卡该显示成什么」（见 App.svelte
+     * 的 previews 与内核的 Concept.Preview）。有它就用它，没有就用快照里那份。
+     *
+     * 走 data 这条路（而不是另开一个 prop 给渲染器）是刻意的：渲染器本来就只认
+     * `data` 一个形状，多一条路等于每个渲染器都要再学一遍「两份数据谁优先」。
+     * 而且它**换了新对象**这件事本身就够渲染器清掉自己那份本地编辑缓存了
+     * （见 MappingEditor 里 `seen === data` 那个 effect）——那正是我们要的：
+     * 原文改过之后，控件那一半必须重新照着新内容画。
+     */
+    preview?: unknown;
     onEdit: (v: unknown) => void;
     onRevert: () => void;
     // 删/建这一份文件（不带参数：作用在这张卡自己身上，见 kinds/MappingEditor）。
@@ -32,6 +44,8 @@
   } = $props();
 
   const isDirty = $derived(draft !== undefined);
+  /** 渲染器看到的那份数据：草稿预览优先于快照。 */
+  const shown = $derived(preview !== undefined ? preview : concept.data);
 
   function changed(v: unknown) {
     onEdit(v);
@@ -71,7 +85,7 @@
       <p class="dim">{concept.error}</p>
     {:else if concept.kind === "mapping-editor"}
       <MappingEditor
-        data={concept.data}
+        data={shown}
         {draft}
         readonly={!concept.writable}
         onEdit={changed}
@@ -79,17 +93,17 @@
         {onCreateFile}
       />
     {:else if concept.kind === "code"}
-      <CodeEditor data={concept.data} {draft} readonly={!concept.writable} onEdit={changed} />
+      <CodeEditor data={shown} {draft} readonly={!concept.writable} onEdit={changed} />
     {:else if concept.kind === "toggles"}
-      <Toggles data={concept.data} {draft} readonly={!concept.writable} onEdit={changed} />
+      <Toggles data={shown} {draft} readonly={!concept.writable} onEdit={changed} />
     {:else if concept.kind === "records"}
-      <Records data={concept.data} {draft} readonly={!concept.writable} onEdit={changed} />
+      <Records data={shown} {draft} readonly={!concept.writable} onEdit={changed} />
     {:else if concept.kind === "table"}
-      <Table data={concept.data} />
+      <Table data={shown} />
     {:else if concept.kind === "series"}
-      <Series data={concept.data} />
+      <Series data={shown} />
     {:else if concept.kind === "log"}
-      <LogView data={concept.data} />
+      <LogView data={shown} />
     {:else}
       <!-- 还没有渲染器的 Kind（将来加的那种）：把原文摆出来，而不是假装它不
            存在。加渲染器是前端的事，不该由后端等。
