@@ -132,12 +132,20 @@
       "text": "DeepSeek 思考模式要求逐字回传推理内容，客户端却会把它剥掉 → 400\n套着就补回去（客户端带回的原文 → thinkcache；**没有原文就跳过，绝不编**）；只有 Claude Code 那条路干脆显式关掉思考（它剥块，想了也白想）；外来未闭合 tool loop 先从可见工具结果有损重建，再由 DeepSeek 接手",
       "reviewed": true
     },
+    "DeepSeek upstream quirk patches": {
+      "text": "DeepSeek 上游怪癖修补",
+      "reviewed": true
+    },
     "GCM is unusable: {err}": {
       "text": "GCM 不可用: {err}",
       "reviewed": true
     },
     "GLM models treat a missing thinking field as thinking on (Anthropic semantics say off) → requests that never asked to think get dragged into ten-plus seconds\non the Claude Code path an explicit disabled is filled in when it is absent (present is left alone); OpenAI-dialect clients (opencode) have no such field to write, so they are not touched": {
       "text": "GLM 系模型把「没写 thinking」当默认开思考（Anthropic 语义是关）→ 没要求思考的请求被拖进十几秒\nClaude Code 那条路没写就补显式 disabled（写了不动）；OpenAI 方言的客户端（opencode）没有这个字段可写，不碰",
+      "reviewed": true
+    },
+    "GLM upstream quirk patches": {
+      "text": "GLM 上游怪癖修补",
       "reviewed": true
     },
     "Generated automatically when oh-my-openagent is taken over. default is the binding this key falls back to when the profile does not spell it out; to move a slot to another tier, edit overrides (it accepts \"@other-key\" / \"tier name\" / \"provider/model\"), or write this key directly in the profile.": {
@@ -194,6 +202,10 @@
     },
     "a lossy rebuild happened before taking over a foreign unclosed tool loop": {
       "text": "接手外来未闭合 tool loop 前做了有损重建",
+      "reviewed": true
+    },
+    "a menuconfig-style terminal interface": {
+      "text": "menuconfig 风格的终端界面",
       "reviewed": true
     },
     "a reference is written as @key (e.g. @normal), got {value}": {
@@ -616,6 +628,10 @@
       "text": "关 — Bash 分类器照常去问上游",
       "reviewed": true
     },
+    "oh-my-openagent's intra-agent slots": {
+      "text": "oh-my-openagent 的 intra-agent 槽位",
+      "reviewed": true
+    },
     "omo slot bindings": {
       "text": "omo 槽位绑定",
       "reviewed": true
@@ -792,6 +808,26 @@
       "text": "AES 密钥不可用: {err}",
       "reviewed": true
     },
+    "the OpenCode client": {
+      "text": "OpenCode 客户端接入",
+      "reviewed": true
+    },
+    "the Codex client": {
+      "text": "Codex 客户端接入",
+      "reviewed": true
+    },
+    "the Claude Code × GLM crossing": {
+      "text": "Claude Code × GLM 的交叉语义",
+      "reviewed": true
+    },
+    "the Claude Code × DeepSeek crossing": {
+      "text": "Claude Code × DeepSeek 的交叉语义",
+      "reviewed": true
+    },
+    "the Claude Code client": {
+      "text": "Claude Code 客户端接入",
+      "reviewed": true
+    },
     "the classifier settings in this request are not readable: {err}": {
       "text": "这个请求里的分类器设置读不出来：{err}",
       "reviewed": true
@@ -924,6 +960,10 @@
       "text": "末尾的 user 轮只有 tool_result 没有用户指令——追加一条继续指令（上游对空指令尾部误报 reasoning_content 缺失）",
       "reviewed": true
     },
+    "the web configuration interface: a BFF and the front-end bundle": {
+      "text": "网页配置界面：BFF 加前端产物",
+      "reviewed": true
+    },
     "the whole special_treatment layer is off — none of this counts until it is switched back on": {
       "text": "整个 special_treatment 层关着 — 在把它开回来之前，这里配的都不算数",
       "reviewed": true
@@ -950,6 +990,10 @@
     },
     "this diagram answers on loopback only; open it as http://127.0.0.1:{port}{prefix}/": {
       "text": "这张图只在 loopback 上应答；请用 http://127.0.0.1:{port}{prefix}/ 打开",
+      "reviewed": true
+    },
+    "this distribution's own message catalog, appended to the installed language": {
+      "text": "发行版自己的文案目录，追加进已装好的语言",
       "reviewed": true
     },
     "this interface answers on loopback only; reach it as http://127.0.0.1:{port} (the host name in this request was {host})": {

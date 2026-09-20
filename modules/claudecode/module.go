@@ -28,6 +28,7 @@ func New() modules.Component {
 	var releases []modules.Release
 	return modules.Component{
 		Name: "claudecode",
+		Desc: func() string { return i18n.T("the Claude Code client", nil) },
 		Type: "client",
 		Requires: []modules.Requirement{
 			modules.Need(gatewayapi.Capability),

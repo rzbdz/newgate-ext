@@ -7,6 +7,8 @@ package claudecode_glm
 import (
 	"context"
 
+	i18n "github.com/rzbdz/newgate/lib/i18n"
+
 	claudeapi "github.com/rzbdz/newgate-ext/modules/claudecode"
 	glmapi "github.com/rzbdz/newgate-ext/modules/glm"
 	modules "github.com/rzbdz/newgate/component"
@@ -19,6 +21,7 @@ func New() modules.Component {
 	var releases []modules.Release
 	return modules.Component{
 		Name: "claudecode-glm",
+		Desc: func() string { return i18n.T("the Claude Code × GLM crossing", nil) },
 		Type: "bridge",
 		Requires: []modules.Requirement{
 			modules.Need(gatewayapi.Capability),

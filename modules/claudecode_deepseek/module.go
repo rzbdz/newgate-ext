@@ -10,6 +10,7 @@ package claudecode_deepseek
 
 import (
 	"context"
+	i18n "github.com/rzbdz/newgate/lib/i18n"
 
 	claudeapi "github.com/rzbdz/newgate-ext/modules/claudecode"
 	deepseekapi "github.com/rzbdz/newgate-ext/modules/deepseek"
@@ -24,6 +25,7 @@ func New() modules.Component {
 	var releases []modules.Release
 	return modules.Component{
 		Name: "claudecode-deepseek",
+		Desc: func() string { return i18n.T("the Claude Code × DeepSeek crossing", nil) },
 		Type: "bridge",
 		Requires: []modules.Requirement{
 			modules.Need(gatewayapi.Capability),

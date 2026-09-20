@@ -38,6 +38,7 @@ func New() modules.Component {
 	var releases []modules.Release
 	return modules.Component{
 		Name: "tui",
+		Desc: func() string { return i18n.T("a menuconfig-style terminal interface", nil) },
 		// Type 是产品层的分类词，取值由编排者约定（见 modules/pluginmanager）。
 		Type: "cli",
 		Requires: []modules.Requirement{

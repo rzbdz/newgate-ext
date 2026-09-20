@@ -17,6 +17,7 @@ package webdashboard
 import (
 	"context"
 	"embed"
+	i18n "github.com/rzbdz/newgate/lib/i18n"
 	"io/fs"
 	"net/http"
 
@@ -60,6 +61,7 @@ func New() modules.Component {
 	self := &instance{views: views}
 	return modules.Component{
 		Name: "web-dashboard",
+		Desc: func() string { return i18n.T("the web configuration interface: a BFF and the front-end bundle", nil) },
 		Type: "cli", // 「界面壳」这一类的既有取值（tui / simple-cli 也是它）
 		Requires: []modules.Requirement{
 			// 共享端口（常态）。

@@ -7,6 +7,7 @@ package glm
 
 import (
 	modules "github.com/rzbdz/newgate/component"
+	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
 // New 声明纯模型身份组件。它没有生命周期副作用，
@@ -14,6 +15,7 @@ import (
 func New() modules.Component {
 	return modules.Component{
 		Name: "glm",
+		Desc: func() string { return i18n.T("GLM upstream quirk patches", nil) },
 		Type: "model",
 		Provides: []modules.Provision{
 			modules.Provide(Capability, Model{

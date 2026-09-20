@@ -9,6 +9,7 @@ package deepseek
 
 import (
 	"context"
+	i18n "github.com/rzbdz/newgate/lib/i18n"
 
 	modules "github.com/rzbdz/newgate/component"
 	breakerapi "github.com/rzbdz/newgate/modules/breaker"
@@ -27,6 +28,7 @@ func New() modules.Component {
 	var releases []modules.Release
 	return modules.Component{
 		Name: "deepseek",
+		Desc: func() string { return i18n.T("DeepSeek upstream quirk patches", nil) },
 		Type: "model",
 		Requires: []modules.Requirement{
 			modules.Need(gatewayapi.Capability),

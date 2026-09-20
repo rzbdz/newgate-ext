@@ -63,6 +63,9 @@ const Name = "i18n"
 func New() modules.Component {
 	return modules.Component{
 		Name: Name,
+		Desc: func() string {
+			return corei18n.T("this distribution's own message catalog, appended to the installed language", nil)
+		},
 		// 词汇表归产品层（见 component.Type 的注释）：文案属于基础设施那一层。
 		Type:     "infra",
 		Requires: []modules.Requirement{modules.Optional(localeapi.Capability)},

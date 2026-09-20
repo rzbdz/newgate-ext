@@ -7,6 +7,7 @@ package codex
 
 import (
 	"context"
+	i18n "github.com/rzbdz/newgate/lib/i18n"
 
 	modules "github.com/rzbdz/newgate/component"
 
@@ -18,6 +19,7 @@ func New() modules.Component {
 	var releases []modules.Release
 	return modules.Component{
 		Name:     "codex",
+		Desc:     func() string { return i18n.T("the Codex client", nil) },
 		Type:     "client",
 		Requires: []modules.Requirement{modules.Need(confighookapi.ConfigHooksCapability)},
 		Provides: []modules.Provision{

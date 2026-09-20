@@ -96,7 +96,7 @@
       "where": "modules/claudecode/st-background.go:136"
     },
     "Claude Code": {
-      "where": "modules/claudecode/module.go:94"
+      "where": "modules/claudecode/module.go:95"
     },
     "Claude Code Bash classifier": {
       "where": "modules/claudecode/view.go:69"
@@ -117,16 +117,22 @@
       "where": "modules/claudecode_deepseek/switches.go:26"
     },
     "Clients": {
-      "where": "modules/claudecode/module.go:95"
+      "where": "modules/claudecode/module.go:96"
     },
     "DeepSeek thinking mode wants reasoning passed back verbatim, but the client strips it → 400\nso we put it back (the original the client carries → thinkcache; **no original means skip it, never invent one**); only the Claude Code path turns thinking off outright (it strips the blocks, so thinking would be spent for nothing); a foreign unclosed tool loop is first lossily rebuilt from the visible tool results, then DeepSeek takes over": {
       "where": "modules/deepseek/st-reasoning.go:141"
+    },
+    "DeepSeek upstream quirk patches": {
+      "where": "modules/deepseek/module.go:31"
     },
     "GCM is unusable: {err}": {
       "where": "modules/configshare/proto/seal.go:148"
     },
     "GLM models treat a missing thinking field as thinking on (Anthropic semantics say off) → requests that never asked to think get dragged into ten-plus seconds\non the Claude Code path an explicit disabled is filled in when it is absent (present is left alone); OpenAI-dialect clients (opencode) have no such field to write, so they are not touched": {
       "where": "modules/claudecode_glm/st-thinking.go:52"
+    },
+    "GLM upstream quirk patches": {
+      "where": "modules/glm/module.go:18"
     },
     "Generated automatically when oh-my-openagent is taken over. default is the binding this key falls back to when the profile does not spell it out; to move a slot to another tier, edit overrides (it accepts \"@other-key\" / \"tier name\" / \"provider/model\"), or write this key directly in the profile.": {
       "where": "modules/opencodeomo/slots.go:262"
@@ -172,6 +178,9 @@
     },
     "a lossy rebuild happened before taking over a foreign unclosed tool loop": {
       "where": "modules/deepseek/st-reasoning.go:153"
+    },
+    "a menuconfig-style terminal interface": {
+      "where": "modules/tui/module.go:41"
     },
     "a reference is written as @key (e.g. @normal), got {value}": {
       "where": "modules/opencodeomo/command.go:218",
@@ -510,7 +519,7 @@
       "where": "modules/opencodeomo/command.go:241"
     },
     "menuconfig-style UI": {
-      "where": "modules/tui/module.go:86"
+      "where": "modules/tui/module.go:87"
     },
     "messages left untouched ({err})": {
       "where": "modules/deepseek/st-reasoning.go:282",
@@ -642,6 +651,9 @@
     "off — the Bash classifier is asked as usual": {
       "where": "modules/claudecode/view.go:98"
     },
+    "oh-my-openagent's intra-agent slots": {
+      "where": "modules/opencodeomo/module.go:46"
+    },
     "omo slot bindings": {
       "where": "modules/opencodeomo/view.go:137"
     },
@@ -664,10 +676,10 @@
       ]
     },
     "opencode": {
-      "where": "modules/opencodeomo/module.go:93"
+      "where": "modules/opencodeomo/module.go:94"
     },
     "opencode is not installed on this machine — nothing on this card takes effect yet. Install it with `newgate opencode -y`.": {
-      "where": "modules/opencodeomo/module.go:88"
+      "where": "modules/opencodeomo/module.go:89"
     },
     "previewing needs Content-Type: application/json (got {ct})": {
       "where": "modules/web-dashboard/bff.go:417",
@@ -842,6 +854,21 @@
     "the AES key is unusable: {err}": {
       "where": "modules/configshare/proto/seal.go:144"
     },
+    "the Claude Code client": {
+      "where": "modules/claudecode/module.go:31"
+    },
+    "the Claude Code × DeepSeek crossing": {
+      "where": "modules/claudecode_deepseek/module.go:28"
+    },
+    "the Claude Code × GLM crossing": {
+      "where": "modules/claudecode_glm/module.go:24"
+    },
+    "the Codex client": {
+      "where": "modules/codex/module.go:22"
+    },
+    "the OpenCode client": {
+      "where": "modules/opencode/module.go:22"
+    },
     "the classifier settings in this request are not readable: {err}": {
       "where": "modules/claudecode/view.go:148",
       "args": [
@@ -989,6 +1016,9 @@
     "the trailing user turn holds only tool_result and no user instruction — appended a continue instruction (the upstream misreports an instruction-less tail as a missing reasoning_content)": {
       "where": "modules/deepseek/st-reasoning.go:337"
     },
+    "the web configuration interface: a BFF and the front-end bundle": {
+      "where": "modules/web-dashboard/module.go:64"
+    },
     "the whole special_treatment layer is off — none of this counts until it is switched back on": {
       "where": "modules/claudecode/view.go:133"
     },
@@ -1017,6 +1047,9 @@
         "port",
         "prefix"
       ]
+    },
+    "this distribution's own message catalog, appended to the installed language": {
+      "where": "modules/i18n/module.go:67"
     },
     "this interface answers on loopback only; reach it as http://127.0.0.1:{port} (the host name in this request was {host})": {
       "where": "modules/web-dashboard/bff.go:51",
