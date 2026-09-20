@@ -8,10 +8,13 @@
 //
 // # 它怎么跑
 //
-// 这些包会被编进**核心的 module**（checkout 在 <core>/go/modules-ext/），所以它们
-// 直接 import 核心的测试设施与模块（`go test ./...` 在核心仓库里跑就会带上它们）。
-// 发行版仓库自己不需要 go.mod——加了反而要写 `replace`，那是构建方的事实，换台
-// 机器就失效（见核心仓库 tools/extmanifest 的包注释）。
+// 这些包住在发行版**自己的 module** 里（`go/go.mod`，用一条 `replace` 指到 `core/`
+// 那份 submodule），所以它们直接 import 内核的测试设施与模块：
+//
+//	cd go && go test ./...
+//
+// 在本仓库里就能跑，不需要内核那边配合。反过来也成立——**内核的测试不会跑这些**：
+// 它的装配清单只看自己的 `modules/`。「测试跟着拥有者走」这条边界是两个方向都成立的。
 package disttesting
 
 import (

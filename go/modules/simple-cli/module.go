@@ -4,8 +4,8 @@
 //
 // newgate 里界面是**可替换的壳**：模块往「界面」注入自己的命令与状态行，注入是一
 // 条弱依赖（modules.Optional(cli)）——界面在就挂进去，不在就跳过。这个模块就是那句
-// 话的反证实验：在 modules-ext.json 里关掉 `cli`、启用 `simple-cli`，**其余模块一行
-// 不改**，系统必须照常起来：
+// 话的反证实验：在 `dist-simple-cli.json` 里关掉内核的 `cli`、启用 `simple-cli`，
+// **其余模块一行不改**，系统必须照常起来：
 //
 //   - 它照样 Provide `cliapi.Capability`，所以各模块的 Optional(cli) 照常命中，
 //     命令与状态行落进它的账本（换壳对注入者是不可见的）；
