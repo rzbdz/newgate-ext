@@ -1,0 +1,9 @@
+{
+  "distribution": "newgate-simple-cli",
+  "core": {
+    "repo": "https://github.com/rzbdz/newgate.git",
+    "revision": ""
+  },
+  "modules": ["hello", "simple-cli"],
+  "disable": ["cli"]
+}

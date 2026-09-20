@@ -1,0 +1,38 @@
+name: release
+
+# 发行版自己的发布流水线。它在**这个仓库**里，不在内核仓库里——发行节奏是发行版
+# 作者的事：内核今天合了什么，不该决定你的产品什么时候发新版。
+#
+# 它只有一个动作：跑 build/release.sh。那个脚本已经把「怎么造」写全了（拿内核源码
+# → 写 Pin → make static），CI 只是把它跑一遍再把产物传上去——同一份逻辑，本地和
+# CI 走的是同一条路。
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: 编译静态二进制
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # 脚本要拿本仓库的提交号当 Pin 的 revision，浅克隆也给得出 HEAD。
+          fetch-depth: 1
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: 构建
+        run: bash build/release.sh dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: newgate-static
+          path: dist/*
+          if-no-files-found: error
