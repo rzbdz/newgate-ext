@@ -1015,6 +1015,60 @@ if (!(await openSwitches())) {
   }
 }
 
+// —— 20. 链头：每个客户端从哪条 profile 起步 ——
+//
+// 用户的要求：「state 引入 per-agent state 功能…web 优化下」。per-agent 那张表
+// （state.json 的 `active`）从 M1 起就在，但**只有 CLI 有**（`newgate --set-profile
+// <名> --agent <x>`）——浏览器里能改这个客户端的每个槽位走哪一档，却改不了它整条链
+// 从哪儿开始，而后者更靠前：链决定每个档位落到哪家模型上。
+//
+// 三条一起验，缺一条这个功能就不成立：
+//   1. 那一格真的画出来了，且选项里有**空**（= 跟随全局缺省，不是「没得选」）；
+//   2. 选一个真 profile → 落进 state.json 的 `active`；
+//   3. 选回空 → 那个键**消失**（留下 `{"codex": ""}` 就是一条谁也看不懂的记录，
+//      与第 18 条那条「同值记录」是同一条规矩）。
+{
+  const sec = page.locator(`nav.side button[title="codex"]`);
+  if ((await sec.count()) === 0) {
+    skip("这份装配里没有 codex 那一节，跳过第 20 条");
+  } else {
+    await sec.click();
+    await page.waitForTimeout(300);
+    const card = page.locator(".card").first();
+    // 位置取第一格：label 是翻过的（这一条检查不换语言，但别处会），而**链头永远
+    // 是第一格**——这条顺序本身有意义（先有链才有档），所以它值得被钉住。
+    const sel = card.locator(".body .item").first().locator("select");
+    check("第一格是链头选择器", (await sel.count()) > 0, "第一格里没有下拉");
+
+    const opts = await sel.locator("option").allInnerTexts();
+    check("链头的选项里有「空」这一档", opts.includes(""), opts.join(","));
+    check("链头的选项里有真的 profile 名", opts.some((o) => o && o !== ""), opts.join(","));
+
+    const before = await sel.inputValue();
+    const other = opts.find((o) => o && o !== before);
+    if (!other) {
+      skip("这个沙箱只有一个 profile，跳过链头这一条");
+    } else {
+      await sel.selectOption(other);
+      await page.waitForTimeout(200);
+      await page.locator("header.top button.primary").click();
+      await page.waitForTimeout(600);
+
+      const st = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+      check("选一个 profile 落到了 state.json 的 active",
+        (st.active ?? {}).codex === other, JSON.stringify(st.active ?? {}));
+
+      await sel.selectOption("");
+      await page.waitForTimeout(200);
+      await page.locator("header.top button.primary").click();
+      await page.waitForTimeout(600);
+      const st2 = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+      check("选回空之后那个键消失（不是留下一个空串）",
+        (st2.active ?? {}).codex === undefined, JSON.stringify(st2.active ?? {}));
+    }
+  }
+}
+
 check("整场没有页面错误", pageErrors.length === 0, pageErrors.slice(0, 2).join(" / "));
 
 console.log(`\n结果: ${pass} 通过, ${fail} 失败`);
