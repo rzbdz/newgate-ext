@@ -687,6 +687,52 @@ if (!(await openSwitches())) {
   check("Esc 退出输入", after !== "INPUT", `焦点还在 ${after}`);
 }
 
+// —— 14. 侧栏的分组标题底下，真的全是那一类 ——
+//
+// 用户的原话：「大的目录是不是也要分类下啊」。分组由各模块**声明**
+// （view.Section.Group），侧栏按它聚拢。
+//
+// 判据不是「画出了标题」而是**成员真的聚在一起**：第一版是「边走边插标题」，而成
+// 员按来源序来，于是「数据面」标题底下只有「熔断」、「网关」跑到了下一个标题底下
+// （实测）。标题说的是「下面这几栏是一类」，底下就必须真的是那一类——一行小字
+// 加错了地方，读的人反而更晕。
+//
+// 不归组的那几栏排在最前面（今天只有「配置」）：它们不属于任何标题，所以游标从
+// 空串起步，正好也对得上。
+{
+  if (!snap.sections.some((s) => s.group)) {
+    skip("这份装配里没有模块声明分组，跳过侧栏分组那条");
+  } else {
+    const layout = await page.evaluate(() =>
+      [...document.querySelector("nav.side").children]
+        .filter((e) => e.classList.contains("group") || e.classList.contains("row"))
+        .map((e) => ({
+          head: e.classList.contains("group"),
+          // 标题读文字、栏读 title（= source，机器标记，不跟着语言跑）。
+          name: e.classList.contains("group") ? e.textContent.trim() : e.getAttribute("title"),
+        })),
+    );
+    const groupOf = new Map(snap.sections.map((s) => [s.source, s.group ?? ""]));
+    let cur = "";
+    let heads = 0;
+    const stray = [];
+    for (const r of layout) {
+      if (r.head) {
+        heads++;
+        cur = r.name;
+        continue;
+      }
+      if ((groupOf.get(r.name) ?? "") !== cur) stray.push(r.name);
+    }
+    check("侧栏画出了分组标题", heads > 0, `实际画了 ${heads} 个`);
+    check(
+      "每个标题底下只有那一类的栏（没被别的组打断）",
+      stray.length === 0,
+      `跑错组的: ${stray.join(", ")}`,
+    );
+  }
+}
+
 check("整场没有页面错误", pageErrors.length === 0, pageErrors.slice(0, 2).join(" / "));
 
 console.log(`\n结果: ${pass} 通过, ${fail} 失败`);

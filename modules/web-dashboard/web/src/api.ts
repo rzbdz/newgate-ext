@@ -51,6 +51,11 @@ export interface Concept {
 export interface Section {
   source: string;
   title: string;
+  /** 侧栏里的分组（见 lib/view 的 Section.Group）。空 = 不归任何一档，排在最上面。
+      **由贡献者声明**，所以单成员的组也照画标题——与 TabStrip 那条「≥2 才画」刻意
+      不同：那边是内核从名字推出来的族（一个人一族的标题是噪音），这边是模块自己
+      说的「我属于哪一类」，说了就该看得见。 */
+  group?: string;
 }
 
 export interface Snapshot {

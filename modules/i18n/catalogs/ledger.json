@@ -113,6 +113,9 @@
     "Claude Code's requests fall into DeepSeek thinking mode by default, but it does not carry third-party thinking blocks into the next round — so every call hits the 400 that says thinking must be passed back": {
       "where": "modules/claudecode_deepseek/switches.go:26"
     },
+    "Clients": {
+      "where": "modules/claudecode/module.go:87"
+    },
     "DeepSeek thinking mode wants reasoning passed back verbatim, but the client strips it → 400\nso we put it back (the original the client carries → thinkcache; **no original means skip it, never invent one**); only the Claude Code path turns thinking off outright (it strips the blocks, so thinking would be spent for nothing); a foreign unclosed tool loop is first lossily rebuilt from the visible tool results, then DeepSeek takes over": {
       "where": "modules/deepseek/st-reasoning.go:141"
     },
@@ -604,7 +607,7 @@
       ]
     },
     "no such concept: {id} — the page is probably stale, reload it": {
-      "where": "modules/web-dashboard/bff.go:293",
+      "where": "modules/web-dashboard/bff.go:297",
       "args": [
         "id"
       ]
@@ -655,7 +658,7 @@
       "where": "modules/opencodeomo/module.go:77"
     },
     "previewing needs Content-Type: application/json (got {ct})": {
-      "where": "modules/web-dashboard/bff.go:348",
+      "where": "modules/web-dashboard/bff.go:352",
       "args": [
         "ct"
       ]
@@ -718,7 +721,7 @@
       ]
     },
     "saving needs Content-Type: application/json (got {ct})": {
-      "where": "modules/web-dashboard/bff.go:280",
+      "where": "modules/web-dashboard/bff.go:284",
       "args": [
         "ct"
       ]
@@ -895,7 +898,7 @@
       "where": "modules/opencodeomo/diagnostics.go:30"
     },
     "the request body is not valid JSON: {err}": {
-      "where": "modules/web-dashboard/bff.go:285",
+      "where": "modules/web-dashboard/bff.go:289",
       "args": [
         "err"
       ]
@@ -1216,7 +1219,7 @@
       ]
     },
     "{title} is read-only": {
-      "where": "modules/web-dashboard/bff.go:302",
+      "where": "modules/web-dashboard/bff.go:306",
       "args": [
         "title"
       ]

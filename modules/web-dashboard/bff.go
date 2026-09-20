@@ -194,10 +194,14 @@ type snapshotDoc struct {
 	Concepts []conceptDoc `json:"concepts"`
 }
 
-// sectionDoc 是栏目表的一行：机器标记 + 给人看的名字。
+// sectionDoc 是栏目表的一行：机器标记 + 给人看的名字（+ 可选的分组）。
 type sectionDoc struct {
 	Source string `json:"source"`
 	Title  string `json:"title"`
+	// Group 是这一栏在侧栏里归到哪个标题下（空 = 不归，排在最上面）。**由贡献者
+	// 报**（view.Section.Group）：BFF 不认识任何模块，也就无从判断「熔断该跟网关
+	// 一类」这件事。
+	Group string `json:"group,omitempty"`
 }
 
 // snapshot 问一遍贡献者要这一刻的样子。
@@ -218,7 +222,7 @@ func (h *Handler) snapshot(sources ...string) (snapshotDoc, error) {
 	// （只是把登记的栏目名取出来），所以不花钱；而侧栏的徽标数与「这个模块还在
 	// 不在」正是那几秒一次的刷新最该跟上的东西。
 	for _, s := range h.views.Sections() {
-		doc.Sections = append(doc.Sections, sectionDoc{Source: s.Source, Title: s.Title})
+		doc.Sections = append(doc.Sections, sectionDoc{Source: s.Source, Title: s.Title, Group: s.Group})
 	}
 	if doc.Sections == nil {
 		doc.Sections = []sectionDoc{}

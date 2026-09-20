@@ -120,6 +120,10 @@
       "text": "Claude Code 的请求按缺省进 DeepSeek 思考模式，而它不会把第三方 thinking 块带回下一轮——于是每一发都会撞「thinking 必须回传」的 400",
       "reviewed": true
     },
+    "Clients": {
+      "text": "客户端",
+      "reviewed": true
+    },
     "DeepSeek thinking mode wants reasoning passed back verbatim, but the client strips it → 400\nso we put it back (the original the client carries → thinkcache; **no original means skip it, never invent one**); only the Claude Code path turns thinking off outright (it strips the blocks, so thinking would be spent for nothing); a foreign unclosed tool loop is first lossily rebuilt from the visible tool results, then DeepSeek takes over": {
       "text": "DeepSeek 思考模式要求逐字回传推理内容，客户端却会把它剥掉 → 400\n套着就补回去（客户端带回的原文 → thinkcache；**没有原文就跳过，绝不编**）；只有 Claude Code 那条路干脆显式关掉思考（它剥块，想了也白想）；外来未闭合 tool loop 先从可见工具结果有损重建，再由 DeepSeek 接手",
       "reviewed": true

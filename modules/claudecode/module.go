@@ -83,7 +83,8 @@ func New() modules.Component {
 			// 都是 cli 的），见 view.go 的注释。
 			if v, ok := modules.Get(ctx, viewapi.Capability); ok {
 				release, err = v.Register("claudecode",
-					viewapi.Title(func() string { return i18n.T("Claude Code", nil) }),
+					viewapi.Title(func() string { return i18n.T("Claude Code", nil) }).
+						In(func() string { return i18n.T("Clients", nil) }),
 					func() ([]viewapi.Concept, error) {
 						return []viewapi.Concept{classifierConcept()}, nil
 					})

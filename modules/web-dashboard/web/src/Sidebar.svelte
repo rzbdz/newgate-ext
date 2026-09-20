@@ -21,25 +21,75 @@
     counts: Map<string, { total: number; dirty: number }>;
     onPick: (source: string) => void;
   } = $props();
+
+  /**
+   * 侧栏的行：几个分组标题 + 每一栏。
+   *
+   * **不归组的那几栏排在最前面**（今天只有「配置」，也是最大最常用的那一个）：
+   * 分组标题的全部价值就是把它与下面那几类分开，而它自己在最上面时连标题都不用
+   * 画——位置本身就是那句话。
+   *
+   * 分组标题**写在贡献者声明的那一组第一次出现的地方**，组内保持后端的来源序
+   * （稳定：同一份装配跑两次，同一栏永远在同一个位置）。
+   *
+   * 与 TabStrip 的差别（那边「≥2 个成员才画标题」）是刻意的：那边的组是内核从
+   * 档位名字**推**出来的（`claude-cheap` 归到 `claude`），一个人一族纯属噪音；
+   * 这边是模块**自己说**「我属于哪一类」——说了就该看得见。而且这里若也按人数
+   * 藏标题，一个只有一处声明的组会让那一栏**跳到最上面去**（它变成了「不归组」），
+   * 位置跟着人数变，那比多一行小字糟得多。
+   */
+  type Row = { kind: "head"; name: string } | { kind: "sec"; s: Section };
+  const rows = $derived.by<Row[]>(() => {
+    const out: Row[] = [];
+    for (const s of sections) if (!s.group) out.push({ kind: "sec", s });
+
+    // 每一组**聚在一起**：先按组名第一次出现的次序定组的先后，再把整组成员一次
+    // 列完。
+    //
+    // 不能「边走边插标题」——那一版是那么写的，而它是错的：成员按来源序来，于是
+    // 一组的第二栏会被别组的标题拦在后面（实测：`gateway` 排在 `claudecode` 之后，
+    // 结果「数据面」标题底下只有「熔断」，而「网关」跑到了 Clients 底下）。标题
+    // 说的是「下面这几栏是一类」，底下就必须真的是那一类。
+    const order: string[] = [];
+    const byGroup = new Map<string, Section[]>();
+    for (const s of sections) {
+      if (!s.group) continue;
+      const g = byGroup.get(s.group);
+      if (g) g.push(s);
+      else {
+        byGroup.set(s.group, [s]);
+        order.push(s.group);
+      }
+    }
+    for (const g of order) {
+      out.push({ kind: "head", name: g });
+      for (const s of byGroup.get(g)!) out.push({ kind: "sec", s });
+    }
+    return out;
+  });
 </script>
 
 <nav class="side">
   <p class="head">{t("sections")}</p>
-  {#each sections as s (s.source)}
-    {@const n = counts.get(s.source)}
-    <button
-      class="row"
-      class:on={s.source === active}
-      onclick={() => onPick(s.source)}
-      title={s.source}
-    >
-      <span class="name">{s.title}</span>
-      {#if n?.dirty}
-        <span class="badge dirty" title={t("unsaved")}>{n.dirty}</span>
-      {:else if n?.total}
-        <span class="badge">{n.total}</span>
-      {/if}
-    </button>
+  {#each rows as r, i (r.kind === "head" ? `h:${r.name}:${i}` : r.s.source)}
+    {#if r.kind === "head"}
+      <div class="group">{r.name}</div>
+    {:else}
+      {@const n = counts.get(r.s.source)}
+      <button
+        class="row"
+        class:on={r.s.source === active}
+        onclick={() => onPick(r.s.source)}
+        title={r.s.source}
+      >
+        <span class="name">{r.s.title}</span>
+        {#if n?.dirty}
+          <span class="badge dirty" title={t("unsaved")}>{n.dirty}</span>
+        {:else if n?.total}
+          <span class="badge">{n.total}</span>
+        {/if}
+      </button>
+    {/if}
   {/each}
   {#if !sections.length}
     <p class="dim pad">{t("nothing is contributing a view in this process.")}</p>
@@ -77,6 +127,16 @@
     cursor: pointer;
   }
   .row:hover { background: var(--panel-2); }
+  /* 分组标题：比栏名小一号、疏一点，读作「下面这几栏是一类」。**不是按钮**——
+     点它没有意义（它代表的是一类，不是一栏），做成按钮只会多一个点不出东西的
+     目标。 */
+  .group {
+    margin: 10px 12px 3px;
+    font-size: 11px;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: var(--dim);
+  }
   /* 当前那一节：一条左侧竖线 + 底色。不用整块反白——侧栏是常驻的，抢眼会疲劳。 */
   .row.on {
     background: var(--panel-2);
