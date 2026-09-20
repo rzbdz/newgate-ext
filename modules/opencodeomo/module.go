@@ -13,6 +13,7 @@ import (
 
 	opencodeapi "github.com/rzbdz/newgate-ext/modules/opencode"
 	modules "github.com/rzbdz/newgate/component"
+	viewapi "github.com/rzbdz/newgate/lib/view"
 	cliapi "github.com/rzbdz/newgate/modules/cli/extension"
 	configapi "github.com/rzbdz/newgate/modules/config"
 	"github.com/rzbdz/newgate/modules/config/paths"
@@ -49,6 +50,9 @@ func New() modules.Component {
 			// ui 是**弱依赖**（见 component.Optional）：装着界面就把 omo 那条命令
 			// 与它的体检项挂上去，没装就跳过——槽位接管照常工作。
 			modules.Optional(cliapi.Capability),
+			// web 界面同理（另一条）：只装 dashboard 的装配里没有终端界面，
+			// 「哪个槽位用哪个模型」照样该看得见。
+			modules.Optional(viewapi.Capability),
 		},
 		Start: func(_ context.Context, ctx modules.Context) error {
 			config := modules.MustGet(ctx, agentapi.ConfigHooksCapability)
@@ -64,6 +68,16 @@ func New() modules.Component {
 				return err
 			}
 			releases = append(releases, release)
+
+			// web 界面那一份（槽位归属）**先**注册：它不依赖 cli，只装 dashboard
+			// 的装配里也要有——下面那段一旦 return，这里就永远不会跑。
+			if v, ok := modules.Get(ctx, viewapi.Capability); ok {
+				viewRelease, err := v.Register("opencode-omo", omoConcepts)
+				if err != nil {
+					return err
+				}
+				releases = append(releases, viewRelease)
+			}
 
 			cli, ok := modules.Get(ctx, cliapi.Capability)
 			if !ok {
