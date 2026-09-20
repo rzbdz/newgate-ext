@@ -4,19 +4,18 @@ newgate 的内核只做机制；**产品决策在发行版这一层**：装哪�
 按什么顺序修。这个仓库就是那个发行版，而且它是**顶层**——内核源码作为 submodule
 钉在 `core/`，写模块、编二进制、发版本都在这里发生。
 
-fork 它 → 改 `dist.json` 与 `go/modules/` → 就有了你自己的发行版。
+fork 它 → 改 `dist.json` 与 `modules/` → 就有了你自己的发行版。
 
 ## 目录
 
 | 路径 | 是什么 |
 | --- | --- |
 | `core/` | **submodule**：内核源码（`github.com/rzbdz/newgate`），钉在一个提交上 |
-| `go/` | 本发行版的 **Go module**（与 `core/go` 平行） |
-| `go/go.mod` | `replace github.com/rzbdz/newgate/go => ../core/go`——内核是这里的一份依赖 |
-| `go/modules/<名字>/module.go` | 本发行版的模块，形态与内核的 `modules/` 完全一致 |
-| `go/manifest/modules_gen.go` | **生成物**（进版本控制）：规格书 → 装配选择 |
-| `go/tools/distgen/` | 读规格书、生成上面那份清单 |
-| `go/cmd/newgate/` | 本发行版的 main：交出「装哪张图 + 版本号」，其余交给内核的组合根 |
+| `go.mod` | 本发行版**自己就是一个 Go module**，`replace github.com/rzbdz/newgate => ./core`——内核是这里的一份依赖 |
+| `modules/<名字>/module.go` | 本发行版的模块，形态与内核的 `modules/` 完全一致 |
+| `manifest/modules_gen.go` | **生成物**（进版本控制）：规格书 → 装配选择 |
+| `tools/distgen/` | 读规格书、生成上面那份清单 |
+| `cmd/newgate/` | 本发行版的 main：交出「装哪张图 + 版本号」，其余交给内核的组合根 |
 | `dist.json` | **规格书**（旗舰）：本发行版由哪些模块组成、关掉内核的哪几个 |
 | `dist-simple-cli.json` | 变体：换掉界面（内核的 `cli` → 本仓库的 `simple-cli`） |
 | `dist-hello.json` | 骨架：整个框架 + 一个 `hello`，`newgate` 跑起来就是一句 hello world |
@@ -60,7 +59,7 @@ NEWGATE_ALL=1 build/build.sh          # 一次编仓库里每一份规格书 →
 （`default` 旗舰、`simple-cli` 换界面、`hello` 骨架）。`NEWGATE_ALL=1` 多编几份的
 用处是**调试**：骨架配置（框架 + hello，`newgate` 就是 hello world）不必切分支就能跑。
 
-编的是**你自己的 main + core/ 那一发的内核**：发行版是独立 module（`go/go.mod`），
+编的是**你自己的 main + core/ 那一发的内核**：发行版是独立 module（`go.mod`），
 内核只是它的一份依赖（replace 到 submodule）。于是没有中间产物要同步——改完直接编，
 不必先 commit，内核的工作区也不会被改写。
 
@@ -82,8 +81,8 @@ cp dist/newgate-<发行版>-linux-amd64 /tmp/newgate && /tmp/newgate version
 两个仓库各管各的测试，发行版的流水线里**第一项是内核的全部测试**：
 
 ```bash
-cd core/go && GOPROXY=off go test ./...        # core-test：内核自己的（离线）
-cd go && gofmt -l . && go vet ./... && go test ./...   # dist-test：发行版自己的
+cd core && GOPROXY=off go test ./...        # core-test：内核自己的（离线）
+gofmt -l . && go vet ./... && go test ./...   # dist-test：发行版自己的
 build/build.sh dist && bash mock/e2e_claude_dist.sh    # 端到端（零 token）
 ```
 

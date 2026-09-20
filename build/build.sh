@@ -5,8 +5,8 @@
 # 它做四件事：
 #
 #   1. 检查 core/ 这个 submodule 在不在——它是内核源码，也是 go.mod 里那条
-#      `replace github.com/rzbdz/newgate/go => ../core/go` 的目标；
-#   2. 生成装配清单（go/manifest/modules_gen.go，按仓库根的**全部**规格书）；
+#      `replace github.com/rzbdz/newgate => ./core` 的目标；
+#   2. 生成装配清单（manifest/modules_gen.go，按仓库根的**全部**规格书）；
 #   3. 每份规格书 × 每个平台各编一个全静态二进制；
 #   4. 拷到 dist/，附一份 SHA256SUMS。
 #
@@ -38,7 +38,7 @@
 #
 # # 与 2026-09-20 之前那版的区别
 #
-# 旧版写一张临时 Pin、然后 `cd core/go && make static`——真正的组装机制住在内核
+# 旧版写一张临时 Pin、然后 `cd core && make static`——真正的组装机制住在内核
 # 仓库里，代价是编一次发行版就把**内核 checkout 改脏**（生成的清单被重写成发行版
 # 那份），而且编的是发行版的已提交状态（改完必须先 commit）。
 #
@@ -50,15 +50,15 @@ set -euo pipefail
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 out=${1:-$here/dist}
 # 输出目录**先转成绝对路径**：脚本中途要 `cd "$gomod"`，那之后的相对路径会指到别处。
-# 2026-09-20 CI 实测踩过：`build/build.sh dist` 把产物写进了 `go/dist/`，而端到端脚本
+# 2026-09-20 CI 实测踩过：`build/build.sh dist` 把产物写进了 `dist/`，而端到端脚本
 # 在仓库根找它，报「找不到二进制」——构建那个 job 还是绿的，所以红在隔壁那步。
-# 相对路径按**调用者当时的工作目录**解释（不是 go/，也不是仓库根）。
+# 相对路径按**调用者当时的工作目录**解释（不是仓库根，也不是脚本自己所在的那层）。
 case "$out" in
   /*) : ;;
   *)  out="$(pwd)/$out" ;;
 esac
 core=$here/core
-gomod=$here/go
+gomod=$here
 
 # 编哪几份。三个开关的优先顺序：全都要 > 点名几份 > 就一份（默认 dist.json）。
 if [ -n "${NEWGATE_ALL:-}" ]; then
@@ -69,7 +69,7 @@ else
   specs=${NEWGATE_DIST:-dist.json}
 fi
 
-if [ ! -f "$core/go/go.mod" ]; then
+if [ ! -f "$core/go.mod" ]; then
   echo "core/ 里没有内核源码。它是个 submodule，先：" >&2
   echo "  git submodule update --init --recursive" >&2
   exit 1

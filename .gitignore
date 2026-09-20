@@ -1,4 +1,4 @@
 # 构建产物：build/build.sh 的输出口。
-# （core/ 是 submodule，由 git 自己管；go/manifest/modules_gen.go 是**要提交**的
-# 生成物——它是「这份提交装了什么」的凭据，见 go/tools/distgen。）
+# （core/ 是 submodule，由 git 自己管；manifest/modules_gen.go 是**要提交**的
+# 生成物——它是「这份提交装了什么」的凭据，见 tools/distgen。）
 /dist/

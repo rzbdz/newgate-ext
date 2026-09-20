@@ -24,7 +24,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           # core/ 是 submodule（内核源码钉在那一发上），构建要用它——go.mod 里
-          # 那条 replace 指的就是 ./core/go。
+          # 那条 replace 指的就是 ./core。
           submodules: recursive
           # fetch-depth 0：版本号来自 `git describe --tags`，浅克隆上它退化成一串
           # 提交号（发出来的二进制会报不出 tag）。这个仓库不大，全量取值得。
@@ -33,10 +33,10 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           # 跟 go.mod 走，不写死版本——否则升级 toolchain 时这里会静默落后。
-          go-version-file: go/go.mod
+          go-version-file: go.mod
           # 指 go.mod 而不是 go.sum：这个 module **没有第三方依赖**（内核也没有），
           # 仓库里没有 go.sum，指着一个不存在的文件算不出缓存键。
-          cache-dependency-path: go/go.mod
+          cache-dependency-path: go.mod
 
       # 只发**重点那份**（发行版的主配置）：骨架配置（dist-hello.json）是给人 fork
       # 的样板，不是产品，不需要挂在 Release 上。要发哪几份由这里的 NEWGATE_DISTS

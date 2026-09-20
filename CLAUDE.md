@@ -13,25 +13,27 @@
 ## 0. 两个仓库，四条规矩
 
 ```
-newgate-ext/           ← 你在这里（发行版：产品）
+newgate-ext/           ← 你在这里（发行版：产品），这个仓库本身就是它的 Go module
 ├── core/              ← submodule：内核源码，钉在一个提交上
-├── go/                ← 本发行版的 Go module（与 core/go 平行）
-│   ├── go.mod         ← replace github.com/rzbdz/newgate/go => ../core/go
-│   ├── modules/       ← 本发行版的模块
-│   ├── testing/       ← 本发行版自己的测试
-│   ├── manifest/      ← 生成物：规格书 → 装配选择（进版本控制）
-│   ├── cmd/newgate/   ← 本发行版的 main（十几行）
-│   └── tools/distgen/ ← 读规格书，生成 manifest/
-├── dist.json          ← 规格书：本发行版由哪些模块组成、关掉内核的哪几个
+├── go.mod             ← replace github.com/rzbdz/newgate => ./core
+├── modules/           ← 本发行版的模块
+├── testing/           ← 本发行版自己的测试
+├── manifest/          ← 生成物：规格书 → 装配选择（进版本控制）
+├── cmd/newgate/       ← 本发行版的 main（十几行）
+├── tools/distgen/     ← 读规格书，生成 manifest/
+├── dist*.json         ← 规格书：本发行版由哪些模块组成、关掉内核的哪几个
 ├── build/build.sh     ← 唯一的构建入口
 └── mock/              ← 本发行版模块的端到端（复用内核的假上游）
 ```
 
+**没有 `go/` 这一层**（2026-09-20 摊平）：定调就是 Go，语言子目录只让每个路径多
+一段、每个 import 多一节。内核同样摊平了——两个仓库现在都是「仓库根 = 模块根」。
+
 1. **`core/` 是 submodule，不是你的工作区**。要改内核，去内核仓库改、提交、推，
    再回到这里 `git -C core fetch && git -C core checkout <新提交>`、`git add core`。
    **在这里改完不推**，别人拿到的是一个指向不存在提交的指针。
-2. **发行版是它自己的 Go module**（`go/go.mod`），内核只是它的一份依赖
-   （`replace` 到 `../core/go`）。所以：
+2. **发行版是它自己的 Go module**（`go.mod`），内核只是它的一份依赖
+   （`replace` 到 `./core`）。所以：
    - 内核版本**只有一个真相**——submodule 的 gitlink；没有第二个版本号要对;
    - 构建读的是**工作区**，不必先 commit；
    - 内核的测试可以在树内直接跑（流水线里的 `core-test` 就是这么来的）。
@@ -44,7 +46,7 @@ newgate-ext/           ← 你在这里（发行版：产品）
 
 > **换个发行版，这东西还该在吗？**
 
-| 该在 → `core/` | 不该在 → `go/modules/` |
+| 该在 → `core/` | 不该在 → `modules/` |
 | --- | --- |
 | 网关、熔断、接管、界面、配置、组件框架 | 上游怪癖修补（DeepSeek 尾部形状、GLM 思维链回传） |
 | 客户端接入（Claude Code / opencode） | 客户端×模型的交叉语义 |
@@ -58,9 +60,9 @@ newgate-ext/           ← 你在这里（发行版：产品）
 形态与内核 `modules/` 里**完全一样**：一个目录、一个 `module.go`、导出
 `func New() modules.Component`，声明 `Requires` / `Provides` / `Start` / `Stop`。
 
-- 对内核的 import 是 `github.com/rzbdz/newgate/go/...`（**用它的公开契约**，
+- 对内核的 import 是 `github.com/rzbdz/newgate/...`（**用它的公开契约**，
   别 import 内部实现包——那些随时会动）；
-- 模块之间的 import 是 `github.com/rzbdz/newgate-ext/go/modules/<名字>`；
+- 模块之间的 import 是 `github.com/rzbdz/newgate-ext/modules/<名字>`；
 - **目录名不必是 Go 标识符**（`simple-cli` 合法），生成器会把 import 别名拧成
   `ext_simple_cli`（判据在内核的 `tools/genmodules/scan.Ident`，两个仓库共用一份）；
 - 依赖方向：可以 `Need`/`Optional` 内核提供的端口；**不要**依赖内核里某个具体模块的
@@ -90,17 +92,17 @@ NEWGATE_PLATFORMS="linux/amd64 linux/arm64 darwin/arm64" build/build.sh dist/
   `NEWGATE_DISTS: dist.json`），CI 则编**全部**规格书（「另一份配置编不过」这种
   故障本地看不见，谁也不天天编骨架配置）。
 
-- 脚本做四件事：检查 `core/` → 生成装配清单（`go/tools/distgen`）→ 编静态二进制
+- 脚本做四件事：检查 `core/` → 生成装配清单（`tools/distgen`）→ 编静态二进制
   → 拷到 `dist/`。本地与 CI（`.github/workflows/release.yml`）走的是同一条路。
 - **多调用型二进制**：argv0 决定这次调用归谁（`newgate` / `claude` / `opencode` …）。
   所以拿产物去跑之前，**先按正确的名字落一份**——直接跑
   `dist/newgate-<发行版>-linux-amd64 plugin` 会被当成 profile 名，报
   「同时给了 profile … 和 …，不一致」（2026-09-20 实测）。
 - 换规格书 = 改 `dist.json` 或加一份 `dist*.json`，**不用改任何 Go 代码**：
-  `distgen` 会把全部规格书生成进 `go/manifest/modules_gen.go`（那份文件要提交），
+  `distgen` 会把全部规格书生成进 `manifest/modules_gen.go`（那份文件要提交），
   构建时用 `-X main.spec=<文件名>` 选一份。
-- **`go/manifest/modules_gen.go` 是生成物但进版本控制**：它记着「这份提交装了什么」。
-  改了规格书或模块目录就要重新生成（`cd go && go run ./tools/distgen`），
+- **`manifest/modules_gen.go` 是生成物但进版本控制**：它记着「这份提交装了什么」。
+  改了规格书或模块目录就要重新生成（`go run ./tools/distgen`），
   CI 有一步 `-check` 拦「忘了生成」。
 
 ## 4. 测
@@ -109,17 +111,17 @@ NEWGATE_PLATFORMS="linux/amd64 linux/arm64 darwin/arm64" build/build.sh dist/
 
 ```bash
 # core-test：内核自己的（离线、不依赖本仓库）
-cd core/go && GOPROXY=off go test ./... && make check-fmt && make check-generate && go vet ./...
+cd core && GOPROXY=off go test ./... && make check-fmt && make check-generate && go vet ./...
 
 # dist-test：本发行版自己的
-cd go && gofmt -l . && go vet ./... && go run ./tools/distgen -check && go test ./...
+gofmt -l . && go vet ./... && go run ./tools/distgen -check && go test ./...
 
 # 端到端：真二进制 + 内核的假上游（零 token）
 build/build.sh dist && bash mock/e2e_claude_dist.sh
 ```
 
 **测试跟着拥有者走**：
-- 内核的测试只管内核的逻辑与内核的模块（`core/go/...`）；
+- 内核的测试只管内核的逻辑与内核的模块（`core/...`）；
 - 本发行版的模块行为由本仓库的测试与 `mock/` 里的端到端锁；
 - 需要真 token 的 `mock/e2e_reasoning_affinity.sh` **不在 CI 里**（它花真钱），
   按需人工跑。

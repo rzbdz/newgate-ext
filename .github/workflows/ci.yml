@@ -37,19 +37,19 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: core/go/go.mod
+          go-version-file: core/go.mod
           # 指 go.mod 而不是 go.sum：内核**没有第三方依赖**，仓库里没有 go.sum，
           # 指着一个不存在的文件会让 setup-go 算不出缓存键（见内核 CI 的注释）。
-          cache-dependency-path: core/go/go.mod
+          cache-dependency-path: core/go.mod
 
       # GOPROXY=off：内核的构建与测试**完全离线**（2026-09-20 起，发行版机制搬出
       # 内核之后成立）。这条把「离线」变成 CI 会红的事实。
       - name: 内核单测（离线）
-        working-directory: core/go
+        working-directory: core
         run: GOPROXY=off go test ./...
 
       - name: 内核格式 / 清单 / vet
-        working-directory: core/go
+        working-directory: core
         run: |
           make check-fmt
           make check-generate
@@ -65,11 +65,10 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go/go.mod
-          cache-dependency-path: go/go.mod
+          go-version-file: go.mod
+          cache-dependency-path: go.mod
 
       - name: 格式与 vet
-        working-directory: go
         run: |
           out=$(gofmt -l .); if [ -n "$out" ]; then echo "格式不对，跑 gofmt -w："; echo "$out"; exit 1; fi
           go vet ./...
@@ -77,11 +76,9 @@ jobs:
       # 清单是**生成物但进版本控制**：它记着「这份提交装了什么」。过期了就说明
       # 有人改了规格书或模块目录却没重新生成——那是产物与源码对不上的静默故障。
       - name: 装配清单是否过期
-        working-directory: go
         run: go run ./tools/distgen -check
 
       - name: 模块测试
-        working-directory: go
         run: go test ./...
 
   e2e:
@@ -94,8 +91,8 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go/go.mod
-          cache-dependency-path: go/go.mod
+          go-version-file: go.mod
+          cache-dependency-path: go.mod
 
       # 脚本的依赖：python3（内核的假上游）、curl（打代理）、coreutils（md5sum）。
       - name: 装依赖
