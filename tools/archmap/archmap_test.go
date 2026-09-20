@@ -41,7 +41,7 @@ func TestArchitectureMap(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s 解析失败——这张图的意义就是解析真的能过: %v", name, err)
 		}
-		assertAcyclic(t, name, g)
+		assertLayeringDirection(t, name, g)
 		assertLayered(t, name, g)
 		report.Specs = append(report.Specs, g)
 	}
@@ -54,7 +54,7 @@ func TestArchitectureMap(t *testing.T) {
 	if err != nil {
 		t.Fatalf("扫 import 失败: %v", err)
 	}
-	assertAcyclic(t, "imports", imports)
+	assertLayeringDirection(t, "imports", imports)
 	assertLayered(t, "imports", imports)
 	assertKernelNeverImportsTheDistribution(t, imports)
 	report.Imports = imports
@@ -75,13 +75,17 @@ func TestArchitectureMap(t *testing.T) {
 		out, len(report.Specs), len(imports.Nodes), len(imports.Edges))
 }
 
-// assertAcyclic 是布局与分层的**前提**：这两张图都必须是 DAG。
+// assertLayeringDirection 锁两件事，缺一不可：
 //
-// 组件框架自己会拒绝成环的依赖，Go 也不允许 import 环——所以这条断言本来该是
-// 白送的。留着它的理由不是防那两件事，是防**我这个工具**：分层算错了（比如边
-// 的方向建反了）会造成一模一样的现象（点全挤在 layer 0），而画出来只是「有点
+//   - **不在同一个强连通分量里的边，必须从下层指向上层**（依赖在下面）；
+//   - **同一个分量里的边必须落在同一层**（它们就是聚合造出来的那些环，画在同一
+//     条带上、标红）。
+//
+// 组件框架拒绝成环的依赖、Go 不允许 import 环，所以这两条本来该是白送的。留着
+// 它的理由不是防那两件事，是防**我这个工具**：分层算错（比如边的方向建反、
+// 或者强连通分量算错）会造出一模一样的现象——点全挤在同一层，画出来只是「有点
 // 难看」，没人会想到是工具错了。
-func assertAcyclic(t *testing.T, name string, g archmap.Graph) {
+func assertLayeringDirection(t *testing.T, name string, g archmap.Graph) {
 	t.Helper()
 	layer := map[string]int{}
 	for _, n := range g.Nodes {
@@ -94,9 +98,16 @@ func assertAcyclic(t *testing.T, name string, g archmap.Graph) {
 			t.Errorf("%s: 边 %s→%s 指向了图上没有的点", name, e.From, e.To)
 			continue
 		}
+		if e.Cycle {
+			if from != to {
+				t.Errorf("%s: %s(L%d) → %s(L%d) 标了 Cycle 却跨层——"+
+					"环里的点该落在同一条带上", name, e.From, from, e.To, to)
+			}
+			continue
+		}
 		if from <= to {
 			t.Errorf("%s: %s(L%d) → %s(L%d) 违反了「依赖在下面」——"+
-				"要么图里有环，要么分层算错了", name, e.From, from, e.To, to)
+				"要么强连通分量算错了，要么分层算错了", name, e.From, from, e.To, to)
 		}
 	}
 }
@@ -132,11 +143,12 @@ func assertKernelNeverImportsTheDistribution(t *testing.T, g archmap.Graph) {
 	t.Helper()
 	checked := 0
 	for _, e := range g.Edges {
-		if !strings.HasPrefix(e.From, "github.com/rzbdz/newgate/") {
+		// 节点 id 是 `<repo>:<import 包>`（见 imports.go 的 nodeOf）。
+		if !strings.HasPrefix(e.From, "core:") {
 			continue
 		}
 		checked++
-		if strings.HasPrefix(e.To, "github.com/rzbdz/newgate-ext/") {
+		if strings.HasPrefix(e.To, "ext:") {
 			t.Errorf("内核 import 了发行版：%s → %s\n"+
 				"    内核必须是能单独发版的那个（replace 是单向的）", e.From, e.To)
 		}

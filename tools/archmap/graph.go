@@ -48,8 +48,15 @@ type Node struct {
 type Edge struct {
 	From  string `json:"from"`
 	To    string `json:"to"`
-	Style string `json:"style"` // solid = Need，dashed = Optional
+	Style string `json:"style"` // solid = Need，dashed = Optional，cross = 跨仓库
 	Label string `json:"label"` // 走的是哪个 capability
+	// Cycle 标记「这条边在同一个强连通分量里」（两个目录互相可达）。
+	//
+	// 它是**聚合的产物**，不是设计的毛病：内核里那些共享叶子（config/domain、
+	// cli/extension、gateway/policy…）谁都能直接 import，按文件看是个 DAG，
+	// 按目录聚合就成了环。画出来的时候标红——review 的人该看见它，然后知道
+	// 那是叶子契约在起作用（见 docs/03-architecture.md §3）。
+	Cycle bool `json:"cycle,omitempty"`
 }
 
 // Graph 是一张画好的图（坐标已经算完，前端只画）。
@@ -62,6 +69,13 @@ type Graph struct {
 	Width  float64 `json:"width"`
 	Height float64 `json:"height"`
 	Layers int     `json:"layers"`
+
+	// Compact 让布局在分层之后**收紧**（把点往邻居那边挪，缩短边的总跨度）。
+	//
+	// 什么时候要它：**层号没有物理意义**、只是个分组的时候（import 图就是这样
+	// ——同一层不代表任何语义，能看清谁连着谁才是目的）。装配图不开：那里深度
+	// 就是故事本身（叶子机制在底下、组合根在上面），收紧会把那条阶梯压扁。
+	Compact bool `json:"-"`
 }
 
 // Report 是整个产物：几张装配图（每份规格书一张）+ 一张 import 图。

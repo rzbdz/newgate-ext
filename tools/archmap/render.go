@@ -130,6 +130,7 @@ main{flex:1;display:flex;min-height:0}
   <aside id="panel">
     <h2 id="ptitle">overview</h2>
     <div id="pbody" class="note">hover a node.</div>
+    <div id="plegend"></div>
   </aside>
 </main>
 <script>
@@ -146,10 +147,32 @@ const GROUPS = {
   core:{c:"#5b8def",t:"core (kernel)"}, ext:{c:"#e0a34a",t:"ext (distribution)"},
 };
 const EDGE_STYLE = {
-  solid:{stroke:"#7d8899",dash:""},          // Need
-  dashed:{stroke:"#7d8899",dash:"5 4"},      // Optional
+  solid:{stroke:"#7d8899",dash:""},          // need (or a plain import)
+  dashed:{stroke:"#7d8899",dash:"5 4"},      // optional
   cross:{stroke:"#e06c9f",dash:""},          // crosses the replace boundary
+  // Same strongly-connected component: these two directories reach each other.
+  // At file level this is a DAG - they meet through shared leaf packages
+  // (config/domain, cli/extension, gateway/policy). Drawn red on purpose: it is
+  // worth knowing which directories are coupled this way.
+  cycle:{stroke:"#d96a6a",dash:"2 3"},
 };
+
+// What a line means depends on which graph you are looking at: a solid line is
+// "needs" on the assembly tab and "imports" on the scanned one. The legend has to
+// say the right thing per tab, otherwise it explains the wrong picture.
+const EDGE_LABEL = {
+  resolve:{
+    solid:"needs (hard dependency)",
+    dashed:"optional - provider not installed here",
+  },
+  imports:{
+    solid:"imports",
+    cross:"crosses core <-> distribution",
+    cycle:"same box (two directories reach each other)",
+  },
+};
+// Labels for styles that mean the same thing on both tabs.
+const EDGE_LABEL_COMMON = {cross:"crosses core <-> distribution", cycle:"same box (mutual reach)"};
 
 let state = {tab:"resolve", spec:0, focus:null, graph:null, showOpt:true, showBands:true};
 let view = {x:0, y:0, k:1};
@@ -197,9 +220,11 @@ function draw(){
     const a = byId[e.from], b = byId[e.to];
     if(!a || !b) return;
     if(e.style === "dashed" && !state.showOpt) return;
-    const path = el("path", {class:"edge", d:curve(a,b), stroke:EDGE_STYLE[e.style].stroke,
-                             "stroke-dasharray":EDGE_STYLE[e.style].dash, "marker-end":"url(#arrow)"});
+    const st = EDGE_STYLE[e.cycle ? "cycle" : e.style] || EDGE_STYLE.solid;
+    const path = el("path", {class:"edge", d:curve(a,b), stroke:st.stroke,
+                             "stroke-dasharray":st.dash, "marker-end":"url(#arrow)"});
     path.dataset.from = e.from; path.dataset.to = e.to;
+    if(e.cycle) path.dataset.cycle = "1";
     edgeLayer.appendChild(path);
     edges.push(path);
   });
@@ -229,6 +254,11 @@ function draw(){
     svg.insertBefore(defs, vp);
   }
   fit();
+  // The legend lives at the bottom of the sidebar (it changes with the tab and the
+  // spec). The panel also resets to the overview: after drawing a new graph, leaving
+  // the previous graph's neighbours on screen is the easiest way to misread it.
+  document.getElementById("plegend").innerHTML = legend();
+  showPanel(null);
 }
 
 function text(x, y, s, cls, anchor){
@@ -300,8 +330,7 @@ function showPanel(id){
     body.innerHTML = '<div class="note">' + g.note + '</div>' +
       '<div class="kv"><b>nodes</b><span>' + g.nodes.length + '</span></div>' +
       '<div class="kv"><b>edges</b><span>' + g.edges.length + '</span></div>' +
-      '<div class="kv"><b>layers</b><span>' + g.layers + '</span></div>' +
-      legend();
+      '<div class="kv"><b>layers</b><span>' + g.layers + '</span></div>';
     return;
   }
   const n = state.graph.nodes.find(x => x.id === id);
@@ -322,12 +351,49 @@ function list(head, items){
     items.map(i => '<div class="kv"><span>' + i + '</span></div>').join("") + '</div>';
 }
 
+// The legend stays at the bottom of the sidebar (it does not disappear when you
+// select a node). Line styles are what people misread first: what is the difference
+// between the grey solid and the grey dashed, why is that one pink, what is the red
+// dashed one. Those are the first questions a reader has, and the answers should not
+// be somewhere else.
 function legend(){
+  return boxLegend() + edgeLegend();
+}
+
+function boxLegend(){
   const seen = {};
   state.graph.nodes.forEach(n => seen[n.group] = true);
-  return '<div class="legend">' + Object.keys(seen).sort().map(k =>
-    '<span><i class="dot" style="background:' + (GROUPS[k]||GROUPS.module).c + '"></i>' +
-    (GROUPS[k]||GROUPS.module).t + '</span>').join("") + '</div>';
+  return '<h2 style="margin:16px 0 6px">boxes</h2><div class="legend">' +
+    Object.keys(seen).sort().map(k =>
+      '<span><i class="dot" style="background:' + (GROUPS[k]||GROUPS.module).c + '"></i>' +
+      (GROUPS[k]||GROUPS.module).t + '</span>').join("") + '</div>';
+}
+
+// edgeLegend lists only the styles that actually occur in THIS graph. Explaining a
+// dashed line on a graph that has none sends the reader looking for lines that are
+// not there - and then wondering whether the graph is incomplete.
+function edgeLegend(){
+  const used = {};
+  state.graph.edges.forEach(e => used[e.cycle ? "cycle" : (e.style || "solid")] = true);
+  const order = ["solid","dashed","cross","cycle"].filter(k => used[k]);
+  if(!order.length) return "";
+  return '<h2 style="margin:16px 0 6px">lines</h2><div class="legend">' + order.map(k => {
+    const st = EDGE_STYLE[k];
+    // A short piece of the real line (same colour, same dash rhythm) - not a
+    // description of a colour in words.
+    return '<span><svg width="26" height="8" style="overflow:visible;flex:none">' +
+      '<line x1="0" y1="4" x2="26" y2="4" stroke="' + st.stroke + '" stroke-width="1.7"' +
+      (st.dash ? ' stroke-dasharray="' + st.dash + '"' : '') + '/></svg>' +
+      edgeLabel(k) + '</span>';
+  }).join("") + '</div>';
+}
+
+// edgeLabel picks the wording for the current tab: the same solid line means "needs"
+// on the assembly graph and "imports" on the scanned one. A legend that explains the
+// wrong picture is worse than no legend at all.
+function edgeLabel(k){
+  const per = EDGE_LABEL[state.tab] || {};
+  return per[k] || EDGE_LABEL_COMMON[k] || k;
 }
 
 // ---------- viewport ----------
