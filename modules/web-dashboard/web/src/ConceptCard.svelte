@@ -4,7 +4,7 @@
   //
   // 它**不认识任何模块**：`source` 只是个用来分组的字符串。加一个模块的界面意味着
   // 加一个 Kind 的渲染器（或者复用已有的），而不是在这张卡片里加一个 if。
-  import type { Concept, ConceptAction } from "./api";
+  import type { Concept, ConceptAction, RowAction } from "./api";
   import { t } from "./i18n";
   import CodeEditor from "./kinds/CodeEditor.svelte";
   import MappingEditor from "./kinds/MappingEditor.svelte";
@@ -22,6 +22,7 @@
     onRevert,
     onDeleteFile,
     onAction,
+    onRowAction,
   }: {
     concept: Concept;
     draft: unknown;
@@ -50,6 +51,17 @@
      * Concept.Actions），界面只把点击转回去，然后重读一遍快照。
      */
     onAction?: (a: ConceptAction) => void;
+    /**
+     * 跑**表格里某一行**上的一个按钮（见 api.ts 的 runRowAction）。
+     *
+     * 比 `onAction` 多一层「哪一行」，理由与它多一层「哪张卡」是同一条：行是
+     * **数据长出来的**（今天哪些 binding 在健康表里，取决于跑过哪些请求），
+     * 所以「这一行能做什么」只有造出那一行的人知道，而界面得把行的身份带回去。
+     *
+     * 只有 table 这一种 Kind 会用到它——但它挂在卡片上而不是塞进渲染器的
+     * props 里：卡片的职责就是「把 App 的手递给它选中的那个渲染器」。
+     */
+    onRowAction?: (row: string, a: RowAction) => void;
   } = $props();
 
   const isDirty = $derived(draft !== undefined);
@@ -81,7 +93,7 @@
          没有按钮更让人困惑。 -->
     {#if !concept.locked && !concept.error}
       {#each concept.actions ?? [] as a (a.id)}
-        <button class="tiny ghost" onclick={() => onAction?.(a)}>{a.label}</button>
+        <button class="tiny ghost" data-action={a.id} onclick={() => onAction?.(a)}>{a.label}</button>
       {/each}
     {/if}
     {#if isDirty}
@@ -135,7 +147,7 @@
     {:else if concept.kind === "records"}
       <Records data={shown} {draft} readonly={!concept.writable || !!concept.locked} onEdit={changed} />
     {:else if concept.kind === "table"}
-      <Table data={shown} />
+      <Table data={shown} onAction={(row, a) => onRowAction?.(row, a)} />
     {:else if concept.kind === "series"}
       <Series data={shown} />
     {:else if concept.kind === "log"}

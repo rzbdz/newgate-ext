@@ -16,12 +16,14 @@
     apply,
     preview,
     runConceptAction,
+    runRowAction,
     runSectionAction,
     snapshot,
     type Concept,
     type ConceptAction,
     type Conflict,
     type Section,
+    type RowAction,
     type SectionAction,
   } from "./api";
   import { setLang, t } from "./i18n";
@@ -551,6 +553,34 @@
     }
   }
 
+  /**
+   * 跑**表格里某一行**上的一个动作（见 api.ts 的 runRowAction）。
+   *
+   * 与 runCardAction 的关键差别：**不清草稿**。
+   *
+   * 那张卡上的动作（「把这一份设为默认」）会**改磁盘**，所以重读之后手里所有
+   * 草稿的基线都成了旧的，必须丢掉；而一行上的动作（「探一下这条 binding」）
+   * 动的是 daemon **内存里**的状态——它和这张卡读的那个文件没有关系。清掉的
+   * 话，用户正开着的编辑会被一次「点个测试按钮」悄悄抹掉，那是纯粹的损失。
+   *
+   * 重读照做：这张表是 Live 的（摘帽、延迟、冷却都由这一次探活更新过），不重读
+   * 的话界面会继续说几分钟前那件事。
+   */
+  async function runRow(id: string, row: string, a: RowAction) {
+    busy = true;
+    error = "";
+    const res = await runRowAction(id, row, a.id);
+    // **不管成没成都重读**，而且要在放错误之前：这一行上的动作改的是 daemon 的
+    // 状态（探一发、结论记进健康表），表上那几列——探活、失败数、冷却到什么时候
+    // ——正是这个按钮的结果。失败时不重读的话，横幅说「连不上」而表上还是点之前
+    // 的样子，两句话互相矛盾，而用户没有办法判断哪个是真的。
+    //
+    // 顺序不能反：`load()` 开头会清 `error`，所以那句错误必须**最后**放回去。
+    await load();
+    busy = false;
+    if (res.error) error = res.error;
+  }
+
   async function runAction(a: SectionAction) {
     busy = true;
     error = "";
@@ -789,6 +819,7 @@
           onRevert={revert}
           onDeleteFile={deleteActive}
           onAction={runCardAction}
+          onRowAction={runRow}
           onToggleSplit={toggleSplit}
         />
       {:else if concepts.length}

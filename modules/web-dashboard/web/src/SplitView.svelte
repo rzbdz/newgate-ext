@@ -8,7 +8,7 @@
   //
   // 配对由 App 按「写的是不是同一份文件」算好（见 nav.ts 的 fileOf），这里只管
   // 摆。所以它不认识任何模块，也不知道哪一半是「控件」。
-  import type { Concept, ConceptAction } from "./api";
+  import type { Concept, ConceptAction, RowAction } from "./api";
   import ConceptCard from "./ConceptCard.svelte";
   import { t } from "./i18n";
 
@@ -22,6 +22,7 @@
     onRevert,
     onDeleteFile,
     onAction,
+    onRowAction,
     onToggleSplit,
   }: {
     left: Concept;
@@ -38,6 +39,9 @@
     // 跑某张卡上的一个动作（见 api.ts 的 ConceptAction）。**要带 id**：这个组件
     // 同时拿着两张卡（控件半与原文半），而动作只属于其中一张。
     onAction?: (id: string, a: ConceptAction) => void;
+    // 跑某一行上的一个动作（见 api.ts 的 RowAction）。同一条理由要带 id：两张
+    // 卡都在手里，而那一行只属于其中一张。
+    onRowAction?: (id: string, row: string, a: RowAction) => void;
     onToggleSplit: () => void;
   } = $props();
 
@@ -62,6 +66,7 @@
         onRevert={() => onRevert(left.id)}
         {onDeleteFile}
         onAction={(a) => onAction?.(left.id, a)}
+        onRowAction={(row, a) => onRowAction?.(left.id, row, a)}
       />
     </div>
     {#if two && right}
@@ -73,6 +78,7 @@
           onRevert={() => onRevert(right.id)}
           {onDeleteFile}
           onAction={(a) => onAction?.(right.id, a)}
+          onRowAction={(row, a) => onRowAction?.(right.id, row, a)}
         />
       </div>
     {/if}

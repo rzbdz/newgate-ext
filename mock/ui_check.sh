@@ -72,6 +72,16 @@ if ! curl -sf -o /dev/null "http://127.0.0.1:$PORT/ui/api/snapshot"; then
   echo "沙箱 daemon 没起来，日志："; tail -20 "$SANDBOX/serve.log"; exit 1
 fi
 
+# 造一条真实流量：健康表里**得先有一行**，第 21 条才谈得上按那个「测试」按钮。
+# demo 的 base 指向本地 9 端口（discard），所以这一发必然连不上——正是要的：
+# 表上出现一条坏 binding（探活按钮的作用恰恰是「这条现在到底通不通」，没有比
+# 一条已经坏掉的更能验它了）。
+#
+# 它改的是**内存里的健康表**，不落盘、不影响别的段（那些段看的是文件与界面）。
+curl -s -o /dev/null -X POST "http://127.0.0.1:$PORT/v1/messages" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"normal","max_tokens":8,"messages":[{"role":"user","content":"ui check"}]}' || true
+
 # 第二个参数是沙箱的 state.json：冲突那一段要**从外面**改它，扮演那个抢先写文件
 # 的命令行（浏览器那一层唯一能验「对话框真的弹出来了吗」的办法）。
 node "$ROOT/mock/ui_check.mjs" "http://127.0.0.1:$PORT/ui/" "$NEWGATE_HOME/state.json"

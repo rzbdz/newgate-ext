@@ -259,6 +259,39 @@ export async function runConceptAction(id: string, action: string): Promise<Appl
   );
 }
 
+/** 某一行上的一个按钮（见 lib/view 的 Row.Actions）。
+    形状与 ConceptAction 一样，只是多了一层「哪一行」：行是**数据长出来的**，
+    所以动作也得在构造那一行的时候才定得下来。 */
+export interface RowAction {
+  id: string;
+  label: string;
+}
+
+/**
+ * 跑表格里**某一行**上的一个动作（「探一下这条 binding」这类）。
+ *
+ * 三个身份缺一不可：哪个概念（那张表）、哪一行（binding 键）、哪个动作。
+ * 界面**不知道**这三者合起来会干什么——它只知道点了哪个按钮。
+ *
+ * 与另外两条动作路（section / concept）一样**不走 drafts、不碰 CAS**：
+ * 它不是「把这份草稿写下去」，而是「干一件事」（打一发探活、然后把结论记进
+ * 健康表）。那件事改的是 daemon 的内存状态，与这张卡读的那个文件无关，所以
+ * 这一行不该让卡片变脏。
+ */
+export async function runRowAction(
+  id: string,
+  row: string,
+  action: string,
+): Promise<ApplyResult> {
+  return json<ApplyResult>(
+    await fetch(`${API}/row-action`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, row, action }),
+    }),
+  );
+}
+
 export async function runSectionAction(source: string, action: string): Promise<ApplyResult> {
   return json<ApplyResult>(
     await fetch(`${API}/section`, {

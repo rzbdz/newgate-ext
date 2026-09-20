@@ -79,6 +79,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.conceptAction(w, r)
+	case r.URL.Path == "/api/row-action":
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", http.MethodPost)
+			http.Error(w, i18n.T("row actions use POST", nil), http.StatusMethodNotAllowed)
+			return
+		}
+		h.rowAction(w, r)
 	case r.URL.Path == "/api/apply":
 		if r.Method != http.MethodPost {
 			w.Header().Set("Allow", http.MethodPost)
@@ -446,6 +453,42 @@ func (h *Handler) conceptAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	focus, err := h.views.RunConceptAction(req.ID, req.Action)
+	if err != nil {
+		h.writeJSONStatus(w, http.StatusBadRequest, applyResponse{Error: err.Error()})
+		return
+	}
+	h.writeJSONStatus(w, http.StatusOK, applyResponse{OK: true, Focus: focus})
+}
+
+// ---------- 行内动作 ----------
+
+type rowActionRequest struct {
+	// ID 是哪张卡（概念的稳定身份）。
+	ID string `json:"id"`
+	// Row 是那一行（见 lib/view 的 Row.ID）。**机器标记**，不翻译。
+	Row string `json:"row"`
+	// Action 是那一行上的哪个动作。
+	Action string `json:"action"`
+}
+
+// rowAction 跑表格里**某一行**上的一个动作——「探一下这条 binding」这类。
+//
+// 三个字段而不是两个，因为一张表里每一行是**一条独立的东西**：少了 Row 这一层，
+// 「测试」就不知道该测谁。BFF 依旧只转交：它不知道那一行是什么，也不知道那个动作
+// 会干什么（它连「这是个表」都不该知道）。
+func (h *Handler) rowAction(w http.ResponseWriter, r *http.Request) {
+	if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		h.writeJSONStatus(w, http.StatusUnsupportedMediaType, applyResponse{
+			Error: i18n.T("row actions need Content-Type: application/json (got {ct})", i18n.A{"ct": ct})})
+		return
+	}
+	var req rowActionRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
+		h.writeJSONStatus(w, http.StatusBadRequest, applyResponse{
+			Error: i18n.T("the request body is not valid JSON: {err}", i18n.A{"err": err})})
+		return
+	}
+	focus, err := h.views.RunRowAction(req.ID, req.Row, req.Action)
 	if err != nil {
 		h.writeJSONStatus(w, http.StatusBadRequest, applyResponse{Error: err.Error()})
 		return

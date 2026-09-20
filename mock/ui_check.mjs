@@ -75,6 +75,13 @@ page.on("console", (m) => {
   // error，而「基线过期」正是那里要制造的局面。它不是页面抛的错——把它算进来的
   // 话，这条断言就变成了「不许测冲突」。排除得很窄，别的错照样算。
   if (text.includes("status of 409")) return;
+  // 第 21 条**故意**让一次行内动作失败（沙箱的 provider 指向死端口），BFF 对
+  // 「动作没做成」回 400，于是这里也有一条 console error。同样不是页面抛的错。
+  //
+  // 排除条件卡到**端点**上（`location().url`），不只看状态码：`/api/*` 上任何
+  // 别的地方冒出 400 都还是真信号，不该被这一条误伤。
+  const where = m.location?.()?.url ?? "";
+  if (text.includes("status of 400") && where.endsWith("/api/row-action")) return;
   pageErrors.push("console: " + text);
 });
 
@@ -1074,6 +1081,71 @@ if (!(await openSwitches())) {
       const st2 = JSON.parse(fs.readFileSync(stateFile, "utf8"));
       check("选回空之后那个键消失（不是留下一个空串）",
         (st2.active ?? {}).codex === undefined, JSON.stringify(st2.active ?? {}));
+    }
+  }
+}
+
+// —— 21. 熔断表每一行上的「测试」按钮 ——
+//
+// 用户的要求：「breaker 页面单项增加一个测试按钮（选用合理的icon），点击可以测试
+// probe 的效果。最终可以更新摘帽、延迟等。」
+//
+// 这条检查的重点**不是**「按钮画出来了」，而是最后那半句「最终可以更新」。所以
+// 三条一起验，缺一条这个功能就不成立：
+//   1. 那一行上真的有按钮（没有 = 界面根本没提供这个动作）；
+//   2. 点下去**真的发出去了**：沙箱的 provider 指向一个死端口，所以必然连不上，
+//      横幅必须点名是**哪一条**、并带上原因。「什么都没发生」是这里最坏的答案
+//      ——用户会以为按钮坏了；
+//   3. 表上那几列**真的跟着变了**：结论进了健康表（探活、失败数、冷却），不是
+//      只在界面上弹一句话就完了。
+//
+// 按 `data-action` 找按钮，不按按钮上的字：那个字是贡献者给的（后端翻好，本沙箱
+// 下是「⚡ 测试」），拿它当选择器等于让这条检查跟着语言跑。
+{
+  const sec = page.locator(`nav.side button[title="breaker"]`);
+  if ((await sec.count()) === 0) {
+    skip("这份装配里没有熔断那一节，跳过第 21 条");
+  } else {
+    await sec.click();
+    await page.waitForTimeout(300);
+    const card = page.locator("section.card").first();
+    const btn = card.locator('button[data-action="probe"]').first();
+
+    if ((await btn.count()) === 0) {
+      // 一行都没有：说明 ui_check.sh 那发失败请求没造出行来（装配里没有 breaker、
+      // 或者分类变了）。跳过而不是判红——这条检查要验的是按钮，不是「沙箱一定
+      // 造得出坏 binding」。
+      skip("健康表里一行都没有，跳过第 21 条（ui_check.sh 那发请求没造出行来？）");
+    } else {
+      const row = card
+        .locator("tbody tr")
+        .filter({ has: page.locator('button[data-action="probe"]') })
+        .first();
+      const squeeze = (t) => t.replace(/\s+/g, " ").trim();
+      const before = squeeze(await row.innerText());
+
+      await btn.click();
+      // 探活要打到那个死端口再回来（连接被拒是立刻的，但这一发是同步等的）。
+      await page.waitForTimeout(2000);
+
+      const bannerText = await page.locator(".banner").first().innerText().catch(() => "");
+      check(
+        "点了测试按钮，横幅点名了那条 binding",
+        /demo\/demo-model/.test(bannerText),
+        `横幅上是 ${JSON.stringify(bannerText.slice(0, 160))}`,
+      );
+      check(
+        "横幅给出了探不通的原因（不是「什么都没发生」）",
+        bannerText.length > "demo/demo-model".length + 4,
+        `横幅上是 ${JSON.stringify(bannerText.slice(0, 160))}`,
+      );
+
+      const after = squeeze(await row.innerText());
+      check(
+        "探活的结论进了健康表（那一行的几列变了）",
+        after !== before,
+        `点之前 ${JSON.stringify(before)} / 点之后 ${JSON.stringify(after)}`,
+      );
     }
   }
 }

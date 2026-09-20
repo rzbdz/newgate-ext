@@ -720,6 +720,14 @@
       "text": "还原 {file} 失败: {err}",
       "reviewed": true
     },
+    "row actions need Content-Type: application/json (got {ct})": {
+      "text": "行上的动作需要 Content-Type: application/json（收到的是 {ct}）",
+      "reviewed": true
+    },
+    "row actions use POST": {
+      "text": "行上的动作要用 POST",
+      "reviewed": true
+    },
     "saving needs Content-Type: application/json (got {ct})": {
       "text": "保存要求 Content-Type: application/json（这次是 {ct}）",
       "reviewed": true
