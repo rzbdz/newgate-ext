@@ -1041,13 +1041,22 @@ if (!(await openSwitches())) {
     check("第一格是链头选择器", (await sel.count()) > 0, "第一格里没有下拉");
 
     const opts = await sel.locator("option").allInnerTexts();
-    check("链头的选项里有「空」这一档", opts.includes(""), opts.join(","));
-    check("链头的选项里有真的 profile 名", opts.some((o) => o && o !== ""), opts.join(","));
+    // 第一档是「跟随全局缺省」，而它**必须点名跟着谁**——用户的原话是「你要区分开是
+    // 用户选了 xx，还是说 xx 是缺省的」。两者在这一格的当前值是同一个字符串
+    // （`Active()` 返回此刻实际走的那条），所以判据只能落在**显示出来的说法**上：
+    // 跟随缺省那一档带着「缺省」二字，而用户真选了某条时那一档就是光秃秃的名字。
+    check("链头第一档是「跟随全局缺省」并点名跟着谁",
+      /缺省|default/.test(opts[0] ?? ""), `第一档显示成 ${JSON.stringify(opts[0])}`);
+    check("链头的选项里有真的 profile 名",
+      opts.slice(1).some((o) => o && !/缺省|default/.test(o)), opts.join(","));
 
-    const before = await sel.inputValue();
-    const other = opts.find((o) => o && o !== before);
+    // 要挑一个**不等于全局默认**的 profile：与默认同名 = 没设过（见
+    // confighook.AgentProfile.Write），所以拿它去验「落盘」验的是那条规矩，
+    // 而不是这一条。沙箱里 `demo` 正好就是默认，第一版就是这么红的。
+    const st0 = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+    const other = opts.slice(1).find((o) => o && !/缺省|default/.test(o) && o !== st0.default_profile);
     if (!other) {
-      skip("这个沙箱只有一个 profile，跳过链头这一条");
+      skip("这个沙箱除默认 profile 之外没有别的，跳过链头这一条");
     } else {
       await sel.selectOption(other);
       await page.waitForTimeout(200);

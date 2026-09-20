@@ -12,6 +12,8 @@
     kind: "select" | "bool" | "text";
     value: string | boolean;
     options?: string[];
+    /** 取值 → 给人看的说法（见 lib/view 的 OptionLabels）。缺的按取值本身显示。 */
+    option_labels?: Record<string, string>;
     /** 空格子里的提示（「空 = 只听回环」这类）。空值格子靠它说清空着是什么意思。 */
     placeholder?: string;
     why?: string;
@@ -101,8 +103,11 @@
           onchange={(e) => set(it.id, e.currentTarget.value)}
         >
           <!-- 空值 = 「跟随缺省」这类语义，得有个看得见的名字：空 <option>
-               在界面上就是一个没有任何字的选项，用户不知道它是什么。 -->
-          {#each it.options ?? [] as o (o)}<option value={o}>{o || "—"}</option>{/each}
+               在界面上就是一个没有任何字的选项，用户不知道它是什么。
+               说法优先用贡献者给的那一份（`option_labels`）：有的取值的意思只有它
+               知道——链头的空取值是「跟随全局缺省」，而「缺省是谁」得由后端填进去
+               （「—」两个字说不清这件事，也没法与「我就是要选 ds」区分开）。 -->
+          {#each it.options ?? [] as o (o)}<option value={o}>{it.option_labels?.[o] ?? (o || "—")}</option>{/each}
           {#if values[it.id] !== undefined && !(it.options ?? []).includes(String(values[it.id]))}
             <option value={String(values[it.id])}>{String(values[it.id])} (not in the list)</option>
           {/if}
