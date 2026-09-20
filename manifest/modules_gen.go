@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"strings"
 
+	ext_arch_diagram "github.com/rzbdz/newgate-ext/modules/arch-diagram"
 	ext_claudecode "github.com/rzbdz/newgate-ext/modules/claudecode"
 	ext_claudecode_deepseek "github.com/rzbdz/newgate-ext/modules/claudecode_deepseek"
 	ext_claudecode_glm "github.com/rzbdz/newgate-ext/modules/claudecode_glm"
@@ -38,6 +39,21 @@ const DefaultSpec = "dist.json"
 // Specs 是仓库根每份规格书各自的装配选择。
 func Specs() map[string]app.Selection {
 	return map[string]app.Selection{
+		"dist-dev.json": {
+			Extra: []app.Entry{
+				{Dir: "i18n", Component: ext_i18n.New()},
+				{Dir: "tui", Component: ext_tui.New()},
+				{Dir: "deepseek", Component: ext_deepseek.New()},
+				{Dir: "glm", Component: ext_glm.New()},
+				{Dir: "claudecode_deepseek", Component: ext_claudecode_deepseek.New()},
+				{Dir: "claudecode_glm", Component: ext_claudecode_glm.New()},
+				{Dir: "claudecode", Component: ext_claudecode.New()},
+				{Dir: "opencode", Component: ext_opencode.New()},
+				{Dir: "opencodeomo", Component: ext_opencodeomo.New()},
+				{Dir: "web-dashboard", Component: ext_web_dashboard.New()},
+				{Dir: "arch-diagram", Component: ext_arch_diagram.New()},
+			},
+		},
 		"dist-hello.json": {
 			AllCore: true,
 			Extra: []app.Entry{
@@ -77,7 +93,9 @@ func Specs() map[string]app.Selection {
 }
 
 // SpecNames 列出全部规格书名，按文件名排序。
-func SpecNames() []string { return []string{"dist-hello.json", "dist-simple-cli.json", "dist.json"} }
+func SpecNames() []string {
+	return []string{"dist-dev.json", "dist-hello.json", "dist-simple-cli.json", "dist.json"}
+}
 
 // Loader 按规格书名装图。名字认不出来就**报错**，不退回默认那份：
 // 「我明明编的是简单版，怎么界面上有两个 ui」这种问题，值得在启动的第一秒

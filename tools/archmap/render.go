@@ -125,11 +125,11 @@ main{flex:1;display:flex;min-height:0}
 <main>
   <div id="canvas">
     <svg id="svg"><g id="viewport"></g></svg>
-    <div class="hint">wheel to zoom · drag to pan · click a node to pin · double-click to reset</div>
+    <div class="hint">wheel to zoom · drag to pan · click a node to lock it · click empty space (or double-click) to unlock</div>
   </div>
   <aside id="panel">
     <h2 id="ptitle">overview</h2>
-    <div id="pbody" class="note">hover a node.</div>
+    <div id="pbody" class="note">click a node.</div>
     <div id="plegend"></div>
   </aside>
 </main>
@@ -168,18 +168,24 @@ const EDGE_LABEL = {
   imports:{
     solid:"imports",
     cross:"crosses core <-> distribution",
-    cycle:"same box (two directories reach each other)",
+    cycle:"mutual: each box imports something in the other",
   },
 };
 // Labels for styles that mean the same thing on both tabs.
-const EDGE_LABEL_COMMON = {cross:"crosses core <-> distribution", cycle:"same box (mutual reach)"};
+const EDGE_LABEL_COMMON = {cross:"crosses core <-> distribution", cycle:"mutual: each box imports the other"};
 
 let state = {tab:"resolve", spec:0, focus:null, graph:null, showOpt:true, showBands:true};
 let view = {x:0, y:0, k:1};
 
+// An empty graph rather than undefined: a build served by a module that got no spec
+// table (the root does not always have one) must draw an empty canvas and say so,
+// not throw on the first property access.
+const EMPTY_GRAPH = {id:"empty", title:"no specs", note:"this build carries no distribution spec table",
+                     nodes:[], edges:[], layers:0, width:0, height:0};
+
 function currentGraph(){
-  if(state.tab === "imports") return DATA.imports;
-  return DATA.specs[state.spec] || DATA.specs[0];
+  if(state.tab === "imports") return DATA.imports || EMPTY_GRAPH;
+  return DATA.specs[state.spec] || DATA.specs[0] || EMPTY_GRAPH;
 }
 
 function el(tag, attrs){
@@ -239,8 +245,10 @@ function draw(){
     const tip = el("title", {});
     tip.textContent = n.label + (n.note ? "\n" + n.note : "");
     grp.appendChild(tip);
-    grp.addEventListener("mouseenter", () => highlight(n.id));
-    grp.addEventListener("mouseleave", () => { if(!state.focus) highlight(null); });
+    // Only a click changes the picture, and a click locks it. Hover highlighting
+    // hurts on this graph: the nodes sit close together, so sweeping the mouse
+    // across them makes the whole thing flicker and hides who you are on.
+    // Clicking empty space unlocks.
     grp.addEventListener("click", ev => { ev.stopPropagation(); focus(n.id); });
     grp.dataset.id = n.id;
     nodeLayer.appendChild(grp);
@@ -330,7 +338,8 @@ function showPanel(id){
     body.innerHTML = '<div class="note">' + g.note + '</div>' +
       '<div class="kv"><b>nodes</b><span>' + g.nodes.length + '</span></div>' +
       '<div class="kv"><b>edges</b><span>' + g.edges.length + '</span></div>' +
-      '<div class="kv"><b>layers</b><span>' + g.layers + '</span></div>';
+      '<div class="kv"><b>layers</b><span>' + g.layers + '</span></div>' +
+      mutualNote(g);
     return;
   }
   const n = state.graph.nodes.find(x => x.id === id);
@@ -349,6 +358,25 @@ function showPanel(id){
 function list(head, items){
   return '<h2 style="margin:12px 0 6px">' + head + '</h2><div class="note">' +
     items.map(i => '<div class="kv"><span>' + i + '</span></div>').join("") + '</div>';
+}
+
+// mutualNote explains the red dashed lines in full sentences, in the overview.
+//
+// The legend has room for five words; this is the part people actually get wrong: a
+// red line does NOT mean the code has a cycle. Go forbids import cycles at package
+// level, and those two boxes go back and forth through *different* packages inside
+// each directory - merging a directory into one box is what makes them look mutual.
+// The honest reading is "these two are coupled through shared leaf packages".
+function mutualNote(g){
+  const n = g.edges.filter(e => e.cycle).length;
+  if(!n) return "";
+  return '<div class="note" style="margin-top:10px">' +
+    '<b>' + n + ' mutual edge' + (n > 1 ? 's' : '') + '</b> (red dashed): the two boxes ' +
+    'import each other. That is not a cycle in the code - Go would not compile one. They go ' +
+    'back and forth through <i>different</i> packages inside each directory, and merging a ' +
+    'directory into a single box is what makes them mutual. Read it as: change one, look at ' +
+    'the other.' +
+    '</div>';
 }
 
 // The legend stays at the bottom of the sidebar (it does not disappear when you

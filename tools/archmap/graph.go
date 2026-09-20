@@ -99,9 +99,50 @@ func ResolveGraph(id, title, note string, loaders ...modules.Loader) (Graph, err
 	if err != nil {
 		return Graph{}, err
 	}
-	comps := plan.Components()
-	deps := plan.Dependencies()
+	return buildGraph(id, title, note, plan.Components(), plan.Dependencies()), nil
+}
 
+// CatalogGraph 画「**这个进程此刻装着什么**」。
+//
+// 与 ResolveGraph 的区别只在**来源**：那边跑一遍 Resolve（图纸：按 loader 声明出来
+// 的），这边用的是运行中的组件名单（事实：内核通过 CatalogAware 递的那份，见
+// modules/pluginmanager 的同款用法）。在线那张图只能走这条路——它手里没有 loader，
+// 而它要回答的问题本来就是「这里现在装着谁」。
+//
+// 依赖边两种来源都拿得到：它们是 Requires/Provides 里写着的东西，不需要解析器。
+func CatalogGraph(id, title, note string, comps []modules.Component) Graph {
+	return buildGraph(id, title, note, comps, dependenciesOf(comps))
+}
+
+// dependenciesOf 从**已经装着的组件**里解出依赖边，形状与 Plan.Dependencies 一致。
+//
+// 判据只有一条：Requires 里的端口名，在谁的 Provides 里出现过。没人提供就留空
+// （画成虚点，见 buildGraph）。Plan 那边做的是同一件事的更完整版本（它还校验
+// 缺端口、做拓扑排序）——这里只画图，不校验：名单是**已经装配成功**的结果。
+func dependenciesOf(comps []modules.Component) map[string][]modules.Dependency {
+	owner := map[string]string{}
+	for _, c := range comps {
+		for _, p := range c.Provides {
+			if _, taken := owner[p.Name()]; !taken {
+				owner[p.Name()] = c.Name
+			}
+		}
+	}
+	out := make(map[string][]modules.Dependency, len(comps))
+	for _, c := range comps {
+		for _, r := range c.Requires {
+			out[c.Name] = append(out[c.Name], modules.Dependency{
+				Capability: r.Name(),
+				ProvidedBy: owner[r.Name()],
+				Optional:   r.Optional(),
+			})
+		}
+	}
+	return out
+}
+
+// buildGraph 是两种来源共用的那一半：名单 + 依赖边 → 画好的图。
+func buildGraph(id, title, note string, comps []modules.Component, deps map[string][]modules.Dependency) Graph {
 	g := Graph{ID: id, Title: title, Note: note}
 	names := make([]string, 0, len(comps))
 	for _, c := range comps {
@@ -139,7 +180,7 @@ func ResolveGraph(id, title, note string, loaders ...modules.Loader) (Graph, err
 		}
 	}
 	Layout(&g)
-	return g, nil
+	return g
 }
 
 func groupOf(comps []modules.Component, name string) string {

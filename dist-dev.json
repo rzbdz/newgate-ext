@@ -1,0 +1,17 @@
+{
+  "distribution": "dev",
+  "modules": [
+    "i18n",
+    "tui",
+    "deepseek",
+    "glm",
+    "claudecode_deepseek",
+    "claudecode_glm",
+    "claudecode",
+    "opencode",
+    "opencodeomo",
+    "web-dashboard",
+    "arch-diagram"
+  ],
+  "disable": []
+}

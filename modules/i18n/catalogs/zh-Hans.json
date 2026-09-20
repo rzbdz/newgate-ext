@@ -200,6 +200,10 @@
       "text": "缺 api_key",
       "reviewed": true
     },
+    "arch": {
+      "text": "arch",
+      "reviewed": true
+    },
     "assistant messages in the history no longer get their reasoning text backfilled, and OpenAI-dialect DeepSeek answers 400 to \"reasoning_content must be passed back\" (the chain then advances on its own; the symptom is a silent provider switch)": {
       "text": "历史里的 assistant 消息不再补推理原文，OpenAI 方言的 DeepSeek 会对「reasoning_content 必须回传」回 400（自动沿链转移，症状是悄悄换 provider）",
       "reviewed": true
@@ -298,6 +302,10 @@
     },
     "cannot remove the retired {path}: {err}": {
       "text": "删除已下线的 {path} 失败: {err}",
+      "reviewed": true
+    },
+    "cannot render the architecture report: {err}": {
+      "text": "渲染架构报告失败：{err}",
       "reviewed": true
     },
     "cannot replace {path} (the configuration may be half old and half new; the next sync will retry): {err}": {
@@ -420,6 +428,10 @@
       "text": "你好，世界 — {argv0}（{version}）",
       "reviewed": true
     },
+    "imports are scanned from {root}": {
+      "text": "import 从 {root} 扫描",
+      "reviewed": true
+    },
     "inject thinking:disabled (the first step)": {
       "text": "注入 thinking:disabled（第 1 手）",
       "reviewed": true
@@ -530,6 +542,10 @@
     },
     "no slot registry at {file}": {
       "text": "没有槽位登记表 {file}",
+      "reviewed": true
+    },
+    "no source tree found here, so only the assembly graphs will be drawn — the import scan needs one (set {env} to point at it)": {
+      "text": "这里找不到源码树，所以只画装配图——import 那一半需要它（用 {env} 指过去）",
       "reviewed": true
     },
     "no such concept: {id} — the page is probably stale, reload it": {
@@ -688,6 +704,14 @@
       "text": "守护进程没在跑 —— 界面是它发出来的，先起它：newgate start",
       "reviewed": true
     },
+    "the daemon is not running — this diagram is served by it, so start it first: newgate start": {
+      "text": "daemon 没在跑——这张图由它服务，先把它启起来：newgate start",
+      "reviewed": true
+    },
+    "the diagram is read-only": {
+      "text": "这张图只读",
+      "reviewed": true
+    },
     "the endpoint is empty (run newgate config join <endpoint> first)": {
       "text": "endpoint 是空的（先 newgate config join <endpoint>）",
       "reviewed": true
@@ -804,6 +828,10 @@
       "text": "这份配置的 schema_version={got}，本二进制只认到 {max}：字段含义可能已经变了，误读不会报错（会路由到错的上游或报 provider 没有 api_key）。已保留上一份配置继续服务。升级 newgate 后会自动跟上。",
       "reviewed": true
     },
+    "this diagram answers on loopback only; open it as http://127.0.0.1:{port}{prefix}/": {
+      "text": "这张图只在 loopback 上应答；请用 http://127.0.0.1:{port}{prefix}/ 打开",
+      "reviewed": true
+    },
     "this interface answers on loopback only; reach it as http://127.0.0.1:{port} (the host name in this request was {host})": {
       "text": "这个界面只答本机；请用 http://127.0.0.1:{port} 打开（这次请求里的主机名是 {host}）",
       "reviewed": true
@@ -814,6 +842,10 @@
     },
     "this machine's {name} was modified locally (your changes will not be overwritten)": {
       "text": "本机的 {name} 被本地改过（不会覆盖你的改动）",
+      "reviewed": true
+    },
+    "this process": {
+      "text": "这个进程",
       "reviewed": true
     },
     "this string is neither hex ({n} bytes) nor long enough as a raw key ({min} bytes) — was it copied in full?": {
@@ -856,8 +888,16 @@
       "text": "web",
       "reviewed": true
     },
+    "what is installed right now: {version}, assembled {took}": {
+      "text": "此刻装着的：{version}，装配于 {took}",
+      "reviewed": true
+    },
     "when the user explicitly runs newgate naked on/forever, Bash classifier requests are short-circuited into an approval without a single LLM call — no more 15-30s classifier latency and no more sessions wedged by a wrong block\non = a 60-second self-limiting window; forever = always on (every request is logged, status warns)\nonly the Claude Code security-monitor marker is recognised; newgate naked off / st off both end it": {
       "text": "用户显式 newgate naked on/forever 时，Bash 分类器请求被直接短路成批准，一个 LLM 调用都不发——省掉分类器 15-30s 与误判卡死\non=60 秒自限；forever=常开（每个请求都打日志，status 警告）\n只认 Claude Code security-monitor 标记；newgate naked off / st off 均可关",
+      "reviewed": true
+    },
+    "where the architecture diagram is served (dev builds)": {
+      "text": "架构图在哪儿服务（开发构建）",
       "reviewed": true
     },
     "where the browser interface is served, and how to reach it": {

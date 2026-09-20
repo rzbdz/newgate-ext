@@ -179,6 +179,9 @@
     "api_key missing": {
       "where": "modules/tui/tui.go:234"
     },
+    "arch": {
+      "where": "modules/arch-diagram/command.go:32"
+    },
     "assistant messages in the history no longer get their reasoning text backfilled, and OpenAI-dialect DeepSeek answers 400 to \"reasoning_content must be passed back\" (the chain then advances on its own; the symptom is a silent provider switch)": {
       "where": "modules/deepseek/switches.go:45"
     },
@@ -305,6 +308,12 @@
       "where": "modules/configshare/proto/materialize.go:258",
       "args": [
         "path"
+      ]
+    },
+    "cannot render the architecture report: {err}": {
+      "where": "modules/arch-diagram/handler.go:58",
+      "args": [
+        "err"
       ]
     },
     "cannot replace {path} (the configuration may be half old and half new; the next sync will retry): {err}": {
@@ -434,6 +443,12 @@
         "version"
       ]
     },
+    "imports are scanned from {root}": {
+      "where": "modules/arch-diagram/command.go:49",
+      "args": [
+        "root"
+      ]
+    },
     "inject thinking:disabled (the first step)": {
       "where": "modules/claudecode_deepseek/switches.go:25"
     },
@@ -550,6 +565,12 @@
       "where": "modules/opencodeomo/command.go:70",
       "args": [
         "file"
+      ]
+    },
+    "no source tree found here, so only the assembly graphs will be drawn — the import scan needs one (set {env} to point at it)": {
+      "where": "modules/arch-diagram/command.go:46",
+      "args": [
+        "env"
       ]
     },
     "no such concept: {id} — the page is probably stale, reload it": {
@@ -730,6 +751,12 @@
     "the daemon is not running — the dashboard is served by it, so start it first: newgate start": {
       "where": "modules/web-dashboard/command.go:72"
     },
+    "the daemon is not running — this diagram is served by it, so start it first: newgate start": {
+      "where": "modules/arch-diagram/command.go:52"
+    },
+    "the diagram is read-only": {
+      "where": "modules/arch-diagram/handler.go:43"
+    },
     "the endpoint is empty (run newgate config join <endpoint> first)": {
       "where": "modules/configshare/proto/client.go:61"
     },
@@ -857,6 +884,13 @@
         "max"
       ]
     },
+    "this diagram answers on loopback only; open it as http://127.0.0.1:{port}{prefix}/": {
+      "where": "modules/arch-diagram/handler.go:35",
+      "args": [
+        "port",
+        "prefix"
+      ]
+    },
     "this interface answers on loopback only; reach it as http://127.0.0.1:{port} (the host name in this request was {host})": {
       "where": "modules/web-dashboard/bff.go:51",
       "args": [
@@ -872,6 +906,9 @@
       "args": [
         "name"
       ]
+    },
+    "this process": {
+      "where": "modules/arch-diagram/handler.go:51"
     },
     "this string is neither hex ({n} bytes) nor long enough as a raw key ({min} bytes) — was it copied in full?": {
       "where": "modules/configshare/proto/rootkey.go:102",
@@ -925,8 +962,18 @@
     "web": {
       "where": "modules/web-dashboard/command.go:34"
     },
+    "what is installed right now: {version}, assembled {took}": {
+      "where": "modules/arch-diagram/handler.go:52",
+      "args": [
+        "took",
+        "version"
+      ]
+    },
     "when the user explicitly runs newgate naked on/forever, Bash classifier requests are short-circuited into an approval without a single LLM call — no more 15-30s classifier latency and no more sessions wedged by a wrong block\non = a 60-second self-limiting window; forever = always on (every request is logged, status warns)\nonly the Claude Code security-monitor marker is recognised; newgate naked off / st off both end it": {
       "where": "modules/claudecode/classifier-naked.go:110"
+    },
+    "where the architecture diagram is served (dev builds)": {
+      "where": "modules/arch-diagram/command.go:33"
     },
     "where the browser interface is served, and how to reach it": {
       "where": "modules/web-dashboard/command.go:35"

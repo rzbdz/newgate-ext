@@ -1,17 +1,13 @@
 package archmap_test
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/rzbdz/newgate-ext/manifest"
 	"github.com/rzbdz/newgate-ext/tools/archmap"
-	app "github.com/rzbdz/newgate/app"
 )
 
 // 这个测试干两件事：**生成架构图**（dist/architecture.html，离线双击就能看），
@@ -25,39 +21,32 @@ import (
 // 断言都在图的数据上做，不在 HTML 文本上做：HTML 是渲染，数据才是结论。
 func TestArchitectureMap(t *testing.T) {
 	root := repoRoot(t)
-	report := archmap.Report{GeneratedAt: time.Now().Format(time.RFC3339)}
+
+	// 报告怎么装只有一份实现（archmap.Build）：测试与 modules/arch-diagram 那个
+	// 「挂到端口上」的调用方走的是同一条路。分开写过一次，两边就会在「哪一步失败
+	// 怎么降级」上长歪。
+	report, err := archmap.Build(manifest.Specs(), root)
+	if err != nil {
+		t.Fatalf("装不出报告（%s 解析失败？）: %v", "resolve", err)
+	}
 
 	// ---- 一、装配图：每份规格书一张 ----
-	specs := manifest.Specs()
-	names := make([]string, 0, len(specs))
-	for name := range specs {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		sel := specs[name]
-		// 真跑一遍解析（不 Start 任何模块）：这就是「resolve 出来的」那张图。
-		g, err := archmap.ResolveGraph(name, name, distributionNote(sel), sel)
-		if err != nil {
-			t.Fatalf("%s 解析失败——这张图的意义就是解析真的能过: %v", name, err)
-		}
-		assertLayeringDirection(t, name, g)
-		assertLayered(t, name, g)
-		report.Specs = append(report.Specs, g)
-	}
 	if len(report.Specs) == 0 {
 		t.Fatal("一份规格书都没有——生成器与规格书脱节了")
 	}
+	for _, g := range report.Specs {
+		assertLayeringDirection(t, g.ID, g)
+		assertLayered(t, g.ID, g)
+	}
 
 	// ---- 二、import 图：扫出来的事实 ----
-	imports, err := archmap.ImportGraph(root)
-	if err != nil {
-		t.Fatalf("扫 import 失败: %v", err)
+	imports := report.Imports
+	if len(imports.Nodes) == 0 {
+		t.Fatalf("import 图是空的：%s", imports.Note)
 	}
 	assertLayeringDirection(t, "imports", imports)
 	assertLayered(t, "imports", imports)
 	assertKernelNeverImportsTheDistribution(t, imports)
-	report.Imports = imports
 
 	// ---- 三、产物 ----
 	html, err := archmap.Render(report)
@@ -156,24 +145,6 @@ func assertKernelNeverImportsTheDistribution(t *testing.T, g archmap.Graph) {
 	if checked == 0 {
 		t.Fatal("一条内核内部的 import 边都没扫到——扫描坏了，这条断言等于没跑")
 	}
-}
-
-// distributionNote 是悬停/概览里那行说明：这份规格书**装了什么、关了什么**。
-//
-// 一张装配图最有用的上下文就是这个——同样的模块表，`"disable": ["*"]` 的骨架
-// 发行版画出来是十几个点，旗舰版是三十几个，看图的人得先知道自己在看哪一份。
-func distributionNote(sel app.Selection) string {
-	var parts []string
-	parts = append(parts, fmt.Sprintf("%d own modules", len(sel.Extra)))
-	switch {
-	case sel.AllCore:
-		parts = append(parts, "all built-in kernel modules disabled")
-	case len(sel.Disable) > 0:
-		parts = append(parts, "kernel modules disabled: "+strings.Join(sel.Disable, ", "))
-	default:
-		parts = append(parts, "all built-in kernel modules installed")
-	}
-	return strings.Join(parts, " · ")
 }
 
 // repoRoot 从本文件的位置往上找仓库根（有 go.mod 且不是 core/ 的那一层）。
