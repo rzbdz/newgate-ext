@@ -2,7 +2,7 @@
   "distribution": "newgate-default",
   "core": {
     "repo": "https://github.com/rzbdz/newgate.git",
-    "revision": "da96cf49b3160b626f5e09b75a0fb39db56aad73"
+    "revision": "5c91b0d649d30b516a8d3729d014a5740e75493c"
   },
   "modules": [
     "hello",
