@@ -45,9 +45,11 @@ including one going through the gateway being replaced.
 
 **The upstreams' quirks are modules, not `if` statements.**
 DeepSeek's reasoning pass-back and tail shape, GLM's thinking hand-back, Claude
-Code's background calls, OpenCode's intra-agent slots — each is a file with a
-written reason for existing, switchable at runtime (`newgate st`). Read it,
-replace it, write the one for the upstream we have never heard of.
+Code's background classifier calls — `newgate st` lists all six, each with the
+failure it exists to prevent, switchable at runtime. The client × model bridges
+are modules too (Claude Code × DeepSeek, Claude Code × GLM, and Oh My OpenAgent's
+slots inside OpenCode). Read one, replace it, or write the patch for the upstream
+we have never heard of.
 
 ## Fork it, and make it yours
 
