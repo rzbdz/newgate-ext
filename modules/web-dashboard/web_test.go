@@ -14,6 +14,10 @@ import (
 // 它能查的只有「嵌进来的这份是不是自洽的」，查不了「它是不是最新的」（那要跑
 // node，而 CI 必须离线）。但两种常见的翻车它都拦得住：dist 被清空（产物没了）
 // 与 index.html 指着一份已经不存在的 hash 文件（改完前端没重新构建就提交）。
+//
+// 「忘了 pnpm build」的另一半由 i18n_test.go 的 TestShippedBundleHasEverySentence
+// 守：加了一句文案而没重新构建时，源字典里有、bundle 里没有，那条会点名。
+// 剩下查不了的（样式、布局、逻辑）照样查不了——那种只能靠人打开看一眼。
 
 var assetRef = regexp.MustCompile(`/ui/assets/[A-Za-z0-9._-]+`)
 
