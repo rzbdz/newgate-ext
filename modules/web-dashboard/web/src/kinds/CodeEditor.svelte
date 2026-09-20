@@ -62,7 +62,9 @@
       EditorView.lineWrapping,
       theme,
       EditorView.updateListener.of((u) => {
-        if (u.docChanged) onEdit({ text: u.state.doc.toString() });
+        // `!applying`：程序性的替换（下面那个 effect）也会走这里，而它不是用户
+        // 输入——见 applying 的注释。
+        if (u.docChanged && !applying) onEdit({ text: u.state.doc.toString() });
       }),
     ];
     if (lang === "json") ext.push(json());
@@ -75,14 +77,34 @@
     };
   });
 
-  // 外部换了内容（revert、重新拉快照）才覆盖文档；相同就什么都不做，否则打字到
-  // 一半会被自己刚发出去的那份草稿顶回去。
+  // 外部换了内容（revert、重新拉快照、**同一份文件的另一半动了手**）才覆盖文档；
+  // 相同就什么都不做，否则打字到一半会被自己刚发出去的那份草稿顶回去。
+  //
+  // # applying：这一下替换**必须**标记成程序性的
+  //
+  // dispatch 同样会走上面的 updateListener，而那条路会把新内容当成一次**用户输入**
+  // 再交出去——于是一次「外部换内容」变成了一次「用户刚编辑过」，回声不断。
+  //
+  // 后果实测过（2026-09-21，一份文件的两半）：原文改完、再去动控件 →
+  //   1. App 按 lastEdit 把原文那份草稿丢掉（那是对的：控件那一半的编辑载荷是
+  //      整份文件，留着必然撞过期基线）；
+  //   2. 这里的 `value` 于是回落成盘上内容，触发这一下替换；
+  //   3. 替换被当成用户输入交回去 → 原文草稿**复活**，还把 lastEdit 抢回 raw；
+  //   4. 保存写的是原文那一半，内容 = 盘上原样 —— **两笔编辑一起没了**，而且屏幕上
+  //      连一句报错都没有（只看到「未保存」自己消失了）。
+  //
+  // 只在替换期间置位：CodeMirror 的 dispatch 是同步的，updateListener 就在里面跑完。
+  let applying = false;
   $effect(() => {
     const next = value;
     const v = view;
     if (!v) return;
-    if (v.state.doc.toString() !== next) {
+    if (v.state.doc.toString() === next) return;
+    applying = true;
+    try {
       v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: next } });
+    } finally {
+      applying = false;
     }
   });
 </script>

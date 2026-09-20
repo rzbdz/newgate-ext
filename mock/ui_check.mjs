@@ -643,14 +643,34 @@ if (!(await openSwitches())) {
       after.includes("zzprobe") && !before.includes("zzprobe"),
       `之前 [${before}] 之后 [${after}]`,
     );
-    // 收尾：这份草稿不能留着（后面的键盘检查与保存段都指望一个干净页面）。
+
+    // —— 接着在控件上改一格、保存：盘上**两笔都要在** ——
+    //
+    // 这一条才是这个功能存在的全部理由（用户的原话：「编辑完 raw 后马上刷新 ui
+    // controls」）。控件那一半的编辑载荷是**整份文件**，所以它交上去的那一份必须
+    // 建立在原文草稿之上；否则「原文里加的东西」和「控件里改的那一格」只能活一个。
+    //
+    // 实测过的坏法（修之前）：保存写的是**原文那一半、内容 = 盘上原样**——两笔
+    // 编辑一起消失，屏幕上连一句报错都没有，只看到「未保存」自己没了。根因是
+    // CodeEditor 把「外部换内容」那次 dispatch 当成了用户输入又交了回去
+    // （见 kinds/CodeEditor 里 applying 那段）。
+    const home = stateFile.slice(0, stateFile.lastIndexOf("/"));
+    const file = `${home}/${kvProfile.data.file}`;
     await page
-      .locator(".card.dirty button")
-      .filter({ hasText: /撤销|revert|Revert/ })
+      .locator(".pane-l .role")
+      .nth(0)
+      .locator('input:not([type="checkbox"])')
       .first()
-      .click()
-      .catch(() => {});
-    await page.waitForTimeout(400);
+      .fill("m-from-control");
+    await page.waitForTimeout(200);
+    await page.locator("header.top button.primary").click();
+    await page.waitForTimeout(1200);
+    const saved = fs.readFileSync(file, "utf8");
+    check(
+      "保存之后：原文加的那一档、控件改的那一格，两笔都在盘上",
+      saved.includes("zzprobe") && saved.includes("m-from-control"),
+      JSON.stringify(saved),
+    );
   }
 }
 
