@@ -83,6 +83,25 @@ a { color: var(--accent); }
 .card .meta { color: var(--dim); font-size: 11px; font-family: var(--mono); }
 .card .body { padding: 12px 13px; }
 .card.dirty > header { box-shadow: inset 3px 0 0 var(--accent); }
+/* 锁灰：这张卡此刻没有意义（见 lib/view 的 Concept.Locked，今天唯一的用处是
+   「这家客户端没装在这台机器上」）。整张降饱和 + 降不透明度，让它在版面上一眼看
+   得出「这里现在动不了」；**但仍然画出来**——藏掉的话用户会以为那个功能不存在，
+   而真相是「它在，只是这台机器上用不上」。
+   判据挂在 class 上而不是「禁掉里面每个控件」：后者每个渲染器都要记得禁，漏一个
+   就出现一个能点但点了没用的控件。 */
+.card.locked { opacity: 0.55; filter: grayscale(1); }
+.card.locked > header { background: color-mix(in srgb, var(--line) 30%, transparent); }
+.locked-pill { border: 1px solid var(--line); text-transform: uppercase; letter-spacing: 0.5px; }
+/* 锁死那张横幅：一条说清「为什么动不了」和「怎么让它能动」。
+   放在卡片顶部而不是悬浮提示——理由是一句话，鼠标不悬上去也该看得见
+   （而 hover 提示在触摸屏上根本不存在）。 */
+.card.locked > .locked-bar {
+  padding: 8px 13px;
+  font-size: 12px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+  color: var(--warn);
+}
 
 /* 只有 log 这一种 Kind 要**占满可用高度**。
    理由是日志没有「该看多少行」的自然长度：每一行都是等价的，按内容给高度等于让

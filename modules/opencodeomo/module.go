@@ -47,6 +47,9 @@ func New() modules.Component {
 		Requires: []modules.Requirement{
 			modules.Need(configapi.Capability),
 			modules.Need(agentapi.ConfigHooksCapability),
+			// 读侧：只为回答「opencode 到底装没装」（那张卡要不要锁灰）。同一个
+			// 提供者（config-hook），所以不新增依赖边。
+			modules.Need(agentapi.AgentCatalogCapability),
 			modules.Need(opencodeapi.Capability),
 			// ui 是**弱依赖**（见 component.Optional）：装着界面就把 omo 那条命令
 			// 与它的体检项挂上去，没装就跳过——槽位接管照常工作。
@@ -72,10 +75,24 @@ func New() modules.Component {
 
 			// web 界面那一份（槽位归属）**先**注册：它不依赖 cli，只装 dashboard
 			// 的装配里也要有——下面那段一旦 return，这里就永远不会跑。
+			// 这台机器上有没有 opencode：没有的话，这张卡改的是一个不存在的
+			// 工具的行为，界面该把它整张锁灰（见 lib/view 的 Concept.Locked）。
+			// 判据只有一份（目录端口的 Installed，扣掉我们自己的 shim），这里
+			// 不自己查 PATH。
+			lock := ""
+			if catalog := modules.MustGet(ctx, agentapi.AgentCatalogCapability); !catalog.Installed(client.AgentID) {
+				// 理由里带上**怎么办**：这一格的全部用处就是告诉用户「为什么动不了」
+				// 与「怎么让它能动」。装它那条命令是 agent 模块自己注入的
+				// （见 confighook 的 Install 能力），没装的时候才认 `-y`——
+				// 否则那面参数会被原样交给 opencode 自己。
+				lock = i18n.T("opencode is not installed on this machine — "+
+					"nothing on this card takes effect yet. Install it with `newgate opencode -y`.", nil)
+			}
 			if v, ok := modules.Get(ctx, viewapi.Capability); ok {
 				viewRelease, err := v.Register("opencode-omo",
 					viewapi.Title(func() string { return i18n.T("opencode", nil) }).
-						In(func() string { return i18n.T("Clients", nil) }), omoConcepts)
+						In(func() string { return i18n.T("Clients", nil) }),
+					func() ([]viewapi.Concept, error) { return omoConcepts(lock) })
 				if err != nil {
 					return err
 				}

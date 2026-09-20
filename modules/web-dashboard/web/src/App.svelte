@@ -106,13 +106,14 @@
   /** 侧栏徽标：命中数 + 未保存数。过滤时显示的是命中数——不然搜到一个 3 张卡的
    *  节，徽标还写着 12，看着像搜索没生效。用 navUnits 数（原文半不单独算一张）。 */
   const counts = $derived.by(() => {
-    const m = new Map<string, { total: number; dirty: number }>();
-    for (const s of sections) m.set(s.source, { total: 0, dirty: 0 });
+    const m = new Map<string, { total: number; dirty: number; locked: number }>();
+    for (const s of sections) m.set(s.source, { total: 0, dirty: 0, locked: 0 });
     for (const c of navUnits) {
       const e = m.get(c.source);
       if (!e || !matches(c)) continue;
       e.total++;
       if (drafts[c.id] !== undefined) e.dirty++;
+      if (c.locked) e.locked++;
     }
     return m;
   });

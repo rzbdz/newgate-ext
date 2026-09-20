@@ -1,7 +1,11 @@
 package claudecode
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
+
+	"github.com/rzbdz/newgate/lib/view"
 
 	agentapi "github.com/rzbdz/newgate/modules/confighook"
 	"github.com/rzbdz/newgate/testing/testkit"
@@ -167,4 +171,37 @@ func contains(list []string, v string) bool {
 		}
 	}
 	return false
+}
+
+// TestTheCardsAreLockedWhenTheClientIsNotThere：没装 claude 的机器上，这两张卡
+// 整张锁灰。
+//
+// 用户的原话：「未安装的东西，直接全锁灰」。给 claude 配槽位、调分类器，在一台没有
+// claude 的机器上一个字节都不会生效——卡片照常可编辑的话，用户会改完才发现白改。
+//
+// 判据落在**理由那句话**上，不是「有没有锁这个动作」：锁了但不说为什么，用户只会
+// 以为界面坏了。同时锁的是**两张**卡——只锁一张的话，另一张还在那里能改。
+func TestTheCardsAreLockedWhenTheClientIsNotThere(t *testing.T) {
+	testkit.Sandbox(t)
+	// 两个方向都要**自己造**：跑这条测试的人正在用 claude，所以「PATH 上有没有」
+	// 取决于哪台机器——假定它没有，这条测试在开发机上必红。
+	t.Setenv("PATH", t.TempDir()) // 一个空目录：什么都找不到
+	if reason := lockReason(); reason == "" {
+		t.Fatal("PATH 上没有 claude，这两张卡该锁灰")
+	}
+	for _, c := range []view.Concept{classifierConcept(), slotsConcept()} {
+		if c.Locked == "" {
+			t.Errorf("%s 该带一句锁灰的理由", c.ID)
+		}
+	}
+	// 装上之后（造一个真的可执行的同名文件）不该再锁。
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "claude")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	if reason := lockReason(); reason != "" {
+		t.Errorf("PATH 上有 claude 了，不该再锁：%q", reason)
+	}
 }

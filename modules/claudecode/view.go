@@ -73,6 +73,8 @@ func classifierConcept() view.Concept {
 		// state.json，常问不亏。
 		Live:  true,
 		Apply: applyClassifier,
+		// 没装 claude 的机器上，这张卡调的是一个不存在的命令的行为。
+		Locked: lockReason(),
 	}
 }
 
@@ -262,8 +264,9 @@ func slotsConcept() view.Concept {
 		Data:  clData{File: file, Items: items},
 		// Order 20：排在分类器那张卡后面。分类器是「此刻安全门关没关」（会变、要
 		// 看），这里是「装完调一次的归属」（很少动）——把会变的放前面。
-		Order: 20,
-		Apply: applySlots,
+		Order:  20,
+		Apply:  applySlots,
+		Locked: lockReason(),
 	}
 }
 

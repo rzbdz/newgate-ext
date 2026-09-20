@@ -166,9 +166,9 @@ var _ agentapi.AgentFacts = facts{}
 
 // Installed 这台机器上有没有 claude。
 //
-// 走内核那份通用判据（在 PATH 上找 Bin 里的名字），**不必自己写**：本客户端没有
-// 什么特别的知识。skipDirs 由内核给（我们的 shim 目录），不忽略的话这条永远为真。
-func (facts) Installed(skipDirs ...string) bool { return Agent().OnPath(skipDirs...) }
+// 走内核那份通用判据（在 PATH 上找 Bin 里的名字，**已经跳过我们自己的 shim 目录**，
+// 见 confighook.Agent.OnPath），**不必自己写**：本客户端没有什么特别的知识。
+func (facts) Installed() bool { return Agent().OnPath() }
 
 // SlotTier 这个槽位此刻走哪个档位：用户改过就用改的，没改返回空串（内核据此回落到
 // 描述符里的缺省）。**不在这里兜底**——「没改过就用缺省」只有一份实现（内核的
@@ -176,4 +176,20 @@ func (facts) Installed(skipDirs ...string) bool { return Agent().OnPath(skipDirs
 func (facts) SlotTier(s agentapi.Slot) string {
 	ok, _ := ReadSlotTiers()
 	return ok[s.Name]
+}
+
+// lockReason 说这两张卡此刻有没有意义；有意义返回空串。
+//
+// 判据就一条：**这台机器上有没有 claude**。没有的话，「槽位走哪个档位」「分类器
+// 裸不裸奔」写得再对也一个字节都不会生效——那个命令根本不存在。界面据此把整张卡
+// 锁灰（见 lib/view 的 Concept.Locked），用户就不会改完才发现白改。
+//
+// 用 Agent().OnPath() 而不是自己去查 PATH：那是**唯一**一份「装没装」的判据
+// （扣掉我们自己的 shim 目录），另写一份就会在两个界面上给出不同答案。
+func lockReason() string {
+	if Agent().OnPath() {
+		return ""
+	}
+	return i18n.T("claude is not installed on this machine — "+
+		"nothing on this card takes effect yet. Install it with `newgate claude -y`.", nil)
 }

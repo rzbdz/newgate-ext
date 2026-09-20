@@ -18,7 +18,7 @@
   }: {
     sections: Section[];
     active: string;
-    counts: Map<string, { total: number; dirty: number }>;
+    counts: Map<string, { total: number; dirty: number; locked: number }>;
     onPick: (source: string) => void;
   } = $props();
 
@@ -76,9 +76,15 @@
       <div class="group">{r.name}</div>
     {:else}
       {@const n = counts.get(r.s.source)}
+      <!-- 整节锁灰：这一节**每一张卡都锁着**（今天就是「这家客户端没装」）。
+           注意它只是**看起来**灰——仍然点得进去，因为详情照常要能看（用户的原话：
+           「详情界面不可操作而已，但是为了展示我们的功能，我建议还是允许查看的」）。
+           所以这里不给 disabled：那是「点不动」，而我们要的是「看了就知道动不了，
+           想动得先装上」。 -->
       <button
         class="row"
         class:on={r.s.source === active}
+        class:locked={!!n && n.total > 0 && n.locked === n.total}
         onclick={() => onPick(r.s.source)}
         title={r.s.source}
       >
@@ -127,6 +133,10 @@
     cursor: pointer;
   }
   .row:hover { background: var(--panel-2); }
+  /* 整节锁灰（见模板里那条注释）：灰是**陈述**，不是禁用手势——这一栏照样点得进去，
+     只是告诉你「里面那些东西这台机器上用不上」。所以降不透明度、不降交互。 */
+  .row.locked { opacity: 0.5; }
+  .row.locked:hover { opacity: 0.75; }
   /* 分组标题：比栏名小一号、疏一点，读作「下面这几栏是一类」。**不是按钮**——
      点它没有意义（它代表的是一类，不是一栏），做成按钮只会多一个点不出东西的
      目标。 */

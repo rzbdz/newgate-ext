@@ -163,6 +163,10 @@ type conceptDoc struct {
 	Source string `json:"source"`
 	// Writable 为 false = 这个概念只读（贡献者没给 Apply）。
 	Writable bool `json:"writable"`
+	// Locked 非空 = 这张卡此刻**没有意义**（见 lib/view 的 Concept.Locked），值是
+	// 理由，显示在卡片上。界面据它整张锁灰、控件全部禁掉——**卡片仍然画出来**：
+	// 藏掉的话用户会以为那个功能不存在，而真相是「它在，只是这台机器上用不上」。
+	Locked string `json:"locked,omitempty"`
 	// Live 为 true = 这一面的数据会自己变，界面该把它所在的源一起放进那几秒
 	// 一次的刷新里（见 lib/view 的 Concept.Live）。**由贡献者声明**：谁的东西谁
 	// 知道读一次贵不贵，界面无从推断。
@@ -254,7 +258,7 @@ func (h *Handler) snapshot(sources ...string) (snapshotDoc, error) {
 	for _, c := range concepts {
 		doc.Concepts = append(doc.Concepts, conceptDoc{
 			ID: c.ID, Kind: c.Kind, Title: c.Title, Source: c.Source,
-			Writable: c.Apply != nil, Live: c.Live, Group: c.Group,
+			Writable: c.Apply != nil, Locked: c.Locked, Live: c.Live, Group: c.Group,
 			Previewable: c.Preview != nil, Order: c.Order, Data: c.Data, Error: c.Broken,
 		})
 	}

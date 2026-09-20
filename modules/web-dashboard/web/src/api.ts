@@ -21,6 +21,11 @@ export interface Concept {
   source: string;
   /** false = 只读（贡献者没给 Apply，比如带凭据的文件）。 */
   writable: boolean;
+  /** 非空 = 这张卡此刻**没有意义**，值是理由（见 lib/view 的 Concept.Locked）：
+      界面把整张卡锁灰、控件禁掉，但那句话要显示出来——用户得知道为什么。
+      与只读的区别是「为什么不能动」：只读是「没有写回的方式」，锁死是「它管的那件
+      事此刻不存在」，今天唯一的用处是「这家客户端没装在这台机器上」。 */
+  locked?: string;
   /** true = 这一面会自己变，跟着那几秒一次的刷新走（贡献者声明，见 lib/view 的 Live）。
       不声明就不刷——「读一次贵不贵」只有贡献者知道，不能从 Kind 猜。 */
   live?: boolean;

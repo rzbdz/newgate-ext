@@ -15,7 +15,7 @@ import (
 func TestSlotsCardExplainsAnAbsentRegistry(t *testing.T) {
 	isolate(t)
 
-	concepts, err := omoConcepts()
+	concepts, err := omoConcepts("")
 	if err != nil {
 		t.Fatalf("没有注册表不该报错（那是正常状态，不是故障）: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestSlotsCardIsWritableAndKeepsOneWriteSemantics(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	concepts, err := omoConcepts()
+	concepts, err := omoConcepts("")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +170,7 @@ func TestSuggestedDifferenceIsVisible(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	concepts, err := omoConcepts()
+	concepts, err := omoConcepts("")
 	if err != nil {
 		t.Fatal(err)
 	}

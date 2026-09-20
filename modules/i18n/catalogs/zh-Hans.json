@@ -376,6 +376,10 @@
       "text": "classifier_override 无效：{err}",
       "reviewed": true
     },
+    "claude is not installed on this machine — nothing on this card takes effect yet. Install it with `newgate claude -y`.": {
+      "text": "这台机器上没有装 claude —— 这张卡上的设置暂时都不会生效。用 `newgate claude -y` 装上它。",
+      "reviewed": true
+    },
     "configuration updated (gen {from} → {to}, {n} file){files}": {
       "text": "已更新配置（gen {from} → {to}，{n} 个文件）{files}",
       "reviewed": true
@@ -634,6 +638,10 @@
     },
     "opencode": {
       "text": "opencode",
+      "reviewed": true
+    },
+    "opencode is not installed on this machine — nothing on this card takes effect yet. Install it with `newgate opencode -y`.": {
+      "text": "这台机器上没有装 opencode —— 这张卡上的设置暂时都不会生效。用 `newgate opencode -y` 装上它。",
       "reviewed": true
     },
     "previewing uses POST": {

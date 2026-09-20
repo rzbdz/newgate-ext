@@ -57,6 +57,7 @@
   class="card"
   class:dirty={isDirty}
   class:broken={!!concept.error}
+  class:locked={!!concept.locked}
   class:fills={concept.kind === "log" && !concept.error}
 >
   <header>
@@ -67,7 +68,10 @@
       <span class="pill">{t("unsaved")}</span>
       <button class="tiny ghost" onclick={onRevert}>{t("revert")}</button>
     {/if}
-    {#if !concept.writable && !concept.error}
+    {#if concept.locked}
+      <!-- 锁灰的理由就在卡片头上：整张卡禁掉了，不说为什么等于让用户猜。 -->
+      <span class="pill locked-pill" title={concept.locked}>{t("locked")}</span>
+    {:else if !concept.writable && !concept.error}
       <span
         class="pill"
         title={t("the contributor offers no way to write this one back (it may hold credentials)")}
@@ -84,6 +88,13 @@
        档」会看到 B 的文件名配 A 的档位，再点保存就把 A 写进了 B 的文件。
        加 key 之后本地状态随卡重建；而**真正的未保存改动不会丢**——它在 App 的
        `drafts`（按概念 id 存）里，切回去照样在。 -->
+  {#if concept.locked}
+    <!-- 锁死的卡**照常画出来**：藏掉的话用户会以为那个功能不存在，而真相是
+         「它在，只是这台机器上用不上」。控件全部禁掉（见下面 readonly 那条），
+         这一条横幅说清「为什么」与「怎么办」——只灰不说，用户只会以为界面坏了。 -->
+    <div class="locked-bar">{concept.locked}</div>
+  {/if}
+
   <div class="body">
    {#key concept.id}
     {#if concept.error}
@@ -93,16 +104,16 @@
       <MappingEditor
         data={shown}
         {draft}
-        readonly={!concept.writable}
+        readonly={!concept.writable || !!concept.locked}
         onEdit={changed}
         {onDeleteFile}
       />
     {:else if concept.kind === "code"}
-      <CodeEditor data={shown} {draft} readonly={!concept.writable} onEdit={changed} />
+      <CodeEditor data={shown} {draft} readonly={!concept.writable || !!concept.locked} onEdit={changed} />
     {:else if concept.kind === "toggles"}
-      <Toggles data={shown} {draft} readonly={!concept.writable} onEdit={changed} />
+      <Toggles data={shown} {draft} readonly={!concept.writable || !!concept.locked} onEdit={changed} />
     {:else if concept.kind === "records"}
-      <Records data={shown} {draft} readonly={!concept.writable} onEdit={changed} />
+      <Records data={shown} {draft} readonly={!concept.writable || !!concept.locked} onEdit={changed} />
     {:else if concept.kind === "table"}
       <Table data={shown} />
     {:else if concept.kind === "series"}

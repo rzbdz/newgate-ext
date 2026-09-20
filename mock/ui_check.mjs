@@ -858,6 +858,45 @@ if (!(await openSwitches())) {
   );
 }
 
+// —— 17. 没装的客户端，整张卡锁灰 ——
+//
+// 用户的原话：「前端的客户端也要更新，未安装的东西，直接全锁灰」。给一个没装的
+// 工具配槽位、调开关，一个字节都不会生效——卡片照常能改的话，用户改完才会发现白改。
+//
+// 三条一起验，缺一条这条规则就不成立：
+//   1. 判据真的算出来了（卡片带 locked，且写得下**理由**——锁了不说是让人猜）；
+//   2. 界面真的画成锁灰（class，不是「看起来灰」）；
+//   3. 里面的控件真的**禁掉**了（只灰不禁的话，键盘还能 Tab 进去改）。
+//
+// 沙箱里 opencode 当然没装（PATH 上是我们自己造的沙箱），所以它那一节正好是现场。
+{
+  const missing = snap.sections.find((s) => s.source === "opencode-omo");
+  if (!missing) {
+    skip("这份装配里没有 opencode 那一节，跳过第 17 条");
+  } else {
+    await page.locator(`nav.side button[title="opencode-omo"]`).click();
+    await page.waitForTimeout(300);
+    const card = page.locator(".card").first();
+    check("没装的客户端那张卡画成锁灰", (await page.locator(".card.locked").count()) > 0,
+      "屏幕上没有锁灰的卡片");
+    const why = await page.locator(".card.locked .locked-bar").innerText().catch(() => "");
+    check("锁灰的理由写在卡上", why.trim().length > 0, "锁了却不说为什么，用户只会以为界面坏了");
+    // 理由里要带**怎么办**：那一格的全部用处就是告诉用户「为什么动不了」与「怎么
+    // 让它能动」。安装命令将来由 agent 模块注入（`newgate <agent> -y`）。
+    check("理由里给了装它的命令", /newgate\s+\S+\s+-y/.test(why), `实际 ${JSON.stringify(why.slice(0, 90))}`);
+    const enabled = await page
+      .locator(".card.locked select:not([disabled]), .card.locked input:not([disabled]), .card.locked button:not([disabled])")
+      .count();
+    check("锁灰的卡里没有还能动的控件", enabled === 0, `还有 ${enabled} 个能动的控件`);
+    // 侧栏那一节也要灰，但**点得进去**——灰是陈述「这台机器上用不上」，不是禁用。
+    const sec = page.locator('nav.side button[title="opencode-omo"]');
+    check("侧栏那一节也灰了", (await sec.getAttribute("class"))?.includes("locked") === true,
+      "侧栏没灰，用户以为那一节和别的一样能用");
+    check("那一节仍然点得进去（详情要看得到）", (await sec.isEnabled()) === true,
+      "把整节禁用的话，用户连「这一节是干什么的」都看不到了");
+  }
+}
+
 check("整场没有页面错误", pageErrors.length === 0, pageErrors.slice(0, 2).join(" / "));
 
 console.log(`\n结果: ${pass} 通过, ${fail} 失败`);

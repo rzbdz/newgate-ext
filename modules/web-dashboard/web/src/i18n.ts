@@ -34,6 +34,7 @@ const en: Record<string, string> = {
   unsaved: "unsaved",
   revert: "revert",
   "read-only": "read-only",
+  locked: "locked",
   "read-only — the controls for this file are in the other pane":
     "read-only — the controls for this file are in the other pane",
   "read-only — the controls for this file are in the other pane":
@@ -111,6 +112,7 @@ const zhHans: Record<string, string> = {
   unsaved: "未保存",
   revert: "撤销改动",
   "read-only": "只读",
+  locked: "锁死",
   "read-only — the controls for this file are in the other pane":
     "只读 —— 这一栏是看那份文件的，改它用旁边那一栏控件",
   "read-only — the controls for this file are in the other pane":
