@@ -190,11 +190,13 @@
    * 下面」。`order` 缺省 0 与内核一致（没声明 Order 的贡献者排最前）。
    */
   function bySourceId(list: Concept[]): Concept[] {
+    // 用 `<` 而不是 localeCompare：后端排的是 **Go 的字节序**（`Source < Source`），
+    // 而 localeCompare 是 locale 敏感的——ICU 排序把 `-` 当可变字符，于是
+    // `plugin-manager` 与 `pluginmanager` 的相对位置在两边可能不一样。模块名是机器
+    // 标记，按字节比才是同一个判据；两条判据一致正是这个函数存在的理由。
+    const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
     return [...list].sort(
-      (a, b) =>
-        a.source.localeCompare(b.source) ||
-        (a.order ?? 0) - (b.order ?? 0) ||
-        a.id.localeCompare(b.id),
+      (a, b) => cmp(a.source, b.source) || (a.order ?? 0) - (b.order ?? 0) || cmp(a.id, b.id),
     );
   }
 
