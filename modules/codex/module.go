@@ -48,6 +48,18 @@ func New() modules.Component {
 				return err
 			}
 			releases = append(releases, release)
+
+			// 接管：改写 ~/.codex/config.toml（见 takeover.go）。两个取值都在
+			// **Apply 那一刻**求值——槽位映射与活动 profile 都是用户随时能改的，
+			// 在注册期读一次就会冻在那里。
+			release, err = hooks.BindTakeover(ID, Takeover{
+				Tier:          func() string { return tierOf(facts{}) },
+				ContextWindow: contextWindow,
+			})
+			if err != nil {
+				return err
+			}
+			releases = append(releases, release)
 			return nil
 		},
 		Stop: func(context.Context) error { return modules.ReleaseAll(releases) },

@@ -7,7 +7,6 @@ package opencodeomo
 
 import (
 	"context"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 
@@ -166,13 +165,9 @@ func TargetFiles() []string {
 	return append(out, filepath.Join(configHome, "opencode", "oh-my-openagent.json"))
 }
 
+// writeAtomicMode 是内核那件 WriteAtomic 的薄封装（见 confighook/backup.go）。
+// 保留本地名字是因为槽位表用的是 0660（那个文件要跟别的用户共享），
+// 而取名叫法统一之后，读的人不必在「这是哪一份实现」上停一下。
 func writeAtomicMode(path string, content []byte, mode os.FileMode) error {
-	tmp := path + ".newgate.tmp"
-	if err := ioutil.WriteFile(tmp, content, mode); err != nil {
-		return err
-	}
-	if err := os.Chmod(tmp, mode); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return agentapi.WriteAtomic(path, content, mode)
 }

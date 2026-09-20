@@ -608,6 +608,10 @@
       "text": "没有这个概念：{id} —— 页面多半已经过期了，重新载入一下",
       "reviewed": true
     },
+    "no such file — is codex installed on this machine?": {
+      "text": "没有这个文件——这台机器上装了 codex 吗？",
+      "reviewed": true
+    },
     "no such slot key {key} (list them with newgate omo)": {
       "text": "没有这个槽位键 {key}（newgate omo 看列表）",
       "reviewed": true
@@ -660,12 +664,12 @@
       "text": "这台机器上没有装 opencode —— 这张卡上的设置暂时都不会生效。用 `newgate opencode -y` 装上它。",
       "reviewed": true
     },
-    "previewing uses POST": {
-      "text": "预览用 POST",
-      "reviewed": true
-    },
     "previewing needs Content-Type: application/json (got {ct})": {
       "text": "预览需要 Content-Type: application/json（实际 {ct}）",
+      "reviewed": true
+    },
+    "previewing uses POST": {
+      "text": "预览用 POST",
       "reviewed": true
     },
     "profile selection": {
@@ -698,10 +702,6 @@
     },
     "provider/model, or @key to follow another tier. Empty = the Bash classifier rides the light tier.": {
       "text": "provider/model，或 @键名 跟别的档位走。留空 = Bash 分类器走 light 档。",
-      "reviewed": true
-    },
-    "refusing to back up: {file} has already been taken over by newgate, but {orig} does not exist.\n  Using it as the original backup would lose your original config for good.\n  Either put a clean copy from backups/<timestamp>/ back into original/,\n  or revert the config by hand and run newgate start again": {
-      "text": "拒绝备份：{file} 已经被 newgate 接管过，但 {orig} 不存在。\n  直接拿它当原始备份会让你的原配置永久丢失。\n  要么从 backups/<时间戳>/ 里找一份干净的放回 original/，\n  要么手工把配置改回去后再 newgate start",
       "reviewed": true
     },
     "restore finished, but the slot table was not cleared (the next takeover will reuse the old assignment): {err}": {
@@ -808,24 +808,24 @@
       "text": "AES 密钥不可用: {err}",
       "reviewed": true
     },
-    "the OpenCode client": {
-      "text": "OpenCode 客户端接入",
-      "reviewed": true
-    },
-    "the Codex client": {
-      "text": "Codex 客户端接入",
-      "reviewed": true
-    },
-    "the Claude Code × GLM crossing": {
-      "text": "Claude Code × GLM 的交叉语义",
+    "the Claude Code client": {
+      "text": "Claude Code 客户端接入",
       "reviewed": true
     },
     "the Claude Code × DeepSeek crossing": {
       "text": "Claude Code × DeepSeek 的交叉语义",
       "reviewed": true
     },
-    "the Claude Code client": {
-      "text": "Claude Code 客户端接入",
+    "the Claude Code × GLM crossing": {
+      "text": "Claude Code × GLM 的交叉语义",
+      "reviewed": true
+    },
+    "the Codex client": {
+      "text": "Codex 客户端接入",
+      "reviewed": true
+    },
+    "the OpenCode client": {
+      "text": "OpenCode 客户端接入",
       "reviewed": true
     },
     "the classifier settings in this request are not readable: {err}": {
@@ -898,6 +898,10 @@
     },
     "the model and provider live in ~/.codex/config.toml": {
       "text": "模型与 provider 住在 ~/.codex/config.toml 里",
+      "reviewed": true
+    },
+    "the model codex runs on; written into config.toml by takeover": {
+      "text": "codex 跑的模型；由接管写进 config.toml",
       "reviewed": true
     },
     "the model field in settings.json is left untouched; what a tier means is decided by the env": {
@@ -1166,6 +1170,14 @@
     },
     "{slot}: {tier} is not one of the values this slot takes — pick one of {known}": {
       "text": "{slot}: {tier} 不是这个槽位收的取值——从 {known} 里挑一个",
+      "reviewed": true
+    },
+    "{table} added": {
+      "text": "新增 {table}",
+      "reviewed": true
+    },
+    "{table} rewritten": {
+      "text": "改写 {table}",
       "reviewed": true
     },
     "{title} is read-only": {

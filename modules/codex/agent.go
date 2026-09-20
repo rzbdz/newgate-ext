@@ -25,8 +25,17 @@ func Agent() *agentapi.Agent {
 		Bin:     []string{"codex"},
 		Dialect: "openai",
 		// 模型名与 provider 走 ~/.codex/config.toml（`model` / `model_providers.*`），
-		// 没有环境变量入口——所以这里没有 EnvVar 槽位。接管改的是那份 TOML，
-		// 不是注入 env（见 config.go）。
+		// 没有环境变量入口——所以下面那个槽位**没有 EnvVar**：它的值由接管写进
+		// 那份 TOML，不是注入 env（见 takeover.go 的 tierOf）。
+		//
+		// 槽位仍然登记出来，而不是让接管自己去读一个写死的档位：登记之后它就与
+		// claude 的档位映射走同一套知识、同一张卡——用户改档位时不需要知道
+		// 「codex 的模型名是写进文件的」这件事。
+		Slots: []agentapi.Slot{{
+			Name: "model",
+			Tier: "normal",
+			Desc: i18n.T("the model codex runs on; written into config.toml by takeover", nil),
+		}},
 		Notes: i18n.T("the model and provider live in ~/.codex/config.toml", nil),
 	}
 }

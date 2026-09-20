@@ -1,19 +1,15 @@
 package opencodeomo
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
-	"time"
 
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 	"github.com/rzbdz/newgate/modules/config/domain"
-	"github.com/rzbdz/newgate/modules/config/paths"
 	agentapi "github.com/rzbdz/newgate/modules/confighook"
 )
 
@@ -22,75 +18,29 @@ const ProviderID = "newgate"
 // Report 记录一次接管做了什么，给用户看。
 type Report = agentapi.TakeoverReport
 
-func originalPath(target string) string {
-	return filepath.Join(paths.BackupDir(), "original", filepath.Base(target))
-}
-
-// backup 首次接管时把原文件存成 original/（用于 stop 还原），
-// 同时每次都存一份带时间戳的历史。
+// 备份、还原、原子写这套 2026-09-21 **搬去了内核**（见 confighook/backup.go）：
+// codex 的接管要写的是同一套东西，留在本模块里的代价只能是抄一遍，而抄来的那份
+// 迟早漂移——漂移掉的是 `original/` 的写入防护，症状是「用户的原配置永久丢失」，
+// 测试里一点声音都没有。
 //
-// 关键防护：original/ 只允许写「未被接管」的内容。
-// 否则一旦 original/ 被误删，下次 start 就会把已接管的文件当成"原始"存进去，
-// 之后 stop 还原出来的就是被污染的版本——用户的原配置永久丢失。
-func backup(target string) error {
-	b, err := ioutil.ReadFile(target)
-	if err != nil {
-		return err
-	}
-	tainted := bytes.Contains(b, []byte(`"`+ProviderID+`"`)) ||
-		bytes.Contains(b, []byte(`"`+ProviderID+`/`))
+// 这里只剩「哪份文件、什么算已被接管」这两条**本家**的知识。
 
-	orig := originalPath(target)
-	if err := os.MkdirAll(filepath.Dir(orig), 0o700); err != nil {
-		return err
-	}
-	if _, err := os.Stat(orig); os.IsNotExist(err) {
-		if tainted {
-			return i18n.E("refusing to back up: {file} has already been taken over by newgate, but {orig} does not exist.\n"+
-				"  Using it as the original backup would lose your original config for good.\n"+
-				"  Either put a clean copy from backups/<timestamp>/ back into original/,\n"+
-				"  or revert the config by hand and run newgate start again",
-				i18n.A{"file": filepath.Base(target), "orig": orig})
-		}
-		if err := ioutil.WriteFile(orig, b, 0o600); err != nil {
-			return err
-		}
-	}
+// originalPath / backup / writeAtomic 是本文件里对内核那三件的叫法，保留短名字：
+// 调用点很多，而写成 agentapi.X 会把这一屏塞满包名。
+func originalPath(target string) string { return agentapi.OriginalPath(target) }
 
-	ts := filepath.Join(paths.BackupDir(), time.Now().Format("20060102-150405"))
-	if err := os.MkdirAll(ts, 0o700); err != nil {
-		return err
-	}
-	if err := ioutil.WriteFile(filepath.Join(ts, filepath.Base(target)), b, 0o600); err != nil {
-		return err
-	}
-	pruneSnapshots(10)
-	return nil
+// backup 存一份原件。判据是「内容里有没有我们写的 provider 键」——它由
+// Confighook 决定，本模块只提供这个字符串。
+func backup(target string) error { return agentapi.BackupFile(target, tainted) }
+
+// tainted 是 opencode 那边的「已被接管」判据：文件里有 `"newgate"` 这个 provider
+// 键（或指向它某个模型的 `"newgate/…"`）。
+func tainted(b []byte) bool {
+	return agentapi.ContainsMarker(b, `"`+ProviderID+`"`) ||
+		agentapi.ContainsMarker(b, `"`+ProviderID+`/`)
 }
 
-// pruneSnapshots 只保留最近 keep 份时间戳快照，别让备份目录无限长。
-// original/ 永不删。
-func pruneSnapshots(keep int) {
-	ents, err := ioutil.ReadDir(paths.BackupDir())
-	if err != nil {
-		return
-	}
-	var stamps []string
-	for _, e := range ents {
-		if e.IsDir() && e.Name() != "original" {
-			stamps = append(stamps, e.Name())
-		}
-	}
-	if len(stamps) <= keep {
-		return
-	}
-	sort.Strings(stamps) // 时间戳格式可直接字典序排序
-	for _, s := range stamps[:len(stamps)-keep] {
-		_ = os.RemoveAll(filepath.Join(paths.BackupDir(), s))
-	}
-}
-
-func writeAtomic(path string, b []byte) error { return writeAtomicMode(path, b, 0o600) }
+func writeAtomic(path string, b []byte) error { return agentapi.WriteAtomic(path, b, 0o600) }
 
 func marshal(v interface{}) ([]byte, error) {
 	b, err := json.MarshalIndent(v, "", "  ")

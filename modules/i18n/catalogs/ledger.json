@@ -50,7 +50,7 @@
       ]
     },
     ", {tier} suggested": {
-      "where": "modules/opencodeomo/takeover.go:393",
+      "where": "modules/opencodeomo/takeover.go:343",
       "args": [
         "tier"
       ]
@@ -365,7 +365,7 @@
       "where": "modules/opencodeomo/command.go:198"
     },
     "cannot write the slot registry: {err}": {
-      "where": "modules/opencodeomo/takeover.go:290"
+      "where": "modules/opencodeomo/takeover.go:240"
     },
     "cannot write {path}: {err}": {
       "where": "modules/configshare/proto/materialize.go:228",
@@ -504,7 +504,7 @@
       ]
     },
     "keeping the tier an older takeover wrote": {
-      "where": "modules/opencodeomo/takeover.go:345"
+      "where": "modules/opencodeomo/takeover.go:295"
     },
     "local changes archived to {dir} (restore from there)": {
       "where": "modules/configshare/proto/poller.go:182",
@@ -540,7 +540,7 @@
       ]
     },
     "model name {model} matched no rule; falling back to mid": {
-      "where": "modules/opencodeomo/takeover.go:354",
+      "where": "modules/opencodeomo/takeover.go:304",
       "args": [
         "model"
       ]
@@ -630,6 +630,9 @@
         "id"
       ]
     },
+    "no such file — is codex installed on this machine?": {
+      "where": "modules/codex/takeover.go:116"
+    },
     "no such slot key {key} (list them with newgate omo)": {
       "where": "modules/opencodeomo/command.go:183",
       "args": [
@@ -652,7 +655,7 @@
       "where": "modules/claudecode/view.go:98"
     },
     "oh-my-openagent's intra-agent slots": {
-      "where": "modules/opencodeomo/module.go:46"
+      "where": "modules/opencodeomo/module.go:45"
     },
     "omo slot bindings": {
       "where": "modules/opencodeomo/view.go:137"
@@ -676,10 +679,10 @@
       ]
     },
     "opencode": {
-      "where": "modules/opencodeomo/module.go:94"
+      "where": "modules/opencodeomo/module.go:93"
     },
     "opencode is not installed on this machine — nothing on this card takes effect yet. Install it with `newgate opencode -y`.": {
-      "where": "modules/opencodeomo/module.go:89"
+      "where": "modules/opencodeomo/module.go:88"
     },
     "previewing needs Content-Type: application/json (got {ct})": {
       "where": "modules/web-dashboard/bff.go:417",
@@ -720,7 +723,7 @@
       ]
     },
     "provider.{id} injected (all pre-existing providers kept)": {
-      "where": "modules/opencodeomo/takeover.go:182",
+      "where": "modules/opencodeomo/takeover.go:132",
       "args": [
         "id"
       ]
@@ -728,18 +731,11 @@
     "provider/model, or @key to follow another tier. Empty = the Bash classifier rides the light tier.": {
       "where": "modules/claudecode/view.go:119"
     },
-    "refusing to back up: {file} has already been taken over by newgate, but {orig} does not exist.\n  Using it as the original backup would lose your original config for good.\n  Either put a clean copy from backups/<timestamp>/ back into original/,\n  or revert the config by hand and run newgate start again": {
-      "where": "modules/opencodeomo/takeover.go:49",
-      "args": [
-        "file",
-        "orig"
-      ]
-    },
     "restore finished, but the slot table was not cleared (the next takeover will reuse the old assignment): {err}": {
-      "where": "modules/opencodeomo/takeover.go:467"
+      "where": "modules/opencodeomo/takeover.go:417"
     },
     "restoring {file} failed: {err}": {
-      "where": "modules/opencodeomo/takeover.go:460",
+      "where": "modules/opencodeomo/takeover.go:410",
       "args": [
         "file"
       ]
@@ -785,7 +781,7 @@
       "where": "modules/opencodeomo/command.go:137"
     },
     "slot registry → {file} ({n} key; default decides which tier each key follows)": {
-      "where": "modules/opencodeomo/takeover.go:293",
+      "where": "modules/opencodeomo/takeover.go:243",
       "args": [
         "file",
         "n"
@@ -846,7 +842,7 @@
       "where": "modules/deepseek/st-reasoning.go:174"
     },
     "taking over {file} failed: {err}": {
-      "where": "modules/opencodeomo/takeover.go:443",
+      "where": "modules/opencodeomo/takeover.go:393",
       "args": [
         "file"
       ]
@@ -927,7 +923,7 @@
       "where": "modules/claudecode/agent.go:19"
     },
     "the file does not exist": {
-      "where": "modules/opencodeomo/takeover.go:432"
+      "where": "modules/opencodeomo/takeover.go:382"
     },
     "the haiku tier; background features": {
       "where": "modules/claudecode/agent.go:25"
@@ -943,7 +939,10 @@
       "where": "modules/web-dashboard/command.go:75"
     },
     "the model and provider live in ~/.codex/config.toml": {
-      "where": "modules/codex/agent.go:30"
+      "where": "modules/codex/agent.go:39"
+    },
+    "the model codex runs on; written into config.toml by takeover": {
+      "where": "modules/codex/agent.go:37"
     },
     "the model field in settings.json is left untouched; what a tier means is decided by the env": {
       "where": "modules/claudecode/agent.go:44"
@@ -962,7 +961,7 @@
       ]
     },
     "the provider field is not an object: {err}": {
-      "where": "modules/opencodeomo/takeover.go:162"
+      "where": "modules/opencodeomo/takeover.go:112"
     },
     "the registry is empty": {
       "where": "modules/opencodeomo/diagnostics.go:30"
@@ -1208,7 +1207,7 @@
       ]
     },
     "{note}; {why}": {
-      "where": "modules/opencodeomo/takeover.go:385",
+      "where": "modules/opencodeomo/takeover.go:335",
       "args": [
         "note",
         "why"
@@ -1272,7 +1271,7 @@
       ]
     },
     "{section}.{name} → {provider}/{key} (now {now}{suggested})": {
-      "where": "modules/opencodeomo/takeover.go:277",
+      "where": "modules/opencodeomo/takeover.go:227",
       "args": [
         "key",
         "name",
@@ -1306,6 +1305,18 @@
         "known",
         "slot",
         "tier"
+      ]
+    },
+    "{table} added": {
+      "where": "modules/codex/takeover.go:245",
+      "args": [
+        "table"
+      ]
+    },
+    "{table} rewritten": {
+      "where": "modules/codex/takeover.go:238",
+      "args": [
+        "table"
       ]
     },
     "{title} is read-only": {
