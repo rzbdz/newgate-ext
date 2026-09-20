@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# 推上去之前，把发行版这边的判据跑一遍（CLAUDE.md §4 的两段 + 端到端），外加一条
+# **只有这里才有机会拦**的检查：gitlink 指向的内核提交必须已经推上去了。
+#
+# 为什么要有它：CI 只在**推上去之后**才说话。2026-09-20 两次「推完才发现」——
+#   - gitlink 指着内核一个只在本地存在的提交 → CI 在 checkout 那一步整体失败
+#     （`upload-pack: not our ref`），一个 job 都没起；
+#   - 内核的 workflow 文件非法 → GitHub 0 秒拒掉整个 run，六轮 CI 全是假的。
+# 前一条正是下面第三步，后一条本地 `go test`（tools/ciyaml 的棘轮）就会红。
+#
+# 装上（每个 clone 一次，git 不会替你装）：
+#
+#	git config core.hooksPath .githooks
+#
+# 绕开：`git push --no-verify`。这个口子**故意留着**——钩子自己出毛病时（这台机器
+# 缺 python3 跑不了假上游）不能把人卡死。
+set -euo pipefail
+
+while read -r _local_ref local_sha _remote_ref _remote_sha; do
+  case "$local_sha" in
+    0000000000000000000000000000000000000000) continue ;;
+    *) have_content=1 ;;
+  esac
+done
+[ -n "${have_content:-}" ] || exit 0
+
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+step() { printf '\n── %s\n' "$1"; }
+
+step "core-test：内核的全部内部测试（发行版带的就是这份依赖）"
+(cd core && GOPROXY=off go test ./... && make check-fmt && make check-generate && go vet ./...)
+
+step "dist-test：发行版自己的"
+if fmt=$(gofmt -l .) && [ -n "$fmt" ]; then
+  echo "格式不对（跑 gofmt -w）：" >&2
+  echo "$fmt" >&2
+  exit 1
+fi
+go vet ./...
+go run ./tools/distgen -check
+go test ./...
+
+step "gitlink 指的那个内核提交，远端有吗"
+core_head=$(git -C core rev-parse HEAD)
+if [ -z "$(git -C core for-each-ref --contains "$core_head" --format='%(refname)' refs/remotes/)" ]; then
+  {
+    echo "core/ 的 HEAD ${core_head:0:7} 不在任何**已获取的**远端分支上。"
+    echo "先把它推上去（git -C core push origin main），否则 CI 会在 checkout 那一步整体失败。"
+    echo "（也可能只是本地没 fetch：git -C core fetch 之后再试。）"
+  } >&2
+  exit 1
+fi
+echo "ok：${core_head:0:7} 在远端"
+
+step "端到端（真二进制 + 内核的假上游，零 token）"
+build/build.sh dist >/dev/null
+bash mock/e2e_claude_dist.sh
+
+printf '\n✓ pre-push 全绿（core-test / dist-test / gitlink / 端到端）\n'

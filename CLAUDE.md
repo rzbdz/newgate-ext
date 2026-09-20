@@ -157,6 +157,17 @@ gofmt -l . && go vet ./... && go run ./tools/distgen -check && go test ./...
 build/build.sh dist && bash mock/e2e_claude_dist.sh
 ```
 
+**推之前自动跑**：仓库带了一份 `.githooks/pre-push`——上面三段，外加一条**只有本地
+才拦得住**的检查：gitlink 指的那个内核提交必须已经推到远端（否则 CI 会在 checkout
+那一步整体失败，一个 job 都不起，2026-09-20 实测）。装上，每个 clone 一次：
+
+```bash
+git config core.hooksPath .githooks
+```
+
+绕开用 `git push --no-verify`——口子故意留着：钩子自己出毛病时（这台机器缺 python3
+跑不了假上游）不能把人卡死。
+
 **测试跟着拥有者走**：
 - 内核的测试只管内核的逻辑与内核的模块（`core/...`）；
 - 本发行版的模块行为由本仓库的测试与 `mock/` 里的端到端锁；
