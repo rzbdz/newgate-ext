@@ -1,6 +1,7 @@
 package claudecode
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -36,89 +37,87 @@ import (
 // 悄悄降级成「一段时间」——比不给更糟（同 pluginmanager 把 footgun 留成只读）。
 func classifierConcept() view.Concept {
 	st := store.LoadState()
-	rows := []map[string]view.Cell{
-		nakedRow(st),
-		overrideRow(st),
+	cfg, active := ParseNakedConfig(st.ModuleConfig[NakedConfigKey])
+	naked := ""
+	if active {
+		if cfg.Mode == "forever" {
+			naked = "forever"
+		} else {
+			naked = "on"
+		}
 	}
-	// 这一层不生效时，**把这件事说一次**，而不是往两个单元格里各塞一句长话：
-	// 上面那两行说的是「配置里写着什么」，这一行说的是「它们此刻算不算数」。
-	// 少了它，两行会各说各话——配置写着 forever 而实际上那扇门是关着的，
-	// 用户没法从这张表里看出来（详见下面的 layerRow）。
-	if row := layerRow(st); row != nil {
-		rows = append(rows, row)
+	override := ""
+	if o, err := classifierOverride(st); err == nil && o != nil {
+		override = o.String()
 	}
-	return view.Concept{
-		ID: "claudecode.classifier", Kind: view.KindTable,
-		Title: i18n.T("Claude Code Bash classifier", nil),
-		// Live：限时窗口那一格写的是「还有多久自动关闭」——页面开着不动，那个数字
-		// 就是错的（而它说的是安全门什么时候关上）。整张卡读的是内存里的
-		// state.json，常问不亏。
-		Live: true,
-		Data: view.Table{
-			Columns: []view.Column{
-				{ID: "switch", Label: i18n.T("Switch", nil)},
-				{ID: "state", Label: i18n.T("State", nil)},
-				{ID: "detail", Label: i18n.T("What it means", nil)},
-			},
-			Rows: rows,
+	items := []clToggle{
+		{
+			ID: "naked", Label: i18n.T("Naked", nil), Kind: "select",
+			Value:   naked,
+			Options: []string{"", "on", "forever"},
+			Why:     nakedWhy(st, cfg, active),
+		},
+		{
+			ID: "classifier_override", Label: i18n.T("Classifier override", nil), Kind: "text",
+			Value: override,
+			Why:   overrideWhy(st),
 		},
 	}
-}
-
-// nakedRow 是裸奔那一行。三态：没开 / 限时开着 / 永久开着——**永久**是唯一
-// 画成 bad 的那一个：另外两种自己会结束，这个不会。
-func nakedRow(st *domain.State) map[string]view.Cell {
-	cfg, active := ParseNakedConfig(st.ModuleConfig[NakedConfigKey])
-	row := map[string]view.Cell{"switch": {Text: i18n.T("Naked", nil)}}
-	switch {
-	case !active:
-		row["state"] = view.Cell{Text: i18n.T("off", nil), Tone: view.ToneOK}
-		row["detail"] = view.Cell{Text: i18n.T("the Bash classifier is asked as usual", nil)}
-	case cfg.Mode == "forever":
-		row["state"] = view.Cell{Text: i18n.T("on (forever)", nil), Tone: view.ToneBad}
-		row["detail"] = view.Cell{Text: i18n.T("the classifier is short-circuited and every request logs [naked]", nil)}
-	default:
-		row["state"] = view.Cell{
-			Text: i18n.T("on — it turns itself off in {left}", i18n.A{"left": time.Until(cfg.ExpiresAt).Round(time.Second)}),
-			Tone: view.ToneWarn,
-		}
-		row["detail"] = view.Cell{Text: i18n.T("the classifier is short-circuited and every request logs [naked]", nil)}
+	return view.Concept{
+		ID: "claudecode.classifier", Kind: view.KindToggles,
+		Title: i18n.T("Claude Code Bash classifier", nil),
+		Data:  clData{File: "state.json", Items: items},
+		// Live：限时窗口那句话写的是「还有多久自动关闭」——页面开着不动，那个数字
+		// 就是错的（而它说的是安全门什么时候关上）。整张卡读的是内存里的
+		// state.json，常问不亏。
+		Live:  true,
+		Apply: applyClassifier,
 	}
-	return row
 }
 
-// overrideRow 是分类器改道那一行：把 Bash 分类器整个换成一条固定链。
-//
-// 与插件那条 status 行同样的话（见 st-background.go 的 Status）：它优先于任何
-// 档位——用户排查「我的分类请求怎么走到那个模型去了」时，答案在这一行里。
-func overrideRow(st *domain.State) map[string]view.Cell {
-	row := map[string]view.Cell{"switch": {Text: i18n.T("Classifier override", nil)}}
-	override, err := classifierOverride(st)
+// clToggle 一行一个控件，形状与 config 的 toggles 一致。
+type clToggle struct {
+	ID      string   `json:"id"`
+	Label   string   `json:"label"`
+	Kind    string   `json:"kind"`
+	Value   string   `json:"value,omitempty"`
+	Options []string `json:"options,omitempty"`
+	Why     string   `json:"why,omitempty"`
+}
+
+type clData struct {
+	File  string     `json:"file"`
+	Items []clToggle `json:"items"`
+}
+
+// nakedWhy 把「现在是什么状态」与「这一刻算不算数」写在一句话里。
+func nakedWhy(st *domain.State, cfg NakedConfig, active bool) string {
+	state := i18n.T("off — the Bash classifier is asked as usual", nil)
 	switch {
-	case err != nil:
-		// 坏配置是**要说出来的**：它会让整条改道静默失效（见 st-background.go）。
-		row["state"] = view.Cell{Text: i18n.T("invalid", nil), Tone: view.ToneBad}
-		row["detail"] = view.Cell{Text: i18n.T("classifier_override is not valid: {err}", i18n.A{"err": err})}
-	case override != nil:
-		row["state"] = view.Cell{Text: override.String(), Tone: view.ToneWarn}
-		row["detail"] = view.Cell{Text: i18n.T("the highest priority globally, ahead of any profile", nil)}
-	default:
-		row["state"] = view.Cell{Text: i18n.T("none", nil), Tone: view.ToneOK}
-		// 复用插件自己那句话（st-background.go 的 Status）：同一件事在两处各写
-		// 一遍措辞，翻出来的两份译文迟早会分叉。
-		row["detail"] = view.Cell{Text: i18n.T("Claude Code Bash classifier → the light-tier chain", nil)}
+	case active && cfg.Mode == "forever":
+		state = i18n.T("on (forever) — the classifier is short-circuited and every request logs [naked]", nil)
+	case active:
+		state = i18n.T("on — it turns itself off in {left}",
+			i18n.A{"left": time.Until(cfg.ExpiresAt).Round(time.Second)})
 	}
-	return row
+	// 「配置里写着什么」与「它此刻算不算数」是两件事：这一层（或这枚插件）被关掉
+	// 时，配置留着、门是关的，把层一开回来门就又开了——不说出来，用户会照着上面
+	// 那句去关一个此刻根本没生效的东西。
+	if note := layerNote(st); note != "" {
+		state += " · " + note
+	}
+	return state
 }
 
-// layerRow 是「这一层此刻算不算数」那一行；层开着时不出现（没什么可说的）。
-//
-// **为什么值得单独一行**：上面两行答的是「配置里写着什么」，而这一层关掉时，
-// 那两个答案都不作数——配置留着，门是关的，把层一开回来门就又开了。两行各自
-// 去解释这件事的话（只解释一行更糟），同一张表里就会出现两种说法。
-func layerRow(st *domain.State) map[string]view.Cell {
-	// 两种「不生效」：整层关掉，或者这个插件被单独关掉。前者说的是这一层，
-	// 后者说的是某一枚插件——而这张卡上的两行各属一枚插件，所以分开说。
+func overrideWhy(st *domain.State) string {
+	if _, err := classifierOverride(st); err != nil {
+		return i18n.T("classifier_override is not valid: {err}", i18n.A{"err": err})
+	}
+	return i18n.T("provider/model, or @key to follow another tier. Empty = the Bash classifier rides the light tier.", nil)
+}
+
+// layerNote 说「这一层此刻算不算数」；算数时返回空串（没什么可说的）。
+func layerNote(st *domain.State) string {
 	off := []string{}
 	if gatewaystate.PluginOff(st, nakedPluginName) {
 		off = append(off, nakedPluginName)
@@ -127,26 +126,81 @@ func layerRow(st *domain.State) map[string]view.Cell {
 		off = append(off, backgroundPluginName)
 	}
 	enabled := gatewaystate.SpecialEnabled(st)
-	if enabled && len(off) == 0 {
-		return nil
-	}
-	row := map[string]view.Cell{
-		"switch": {Text: i18n.T("special_treatment layer", nil)},
-		"state":  {Text: i18n.T("off", nil), Tone: view.ToneWarn},
-	}
 	if !enabled {
-		row["detail"] = view.Cell{Text: i18n.T("the whole layer is off, so nothing configured here counts right now; it counts again the moment the layer is switched back on", nil)}
-		return row
+		return i18n.T("the whole special_treatment layer is off — none of this counts until it is switched back on", nil)
 	}
-	// 层开着、只有几枚插件被单独关掉：**只有它们那几行**不算数。这里不能说成
-	// 「上面全都不算数」——另一行可能正跑得好好的，那句话会把人劝去关一个没问题
-	// 的补丁（同一张表里两种说法，正是这一行要消灭的东西）。
-	names := strings.Join(off, ", ")
-	row["state"] = view.Cell{Text: i18n.T("on, but these plugins are switched off: {names}",
-		i18n.A{"names": names}), Tone: view.ToneWarn}
-	row["detail"] = view.Cell{Text: i18n.T("{names}: switched off individually, so that row counts for nothing right now; it counts again the moment it is switched back on",
-		i18n.A{"names": names})}
-	return row
+	if len(off) > 0 {
+		return i18n.T("{names}: switched off individually, so that setting counts for nothing right now",
+			i18n.A{"names": strings.Join(off, ", ")})
+	}
+	return ""
+}
+
+// applyClassifier 写这两格。裸奔的三种状态与 CLI 一一对应（off / 60s 窗口 /
+// forever），**不把 forever 降级成窗口**——那正是这张卡以前只读的理由，现在把三态
+// 都摆出来，理由就不成立了。
+func applyClassifier(edit json.RawMessage, _ string) (string, error) {
+	var patch map[string]string
+	if err := json.Unmarshal(edit, &patch); err != nil {
+		return "", i18n.Ef(err, "the classifier settings in this request are not readable: {err}",
+			i18n.A{"err": err})
+	}
+	if v, ok := patch["naked"]; ok {
+		switch strings.TrimSpace(v) {
+		case "":
+			if err := saveNakedConfig(NakedConfig{}); err != nil {
+				return "", err
+			}
+			// Mode 为空串时 ParseNakedConfig 判为「没开」，但那会把一个空对象写进
+			// state.json；直接删掉这个键更干净（与 `newgate naked off` 同一条）。
+			if err := deleteNakedConfig(); err != nil {
+				return "", err
+			}
+		case "on":
+			if err := saveNakedConfig(NakedConfig{
+				Mode: "on", ExpiresAt: time.Now().Add(nakedDefaultTTL),
+			}); err != nil {
+				return "", err
+			}
+		case "forever":
+			if err := saveNakedConfig(NakedConfig{Mode: "forever"}); err != nil {
+				return "", err
+			}
+		default:
+			return "", i18n.E("naked must be off, on or forever, got {value}", i18n.A{"value": v})
+		}
+	}
+	if v, ok := patch["classifier_override"]; ok {
+		v = strings.TrimSpace(v)
+		s := store.LoadState()
+		if v == "" {
+			delete(s.ModuleConfig, "classifier_override")
+		} else {
+			b, err := domain.ParseBindingString(v)
+			if err != nil {
+				return "", err
+			}
+			raw, err := json.Marshal(b)
+			if err != nil {
+				return "", err
+			}
+			if s.ModuleConfig == nil {
+				s.ModuleConfig = map[string][]byte{}
+			}
+			s.ModuleConfig["classifier_override"] = raw
+		}
+		if err := store.SaveState(s); err != nil {
+			return "", err
+		}
+	}
+	return "", nil
+}
+
+// deleteNakedConfig 清掉裸奔那个键（关掉它）。
+func deleteNakedConfig() error {
+	s := store.LoadState()
+	delete(s.ModuleConfig, NakedConfigKey)
+	return store.SaveState(s)
 }
 
 // 插件名取自插件自己（`classifierNaked{}.Name()`），不是抄一份字面量：抄的那份

@@ -26,6 +26,34 @@
     vertical?: boolean;
     onPick: (id: string) => void;
   } = $props();
+
+  // 竖栏里按 `group` 归拢：一族档位（`claude` 与 `claude-cheap`）现在长这样——
+  //
+  //   claude
+  //     claude — Claude 家族
+  //     claude-cheap — …
+  //
+  // 平的十六行看不出谁是谁的变体（用户的原话是「为什么不做一下缩进分类」）。
+  // **只有 ≥2 个成员的族才出标题**：一个人的「族」加一行标题是纯噪音，还会把那
+  // 一行往下推。分组的判据由后端给（lib/view 的 Concept.Group），这里不认识任何
+  // 模块，也不知道「档位」是什么。
+  type Row = { kind: "head"; name: string } | { kind: "card"; c: Concept; in: boolean };
+  const rows = $derived.by<Row[]>(() => {
+    const members = new Map<string, number>();
+    for (const c of cards) if (c.group) members.set(c.group, (members.get(c.group) ?? 0) + 1);
+    const out: Row[] = [];
+    const done = new Set<string>();
+    for (const c of cards) {
+      const g = c.group;
+      const grouped = !!g && (members.get(g!) ?? 0) > 1;
+      if (grouped && !done.has(g!)) {
+        done.add(g!);
+        out.push({ kind: "head", name: g! });
+      }
+      out.push({ kind: "card", c, in: grouped });
+    }
+    return out;
+  });
 </script>
 
 {#if cards.length > 1}
@@ -33,17 +61,22 @@
     <!-- 竖向栏：固定一列、纵向滚。行 = 卡标题（后端翻好的），副标是卡片 id——
          标题会撞名（十几个 `mt-xx — Gallium`），id 才是稳定的定位。 -->
     <nav class="v">
-      {#each cards as c (c.id)}
-        <button
-          class="row"
-          class:on={c.id === active}
-          onclick={() => onPick(c.id)}
-          title={c.id}
-        >
-          <span class="label">{c.title}</span>
-          {#if drafts[c.id] !== undefined}<span class="dot" title={t("unsaved")}></span>{/if}
-          {#if c.error}<span class="broken" title={c.error}>!</span>{/if}
-        </button>
+      {#each rows as r, i (r.kind === "head" ? "h:" + r.name + ":" + i : r.c.id)}
+        {#if r.kind === "head"}
+          <div class="group">{r.name}</div>
+        {:else}
+          <button
+            class="row"
+            class:on={r.c.id === active}
+            class:in={r.in}
+            onclick={() => onPick(r.c.id)}
+            title={r.c.id}
+          >
+            <span class="label">{r.c.title}</span>
+            {#if drafts[r.c.id] !== undefined}<span class="dot" title={t("unsaved")}></span>{/if}
+            {#if r.c.error}<span class="broken" title={r.c.error}>!</span>{/if}
+          </button>
+        {/if}
       {/each}
     </nav>
   {:else}
@@ -120,6 +153,19 @@
     background: var(--panel-2);
     box-shadow: inset 2px 0 0 var(--accent);
   }
+
+  /* 家族的标题：小一号、全大写式的分组感，但**不是按钮**——点它不该切卡
+     （它代表的是一族，不是一张）。 */
+  .group {
+    margin: 8px 0 2px;
+    padding: 0 12px;
+    font-size: 11px;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: var(--dim);
+  }
+  /* 组内的成员缩进一级：缩进就是「我属于上面那一族」的全部表达。 */
+  .row.in { padding-left: 24px; }
 
   .label {
     flex: 1;

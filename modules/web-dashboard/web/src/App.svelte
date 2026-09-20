@@ -57,12 +57,49 @@
     return hay.includes(filter.toLowerCase());
   }
 
+  /**
+   * 导航单元 = 每份文件**一张**卡。同一份文件经常有两半：控件半（mapping-editor /
+   * toggles / records）与原文半（code）——那是 SplitView 的左栏和右栏。把原文半
+   * （`config.file.*`）也列成独立 tab，config 那节就会堆出一片 `config.file.*.json`
+   * / `*.kv`，看着像同一个东西出现了两次，而且占了导航一大片——它不是一份应用户的
+   * 配置，它是那份配置的**并排右栏**，只有当控件被打开、split 打开时才出现。
+   *
+   * 所以：这份文件有「非 code 的控制卡」时，只列控制卡，原文半隐藏（split 打开它自
+   * 然出现）；这份文件只有一张卡（目录卡、table、log…）照列。不认识的模块照样成立
+   * ——本条不 import 任何模块名，判据就是「同一相对路径 + kind 是不是 code」。
+   */
+  const navUnits = $derived.by(() => {
+    const byFile = new Map<string, Concept[]>();
+    for (const c of concepts) {
+      const f = fileOf(c);
+      const key = f ? c.source + "|" + f : null;
+      if (key === null) continue;
+      const a = byFile.get(key) ?? [];
+      a.push(c);
+      byFile.set(key, a);
+    }
+    const out: Concept[] = [];
+    for (const c of concepts) {
+      const f = fileOf(c);
+      if (!f) {
+        out.push(c);
+        continue;
+      }
+      const group = byFile.get(c.source + "|" + f)!;
+      const control = group.find((g) => g.kind !== "code");
+      // 有控制卡时，原文只是它的右栏，不占导航位。
+      if (control && c.kind === "code") continue;
+      out.push(c);
+    }
+    return out;
+  });
+
   /** 侧栏徽标：命中数 + 未保存数。过滤时显示的是命中数——不然搜到一个 3 张卡的
-   *  节，徽标还写着 12，看着像搜索没生效。 */
+   *  节，徽标还写着 12，看着像搜索没生效。用 navUnits 数（原文半不单独算一张）。 */
   const counts = $derived.by(() => {
     const m = new Map<string, { total: number; dirty: number }>();
     for (const s of sections) m.set(s.source, { total: 0, dirty: 0 });
-    for (const c of concepts) {
+    for (const c of navUnits) {
       const e = m.get(c.source);
       if (!e || !matches(c)) continue;
       e.total++;
@@ -72,7 +109,7 @@
   });
 
   /** 当前这一节的卡片（过滤之后）。顺序跟着后端来（(Source, ID) 排序）。 */
-  const sectionCards = $derived(concepts.filter((c) => c.source === route.section && matches(c)));
+  const sectionCards = $derived(navUnits.filter((c) => c.source === route.section && matches(c)));
 
   /**
    * 一节的卡多到横向 tab 条滚不动时，改用**左侧第二个竖栏**（见 TabStrip）。
@@ -221,7 +258,48 @@
     }
   }
 
+  /**
+   * 重载 = **把手里这份全丢掉，重新从 BFF 读一份**。
+   *
+   * 草稿（未保存的改动）也要丢——这正是「重载」这个动作的意思：屏幕上的一切回到
+   * 盘上此刻的样子。之前重载只换 concepts、把 drafts 留着，于是「我点了重载，界面
+   * 还是我刚才改的样子」——那个感觉像重载没生效，其实是我们把用户的改动又盖了回去。
+   *
+   * 保存过的那些早就从 drafts 里删掉了（见 saveAll），所以这里丢掉的**只有没存出去
+   * 的东西**，而丢它们是用户按这个按钮时明确要求的。
+   */
+  function reloadAll() {
+    drafts = {};
+    conflicts = [];
+    void load();
+  }
+
+  /**
+   * 一份文件的两半：**最后被改的是哪一半**（`"ui"` 控件 / `"raw"` 原文）。
+   *
+   * 为什么必须有它：控件半与原文半是两个概念、两份草稿、两个基线，而它们写的是
+   * **同一份文件**。改了原文之后控件那边手里还是「改之前那份盘上内容」——两边一起
+   * 保存，后写的那一半必然撞在过期基线上（报「这个文件在页面加载之后被别人改过」），
+   * 用户看到的是「怎么改都保存不了」。
+   *
+   * 所以：谁后改，谁说了算。另一半的草稿在**这边一改**的时候就作废丢掉——它是照着
+   * 改动之前那份盘上内容渲染的，留着只会把人送进冲突。保存完的整份重读（见
+   * saveAll）就是「编辑完马上同步另一半」那一步：两半都从盘上重新读一遍。
+   */
+  let lastEdit = $state<Record<string, "ui" | "raw">>({});
+
   function edit(id: string, value: unknown) {
+    const c = concepts.find((x) => x.id === id);
+    const f = c ? fileOf(c) : undefined;
+    if (c && f) {
+      const side: "ui" | "raw" = c.kind === "code" ? "raw" : "ui";
+      lastEdit[f] = side;
+      for (const other of concepts) {
+        if (other.id === id || fileOf(other) !== f) continue;
+        const otherSide = other.kind === "code" ? "raw" : "ui";
+        if (otherSide !== side) delete drafts[other.id];
+      }
+    }
     drafts[id] = value;
     drafts = { ...drafts };
   }
@@ -229,6 +307,10 @@
   function revert(id: string) {
     delete drafts[id];
     drafts = { ...drafts };
+    // 撤销 = 把这张卡回到「没改过」。除了丢掉草稿，再整份重读一次——这样它显示
+    // 的一定是**此刻盘上**的值，而不是上次快照那一刻的值（期间命令行可能改过）。
+    // 与 saveAll 同一条：本地 BFF 无代价，不做联动计算。
+    void load();
   }
 
   async function saveAll() {
@@ -238,6 +320,18 @@
     for (const id of dirty) {
       const c = concepts.find((x) => x.id === id);
       if (!c) continue;
+      // 一份文件的两半只能有一半说了算（见 edit 里 lastEdit 的注释）：万一两边都
+      // 还带着草稿（比如从别处塞进来的），只交**后改**的那一半——一起交必然有一半
+      // 撞过期基线，用户看到的是「怎么保存都报错」。另一半的草稿就此丢掉：它写的
+      // 是同一份文件的旧内容，留着只会再错一次。
+      const f = fileOf(c);
+      if (f && lastEdit[f]) {
+        const side = c.kind === "code" ? "raw" : "ui";
+        if (side !== lastEdit[f]) {
+          delete drafts[id];
+          continue;
+        }
+      }
       const res = await apply(id, baseOf(c), drafts[id]);
       if (res.conflict) {
         stillConflicting.push(res.conflict);
@@ -249,16 +343,82 @@
         error = `${c.title}: ${res.error}`;
         continue;
       }
-      if (res.base !== undefined && c.data && typeof c.data === "object") {
-        // 续着改不用刷新页面：新基线直接写回卡片里那份数据。
-        (c.data as { base?: string }).base = res.base;
-      }
       delete drafts[id];
     }
     drafts = { ...drafts };
     conflicts = stillConflicting;
     busy = false;
     if (!stillConflicting.length && !error) note = localTime(new Date().toISOString(), lang);
+    // 存成功就**整份重读**（不做按源增量）：保存是写文件，界面上任何一张卡都可能
+    // 因为这次写入而变——右栏原文、同源的别家卡、乃至 provider 列表。与其去算哪几
+    // 张会变，不如无脑重拉一份快照，简单、正确、（本地 BFF 毫无性能代价）。
+    if (!error && !stillConflicting.length) void load();
+  }
+
+  /**
+   * 删掉**当前这张卡代表的那份档位文件**。
+   *
+   * 它打在**这张卡自己的 apply** 上（`{delete:true}` + 加载时的基线做 CAS）：一份
+   * 文件一张卡，卡自己就能删自己——2026-09-20 之前这一步绕去另一张「档位文件」
+   * 目录卡，而那张卡列的文件与这些卡一一对应，是同一件事说两遍（用户要求彻底删掉
+   * 那张卡）。基线不对（别人刚改过）就让后端报冲突，不硬删。
+   */
+  async function deleteActive() {
+    if (!active) return;
+    busy = true;
+    error = "";
+    const id = active.id;
+    const res = await apply(id, baseOf(active), { delete: true });
+    busy = false;
+    if (res.conflict) {
+      conflicts = [...conflicts, res.conflict];
+      return;
+    }
+    if (res.error) {
+      error = `${active.title}: ${res.error}`;
+      return;
+    }
+    delete drafts[id];
+    drafts = { ...drafts };
+    // 那张卡已经不存在了，别停在它上面（active 会落回这一节的第一张）。
+    if (route.card === id) route = { ...route, card: "" };
+    void load();
+  }
+
+  /**
+   * 新建一份档位文件。名字由这里挑（`new-profile`，重名就往后加序号）——后端拒绝
+   * 覆盖已有的文件，所以「挑一个没被占用的」这件事得有人做，而只有界面知道现在有哪些。
+   *
+   * 打完就重读并**切到新那张卡**：新建的下一步一定是「去填它」，停在原地等于让用户
+   * 自己再找一次。
+   */
+  async function createProfile() {
+    if (!active) return;
+    const taken = new Set(
+      concepts
+        .map((c) => c.id)
+        .filter((id) => id.startsWith("config.profile."))
+        .map((id) => id.slice("config.profile.".length)),
+    );
+    let name = "new-profile";
+    for (let i = 2; taken.has(name); i++) name = `new-profile-${i}`;
+
+    busy = true;
+    error = "";
+    const res = await apply(active.id, baseOf(active), { create: name });
+    busy = false;
+    if (res.error) {
+      error = res.error;
+      return;
+    }
+    drafts = {};
+    // **先把目的地写进 route，再重读**：`load()` 结尾会跑 resolveRoute()，它按
+    // 「这张卡存不存在」决定留还是清；重读之后那张新卡已经在了，于是它被原样保留
+    // 并写进地址栏。反过来（先 load 再改 route）会与 resolveRoute 自己那次写 hash
+    // 抢时序——hashchange 是异步的，谁后到不一定，于是「新建之后停在原来那张卡」
+    // 时有时无（实测）。
+    route = { ...route, card: "config.profile." + name };
+    await load();
   }
 
   /** 冲突里选「保留我的」：拿磁盘上那份的基线重放一次。 */
@@ -270,12 +430,11 @@
       error = res.error ?? "conflict again — someone is writing this file right now";
       return;
     }
-    if (res.base !== undefined && c.data && typeof c.data === "object") {
-      (c.data as { base?: string }).base = res.base;
-    }
     delete drafts[cf.concept];
     drafts = { ...drafts };
     conflicts = conflicts.filter((x) => x !== cf);
+    // 写完了就整份重读（与 saveAll 同一条：本地 BFF、无性能代价、不联动）。
+    void load();
   }
 
   /** 冲突里选「用磁盘上那份」：丢掉我的草稿，重新读一次。 */
@@ -412,7 +571,7 @@
     <span class="spacer"></span>
     {#if note}<span class="dim mono">{t("as of {time}", { time: note })}</span>{/if}
     <label class="dim row"><input type="checkbox" bind:checked={auto} /> {t("auto-refresh")}</label>
-    <button onclick={() => load()} disabled={busy}>{t("reload")}</button>
+    <button onclick={reloadAll} disabled={busy}>{t("reload")}</button>
     <button class="primary" onclick={saveAll} disabled={busy || !dirty.length}>
       {t("save")}{dirty.length ? ` (${dirty.length})` : ""}
     </button>
@@ -456,6 +615,8 @@
           split={route.split}
           onEdit={edit}
           onRevert={revert}
+          onDeleteFile={deleteActive}
+          onCreateFile={createProfile}
           onToggleSplit={toggleSplit}
         />
       {:else if concepts.length}

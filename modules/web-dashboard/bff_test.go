@@ -20,8 +20,9 @@ import (
 
 func testAssets() fs.FS {
 	return fstest.MapFS{
-		"index.html": {Data: []byte("<html>app</html>")},
-		"app.js":     {Data: []byte("console.log(1)")},
+		"index.html":              {Data: []byte("<html>app</html>")},
+		"app.js":                  {Data: []byte("console.log(1)")},
+		"assets/index-deadbee.js": {Data: []byte("console.log(2)")},
 	}
 }
 
@@ -314,27 +315,40 @@ func TestApplyIsPostOnly(t *testing.T) {
 	}
 }
 
-// TestOnlyLoopbackHostsAreAnswered：DNS rebinding。
+// TestOnlyAddressesNotNamesAreAnswered：DNS rebinding。
 //
 // 只监听 loopback 挡得住外面的连接，挡不住**别人网页上的一段脚本**——攻击者把
 // 自己的域名解析到 127.0.0.1，浏览器就认为同源。浏览器唯一不骗人的东西是它自己
 // 填的 Host，所以判据是「这次请求是冲着哪个名字来的」。
-func TestOnlyLoopbackHostsAreAnswered(t *testing.T) {
+//
+// 2026-09-20 放宽了一次，**按的仍是同一条判据**：名字（域名）一律拒，IP 一律收。
+// 原来只收回环，是因为那时只打算给本机用；用户要从 Windows / 局域网 / Tailscale
+// 打开界面时，那些地址全是 IP 字面量，而攻击者要伪造 Host 必须让用户的浏览器
+// 访问那个 IP——那已经不是 rebinding 了。写操作另有第二道门（必须是 JSON，浏览器
+// 会先发预检），所以「收 IP」不等于「任意网页都能改配置」。
+func TestOnlyAddressesNotNamesAreAnswered(t *testing.T) {
 	h := newHandler()
 	contribute(t, h, "config", view.Concept{
 		ID: "config.secretish", Kind: view.KindCode, Title: "A file",
 		Data: map[string]any{"path": "x.json", "text": "something worth stealing"},
 	})
 
-	for _, host := range []string{loopback, "localhost:8899", "[::1]:8899"} {
+	accepted := []string{
+		loopback, "localhost:8899", "[::1]:8899",
+		"10.0.50.11:8899",     // 局域网 / 另一台机器
+		"100.101.224.37:8899", // Tailscale（100.64.0.0/10）
+		"172.24.1.5:8899",     // WSL / 容器网段
+	}
+	for _, host := range accepted {
 		if rec := raw(t, h, http.MethodGet, "/api/snapshot", "", host, ""); rec.Code != http.StatusOK {
-			t.Errorf("Host %q 该被接受，实际 %d", host, rec.Code)
+			t.Errorf("Host %q 该被接受（它是地址，不是名字），实际 %d", host, rec.Code)
 		}
 	}
-	for _, host := range []string{"evil.com:8899", "10.0.50.11:8899", "localhost.evil.com:8899"} {
+	// **名字**一律拒——这才这道门真正挡的东西。
+	for _, host := range []string{"evil.com:8899", "localhost.evil.com:8899", "newgate.local:8899"} {
 		rec := raw(t, h, http.MethodGet, "/api/snapshot", "", host, "")
 		if rec.Code != http.StatusForbidden {
-			t.Errorf("Host %q 该被拒（实际 %d）——它指向的名字不是本机", host, rec.Code)
+			t.Errorf("Host %q 该被拒（实际 %d）——域名正是 rebinding 的载体", host, rec.Code)
 		}
 		// 拒绝了就不许漏内容：这条响应里带着配置原文（脱敏过的那些）。
 		if strings.Contains(rec.Body.String(), "worth stealing") {
@@ -491,5 +505,33 @@ func TestStaticServesTheAppAndFallsBackForRoutes(t *testing.T) {
 	}
 	if rec := get(t, h, "/typo.js"); rec.Code != http.StatusNotFound {
 		t.Errorf("拼错的资源该 404，实际 %d（兜成 HTML 会让报错指向别处）", rec.Code)
+	}
+}
+
+// TestTheEntryDocumentIsNeverCached：入口文件必须每次问服务器。
+//
+// 这一条防的是**最贵的一种「你没做」**：发版之后用户看到的还是上一版界面，而
+// 服务端完全正常（curl 拿到的是新产物）。哈希文件名让这个问题有两层——旧
+// index.html 指着旧 JS 的名字，而那份旧 JS 也还在用户的缓存里，于是页面照常
+// 渲染、只是渲染的是旧的。没有报错、没有白屏，用户只会觉得「你说的功能没做」。
+//
+// 所以三条各自的理由都钉住：入口 no-store（它是唯一知道哈希变了的那份文件）、
+// 哈希产物 immutable（同一个名字永远同一份字节）、其余不带哈希的走 no-cache
+// （宁可多一个往返，也不把改过内容的同名文件钉死在用户机器上）。
+func TestTheEntryDocumentIsNeverCached(t *testing.T) {
+	h := newHandler()
+
+	cc := func(path string) string { return get(t, h, path).Header().Get("Cache-Control") }
+	if got := cc("/"); got != "no-store" {
+		t.Errorf("入口该 no-store（发版后用户必须立刻看到新版），实际 %q", got)
+	}
+	if got := cc("/some/route"); got != "no-store" {
+		t.Errorf("SPA 兜底回的也是入口，同样 no-store，实际 %q", got)
+	}
+	if got := cc("/assets/index-deadbee.js"); !strings.Contains(got, "immutable") {
+		t.Errorf("带内容哈希的产物该可长期缓存，实际 %q", got)
+	}
+	if got := cc("/app.js"); got != "no-cache" {
+		t.Errorf("没哈希的文件该每次校验，实际 %q", got)
 	}
 }

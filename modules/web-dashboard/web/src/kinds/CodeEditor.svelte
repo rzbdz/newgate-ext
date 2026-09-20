@@ -7,6 +7,7 @@
   //
   // 带凭据的文件是**只读**的（`redacted`）：它的 text 里 api_key 已经被换成 ***，
   // 写回去就是把 *** 落盘——那是数据丢失，比「不能编辑」严重得多。
+  import { untrack } from "svelte";
   import { basicSetup } from "codemirror";
   import { EditorState } from "@codemirror/state";
   import { EditorView } from "@codemirror/view";
@@ -39,10 +40,23 @@
     "&.cm-focused": { outline: "none", borderColor: "var(--accent)" },
   });
 
-  // 编辑器只建一次。重建成「每次输入都新建一个」会丢光标与撤销栈——而撤销栈没了
-  // 这件事，用户是在按了 Ctrl+Z 之后才发现。
+  // 编辑器**只建一次**——而这件事必须用 untrack 明确说出来。
+  //
+  // 不 untrack 的话，下面那句 `new EditorView({ doc: value, … })` 会把 value
+  // 登记成这个 effect 的依赖，于是**每敲一个字符**（value 跟着 draft 变）effect
+  // 就重跑一遍：旧编辑器 destroy、新建一个、doc 从头灌进去——光标回到第 0 行，
+  // 撤销栈清零。现场的症状是「在文本编辑框里按一下 d，它跳到第一行，根本没法
+  // 编辑」（2026-09-20 实测）。data.language / readonly 同理：它们是**建的时候**
+  // 才需要的参数，不是「变了要重建」的信号（换文件时 ConceptCard 的 `{#key}`
+  // 已经把这个组件整个重建了）。
   $effect(() => {
     const target = host;
+    if (!target) return;
+    const { lang, ro, doc } = untrack(() => ({
+      lang: data.language,
+      ro: readonly,
+      doc: value,
+    }));
     const ext = [
       basicSetup,
       EditorView.lineWrapping,
@@ -51,9 +65,9 @@
         if (u.docChanged) onEdit({ text: u.state.doc.toString() });
       }),
     ];
-    if (data.language === "json") ext.push(json());
-    if (readonly) ext.push(EditorState.readOnly.of(true));
-    const v = new EditorView({ doc: value, extensions: ext, parent: target });
+    if (lang === "json") ext.push(json());
+    if (ro) ext.push(EditorState.readOnly.of(true));
+    const v = new EditorView({ doc, extensions: ext, parent: target });
     view = v;
     return () => {
       v.destroy();

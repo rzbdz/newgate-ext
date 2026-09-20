@@ -19,11 +19,16 @@
     draft,
     onEdit,
     onRevert,
+    onDeleteFile,
+    onCreateFile,
   }: {
     concept: Concept;
     draft: unknown;
     onEdit: (v: unknown) => void;
     onRevert: () => void;
+    // 删/建这一份文件（不带参数：作用在这张卡自己身上，见 kinds/MappingEditor）。
+    onDeleteFile?: () => void;
+    onCreateFile?: () => void;
   } = $props();
 
   const isDirty = $derived(draft !== undefined);
@@ -52,12 +57,27 @@
     {/if}
   </header>
 
+  <!-- `{#key concept.id}`：**换一张卡就把渲染器整个重建**。
+       MappingEditor / Toggles / Records 都各有一份「我改过没有」的本地状态
+       （`edited`），而它优先于 props 与 draft。Svelte 在同一个位置复用组件实例，
+       所以切卡时那份本地状态会**跟着活下来**——于是「在 A 档改了没保存 → 切到 B
+       档」会看到 B 的文件名配 A 的档位，再点保存就把 A 写进了 B 的文件。
+       加 key 之后本地状态随卡重建；而**真正的未保存改动不会丢**——它在 App 的
+       `drafts`（按概念 id 存）里，切回去照样在。 -->
   <div class="body">
+   {#key concept.id}
     {#if concept.error}
       <!-- 读不出来也要占一张卡片：不报它，用户会以为这东西不存在。 -->
       <p class="dim">{concept.error}</p>
     {:else if concept.kind === "mapping-editor"}
-      <MappingEditor data={concept.data} {draft} readonly={!concept.writable} onEdit={changed} />
+      <MappingEditor
+        data={concept.data}
+        {draft}
+        readonly={!concept.writable}
+        onEdit={changed}
+        {onDeleteFile}
+        {onCreateFile}
+      />
     {:else if concept.kind === "code"}
       <CodeEditor data={concept.data} {draft} readonly={!concept.writable} onEdit={changed} />
     {:else if concept.kind === "toggles"}
@@ -78,6 +98,7 @@
       <p class="dim">{t("no renderer for kind “{kind}” yet — raw data:", { kind: concept.kind })}</p>
       <pre class="raw">{JSON.stringify(concept.data, null, 2)}</pre>
     {/if}
+   {/key}
   </div>
 </section>
 

@@ -19,6 +19,8 @@
     split,
     onEdit,
     onRevert,
+    onDeleteFile,
+    onCreateFile,
     onToggleSplit,
   }: {
     left: Concept;
@@ -27,6 +29,9 @@
     split: boolean;
     onEdit: (id: string, v: unknown) => void;
     onRevert: (id: string) => void;
+    // 都作用在**卡片自己那份文件**上，所以不带参数（见 kinds/MappingEditor）。
+    onDeleteFile?: () => void;
+    onCreateFile?: () => void;
     onToggleSplit: () => void;
   } = $props();
 
@@ -48,6 +53,8 @@
         draft={drafts[left.id]}
         onEdit={(v) => onEdit(left.id, v)}
         onRevert={() => onRevert(left.id)}
+        {onDeleteFile}
+        {onCreateFile}
       />
     </div>
     {#if two && right}
@@ -57,6 +64,7 @@
           draft={drafts[right.id]}
           onEdit={(v) => onEdit(right.id, v)}
           onRevert={() => onRevert(right.id)}
+          {onDeleteFile}
         />
       </div>
     {/if}

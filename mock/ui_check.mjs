@@ -81,9 +81,18 @@ page.on("console", (m) => {
 // 有未保存的改动时，界面会挂一个 beforeunload 问询（见 App.svelte）。Playwright
 // 默认**自动消掉**所有对话框，而消掉 beforeunload 的意思是「留在原地」——那样
 // 下面那次 reload 会静静不发生，之后的断言全在测一个没刷新过的页面。所以这里
-// 明确接受它。别的类型的对话框一个都不该出现（出现了就是 bug），记成页面错误。
+// 明确接受它。
+//
+// confirm 也接受：删掉一份档位文件这类不可撤销的动作**该**先问一句（见
+// MappingEditor 的删除按钮），问了并把问题记下来，正好让下面能断言「它问过」。
+// 别的一律算页面错误——一个没人预期的模态框就是 bug。
+const confirms = [];
 page.on("dialog", (d) => {
   if (d.type() === "beforeunload") return void d.accept();
+  if (d.type() === "confirm") {
+    confirms.push(d.message());
+    return void d.accept();
+  }
   pageErrors.push(`dialog(${d.type()}): ${d.message()}`);
   void d.dismiss();
 });
@@ -210,8 +219,28 @@ if (snap.sections.length) {
 // 所以这里按「config 的卡数」判断走哪条断言——沙箱注入了 9 个填充 profile，正常
 // 会走到竖栏那半。
 {
-  const cfg = snap.sections.find((s) => s.source === "config");
-  const n = snap.concepts.filter((c) => c.source === "config").length;
+  // 导航的单位是**文件**，不是卡片：同一份文件有「控件 + 原文」两半时只列控件那
+  // 半，原文只是并排的右栏（见 App.svelte 的 navUnits）。所以这里的期望值不能直接
+  // 数概念，要按同一条规则先折一遍——否则这条断言会把「原文不再占一格」这个**有意
+  // 的改动**报成失败。
+  const fileOf = (c) => c.data?.file ?? c.data?.path;
+  const navUnits = (list) => {
+    const byFile = new Map();
+    for (const c of list) {
+      const f = fileOf(c);
+      if (!f) continue;
+      const k = c.source + "|" + f;
+      byFile.set(k, [...(byFile.get(k) ?? []), c]);
+    }
+    return list.filter((c) => {
+      const f = fileOf(c);
+      if (!f) return true;
+      const control = byFile.get(c.source + "|" + f).find((g) => g.kind !== "code");
+      return !(control && c.kind === "code");
+    });
+  };
+  const cfgCards = navUnits(snap.concepts.filter((c) => c.source === "config"));
+  const n = cfgCards.length;
   await page.locator(`nav.side button[title="config"]`).click();
   await page.waitForTimeout(400);
   const rows = await page.locator(".content nav.v").count();
@@ -229,8 +258,8 @@ if (snap.sections.length) {
       return slot ? getComputedStyle(slot).overflowY : "";
     });
     check("竖栏是滚动容器（滚轮能生效）", slotCss === "auto", `overflow-y=${slotCss}`);
-    // 点竖栏里一张卡要真的切过去
-    const target = snap.concepts.filter((c) => c.source === "config")[1];
+    // 点竖栏里一张卡要真的切过去（从**会出现在竖栏里**的那批里挑——原文半不在里面）
+    const target = cfgCards[1];
     await page.locator(`.content nav.v button[title="${target.id}"]`).click();
     await page.waitForTimeout(300);
     const on = await page.locator(".content nav.v button.on").getAttribute("title");
@@ -357,7 +386,10 @@ if (!(await openSwitches())) {
     // 上一段故意制造的那个冲突还挂在屏幕上（那是它要验的东西），所以「没有报错」
     // 的判据是**横幅没有变多**，不是「屏幕上一个横幅都没有」。
     const bannerBefore = await page.locator(".banner").first().innerText().catch(() => "");
-    const baseURL = page.locator(`#f-0-base_url`);
+    // 字段 id 是 `f-<这条记录的 id>-<字段名>`（记录 id 现在是 provider 名，不再是
+    // 数组下标——见 kinds/Records.svelte 里 key/id 分开的那段注释）。所以按**后缀**
+    // 找，别把 id 写死。
+    const baseURL = page.locator(`input[id$="-base_url"]`).first();
     await baseURL.fill("http://127.0.0.1:9/changed");
     await page.waitForTimeout(150);
     await page.locator("header.top button.primary").click();
@@ -373,10 +405,10 @@ if (!(await openSwitches())) {
     // 眼睛：点了之后输入框变明文。值是我们自己刚敲的，所以这条验的是「那个按钮真的
     // 接到了这一格」——粘一串 key 之后核对一眼，是最常见的动作。
     //
-    // 按 **id** 找那一格，不按 `input[type=password]`：点亮之后类型就变了，用类型
-    // 当选择器会变成「元素不存在」而超时——那看起来像界面坏了，其实是在测一个
-    // 已经不存在的东西。
-    const keyField = page.locator(`#f-0-api_key`);
+    // 按 **id** 找那一格（后缀匹配，理由同上），不按 `input[type=password]`：
+    // 点亮之后类型就变了，用类型当选择器会变成「元素不存在」而超时——那看起来像
+    // 界面坏了，其实是在测一个已经不存在的东西。
+    const keyField = page.locator(`input[id$="-api_key"]`).first();
     await keyField.fill("sk-typed-in-the-browser");
     await page.waitForTimeout(150);
     await page.locator(".rec button[title]").first().click();
@@ -385,7 +417,131 @@ if (!(await openSwitches())) {
   }
 }
 
-// —— 10. 键盘：`/` 找东西、Esc 退出 ——
+// —— 10. 一份档位文件的全部动作都在它自己那张 kv 卡上 ——
+//
+// 2026-09-20 之前：新建/改名/删除在一张「档位文件」目录卡上，档位在每张 profile 卡
+// 上——同一份文件被两张卡说着，而那张目录卡列的文件与这些卡一一对应（用户的原话：
+// 「这个多余的啊……要求彻底删除」）。现在动作都收在卡自己身上：
+// `+ profile` 建新的一份、名字那一格改名、继承那一格选父档位、`delete this file`
+// 删掉整份文件（删之前问一句）。
+{
+  const home = stateFile.slice(0, stateFile.lastIndexOf("/"));
+  const mappingsDir = home + "/mappings";
+  const has = (n) => fs.existsSync(`${mappingsDir}/${n}.kv`);
+
+  // 那张多余的目录卡必须**真的没了**（它是被点名要求删掉的东西，回来了要有人喊）。
+  check(
+    "「档位文件」那张多余的目录卡不在了",
+    !snap.concepts.some((c) => c.id === "config.profiles"),
+    snap.concepts.filter((c) => c.id.startsWith("config.profile")).map((c) => c.id).join(" "),
+  );
+
+  // 从一张白纸开始（前面几节故意制造过冲突，草稿会干扰这一节）。
+  await page.goto(url, { waitUntil: "networkidle" });
+  await page.waitForTimeout(700);
+
+  const anyProfile = snap.concepts.find((c) => c.kind === "mapping-editor");
+  await page.locator(`nav.side button[title="${anyProfile.source}"]`).click();
+  await page.waitForTimeout(250);
+  await page
+    .locator(`button.tab[title="${anyProfile.id}"], nav.v button[title="${anyProfile.id}"]`)
+    .first()
+    .click();
+  await page.waitForTimeout(400);
+
+  // —— 新建：卡片头上一个按钮 ——
+  await page.locator(".card .head button:not(.danger)").first().click();
+  // 两件事都要等，而且是**先落盘、再切卡**（切卡发生在 apply 之后的 load 里）。
+  // 只等文件的话会在导航之前就断言 URL，那红的是测试的时序不是产品。
+  for (let i = 0; i < 40 && !has("new-profile"); i++) await page.waitForTimeout(100);
+  check("`+ profile` 建出了一份新档位文件", has("new-profile"), `mappings 里有 ${fs.readdirSync(mappingsDir).join(" ")}`);
+  for (let i = 0; i < 40 && !page.url().includes("config.profile.new-profile"); i++) {
+    await page.waitForTimeout(100);
+  }
+  check("新建之后直接切到那一张卡", page.url().includes("config.profile.new-profile"), page.url());
+
+  // —— 改名 + 继承：两格都在卡片头上，改完点保存一起落盘 ——
+  await page.locator(".card .head input.name").fill("uicheck-renamed");
+  await page.locator(".card .head select").selectOption("demo");
+  await page.waitForTimeout(200);
+  await page.locator("header.top button.primary").click();
+  for (let i = 0; i < 40 && !has("uicheck-renamed"); i++) await page.waitForTimeout(100);
+  check("改名把文件改到了新名字下", has("uicheck-renamed") && !has("new-profile"),
+    `new-profile=${has("new-profile")} uicheck-renamed=${has("uicheck-renamed")}`);
+  const renamed = has("uicheck-renamed") ? fs.readFileSync(`${mappingsDir}/uicheck-renamed.kv`, "utf8") : "";
+  check("继承写进了文件", renamed.includes("extends=demo"), JSON.stringify(renamed.slice(0, 80)));
+
+  // —— 删除：问一句，然后真的删盘 ——
+  const before = confirms.length;
+  await page
+    .locator(`button.tab[title="config.profile.uicheck-renamed"], nav.v button[title="config.profile.uicheck-renamed"]`)
+    .first()
+    .click();
+  await page.waitForTimeout(350);
+  await page.locator(".card .head button.danger").click();
+  for (let i = 0; i < 30 && has("uicheck-renamed"); i++) await page.waitForTimeout(100);
+  check("删之前问了一句", confirms.length > before, `confirms=${JSON.stringify(confirms.slice(before))}`);
+  check("删除真的删掉了文件", !has("uicheck-renamed"));
+}
+
+
+// —— 11. 文本编辑器里打字不会跳回第一行（2026-09-20 实测到的回归） ——
+//
+// 现场：在原文那一栏按一下 `d`，光标跳到第一行，根本没法编辑。根因是 CodeMirror
+// 那个 `$effect` 读了 `value`（响应式），于是**每敲一个字符**就重建一次编辑器，
+// doc 从头灌进去、光标回到 0（见 kinds/CodeEditor.svelte 里的 untrack）。
+//
+// 判据用「敲进去的字符在末尾」而不是「光标在哪」：跳回开头的症状正是字符被**逆序**
+// 插在最前面，这一条判得出来。
+{
+  // 挑一个**可写**的原文栏：profile 的右栏是 `.kv`（没有凭据，不是只读），而
+  // providers.json 那种带 api_key 的右栏是**只读**的（redacted）——往只读编辑器里
+  // 打字什么都不会发生，那种「失败」测的是别的东西。
+  const editable = snap.concepts.find((c) => c.kind === "mapping-editor");
+  await page.locator(`nav.side button[title="${editable.source}"]`).click();
+  await page.waitForTimeout(250);
+  await page
+    .locator(`button.tab[title="${editable.id}"], nav.v button[title="${editable.id}"]`)
+    .first()
+    .click();
+  await page.waitForTimeout(400);
+
+  const cm = page.locator(".pane-r .cm-content").first();
+  if (await cm.count()) {
+    await cm.click();
+    await page.keyboard.press("Control+End");
+    await page.keyboard.type("xyz");
+    await page.waitForTimeout(300);
+    const text = (await cm.innerText()).trimEnd();
+    check("在文本编辑器里连打三个字符不会跳回开头", text.endsWith("xyz"),
+      `结尾是 ${JSON.stringify(text.slice(-24))}`);
+    // 留一份脏草稿会影响后面的键盘检查，撤销掉。
+    const revert = page.locator(".card.dirty button").filter({ hasText: /撤销|revert|Revert/ }).first();
+    if (await revert.count()) { await revert.click(); await page.waitForTimeout(300); }
+  } else {
+    skip("文本编辑器没渲染出来（模板变了？）——这一条跳过");
+  }
+}
+
+// —— 12. 运行期开关画成「开关」，不是复选框 ——
+//
+// 用户的原话是「别搞那个傻逼钩啊，用一个可以 toggle 的开关」。判据落在
+// `role=switch` 上：读屏器与键盘靠它，而一个纯 CSS 的假开关不会有。
+{
+  await page.locator(`nav.side button[title="plugin-manager"]`).click();
+  await page.waitForTimeout(250);
+  await page
+    .locator(`button.tab[title="plugin-manager.switches"], nav.v button[title="plugin-manager.switches"]`)
+    .first()
+    .click();
+  await page.waitForTimeout(300);
+  const switches = await page.locator(`.card .body input[role="switch"]`).count();
+  const plain = await page.locator(`.card .body input[type="checkbox"]:not([role="switch"])`).count();
+  check("开关是开关（role=switch）", switches > 0, `实际 ${switches} 个`);
+  check("没有一个是裸复选框", plain === 0, `还有 ${plain} 个裸复选框`);
+}
+
+// —— 13. 键盘：`/` 找东西、Esc 退出 ——
 //
 // 这条是「4-5 次操作」那条线的下限保障：鼠标走完侧栏 → tab → 控件 → 保存是四次，
 // 没有余量；`/` 与 Alt+数字 把「回到一个已知位置」压成一次按键。

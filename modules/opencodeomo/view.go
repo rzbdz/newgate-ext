@@ -1,37 +1,64 @@
 package opencodeomo
 
-// 本文件是 omo 槽位贡献给 web 界面的那一面：**哪个槽位现在用哪个模型**。
+// 本文件是 omo 槽位贡献给 web 界面的那一面：**哪个槽位现在跟哪个档位走**，
+// 以及**在这里改它**。
 //
 // 它是**发行版模块**贡献的第一张卡片（此前四个贡献者全在内核）。路径完全一样：
 // `Optional(viewapi.Capability)` + 登记一个产出函数，前端一个字都不用改——
 // 这正是 lib/view 那句「加一个模块的界面不需要改前端」要成立的地方。
 //
-// # 为什么不是六列表（CLI 那边特意用了竖版卡片）
+// # 可写（2026-09-20 起）
 //
-// `newgate omo` 的注释写得很清楚：键、槽位与模型标识符是不可分割的信息，终端里
-// 六列会从中间硬切，所以它排成竖版卡片。浏览器里那条约束不成立——这张表横向可
-// 滚、格子不折行（见 kinds/Table.svelte），标识符不会被切断。但列数仍然要挑：
-// 这里少了 CLI 卡片里的两行：
+// 之前是只读的，理由是「写槽位归属是 newgate omo use/unset 的语义，界面再开一个
+// 口子等于造第二份写语义」。那个顾虑用一个办法消掉：**界面的写就是走同一份判据**
+// （validateBindingValue + WriteOmoSlots，与 omoUse 一字不差），不是另写一套。
+// 于是同一条规矩在两边都成立，而用户不必为了把一个槽位挪到别的档位去开终端。
 //
-//   - **before takeover**（was）：那是迁移与回滚时才要看的东西，属于「翻旧账」；
-//   - **now**（current）单独一列没必要——`effective` 才是**实际生效**的那个值
-//     （override > mode > current，见 SlotBinding），把两个都摆出来只会让人问
-//     「到底哪个算数」。
+// 只动 Overrides 与 Mode 两个字段：其余（Was/Current/Suggested/Slots）是接管时
+// 算出来的现场记录，界面不该也没能力改。
 //
-// # 只读
+// # 形状：不是表，是「一行一个选择器」
 //
-// 写槽位归属是 `newgate omo use/unset` 的语义（改 overrides 表、要认得 @引用与
-// 档位名），而那套判据在这个模块里只有一份（omoUse）。给界面开一个「随手改」的
-// 口子等于再造一份写语义——两份迟早对同一份 omo-slots.json 给出不同答案。
-// 卡片上写清楚去哪儿改就够了（见 Broken 那条同款理由）。
+// 表格每列都得窄，而这里每行只有「键 + 一个选择」，塞进表里反而要横着读；
+// 而 `toggles` 那个 Kind 本来就是「一组同构的选择器、每条带一句为什么」——
+// 槽位正是这个形状。每行的 why 里带着 now / effective / suggested 三个现场值，
+// 表里那三列的信息一条都没丢。
 
 import (
+	"encoding/json"
+	"os"
+	"strings"
+
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 	"github.com/rzbdz/newgate/lib/view"
+	"github.com/rzbdz/newgate/modules/config/domain"
+	"github.com/rzbdz/newgate/modules/config/store"
 )
 
 // slotsConceptID 是这张卡片的稳定身份。
 const slotsConceptID = "opencode-omo.slots"
+
+// omoToggle 是这张卡的一行。形状与 config 的 toggles 一致（前端按 `toggles`
+// 这个 Kind 渲染，多一个字段它不看）——每个槽位一个下拉：选一个档位 / @引用，
+// 或者留空表示「跟随缺省」。
+//
+// 为什么不自己造一个 Kind：多一个 Kind 就多一个渲染器，而这件事的形状
+// （一行一个选择器 + 一句为什么）与「全局设置」那张卡完全一样。
+type omoToggle struct {
+	ID      string   `json:"id"`
+	Label   string   `json:"label"`
+	Kind    string   `json:"kind"`
+	Value   string   `json:"value,omitempty"`
+	Options []string `json:"options,omitempty"`
+	Why     string   `json:"why,omitempty"`
+	Group   string   `json:"group,omitempty"`
+}
+
+type omoData struct {
+	File  string      `json:"file"`
+	Base  string      `json:"base"`
+	Items []omoToggle `json:"items"`
+}
 
 func omoConcepts() ([]view.Concept, error) {
 	reg := ReadOmoSlots()
@@ -48,39 +75,144 @@ func omoConcepts() ([]view.Concept, error) {
 		}}, nil
 	}
 
-	table := view.Table{
-		Columns: []view.Column{
-			// 槽位键（omo-sisyphus / cat-deep）是**机器标记**：它是 profile 里
-			// 直接可写的引用名，也是 `newgate omo` 认的身份，翻它等于让两个界面
-			// 用两个名字说同一个槽位。
-			{ID: "key", Label: i18n.T("slot key", nil)},
-			{ID: "slot", Label: i18n.T("slot", nil)},
-			{ID: "now", Label: i18n.T("now", nil)},
-			{ID: "effective", Label: i18n.T("effective", nil)},
-			{ID: "suggested", Label: i18n.T("suggested", nil)},
-		},
-		Rows: []map[string]view.Cell{},
+	// 可选值：空（= 跟随缺省）、四个阶梯档、正交的 vision、以及 @其它槽位键
+	// （「这个槽位跟那个槽位走」）。档位名的权威列表在 domain.TierLadder —— 抄一份
+	// 到这里就会在加档位时漏掉这一处。
+	opts := append([]string{""}, domain.TierLadder...)
+	opts = append(opts, "vision")
+	for _, s := range reg.Slots {
+		if s.Key != "" {
+			opts = append(opts, "@"+s.Key)
+		}
 	}
+
+	items := []omoToggle{{
+		ID: "mode", Label: i18n.T("Binding mode", nil), Kind: "select",
+		Value:   modeOrDefault(reg.Mode),
+		Options: []string{"current", "suggested"},
+		Why: i18n.T("current = keep what each slot used before takeover; "+
+			"suggested = move each slot to the tier its model build implies.", nil),
+	}}
 	for _, s := range reg.Slots {
 		// OmoSlot.Key 是**存下来的**键（登记时算好的），不是 Slot.Key() 那个
 		// 由 kind+name 现算的方法——两个类型，两个来源，别混。
 		key := s.Key
-		table.Rows = append(table.Rows, map[string]view.Cell{
-			"key":  {Text: key},
-			"slot": {Text: s.Kind + "/" + s.Name},
-			"now":  dashIfEmpty(s.Current),
-			// 「这个值来自 override」写进格子里，而不是像 CLI 那样打一个 `*`
-			// 再在页脚解释：表没有页脚，一个没有解释的星号只会让人猜。
-			"effective": effectiveCell(reg, key),
-			"suggested": suggestedCell(s),
+		// 值是**覆盖**（没写就是空 = 跟随缺省）。空选项在界面上显示成「—」，
+		// 而「跟随缺省到底跟到哪」写在 why 里——不然用户看不出留空会发生什么。
+		// 「与建议不符」这条信号要留着（CLI 上它是标黄）：两个界面对「哪些槽位
+		// 偏离了建议」必须给出同一个答案。toggles 的行没有颜色可言，所以把它写进
+		// 那句 why 的措辞里——判据仍然是 `Suggested != "" && Suggested != Current`
+		// （**不能**拿 effective 去比：override 之后两者常常不等，于是整张卡都在
+		// 喊「不符」，喊了就没人看）。
+		why := i18n.T("{slot} · now {now} · effective {effective} · suggested {suggested}",
+			i18n.A{
+				"slot":      s.Kind + "/" + s.Name,
+				"now":       dashIfEmpty(s.Current).Text,
+				"effective": effectiveCell(reg, key).Text,
+				"suggested": dashIfEmpty(s.Suggested).Text,
+			})
+		if suggestsDifferently(s) {
+			why = i18n.T("{slot} · now {now} · effective {effective} · suggested {suggested} (differs from now)",
+				i18n.A{
+					"slot":      s.Kind + "/" + s.Name,
+					"now":       dashIfEmpty(s.Current).Text,
+					"effective": effectiveCell(reg, key).Text,
+					"suggested": dashIfEmpty(s.Suggested).Text,
+				})
+		}
+		items = append(items, omoToggle{
+			ID: key, Label: key, Kind: "select",
+			Value:   reg.Overrides[key],
+			Options: opts,
+			Group:   s.Kind, // agent / category：界面按它分两组
+			Why:     why,
 		})
 	}
 	return []view.Concept{{
 		ID:    slotsConceptID,
-		Kind:  view.KindTable,
+		Kind:  view.KindToggles,
 		Title: i18n.T("omo slot bindings", nil),
-		Data:  table,
+		Data: omoData{
+			File: relToHome(SlotsFile()), Base: store.Revision(SlotsFile()),
+			Items: items,
+		},
+		// 读一次很便宜（一个小 JSON），而且**命令行也会改它**（newgate omo use）,
+		// 所以声明 Live：开着页面时 CLI 改一下，几秒后就对上。
+		Live:  true,
+		Apply: applyOmoSlots,
 	}}, nil
+}
+
+// applyOmoSlots 把界面交回来的整张表写进 omo-slots.json。
+//
+// 交上来的是**全部项**（toggles 的形状，见前端 Toggles.svelte）：mode 一项，
+// 其余每项是一个槽位的覆盖。空值 = **清掉覆盖**（回到缺省），这是「我反悔了」
+// 唯一自然的表达方式——没有第二个「清除」按钮。
+//
+// 只动 Overrides 与 Mode 这两个字段，其它（Was/Current/Suggested/Why/Slots）
+// 是接管时算出来的现场记录，界面不该也没能力改它们。
+func applyOmoSlots(edit json.RawMessage, _ string) (string, error) {
+	var patch map[string]string
+	if err := json.Unmarshal(edit, &patch); err != nil {
+		return "", i18n.Ef(err, "the slot bindings in this request are not readable: {err}",
+			i18n.A{"err": err})
+	}
+	reg := ReadOmoSlots()
+	if reg == nil {
+		return "", i18n.E("no omo slot registry; run newgate on opencode first", nil)
+	}
+	if m, ok := patch["mode"]; ok {
+		m = strings.TrimSpace(m)
+		if m != "" && m != "current" && m != "suggested" {
+			return "", i18n.E("binding mode must be current or suggested, got {value}",
+				i18n.A{"value": m})
+		}
+		reg.Mode = m
+	}
+	for key, val := range patch {
+		if key == "mode" {
+			continue
+		}
+		// 不认识的键**跳过**而不是报错：注册表可能刚被重新接管改过名，而界面手里
+		// 还是上一份——跳过它顶多少写一个覆盖，报错则会让整次保存失败。
+		if _, ok := reg.SlotOf(key); !ok {
+			continue
+		}
+		val = strings.TrimSpace(val)
+		if val == "" {
+			delete(reg.Overrides, key)
+			continue
+		}
+		if err := validateBindingValue(val); err != nil {
+			return "", err
+		}
+		if reg.Overrides == nil {
+			reg.Overrides = map[string]string{}
+		}
+		reg.Overrides[key] = val
+	}
+	if err := WriteOmoSlots(reg); err != nil {
+		return "", i18n.Ef(err, "cannot write the registry: {err}", nil)
+	}
+	// 新基线：写完之后重新算一次内容哈希（WriteOmoSlots 会更新 Updated 字段，
+	// 所以每次写都不同——这正是界面下一次 CAS 要的那个值）。
+	return store.Revision(SlotsFile()), nil
+}
+
+func modeOrDefault(m string) string {
+	if m == "" {
+		return "current"
+	}
+	return m
+}
+
+// relToHome 把绝对路径折成 ~/… —— 卡片上那行路径是给人看的，绝对路径在别人的
+// 机器上没人认得。
+func relToHome(p string) string {
+	if h, err := os.UserHomeDir(); err == nil && strings.HasPrefix(p, h) {
+		return "~" + strings.TrimPrefix(p, h)
+	}
+	return p
 }
 
 // effectiveCell 是**实际生效**的那个绑定：overrides 最优先，其次看 mode。
@@ -95,19 +227,13 @@ func effectiveCell(reg *OmoSlots, key string) view.Cell {
 	return view.Cell{Text: binding}
 }
 
-// suggestedCell 是建议的体格，**与现状不一致时标黄**。
+// suggestsDifferently 说「这个槽位偏离了建议」。
 //
 // 判据与 CLI 一字不差（`s.Suggested != "" && s.Suggested != s.Current`）：两个
 // 界面对「哪些槽位与建议不符」必须给出同一个答案，否则用户会在终端里看到三条、
 // 在网页上看到两条，然后开始怀疑数据本身。
-func suggestedCell(s OmoSlot) view.Cell {
-	if s.Suggested == "" {
-		return view.Cell{Text: "-"}
-	}
-	if s.Suggested != s.Current {
-		return view.Cell{Text: s.Suggested, Tone: view.ToneWarn}
-	}
-	return view.Cell{Text: s.Suggested}
+func suggestsDifferently(s OmoSlot) bool {
+	return s.Suggested != "" && s.Suggested != s.Current
 }
 
 // dashIfEmpty 给空值一个显式的占位符：空格子读起来像「这里出了问题」，

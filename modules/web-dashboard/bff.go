@@ -99,7 +99,34 @@ func loopbackHost(r *http.Request) bool {
 		return true
 	}
 	ip := net.ParseIP(strings.Trim(host, "[]"))
-	return ip != nil && ip.IsLoopback()
+	if ip == nil {
+		// 名字（域名）一律拒——**这正是这道门存在的理由**：DNS rebinding 要靠一个
+		// 攻击者控制的域名解析到本机。用户想从别处打开界面时用的是 IP，所以拦掉
+		// 名字不会挡住任何正常用法。
+		return false
+	}
+	// IP 字面量：回环、Tailscale 网段、以及任何别的（局域网 / WSL 的 172.x）。
+	//
+	// 为什么「任何 IP」都行得通：Host 是**浏览器自己填的**，它填的是用户导航到的
+	// 那个地址。要伪造它，攻击者得先让用户的浏览器访问 `http://192.168.1.5:8899`
+	// ——那已经不是 rebinding 了。而写操作还有第二道门（必须是 JSON，浏览器会先发
+	// 预检，跨源读不到我们的响应），所以「允许 IP」不等于「允许任意网页改配置」。
+	_ = ip
+	return true
+}
+
+// isTailscale 说这个地址是不是 Tailscale 的网段（100.64.0.0/10，运营商级 NAT 那段）。
+//
+// 今天它不再单独收口（IP 字面量已经一律放行，见 allowedHost），留着是因为它是
+// **唯一一处**说清「100.64/10 是什么」的地方，而那句话在配置界面（state 的监听
+// 地址那一格）里正是用户要读的。
+func isTailscale(ip net.IP) bool {
+	v4 := ip.To4()
+	if v4 == nil {
+		return false
+	}
+	// 100.64.0.0/10：第一段 100，第二段的高 2 位是 01（64..127）。
+	return v4[0] == 100 && v4[1] >= 64 && v4[1] <= 127
 }
 
 // portOf 取这次请求连的端口。只为了报错里能拼出一个**能用的** URL——「请用
@@ -126,7 +153,10 @@ type conceptDoc struct {
 	// 一次的刷新里（见 lib/view 的 Concept.Live）。**由贡献者声明**：谁的东西谁
 	// 知道读一次贵不贵，界面无从推断。
 	Live bool `json:"live,omitempty"`
-	Data any  `json:"data"`
+	// Group 是左栏分组（见 lib/view 的 Concept.Group）：同组的卡在竖栏里归到一个
+	// 标题下。空串 = 自己一档。**只影响排列**，不参与任何身份判断。
+	Group string `json:"group,omitempty"`
+	Data  any    `json:"data"`
 	// Error 非空 = 这个概念**此刻读不出来**（文件被删了、JSON 坏了）。卡片照
 	// 常出现、写着原因，而不是从列表里消失——消失了用户会以为它不存在。
 	Error string `json:"error,omitempty"`
@@ -189,7 +219,7 @@ func (h *Handler) snapshot(sources ...string) (snapshotDoc, error) {
 	for _, c := range concepts {
 		doc.Concepts = append(doc.Concepts, conceptDoc{
 			ID: c.ID, Kind: c.Kind, Title: c.Title, Source: c.Source,
-			Writable: c.Apply != nil, Live: c.Live, Data: c.Data, Error: c.Broken,
+			Writable: c.Apply != nil, Live: c.Live, Group: c.Group, Data: c.Data, Error: c.Broken,
 		})
 	}
 	if doc.Concepts == nil {
@@ -288,20 +318,57 @@ func (h *Handler) static(w http.ResponseWriter, r *http.Request) {
 		p = "index.html"
 	}
 	if b, err := fs.ReadFile(h.assets, p); err == nil {
-		w.Header().Set("Content-Type", contentType(p))
-		_, _ = w.Write(b)
+		serve(w, p, b)
 		return
 	}
 	// SPA 兜底：只有 GET 且看起来不是资源请求时才回 index.html，否则一个拼错的
 	// .js 会静默变成本页 HTML（浏览器报的错会指向别处）。
 	if r.Method == http.MethodGet && !strings.Contains(filepath.Base(p), ".") {
 		if b, err := fs.ReadFile(h.assets, "index.html"); err == nil {
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			_, _ = w.Write(b)
+			serve(w, "index.html", b)
 			return
 		}
 	}
 	http.NotFound(w, r)
+}
+
+func serve(w http.ResponseWriter, p string, b []byte) {
+	w.Header().Set("Content-Type", contentType(p))
+	w.Header().Set("Cache-Control", cacheControl(p))
+	_, _ = w.Write(b)
+}
+
+// cacheControl 说这个文件能被浏览器存多久。
+//
+// # 为什么必须有这条（2026-09-20 实测的坑）
+//
+// 一个 `Cache-Control` 都不给的响应，浏览器**不会**就不缓存它——它会按启发式
+// 自己拿主意（通常是「距上次修改时间的 10%」，没有 Last-Modified 就按会话猜）。
+// 而这份界面的产物名字里带内容哈希：`index-<hash>.js`。发一版新二进制，哈希变了、
+// 旧文件从嵌入的产物里消失了，**但用户浏览器手里那份旧 index.html 还指着旧名字**
+// ——它自己那份旧 JS 也还在缓存里，于是页面照常渲染、只不过渲染的是**上一版的
+// 界面**。
+//
+// 症状就是这么来的：服务端一切正常（curl 拿到的是新产物），用户那边「新加的按钮
+// 没有」「新版面没生效」，而且**没有任何报错**。唯一的出路是手动硬刷新，而没人会
+// 往那上面想。用户报的三次「你没做」有两次是这一条（见 git log 里这一版的提交）。
+//
+// 所以入口文件必须**每次都问服务器**：它只有几百字节，且它是唯一知道哈希变了的
+// 那份文件。剩下的按「名字里有没有内容哈希」分：
+//
+//   - `assets/` 下面的是 Vite 算过哈希的产物：内容一变名字就变，于是同一个名字
+//     永远对应同一份字节，可以无限期缓存（这是 SPA 性能的常规做法，也让刷新只
+//     重新下那几百字节的 index.html）。
+//   - 别的（将来手工放进 dist 的 favicon 之类）没有那道保证，让它每次带 ETag 问
+//     一遍：宁可多一个 304 往返，也不要把一个改了内容的同名文件永久钉在用户机器上。
+func cacheControl(p string) string {
+	if strings.HasSuffix(p, ".html") {
+		return "no-store"
+	}
+	if strings.HasPrefix(p, "assets/") {
+		return "public, max-age=31536000, immutable"
+	}
+	return "no-cache"
 }
 
 func contentType(p string) string {

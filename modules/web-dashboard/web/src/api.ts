@@ -24,6 +24,9 @@ export interface Concept {
   /** true = 这一面会自己变，跟着那几秒一次的刷新走（贡献者声明，见 lib/view 的 Live）。
       不声明就不刷——「读一次贵不贵」只有贡献者知道，不能从 Kind 猜。 */
   live?: boolean;
+  /** 左栏分组（见 lib/view 的 Concept.Group）：同组的卡在竖栏里归到一个标题下。
+      空 = 自己一档。**只影响排列**，不参与任何身份判断。 */
+  group?: string;
   data: any;
   /** 非空 = 这个概念此刻读不出来（文件删了、JSON 坏了）。卡片照常显示，写原因。 */
   error?: string;
