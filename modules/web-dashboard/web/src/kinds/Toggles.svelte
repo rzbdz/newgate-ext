@@ -11,6 +11,11 @@
     value: string | boolean;
     options?: string[];
     why?: string;
+    /** 分组（模块名这类）。同一份列表里可以有好几组——见下面的分组小标题。 */
+    group?: string;
+    /** 危险级别（safe / quirk / footgun）。只影响显示：footgun 由贡献者放进
+        另一张只读卡片，不会出现在这里。 */
+    danger?: string;
   };
   type Data = { file: string; base: string; items: Item[] };
 
@@ -49,10 +54,16 @@
 
 <div class="row"><span class="mono dim">{data.file}</span></div>
 
-{#each data.items ?? [] as it (it.id)}
+{#each data.items ?? [] as it, i (it.id)}
+  {#if it.group && it.group !== (data.items[i - 1]?.group)}
+    <div class="group">{it.group}</div>
+  {/if}
   <div class="item">
     <div class="row">
       <b>{it.label}</b>
+      {#if it.danger && it.danger !== "safe"}
+        <span class="pill" title="what turning this off costs">{it.danger}</span>
+      {/if}
       <span class="spacer"></span>
       {#if it.kind === "bool"}
         <input
@@ -85,6 +96,14 @@
 {/each}
 
 <style>
+  .group {
+    margin: 12px 0 4px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--dim);
+  }
+  .group:first-child { margin-top: 4px; }
   .item { padding: 7px 0; border-top: 1px dashed var(--line); }
   .item:first-of-type { border-top: 0; }
   .why { font-size: 12px; margin-top: 2px; }
