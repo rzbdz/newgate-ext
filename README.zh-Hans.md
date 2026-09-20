@@ -35,7 +35,8 @@ PATH shim 加上就地改写客户端自己的配置——env 静默注入，动
 
 **出了什么事，看得见。**
 `newgate metrics`——按上下文长度分桶的延迟、故障转移、首字节超时、改写次数，每个计数器
-配一句人话解释；`newgate debug on` 打全量请求日志；不对劲时找 `newgate doctor`。
+配一句人话解释；`newgate logs -f` 跟着看代理日志，`newgate debug on` 打全量请求，
+不对劲时找 `newgate doctor`。
 
 **升级不会打断你。**
 `newgate restart` 把监听 socket 交给新二进制，旧进程把在途请求排空——流式响应也一样。

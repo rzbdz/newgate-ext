@@ -37,8 +37,9 @@ time-to-first-byte. Every skip is explained and every reroute logged.
 
 **You can see what actually happened.**
 `newgate metrics` — latency by context size, failovers, first-byte timeouts,
-rewrites, each counter with a one-line explanation. `newgate debug on` for the
-full request log, `newgate doctor` when something is wrong.
+rewrites, each counter with a one-line explanation. `newgate logs -f` follows
+the proxy log, `newgate debug on` dumps every request, `newgate doctor` when
+something is wrong.
 
 **Upgrading doesn't interrupt you.**
 `newgate restart` hands the listening socket to the new binary and drains what's
