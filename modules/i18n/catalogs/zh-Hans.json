@@ -92,6 +92,10 @@
       "text": "分类器改道",
       "reviewed": true
     },
+    "Claude Code Bash classifier": {
+      "text": "Claude Code 的 Bash 分类器",
+      "reviewed": true
+    },
     "Claude Code Bash classifier → the light-tier chain": {
       "text": "Claude Code Bash 分类器 → light 档链",
       "reviewed": true
@@ -136,6 +140,14 @@
       "text": "修尾部形状（第 4 手）",
       "reviewed": true
     },
+    "State": {
+      "text": "状态",
+      "reviewed": true
+    },
+    "Switch": {
+      "text": "开关",
+      "reviewed": true
+    },
     "Usage: newgate omo [ls | use <key> <binding> | unset <key> | mode current|suggested | explain <key>]": {
       "text": "用法：newgate omo [ls | use <键> <归属> | unset <键> | mode current|suggested | explain <键>]",
       "reviewed": true
@@ -150,6 +162,10 @@
     },
     "Usage: newgate omo use <slot key> <@other-key|tier|provider/model>": {
       "text": "用法：newgate omo use <槽位键> <@别的键|档位|provider/模型>",
+      "reviewed": true
+    },
+    "What it means": {
+      "text": "含义",
       "reviewed": true
     },
     "[naked] forever mode: the classifier request was approved directly, the upstream was not called": {
@@ -444,6 +460,10 @@
       "text": "注入 {patch}（GLM 把缺省当默认思考）",
       "reviewed": true
     },
+    "invalid": {
+      "text": "无效",
+      "reviewed": true
+    },
     "keeping the tier an older takeover wrote": {
       "text": "沿用老版本接管写下的档位",
       "reviewed": true
@@ -560,6 +580,10 @@
       "text": "没有这个槽位键 {key}（newgate omo 看列表）",
       "reviewed": true
     },
+    "none": {
+      "text": "没有",
+      "reviewed": true
+    },
     "not bound": {
       "text": "未绑定",
       "reviewed": true
@@ -572,16 +596,32 @@
       "text": "现状",
       "reviewed": true
     },
+    "off": {
+      "text": "关闭",
+      "reviewed": true
+    },
     "omo slot bindings": {
       "text": "omo 槽位绑定",
+      "reviewed": true
+    },
+    "on (forever)": {
+      "text": "开启（永久）",
       "reviewed": true
     },
     "on (forever) — the classifier is short-circuited and every request logs [naked]; newgate naked off ends it": {
       "text": "已开启（forever）—— 分类器被短路，每个请求都打 [naked] 日志；newgate naked off 关",
       "reviewed": true
     },
+    "on — it turns itself off in {left}": {
+      "text": "开启中——还有 {left} 自动关闭",
+      "reviewed": true
+    },
     "on — it turns itself off in {left} (newgate naked off ends it early)": {
       "text": "已开启 —— 还有 {left} 自动关（newgate naked off 可提前）",
+      "reviewed": true
+    },
+    "on, but these plugins are switched off: {names}": {
+      "text": "开着，但这几枚插件被单独关掉了：{names}",
       "reviewed": true
     },
     "profile selection": {
@@ -660,6 +700,10 @@
       "text": "槽位由配置扩展模块发现",
       "reviewed": true
     },
+    "special_treatment layer": {
+      "text": "special_treatment 那一层",
+      "reviewed": true
+    },
     "status blocks": {
       "text": "状态块",
       "reviewed": true
@@ -706,6 +750,14 @@
     },
     "the AES key is unusable: {err}": {
       "text": "AES 密钥不可用: {err}",
+      "reviewed": true
+    },
+    "the Bash classifier is asked as usual": {
+      "text": "Bash 分类器照常询问上游",
+      "reviewed": true
+    },
+    "the classifier is short-circuited and every request logs [naked]": {
+      "text": "分类器被短路，每个请求都会记一行 [naked]",
       "reviewed": true
     },
     "the configshare bookkeeping file is corrupt; starting over from the initial state: {err}": {
@@ -758,6 +810,10 @@
     },
     "the haiku tier; background features": {
       "text": "haiku 档；后台功能",
+      "reviewed": true
+    },
+    "the highest priority globally, ahead of any profile": {
+      "text": "全局最高优先级，先于任何档位",
       "reviewed": true
     },
     "the host declares build {want}, this machine is {got}: this machine can still parse the configuration (unknown fields are ignored, missing ones fall back to defaults), so it was let through. Upgrade newgate to line up exactly.": {
@@ -818,6 +874,10 @@
     },
     "the trailing user turn holds only tool_result and no user instruction — appended a continue instruction (the upstream misreports an instruction-less tail as a missing reasoning_content)": {
       "text": "末尾的 user 轮只有 tool_result 没有用户指令——追加一条继续指令（上游对空指令尾部误报 reasoning_content 缺失）",
+      "reviewed": true
+    },
+    "the whole layer is off, so nothing configured here counts right now; it counts again the moment the layer is switched back on": {
+      "text": "整层是关的，所以这里配的东西此刻都不算数；把层开回来的那一刻就都算数了",
       "reviewed": true
     },
     "there was no concrete model name before takeover": {
@@ -954,6 +1014,10 @@
     },
     "{kind} injection accepted (this shell does not render it; the counts are in status)": {
       "text": "收下 {kind} 注入（本壳不渲染，见 status 的计数）",
+      "reviewed": true
+    },
+    "{names}: switched off individually, so that row counts for nothing right now; it counts again the moment it is switched back on": {
+      "text": "{names}：被单独关掉了，所以那一行此刻不算数；把它开回来的那一刻就又算数了",
       "reviewed": true
     },
     "{name} has no schema_version; interpreting it as the current schema": {

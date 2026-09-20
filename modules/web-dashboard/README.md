@@ -117,7 +117,8 @@ newgate --port 8899      # 无子命令 = 起服务（只有本入口自己的 f
 | `config.state` | `toggles` | config | 能 |
 | `gateway.metrics` | `series` | gateway | 只读 |
 | `gateway.log` | `log` | gateway | 只读 |
-| `gateway.special` | `table` | gateway | 只读：**哪些补丁在动你的请求**（关掉整层 / 单独关掉一个，两种说法各自的颜色）。关掉不会 cli 的装配里 `newgate st` 根本不存在——那张构建里这是唯一的答案 |
+| `gateway.special` | `table` | gateway | 只读：**哪些补丁在动你的请求**（两种「关掉」各有各的说法与颜色；关掉了 cli 的装配里这是唯一的答案） |
+| `claudecode.classifier` | `table` | claudecode | 只读：**Bash 分类器此刻被怎么对待**（裸奔关着 / 限时 / 永久；永久才画红）。同样是关掉 cli 的装配里唯一能看见它的地方 |
 | `plugin-manager.switches` | `toggles` | plugin-manager | 能 |
 | `plugin-manager.footguns` | `toggles` | plugin-manager | 只读（要带时限，见上） |
 | `plugin-manager.modules` | `table` | plugin-manager | 只读：**这个构建由哪些模块组成** |
@@ -129,7 +130,7 @@ newgate --port 8899      # 无子命令 = 起服务（只有本入口自己的 f
 （前端只认 Kind，账本只认注册）。写在这里是为了让人一眼看到「今天能看什么」，
 别当成需要维护的名单。
 
-`table` 那几张（今天五张）是 2026-09-20 加的：形状定义在 `core/lib/view`（列 + 行，行按**列 ID**
+`table` 那几张（今天六张）是 2026-09-20 加的：形状定义在 `core/lib/view`（列 + 行，行按**列 ID**
 索引而不是数组下标，所以列顺序是纯展示的事），前端 `kinds/Table.svelte` 认它。
 第二个贡献者（模块清单）一行前端代码都没改——那正是把它做成契约而不是一次性
 渲染器的理由。

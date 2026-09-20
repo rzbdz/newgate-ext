@@ -92,6 +92,9 @@
     "Classifier rerouting": {
       "where": "modules/claudecode/st-background.go:136"
     },
+    "Claude Code Bash classifier": {
+      "where": "modules/claudecode/view.go:52"
+    },
     "Claude Code Bash classifier → the light-tier chain": {
       "where": "modules/claudecode/st-background.go:137"
     },
@@ -125,6 +128,12 @@
     "Repair the tail shape (hand 4)": {
       "where": "modules/deepseek/switches.go:63"
     },
+    "State": {
+      "where": "modules/claudecode/view.go:56"
+    },
+    "Switch": {
+      "where": "modules/claudecode/view.go:55"
+    },
     "Usage: newgate omo [ls | use <key> <binding> | unset <key> | mode current|suggested | explain <key>]": {
       "where": "modules/opencodeomo/command.go:64"
     },
@@ -136,6 +145,9 @@
     },
     "Usage: newgate omo use <slot key> <@other-key|tier|provider/model>": {
       "where": "modules/opencodeomo/command.go:45"
+    },
+    "What it means": {
+      "where": "modules/claudecode/view.go:57"
     },
     "[naked] forever mode: the classifier request was approved directly, the upstream was not called": {
       "where": "modules/claudecode/classifier-naked.go:179"
@@ -464,6 +476,9 @@
         "patch"
       ]
     },
+    "invalid": {
+      "where": "modules/claudecode/view.go:96"
+    },
     "keeping the tier an older takeover wrote": {
       "where": "modules/opencodeomo/takeover.go:345"
     },
@@ -591,6 +606,9 @@
         "key"
       ]
     },
+    "none": {
+      "where": "modules/claudecode/view.go:102"
+    },
     "not bound": {
       "where": "modules/tui/tui.go:226"
     },
@@ -603,16 +621,34 @@
     "now": {
       "where": "modules/opencodeomo/command.go:139"
     },
+    "off": {
+      "where": "modules/claudecode/view.go:131"
+    },
     "omo slot bindings": {
       "where": "modules/opencodeomo/view.go:45"
     },
+    "on (forever)": {
+      "where": "modules/claudecode/view.go:74"
+    },
     "on (forever) — the classifier is short-circuited and every request logs [naked]; newgate naked off ends it": {
       "where": "modules/claudecode/classifier-naked.go:199"
+    },
+    "on — it turns itself off in {left}": {
+      "where": "modules/claudecode/view.go:78",
+      "args": [
+        "left"
+      ]
     },
     "on — it turns itself off in {left} (newgate naked off ends it early)": {
       "where": "modules/claudecode/classifier-naked.go:204",
       "args": [
         "left"
+      ]
+    },
+    "on, but these plugins are switched off: {names}": {
+      "where": "modules/claudecode/view.go:141",
+      "args": [
+        "names"
       ]
     },
     "profile selection": {
@@ -704,6 +740,9 @@
     "slots are discovered by the config extension module": {
       "where": "modules/opencode/agent.go:17"
     },
+    "special_treatment layer": {
+      "where": "modules/claudecode/view.go:130"
+    },
     "status blocks": {
       "where": "modules/simple-cli/module.go:291"
     },
@@ -757,6 +796,12 @@
     "the AES key is unusable: {err}": {
       "where": "modules/configshare/proto/seal.go:144"
     },
+    "the Bash classifier is asked as usual": {
+      "where": "modules/claudecode/view.go:72"
+    },
+    "the classifier is short-circuited and every request logs [naked]": {
+      "where": "modules/claudecode/view.go:75"
+    },
     "the configshare bookkeeping file is corrupt; starting over from the initial state: {err}": {
       "where": "modules/configshare/proto/state.go:177"
     },
@@ -807,6 +852,9 @@
     },
     "the haiku tier; background features": {
       "where": "modules/claudecode/agent.go:25"
+    },
+    "the highest priority globally, ahead of any profile": {
+      "where": "modules/claudecode/view.go:100"
     },
     "the host declares build {want}, this machine is {got}: this machine can still parse the configuration (unknown fields are ignored, missing ones fall back to defaults), so it was let through. Upgrade newgate to line up exactly.": {
       "where": "modules/configshare/proto/version.go:89",
@@ -876,6 +924,9 @@
     },
     "the trailing user turn holds only tool_result and no user instruction — appended a continue instruction (the upstream misreports an instruction-less tail as a missing reasoning_content)": {
       "where": "modules/deepseek/st-reasoning.go:337"
+    },
+    "the whole layer is off, so nothing configured here counts right now; it counts again the moment the layer is switched back on": {
+      "where": "modules/claudecode/view.go:134"
     },
     "there was no concrete model name before takeover": {
       "where": "modules/opencodeomo/slots.go:286"
@@ -1045,6 +1096,12 @@
       "where": "modules/simple-cli/module.go:309",
       "args": [
         "kind"
+      ]
+    },
+    "{names}: switched off individually, so that row counts for nothing right now; it counts again the moment it is switched back on": {
+      "where": "modules/claudecode/view.go:143",
+      "args": [
+        "names"
       ]
     },
     "{name} has no schema_version; interpreting it as the current schema": {

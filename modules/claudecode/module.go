@@ -17,6 +17,8 @@ import (
 	confighookapi "github.com/rzbdz/newgate/modules/confighook"
 	gatewayapi "github.com/rzbdz/newgate/modules/gateway"
 	thinkingapi "github.com/rzbdz/newgate/modules/thinking"
+
+	viewapi "github.com/rzbdz/newgate/lib/view"
 )
 
 // New 声明 Claude Code 客户端组件。它注册客户端描述符和状态字段，
@@ -34,6 +36,9 @@ func New() modules.Component {
 			// 命令，装着界面就注册进去，没装就跳过。依赖方向是**本模块 → cli**：
 			// cli 不认识任何业务模块，模块反过来认识它。
 			modules.Optional(cliapi.Capability),
+			// web 界面同理（另一条 ui）：只装 dashboard 的装配里没有终端界面，
+			// 「裸奔现在开着吗」照样该看得见——而在那份装配里它是唯一的入口。
+			modules.Optional(viewapi.Capability),
 		},
 		Provides: []modules.Provision{
 			modules.Provide(Capability,
@@ -70,6 +75,20 @@ func New() modules.Component {
 				return err
 			}
 			releases = append(releases, release)
+
+			// web 界面那一份（分类器现在被怎么对待）**先**注册：它不依赖 cli，
+			// 只装 dashboard 的装配里也要有——下面那段一旦 return，这里就永远不会跑。
+			// 而那份装配里这张卡是**唯一**能看见裸奔的地方（status 与 naked 命令
+			// 都是 cli 的），见 view.go 的注释。
+			if v, ok := modules.Get(ctx, viewapi.Capability); ok {
+				release, err = v.Register("claudecode", func() ([]viewapi.Concept, error) {
+					return []viewapi.Concept{classifierConcept()}, nil
+				})
+				if err != nil {
+					return err
+				}
+				releases = append(releases, release)
+			}
 
 			// 自己的命令自己贡献：界面不认识本模块，是本模块认识界面。
 			// ui 没装就跳过（见上面那条 Optional）：模块功能照常。
