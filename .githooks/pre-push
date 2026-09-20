@@ -61,5 +61,9 @@ bash mock/e2e_claude_dist.sh
 # 浏览器那条写路径（快照 / 保存 / 冲突 / 两道门）：与上一条共用同一个产物，
 # 不需要假上游，所以很便宜。
 bash mock/e2e_dashboard.sh
+# 没装客户端时的安装路径（假 npm）：也不出网、不装东西，纯本地。这一条在本地
+# 尤其值——它判的是**这台机器上没有那个工具**时才走得到的代码，而开发机上通常
+# 装着 codex，随手一跑反而验不到（沙箱靠密闭 PATH 把它挡在外面）。
+bash mock/e2e_install.sh
 
 printf '\n✓ pre-push 全绿（core-test / dist-test / gitlink / 端到端）\n'
