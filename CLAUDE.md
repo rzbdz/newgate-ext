@@ -124,7 +124,7 @@ NEWGATE_PLATFORMS="linux/amd64 linux/arm64 darwin/arm64" build/build.sh dist/
   界面，`newgate --port N` 起来之后全靠浏览器）。多编几份是为了**调试**——想看骨架
   配置（`dist-hello.json`）的行为，`NEWGATE_ALL=1` 编出来直接跑即可；而
   `dashboard` 那份是「UI 无关」这句话的**唯一**检验：旗舰版永远装着 cli，
-  所以任何一处偷偷依赖界面的代码在那里都看不出来（2026-09-21 实测到两处）。
+  所以任何一处偷偷依赖界面的代码在那里都看不出来（2026-09-20 实测到两处）。
 - **发什么由流水线决定**：Release 只发重点那份（`release.yml` 里的
   `NEWGATE_DISTS: dist.json`），CI 则编**全部**规格书（「另一份配置编不过」这种
   故障本地看不见，谁也不天天编骨架配置）。
