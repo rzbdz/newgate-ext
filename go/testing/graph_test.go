@@ -8,6 +8,7 @@ import (
 	"github.com/rzbdz/newgate-ext/go/manifest"
 	app "github.com/rzbdz/newgate/go/app"
 	modules "github.com/rzbdz/newgate/go/component"
+	"github.com/rzbdz/newgate/go/component/entry"
 	cliapi "github.com/rzbdz/newgate/go/modules/cli/extension"
 	"github.com/rzbdz/newgate/go/testing/testkit"
 )
@@ -82,7 +83,10 @@ func TestEverySpecBuilds(t *testing.T) {
 // 为什么上界才是判据（2026-09-20 改，原来是「正好一个」）：骨架配置
 // `dist-hello.json` **根本没有界面**——它整个发行版就是「框架 + 一个 hello」，
 // `newgate` 那个入口由 hello 自己申报（见 go/modules/hello）。所以「多于一个」是
-// 那条静默失效，「一个都没有」只是骨架配置的常态；后者只对旗舰发行版是错的。
+// 那条静默失效，「一个都没有」只是骨架配置的常态。
+//
+// 「至少有一个」这件事没有丢，只是换了个更贴事实的说法——见下面那条
+// TestEverySpecClaimsTheBareInvocation：界面只是申报入口的一种方式。
 func TestEverySpecHasAtMostOneUI(t *testing.T) {
 	for _, name := range manifest.SpecNames() {
 		t.Run(name, func(t *testing.T) {
@@ -105,9 +109,6 @@ func TestEverySpecHasAtMostOneUI(t *testing.T) {
 				t.Fatalf("装了 %d 个 ui，最多只能 1 个——多于一个时只有目录名排最前的那个生效，"+
 					"其余完全静默；图 = %v", len(uis), names)
 			}
-			if name == "dist.json" && len(uis) == 0 {
-				t.Fatalf("旗舰发行版一个界面都没有：`newgate <动词>` 会没人认领；图 = %v", names)
-			}
 
 			// 兜底入口（entry.DefaultRank）只能有一个申报者：cli 与 hello 都在那一档
 			// 上，两个同图时谁被 Resolve 选中会退化成「目录名字母序决定进程行为」。
@@ -116,6 +117,44 @@ func TestEverySpecHasAtMostOneUI(t *testing.T) {
 				t.Fatalf("这张图里既有界面又有 hello：两者都在兜底档上申报入口，"+
 					"谁被选中取决于目录名字母序（cli 排在前面）——hello 属于骨架配置，"+
 					"别把它装进带界面的发行版；图 = %v", names)
+			}
+		})
+	}
+}
+
+// TestEverySpecClaimsTheBareInvocation 每份规格书装出来的二进制，**裸调用
+// `newgate` 必须有人认领**。
+//
+// 为什么这是比「必须有界面」更准的判据：界面只是申报入口的**一种**方式。骨架配置
+// （框架 + hello）没有任何界面，它的 `newgate` 由 hello 申报——两张图在这条判据下
+// 都成立，而它们真正共有的、不许坏的东西也正好是这一条：**用户敲下 `newgate`
+// 得到的必须是一个行为，不是一句「没人认领这次调用」加退出码 69**。
+//
+// 它守的退化很具体：某个发行版只装了数据面模块（网关、接管），忘了装任何申报入口
+// 的东西——编译过、测试过、`newgate status` 一切正常，而裸敲 `newgate` 直接退出。
+func TestEverySpecClaimsTheBareInvocation(t *testing.T) {
+	for _, name := range manifest.SpecNames() {
+		t.Run(name, func(t *testing.T) {
+			testkit.Sandbox(t)
+
+			sel := manifest.Specs()[name]
+			comps, err := sel.Load()
+			if err != nil {
+				t.Fatalf("装配选择：%v", err)
+			}
+			// NewContext 会真的 Start 一遍，所以申报是发生过的（不是"摆了个组件"）。
+			manager, err := modules.NewContext(context.Background(), staticLoader(comps))
+			if err != nil {
+				t.Fatalf("起图：%v", err)
+			}
+			t.Cleanup(func() { _ = manager.Stop(context.Background()) })
+
+			registry := modules.MustGet(manager.Context(), entry.Capability)
+			if h, why, ok := registry.Resolve(entry.Process{Argv0: "newgate"}); !ok {
+				t.Fatalf("`newgate` 没人认领（%s）——这个二进制裸跑只会打一句人话就退出；图 = %v",
+					why, manager.ComponentNames())
+			} else {
+				t.Logf("裸调用归 %s", h.Name())
 			}
 		})
 	}
