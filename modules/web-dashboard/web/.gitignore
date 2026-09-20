@@ -1,0 +1,3 @@
+# 依赖不进版本控制；**产物（dist/）进**——Go 的 go:embed 读它，构建才能离线。
+node_modules/
+.vite/

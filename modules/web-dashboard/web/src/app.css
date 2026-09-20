@@ -1,0 +1,106 @@
+/* 设计系统的全部：一层底色、一层卡片、一条分隔线、一个强调色。不引 UI 框架——
+   这个界面是给工程师看的，密度和稳定比动效重要（同一份配置看两次，位置要一样）。 */
+:root {
+  --bg: #0f1115;
+  --panel: #161a21;
+  --panel-2: #1b2028;
+  --line: #242a34;
+  --ink: #e6e9ef;
+  --dim: #8b93a3;
+  --accent: #5b8def;
+  --ok: #4ea87a;
+  --warn: #d9a441;
+  --danger: #d96a6a;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --radius: 10px;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f6f7f9;
+    --panel: #fff;
+    --panel-2: #f2f4f7;
+    --line: #e3e6ec;
+    --ink: #1b1f27;
+    --dim: #6b7280;
+  }
+}
+
+* { box-sizing: border-box; }
+html, body, #app { height: 100%; margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 13px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+    "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+}
+
+button {
+  font: inherit;
+  color: var(--ink);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 5px 11px;
+  cursor: pointer;
+}
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: 0.45; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.ghost { background: transparent; }
+button.tiny { padding: 1px 7px; font-size: 12px; border-radius: 6px; }
+
+input, select, textarea {
+  font: inherit;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 4px 8px;
+  outline: none;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+input[type="checkbox"] { accent-color: var(--accent); }
+
+a { color: var(--accent); }
+
+/* 卡片：一张卡片 = 一个概念。同一份装配跑两次，卡片的顺序必须一样（后端按
+   Source, ID 排序），所以这里不做任何重排。 */
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+.card > header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 13px;
+  border-bottom: 1px solid var(--line);
+}
+.card h3 { font-size: 13px; font-weight: 600; margin: 0; }
+.card .meta { color: var(--dim); font-size: 11px; font-family: var(--mono); }
+.card .body { padding: 12px 13px; }
+.card.dirty > header { box-shadow: inset 3px 0 0 var(--accent); }
+.card.broken > header { box-shadow: inset 3px 0 0 var(--danger); }
+
+.row { display: flex; align-items: center; gap: 8px; }
+.spacer { flex: 1; }
+.dim { color: var(--dim); }
+.mono { font-family: var(--mono); }
+.pill {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 99px;
+  border: 1px solid var(--line);
+  color: var(--dim);
+  font-size: 11px;
+}
+.banner {
+  padding: 9px 13px;
+  border-radius: var(--radius);
+  border: 1px solid var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  margin-bottom: 14px;
+}
