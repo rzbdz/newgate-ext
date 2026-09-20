@@ -57,6 +57,7 @@ const en: Record<string, string> = {
     "counters are process-local — they reset when the daemon restarts",
   "no counters yet — nothing has gone through the gateway since it started.":
     "no counters yet — nothing has gone through the gateway since it started.",
+  "no rows": "no rows",
   tail: "tail",
   "only the tail is shown": "only the tail is shown",
   follow: "follow",
@@ -111,6 +112,7 @@ const zhHans: Record<string, string> = {
     "计数器是进程内的 —— 守护进程重启就归零",
   "no counters yet — nothing has gone through the gateway since it started.":
     "还没有计数器 —— 网关起来之后没有请求经过。",
+  "no rows": "没有数据",
   tail: "尾部",
   "only the tail is shown": "只显示最后一段",
   follow: "跟随",
