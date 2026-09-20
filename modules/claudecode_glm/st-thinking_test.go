@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
+	claudeapi "github.com/rzbdz/newgate-ext/modules/claudecode"
 	"github.com/rzbdz/newgate-ext/modules/glm"
 	glmapi "github.com/rzbdz/newgate-ext/modules/glm"
-	claudeapi "github.com/rzbdz/newgate/modules/claudecode"
 	"github.com/rzbdz/newgate/modules/gateway/special"
 	thinkingmodule "github.com/rzbdz/newgate/modules/thinking"
 )

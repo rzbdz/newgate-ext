@@ -5,7 +5,10 @@
     "deepseek",
     "glm",
     "claudecode_deepseek",
-    "claudecode_glm"
+    "claudecode_glm",
+    "claudecode",
+    "opencode",
+    "opencodeomo"
   ],
   "disable": [
     "cli"

@@ -4,10 +4,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rzbdz/newgate-ext/modules/claudecode"
+	claudeapi "github.com/rzbdz/newgate-ext/modules/claudecode"
 	"github.com/rzbdz/newgate-ext/modules/deepseek"
 	deepseekapi "github.com/rzbdz/newgate-ext/modules/deepseek"
-	"github.com/rzbdz/newgate/modules/claudecode"
-	claudeapi "github.com/rzbdz/newgate/modules/claudecode"
 	"github.com/rzbdz/newgate/modules/gateway/special"
 )
 

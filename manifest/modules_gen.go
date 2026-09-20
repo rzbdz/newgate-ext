@@ -13,11 +13,14 @@ import (
 	"fmt"
 	"strings"
 
+	ext_claudecode "github.com/rzbdz/newgate-ext/modules/claudecode"
 	ext_claudecode_deepseek "github.com/rzbdz/newgate-ext/modules/claudecode_deepseek"
 	ext_claudecode_glm "github.com/rzbdz/newgate-ext/modules/claudecode_glm"
 	ext_deepseek "github.com/rzbdz/newgate-ext/modules/deepseek"
 	ext_glm "github.com/rzbdz/newgate-ext/modules/glm"
 	ext_hello "github.com/rzbdz/newgate-ext/modules/hello"
+	ext_opencode "github.com/rzbdz/newgate-ext/modules/opencode"
+	ext_opencodeomo "github.com/rzbdz/newgate-ext/modules/opencodeomo"
 	ext_simple_cli "github.com/rzbdz/newgate-ext/modules/simple-cli"
 	ext_tui "github.com/rzbdz/newgate-ext/modules/tui"
 	app "github.com/rzbdz/newgate/app"
@@ -47,6 +50,9 @@ func Specs() map[string]app.Selection {
 				{Dir: "glm", Component: ext_glm.New()},
 				{Dir: "claudecode_deepseek", Component: ext_claudecode_deepseek.New()},
 				{Dir: "claudecode_glm", Component: ext_claudecode_glm.New()},
+				{Dir: "claudecode", Component: ext_claudecode.New()},
+				{Dir: "opencode", Component: ext_opencode.New()},
+				{Dir: "opencodeomo", Component: ext_opencodeomo.New()},
 			},
 		},
 		"dist.json": {
@@ -56,6 +62,9 @@ func Specs() map[string]app.Selection {
 				{Dir: "glm", Component: ext_glm.New()},
 				{Dir: "claudecode_deepseek", Component: ext_claudecode_deepseek.New()},
 				{Dir: "claudecode_glm", Component: ext_claudecode_glm.New()},
+				{Dir: "claudecode", Component: ext_claudecode.New()},
+				{Dir: "opencode", Component: ext_opencode.New()},
+				{Dir: "opencodeomo", Component: ext_opencodeomo.New()},
 			},
 		},
 	}

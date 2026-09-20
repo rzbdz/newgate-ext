@@ -7,9 +7,9 @@ package claudecode_glm
 import (
 	"context"
 
+	claudeapi "github.com/rzbdz/newgate-ext/modules/claudecode"
 	glmapi "github.com/rzbdz/newgate-ext/modules/glm"
 	modules "github.com/rzbdz/newgate/component"
-	claudeapi "github.com/rzbdz/newgate/modules/claudecode"
 	gatewayapi "github.com/rzbdz/newgate/modules/gateway"
 )
 
