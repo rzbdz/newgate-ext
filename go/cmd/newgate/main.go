@@ -13,7 +13,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/rzbdz/newgate-modules-ext/go/manifest"
+	"github.com/rzbdz/newgate-ext/go/manifest"
 	app "github.com/rzbdz/newgate/go/app"
 )
 

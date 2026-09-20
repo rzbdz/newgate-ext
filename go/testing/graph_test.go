@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rzbdz/newgate-modules-ext/go/manifest"
+	"github.com/rzbdz/newgate-ext/go/manifest"
 	app "github.com/rzbdz/newgate/go/app"
 	modules "github.com/rzbdz/newgate/go/component"
 	cliapi "github.com/rzbdz/newgate/go/modules/cli/extension"

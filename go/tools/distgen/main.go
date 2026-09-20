@@ -40,7 +40,7 @@ import (
 
 const (
 	// importPath 是本 module 的路径：生成的清单 import 自己的模块时用它。
-	importPath = "github.com/rzbdz/newgate-modules-ext/go"
+	importPath = "github.com/rzbdz/newgate-ext/go"
 	// coreImportPath 是内核 module 的路径（生成物 import app 与 component 用它）。
 	coreImportPath = "github.com/rzbdz/newgate/go"
 	// modulesRelDir 是自己的模块目录（相对 go/）。

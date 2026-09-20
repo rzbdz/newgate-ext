@@ -10,12 +10,12 @@ import (
 	"fmt"
 	"strings"
 
-	ext_claudecode_deepseek "github.com/rzbdz/newgate-modules-ext/go/modules/claudecode_deepseek"
-	ext_claudecode_glm "github.com/rzbdz/newgate-modules-ext/go/modules/claudecode_glm"
-	ext_deepseek "github.com/rzbdz/newgate-modules-ext/go/modules/deepseek"
-	ext_glm "github.com/rzbdz/newgate-modules-ext/go/modules/glm"
-	ext_hello "github.com/rzbdz/newgate-modules-ext/go/modules/hello"
-	ext_simple_cli "github.com/rzbdz/newgate-modules-ext/go/modules/simple-cli"
+	ext_claudecode_deepseek "github.com/rzbdz/newgate-ext/go/modules/claudecode_deepseek"
+	ext_claudecode_glm "github.com/rzbdz/newgate-ext/go/modules/claudecode_glm"
+	ext_deepseek "github.com/rzbdz/newgate-ext/go/modules/deepseek"
+	ext_glm "github.com/rzbdz/newgate-ext/go/modules/glm"
+	ext_hello "github.com/rzbdz/newgate-ext/go/modules/hello"
+	ext_simple_cli "github.com/rzbdz/newgate-ext/go/modules/simple-cli"
 	app "github.com/rzbdz/newgate/go/app"
 	modules "github.com/rzbdz/newgate/go/component"
 )

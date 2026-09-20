@@ -1,4 +1,4 @@
-module github.com/rzbdz/newgate-modules-ext/go
+module github.com/rzbdz/newgate-ext/go
 
 go 1.27
 

@@ -3,7 +3,7 @@ package claudecode_glm
 import (
 	"fmt"
 
-	glmapi "github.com/rzbdz/newgate-modules-ext/go/modules/glm"
+	glmapi "github.com/rzbdz/newgate-ext/go/modules/glm"
 	claudeapi "github.com/rzbdz/newgate/go/modules/claudecode"
 	"github.com/rzbdz/newgate/go/modules/gateway/rewrite"
 	"github.com/rzbdz/newgate/go/modules/gateway/special"

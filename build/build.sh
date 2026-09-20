@@ -27,6 +27,14 @@ set -euo pipefail
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 out=${1:-$here/dist}
+# 输出目录**先转成绝对路径**：脚本中途要 `cd "$gomod"`，那之后的相对路径会指到别处。
+# 2026-09-20 CI 实测踩过：`build/build.sh dist` 把产物写进了 `go/dist/`，而端到端脚本
+# 在仓库根找它，报「找不到二进制」——构建那个 job 还是绿的，所以红在隔壁那步。
+# 相对路径按**调用者当时的工作目录**解释（不是 go/，也不是仓库根）。
+case "$out" in
+  /*) : ;;
+  *)  out="$(pwd)/$out" ;;
+esac
 spec_name=${NEWGATE_DIST:-dist.json}
 core=$here/core
 gomod=$here/go

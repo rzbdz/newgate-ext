@@ -11,7 +11,7 @@ package claudecode_deepseek
 import (
 	"context"
 
-	deepseekapi "github.com/rzbdz/newgate-modules-ext/go/modules/deepseek"
+	deepseekapi "github.com/rzbdz/newgate-ext/go/modules/deepseek"
 	modules "github.com/rzbdz/newgate/go/component"
 	claudeapi "github.com/rzbdz/newgate/go/modules/claudecode"
 	gatewayapi "github.com/rzbdz/newgate/go/modules/gateway"

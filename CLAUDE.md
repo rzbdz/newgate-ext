@@ -60,7 +60,7 @@ newgate-ext/           ← 你在这里（发行版：产品）
 
 - 对内核的 import 是 `github.com/rzbdz/newgate/go/...`（**用它的公开契约**，
   别 import 内部实现包——那些随时会动）；
-- 模块之间的 import 是 `github.com/rzbdz/newgate-modules-ext/go/modules/<名字>`；
+- 模块之间的 import 是 `github.com/rzbdz/newgate-ext/go/modules/<名字>`；
 - **目录名不必是 Go 标识符**（`simple-cli` 合法），生成器会把 import 别名拧成
   `ext_simple_cli`（判据在内核的 `tools/genmodules/scan.Ident`，两个仓库共用一份）；
 - 依赖方向：可以 `Need`/`Optional` 内核提供的端口；**不要**依赖内核里某个具体模块的

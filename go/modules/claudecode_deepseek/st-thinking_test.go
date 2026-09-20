@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rzbdz/newgate-modules-ext/go/modules/deepseek"
-	deepseekapi "github.com/rzbdz/newgate-modules-ext/go/modules/deepseek"
+	"github.com/rzbdz/newgate-ext/go/modules/deepseek"
+	deepseekapi "github.com/rzbdz/newgate-ext/go/modules/deepseek"
 	"github.com/rzbdz/newgate/go/modules/claudecode"
 	claudeapi "github.com/rzbdz/newgate/go/modules/claudecode"
 	"github.com/rzbdz/newgate/go/modules/gateway/special"
