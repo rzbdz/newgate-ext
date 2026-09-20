@@ -639,6 +639,54 @@ if (!(await openSwitches())) {
   }
 }
 
+// —— 15. 静默刷新之后，卡片的顺序不许变 ——
+//
+// 用户的原话：「上游、全局设置经常会自己跑到下面」。真相不是它们「自己跑」，而是
+// **界面在局部刷新时重排了一遍**：3 秒一次的静默刷新只问 Live 的那几个源，拿回来
+// 的几张卡要并回手里那份，拼接这一步自己排了一次——而它当时只按 `(source, id)`
+// 排。于是 `Order` 为 0/1 的「全局设置」「上游」掉到十几张档位卡（Order 10）底下。
+//
+// 症状之所以是「经常」而不是「总是」：整份加载（刷新页面）走的是另一条路，那条
+// 不排、照抄后端顺序，所以是对的。只有静默刷新之后错——而它 3 秒就来一次。
+//
+// 所以这条必须**等一次真的静默刷新**再比：@3 秒是 App 里的间隔常量，这里按它等。
+{
+  await page.locator(`nav.side button[title="config"]`).click();
+  await page.waitForTimeout(300);
+  const navOrder = () =>
+    page.evaluate(() =>
+      [...document.querySelectorAll("nav.v button.row")].map((b) => b.getAttribute("title")),
+    );
+  const before = await navOrder();
+  check("config 那节的竖栏画出来了", before.length > 2, `实际 ${before.length} 张`);
+  // 后端声明的顺序：全局设置(0) / 上游(1) 在档位卡(10)前面。
+  check(
+    "装完就要配的那两张排在最前",
+    before.findIndex((id) => id === "config.providers") <
+      before.findIndex((id) => id?.startsWith("config.profile.")),
+    before.slice(0, 4).join(" "),
+  );
+  // **必须真的开一次自动刷新**：轮询默认是关的（`auto = false`），不打开的话这条
+  // 检查是空转的——它会「通过」，而它要防的那个 bug 一次都没被触发过。第一版就是
+  // 这样：把排序改回旧写法，它照样全绿。
+  await page.locator('header.top input[type="checkbox"]').check();
+  // 轮询 3 秒一次（App 里的间隔），等一次落地再多给一点。
+  await page.waitForTimeout(4200);
+  const after = await navOrder();
+  check(
+    "静默刷新之后顺序没变",
+    JSON.stringify(after) === JSON.stringify(before),
+    `刷新前 ${before.slice(0, 4).join(" ")} / 刷新后 ${after.slice(0, 4).join(" ")}`,
+  );
+  check(
+    "静默刷新之后那两张还在最前",
+    after.findIndex((id) => id === "config.providers") <
+      after.findIndex((id) => id?.startsWith("config.profile.")),
+    after.slice(0, 4).join(" "),
+  );
+  await page.locator('header.top input[type="checkbox"]').uncheck();
+}
+
 check("整场没有页面错误", pageErrors.length === 0, pageErrors.slice(0, 2).join(" / "));
 
 console.log(`\n结果: ${pass} 通过, ${fail} 失败`);

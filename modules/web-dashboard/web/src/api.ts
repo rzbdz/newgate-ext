@@ -29,6 +29,9 @@ export interface Concept {
       标题画不画由 TabStrip 按「这一段底下有没有 ≥2 张卡」决定。
       **只影响排列**，不参与任何身份判断（路由与草稿都按 id 走）。 */
   group?: string;
+  /** 同一节里谁排前面（见 lib/view 的 Concept.Order，后端原样端出来）。界面**不解释**
+      这些数字，只按它排——排序规则是贡献者的产品决定，不是界面的。 */
+  order?: number;
   data: any;
   /** 非空 = 这个概念此刻读不出来（文件删了、JSON 坏了）。卡片照常显示，写原因。 */
   error?: string;

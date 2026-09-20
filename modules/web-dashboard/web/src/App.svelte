@@ -176,8 +176,25 @@
     ...new Set(concepts.filter((c) => c.live).map((c) => c.source)),
   ]);
 
+  /**
+   * 把一列概念排成**后端那份顺序**：`(source, order, id)`。
+   *
+   * 只在局部刷新（`load(sources)`）合并之后用：那时手里是「旧的没动的 + 刚拿到的」
+   * 两拨拼起来的，后端排好的数组顺序在拼接这一步没了，必须自己再排一次。
+   *
+   * 三个键与 `lib/view` 的 Snapshot 逐字对齐——**同一份顺序必须有同一个判据**。
+   * 少一个都不行：只按 `(source, id)` 排（这是它以前的样子），`Order` 为 0/1 的
+   * 「全局设置」「上游」会在每次静默刷新之后掉到十几张档位卡底下（Order 是 10），
+   * 而这两个恰好是**装完就要配**的那两张，用户看到的症状是「它们经常会自己跑到
+   * 下面」。`order` 缺省 0 与内核一致（没声明 Order 的贡献者排最前）。
+   */
   function bySourceId(list: Concept[]): Concept[] {
-    return [...list].sort((a, b) => (a.source + "/" + a.id).localeCompare(b.source + "/" + b.id));
+    return [...list].sort(
+      (a, b) =>
+        a.source.localeCompare(b.source) ||
+        (a.order ?? 0) - (b.order ?? 0) ||
+        a.id.localeCompare(b.id),
+    );
   }
 
   /**

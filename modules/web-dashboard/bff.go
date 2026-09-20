@@ -163,7 +163,15 @@ type conceptDoc struct {
 	// Group 是左栏分组（见 lib/view 的 Concept.Group）：同组的卡在竖栏里归到一个
 	// 标题下。空串 = 自己一档。**只影响排列**，不参与任何身份判断。
 	Group string `json:"group,omitempty"`
-	Data  any    `json:"data"`
+	// Order 是同一节里谁排前面（见 lib/view 的 Concept.Order）。
+	//
+	// **必须端出去**：快照里的数组本来就是按 (Source, Order, ID) 排好的，但前端会
+	// 在**局部刷新**时把新拿到的几张卡并回手里那份，合并这一步要自己排一次——没有
+	// Order 它只能按 ID 字母序，于是「全局设置」「上游」这种 Order 为 0/1 的卡在
+	// 每次静默刷新之后掉到十几张档位卡下面（实测：不刷新时在上面，一刷新就到最底，
+	// 用户看到的正是「它们经常会自己跑到下面」）。
+	Order int `json:"order"`
+	Data  any `json:"data"`
 	// Error 非空 = 这个概念**此刻读不出来**（文件被删了、JSON 坏了）。卡片照
 	// 常出现、写着原因，而不是从列表里消失——消失了用户会以为它不存在。
 	Error string `json:"error,omitempty"`
@@ -235,7 +243,7 @@ func (h *Handler) snapshot(sources ...string) (snapshotDoc, error) {
 	for _, c := range concepts {
 		doc.Concepts = append(doc.Concepts, conceptDoc{
 			ID: c.ID, Kind: c.Kind, Title: c.Title, Source: c.Source,
-			Writable: c.Apply != nil, Live: c.Live, Group: c.Group,
+			Writable: c.Apply != nil, Live: c.Live, Group: c.Group, Order: c.Order,
 			Data: c.Data, Error: c.Broken,
 		})
 	}
