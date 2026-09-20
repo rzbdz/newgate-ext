@@ -4,7 +4,7 @@
 
 ### The best gateway for **vibecoding**.
 
-<sub>Transparent takeover · one-command API switching · failover that explains itself · metrics and debug logs · graceful zero-downtime upgrades · modular to the bone</sub>
+<sub>Transparent takeover · one-command API switching · failover that explains itself · metrics and debug logs · a browser console · graceful zero-downtime upgrades · modular to the bone</sub>
 
 [![CI](https://github.com/rzbdz/newgate-ext/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/rzbdz/newgate-ext/actions/workflows/ci.yml)
 ![release](https://github.com/rzbdz/newgate-ext/actions/workflows/release.yml/badge.svg)
@@ -47,6 +47,14 @@ time-to-first-byte. Every skip is explained and every reroute logged.
 rewrites, each counter with a one-line explanation. `newgate logs -f` follows
 the proxy log, `newgate debug on` dumps every request, `newgate doctor` when
 something is wrong.
+
+**The same picture, in a browser.**
+`newgate web` prints the address — served on the port the gateway already
+listens on. Profiles and tier bindings edited in place, runtime switches
+flipped, counters, the log tail, binding health, and who is going through the
+gateway right now. Every change goes through the **same write path the command
+line uses**, carrying the revision you loaded: a file the CLI changed while you
+were looking at the page is a conflict laid out for you, not an overwrite.
 
 **Upgrading doesn't interrupt you.**
 `newgate restart` hands the listening socket to the new binary and drains what's

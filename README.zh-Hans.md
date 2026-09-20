@@ -4,7 +4,7 @@
 
 ### 为 **vibecoding** 而生的最佳网关。
 
-<sub>无感接管 · 一条命令切换 API · 自己会解释的故障转移 · metrics 与调试日志 · 零停机优雅升级 · 彻底模块化</sub>
+<sub>无感接管 · 一条命令切换 API · 自己会解释的故障转移 · metrics 与调试日志 · 浏览器控制台 · 零停机优雅升级 · 彻底模块化</sub>
 
 [![CI](https://github.com/rzbdz/newgate-ext/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/rzbdz/newgate-ext/actions/workflows/ci.yml)
 ![release](https://github.com/rzbdz/newgate-ext/actions/workflows/release.yml/badge.svg)
@@ -42,6 +42,12 @@ PATH shim 加上就地改写客户端自己的配置——env 静默注入，动
 `newgate metrics`——按上下文长度分桶的延迟、故障转移、首字节超时、改写次数，每个计数器
 配一句人话解释；`newgate logs -f` 跟着看代理日志，`newgate debug on` 打全量请求，
 不对劲时找 `newgate doctor`。
+
+**同一份画面，浏览器里也有一份。**
+`newgate web` 打出地址（默认就挂在网关那个端口上）：档位绑定与 profile 就地改、
+运行期开关随手拨，还能看计数器、日志尾巴、binding 健康，以及**此刻谁正走在 newgate 上**。
+改动走的是命令行那条**同一条写路径**——带着你加载时那份版本，所以命令行在你看着页面时
+改过的文件会变成一次**冲突**（两边摆给你看），而不是被悄悄覆盖。
 
 **升级不会打断你。**
 `newgate restart` 把监听 socket 交给新二进制，旧进程把在途请求排空——流式响应也一样。
