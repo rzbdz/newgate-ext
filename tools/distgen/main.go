@@ -53,6 +53,15 @@ const (
 	specGlob = "dist*.json"
 	// defaultSpec 是没注入 -ldflags -X main.spec 时用的那一份。
 	defaultSpec = "dist.json"
+	// disableAllToken 是规格书里「内核自带的全都不要」的写法：`"disable": ["*"]`。
+	//
+	// 为什么要有它：列满目录名的写法带一份**会腐坏的副本**——内核往 CoreModules()
+	// 里加一个模块时，那份名单不会跟着长，于是「我以为全关掉了」的发行版悄悄多装了
+	// 一个模块，而且不报错。`*` 编成 app.Selection.AllCore，跟着内核的模块表一起长。
+	//
+	// 它只在**规格书**这一层（产品数据）：内核那边的字段叫 AllCore，是个布尔值，
+	// 不需要认识任何字符串记号。
+	disableAllToken = "*"
 )
 
 // spec 是规格书（Spec）：本发行版由哪些模块组成、关掉内核的哪几个。
@@ -219,10 +228,19 @@ func validate(specs map[string]spec, mods []module) error {
 			}
 			named[want] = true
 		}
-		for _, off := range s.Disable {
+		for i, off := range s.Disable {
+			if off == disableAllToken {
+				if len(s.Disable) > 1 {
+					return fmt.Errorf("%s 的 disable 里同时写了 %q 和具体名字（%v）——"+
+						"%q 已经包含它们了。要全关就只留 %q；只想关几个就别写它",
+						name, disableAllToken, s.Disable[i+1:], disableAllToken, disableAllToken)
+				}
+				continue
+			}
 			if !core[off] {
 				return fmt.Errorf("%s 的 disable 点名了 %q，但内核没有这个模块"+
-					"（写的是**目录名**吗？比如 claudecode_deepseek 而不是 claudecode-deepseek）", name, off)
+					"（写的是**目录名**吗？比如 claudecode_deepseek 而不是 claudecode-deepseek。"+
+					"要关掉内核自带的全部，写 %q）", name, off, disableAllToken)
 			}
 		}
 	}
@@ -257,6 +275,9 @@ func render(mods []module, specs map[string]spec, names []string) []byte {
 	b.WriteString("// 由仓库根的规格书（dist*.json）编译而来：每条 app.Selection 就是一份规格书\n")
 	b.WriteString("// 要装的东西——自己的模块 + 要关掉的内核模块。构建时用\n")
 	b.WriteString("// -ldflags -X main.spec=<文件名> 选一份，DefaultSpec 是没注入时的兜底。\n")
+	b.WriteString("//\n")
+	b.WriteString("// 规格书里的 `\"disable\": [\"*\"]` 编成 app.Selection.AllCore：内核自带的全都不要，\n")
+	b.WriteString("// 只留关不掉的那些（组合根自己要用的端口）。\n")
 	b.WriteString("\npackage " + genPkgDir + "\n\n")
 	b.WriteString("import (\n")
 	b.WriteString("\t\"fmt\"\n")
@@ -280,7 +301,10 @@ func render(mods []module, specs map[string]spec, names []string) []byte {
 	for _, name := range names {
 		s := specs[name]
 		fmt.Fprintf(&b, "\t\t%q: {\n", name)
-		if len(s.Disable) > 0 {
+		if len(s.Disable) == 1 && s.Disable[0] == disableAllToken {
+			// 一句话，而不是十几个目录名：AllCore 跟着内核的模块表一起长。
+			b.WriteString("\t\t\tAllCore: true,\n")
+		} else if len(s.Disable) > 0 {
 			fmt.Fprintf(&b, "\t\t\tDisable: []string{%s},\n", quoteList(s.Disable))
 		}
 		b.WriteString("\t\t\tExtra: []app.Entry{\n")

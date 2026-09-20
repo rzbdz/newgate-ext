@@ -20,6 +20,18 @@ import (
 // 自带的十三个模块，这条管本发行版装的那几个 + 规格书本身的语义。两边的判据是同一
 // 句：**装不起来可以，但得是因为有人硬依赖它，而且报错要点名缺哪个端口。**
 
+// servesEntry 报告组件是不是**入口账本**的提供者——组合根自己要用的那个端口。
+// 判据从组件的 Provides 里读：内核的 app.Selection.Load 用的也是这一条
+// （compositionRootPorts），两边是同一句话的两种说法。
+func servesEntry(c modules.Component) bool {
+	for _, p := range c.Provides {
+		if p.Name() == modules.Name(entry.Capability) {
+			return true
+		}
+	}
+	return false
+}
+
 // staticLoader 把一张写死的组件表交出去（内核 app/matrix_test.go 用的是同一招：
 // 组合根的 Loader 接口只有一个方法，测试里没必要造一个真 Loader）。
 type staticLoader []modules.Component
@@ -59,12 +71,24 @@ func TestEverySpecBuilds(t *testing.T) {
 						e.Component.Name, e.Dir, manager.ComponentNames())
 				}
 			}
+			// 关掉的那些必须**真的**不在图里。判据从规格书读——Disable 名单，或者
+			// AllCore（内核自带的全部可关模块）——不写死名字，也不重复一份名单。
 			for _, e := range app.CoreModules() {
-				if !contains(sel.Disable, e.Dir) {
+				if !sel.AllCore && !contains(sel.Disable, e.Dir) {
+					continue
+				}
+				if servesEntry(e.Component) {
+					// 组合根自己要用的那个（入口账本）**关不掉**：Selection.Load 拒绝关它，
+					// AllCore 也把它留在外面。所以它必须还在图里——它是「这张图里还有人
+					// 能认领这次调用」的那一半保证。
+					if !got[e.Component.Name] {
+						t.Errorf("入口账本（%s）不在图里——没有它，这个二进制裸跑没人能认领调用",
+							e.Component.Name)
+					}
 					continue
 				}
 				if got[e.Component.Name] {
-					t.Errorf("规格书 disable 点了 %s（目录 %s），可它还在图里——"+
+					t.Errorf("规格书关掉了 %s（目录 %s），可它还在图里——"+
 						"「我以为关掉了，它还在跑」是这一层最坏的失效", e.Component.Name, e.Dir)
 				}
 			}

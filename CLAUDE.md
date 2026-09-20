@@ -98,6 +98,10 @@ NEWGATE_PLATFORMS="linux/amd64 linux/arm64 darwin/arm64" build/build.sh dist/
   所以拿产物去跑之前，**先按正确的名字落一份**——直接跑
   `dist/newgate-<发行版>-linux-amd64 plugin` 会被当成 profile 名，报
   「同时给了 profile … 和 …，不一致」（2026-09-20 实测）。
+- **要关掉内核自带的全部**（骨架发行版就是这种）写 `"disable": ["*"]`，别把目录名
+  列满：`distgen` 把它编成 `app.Selection.AllCore`，它跟着内核的模块表一起长——
+  列满的名单是那份表的**副本**，内核加一个模块时它不会跟着变（静默多装一个）。
+  `*` 与具体名字同时写、或点了不存在的目录，生成期就报错。
 - 换规格书 = 改 `dist.json` 或加一份 `dist*.json`，**不用改任何 Go 代码**：
   `distgen` 会把全部规格书生成进 `manifest/modules_gen.go`（那份文件要提交），
   构建时用 `-X main.spec=<文件名>` 选一份。

@@ -3,6 +3,9 @@
 // 由仓库根的规格书（dist*.json）编译而来：每条 app.Selection 就是一份规格书
 // 要装的东西——自己的模块 + 要关掉的内核模块。构建时用
 // -ldflags -X main.spec=<文件名> 选一份，DefaultSpec 是没注入时的兜底。
+//
+// 规格书里的 `"disable": ["*"]` 编成 app.Selection.AllCore：内核自带的全都不要，
+// 只留关不掉的那些（组合根自己要用的端口）。
 
 package manifest
 
@@ -30,7 +33,7 @@ const DefaultSpec = "dist.json"
 func Specs() map[string]app.Selection {
 	return map[string]app.Selection{
 		"dist-hello.json": {
-			Disable: []string{"breaker", "claudecode", "cli", "config", "confighook", "gateway", "opencode", "opencodeomo", "pluginmanager", "runtime", "thinking", "tui", "wrapper"},
+			AllCore: true,
 			Extra: []app.Entry{
 				{Dir: "hello", Component: ext_hello.New()},
 			},

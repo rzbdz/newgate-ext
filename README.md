@@ -18,7 +18,7 @@ fork 它 → 改 `dist.json` 与 `modules/` → 就有了你自己的发行版�
 | `cmd/newgate/` | 本发行版的 main：交出「装哪张图 + 版本号」，其余交给内核的组合根 |
 | `dist.json` | **规格书**（旗舰）：本发行版由哪些模块组成、关掉内核的哪几个 |
 | `dist-simple-cli.json` | 变体：换掉界面（内核的 `cli` → 本仓库的 `simple-cli`） |
-| `dist-hello.json` | 骨架：整个框架 + 一个 `hello`，`newgate` 跑起来就是一句 hello world |
+| `dist-hello.json` | 骨架：整个框架 + 一个 `hello`，`newgate` 跑起来就是一句 hello world。它的 `"disable": ["*"]` 读作**内核自带的全都不要**（只剩摘不掉的那个入口账本） |
 | `mock/` | 本发行版模块的端到端（复用内核的假上游） |
 | `build/build.sh` | 唯一的构建入口 |
 | `CLAUDE.md` | 在这里干活的人（和 agent）要先读的那份说明 |
