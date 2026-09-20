@@ -607,7 +607,7 @@
       ]
     },
     "no such concept: {id} — the page is probably stale, reload it": {
-      "where": "modules/web-dashboard/bff.go:297",
+      "where": "modules/web-dashboard/bff.go:298",
       "args": [
         "id"
       ]
@@ -656,15 +656,6 @@
     },
     "opencode": {
       "where": "modules/opencodeomo/module.go:77"
-    },
-    "previewing needs Content-Type: application/json (got {ct})": {
-      "where": "modules/web-dashboard/bff.go:352",
-      "args": [
-        "ct"
-      ]
-    },
-    "previewing uses POST": {
-      "where": "modules/web-dashboard/bff.go:78"
     },
     "profile selection": {
       "where": "modules/tui/tui.go:199"
@@ -721,19 +712,28 @@
       ]
     },
     "saving needs Content-Type: application/json (got {ct})": {
-      "where": "modules/web-dashboard/bff.go:284",
+      "where": "modules/web-dashboard/bff.go:285",
       "args": [
         "ct"
       ]
     },
     "saving uses POST": {
-      "where": "modules/web-dashboard/bff.go:71"
+      "where": "modules/web-dashboard/bff.go:78"
     },
     "secrets updated (gen {gen})": {
       "where": "modules/configshare/proto/poller.go:187",
       "args": [
         "gen"
       ]
+    },
+    "section actions need Content-Type: application/json (got {ct})": {
+      "where": "modules/web-dashboard/bff.go:347",
+      "args": [
+        "ct"
+      ]
+    },
+    "section actions use POST": {
+      "where": "modules/web-dashboard/bff.go:71"
     },
     "short-circuit the Bash classifier: on=60s / forever=permanent / off=disabled": {
       "where": "modules/claudecode/command.go:44"
@@ -898,7 +898,7 @@
       "where": "modules/opencodeomo/diagnostics.go:30"
     },
     "the request body is not valid JSON: {err}": {
-      "where": "modules/web-dashboard/bff.go:289",
+      "where": "modules/web-dashboard/bff.go:290",
       "args": [
         "err"
       ]
@@ -1219,7 +1219,7 @@
       ]
     },
     "{title} is read-only": {
-      "where": "modules/web-dashboard/bff.go:306",
+      "where": "modules/web-dashboard/bff.go:307",
       "args": [
         "title"
       ]

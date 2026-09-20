@@ -83,6 +83,26 @@ a { color: var(--accent); }
 .card .meta { color: var(--dim); font-size: 11px; font-family: var(--mono); }
 .card .body { padding: 12px 13px; }
 .card.dirty > header { box-shadow: inset 3px 0 0 var(--accent); }
+
+/* 只有 log 这一种 Kind 要**占满可用高度**。
+   理由是日志没有「该看多少行」的自然长度：每一行都是等价的，按内容给高度等于让
+   窗口上碰巧空出来的那块地决定你看见几行——实测 1440×900 里日志只吃到 340px，
+   下面 500 多 px 全是空白，而看日志的人要的恰恰是「尽量多几行」。
+   别的 Kind 都是「有几条画几条」、长了自己滚，那些照旧。 */
+.card.fills {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  margin-bottom: 0;
+}
+.card.fills > .body {
+  flex: 1;
+  /* min-height: 0 与 .pane 那一条同理：flex 子项默认不肯缩到内容以下，日志会把
+     卡片顶高，于是滚的是外层而不是日志自己。 */
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
 .card.broken > header { box-shadow: inset 3px 0 0 var(--danger); }
 
 .row { display: flex; align-items: center; gap: 8px; }
@@ -104,16 +124,6 @@ a { color: var(--accent); }
   background: color-mix(in srgb, var(--danger) 12%, transparent);
   margin-bottom: 14px;
 }
-/* notice 是**说一句**，不是报错：东西没坏，只是有个副作用用户该知道（比如同一份
-   文件的另一半有未保存的改动被挤掉了）。所以用 warn 而不是 danger——画成红的会
-   让人以为保存失败了，然后去重试一件已经成功的事。 */
-.notice {
-  padding: 9px 13px;
-  border-radius: var(--radius);
-  border: 1px solid var(--warn);
-  background: color-mix(in srgb, var(--warn) 12%, transparent);
-  margin-bottom: 14px;
-}
 
 /* ---------- 版面：左目录 / 右上 tab 条 / 右下内容 ----------
    页面的网格必须住在这个全局表里，不能写进 App.svelte 的 <style>：Svelte 的
@@ -128,7 +138,9 @@ a { color: var(--accent); }
 .shell > header.top { grid-column: 1 / -1; }
 .content {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  /* errs / secbar / nav / pane。secbar 没画时那一行是 auto=0，所以不需要为它写
+     两套版面。 */
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   min-height: 0;
   overflow: hidden;
 }
@@ -137,14 +149,26 @@ a { color: var(--accent); }
    这个「多少算多」由 App 的 TAB_OVERFLOW 决定，这里只铺版面。 */
 .content.subcol {
   grid-template-columns: 210px minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
 }
 .content.subcol > .errs { grid-column: 1 / -1; grid-row: 1; }
+.content.subcol > .secbar { grid-column: 1 / -1; grid-row: 2; }
 /* 滚动落在 .nav-slot 上，而不是里面的竖栏自己：竖栏（nav.v）高度是「内容撑满」
    的，38 行永远>自己，永远不会溢出、也就永远不会滚。.nav-slot 是网格 1fr 行上一
    个确定性高度的容器，加 overflow-y 才有的滚。 */
-.content.subcol > .nav-slot { grid-column: 1; grid-row: 2; min-height: 0; min-width: 0; overflow-y: auto; }
-.content.subcol > .pane { grid-column: 2; grid-row: 2; }
+.content.subcol > .nav-slot { grid-column: 1; grid-row: 3; min-height: 0; min-width: 0; overflow-y: auto; }
+.content.subcol > .pane { grid-column: 2; grid-row: 3; }
+/* 一节的工具条：左边是这一节的名字，右边是它注入的动作。 */
+.secbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+.secbar .name { font-size: 11px; letter-spacing: 0.6px; text-transform: uppercase; color: var(--dim); }
+
 .pane {
   overflow: auto;
   padding: 14px 16px;
@@ -170,11 +194,12 @@ a { color: var(--accent); }
      900px 会让内容只剩一条缝。 */
   .content.subcol {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-rows: auto auto auto minmax(0, 1fr);
   }
   .content.subcol > .errs { grid-column: 1; grid-row: 1; }
-  .content.subcol > .nav-slot { grid-column: 1; grid-row: 2; }
-  .content.subcol > .pane { grid-column: 1; grid-row: 3; }
+  .content.subcol > .secbar { grid-column: 1; grid-row: 2; }
+  .content.subcol > .nav-slot { grid-column: 1; grid-row: 3; }
+  .content.subcol > .pane { grid-column: 1; grid-row: 4; }
   .content.subcol :global(nav.v) {
     flex-direction: row;
     align-items: center;

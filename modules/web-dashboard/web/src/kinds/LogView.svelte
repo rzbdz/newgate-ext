@@ -57,7 +57,10 @@
     font-family: var(--mono);
     font-size: 11.5px;
     line-height: 1.45;
-    max-height: 340px;
+    /* 占满卡片剩下的一切（卡片自己撑满窗口，见 app.css 的 .card.fills）：日志多
+       看见一行就是多一行。min-height: 0 是让它**自己滚**而不是把卡片顶高。 */
+    flex: 1;
+    min-height: 0;
     overflow: auto;
     background: var(--bg);
     border: 1px solid var(--line);

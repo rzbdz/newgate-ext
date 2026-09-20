@@ -65,6 +65,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.writeJSONStatus(w, http.StatusOK, doc)
 	case r.URL.Path == "/api/health":
 		h.writeJSONStatus(w, http.StatusOK, map[string]any{"ok": true, "contract": Contract})
+	case r.URL.Path == "/api/section":
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", http.MethodPost)
+			http.Error(w, i18n.T("section actions use POST", nil), http.StatusMethodNotAllowed)
+			return
+		}
+		h.sectionAction(w, r)
 	case r.URL.Path == "/api/apply":
 		if r.Method != http.MethodPost {
 			w.Header().Set("Allow", http.MethodPost)
@@ -72,13 +79,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.apply(w, r)
-	case r.URL.Path == "/api/preview":
-		if r.Method != http.MethodPost {
-			w.Header().Set("Allow", http.MethodPost)
-			http.Error(w, i18n.T("previewing uses POST", nil), http.StatusMethodNotAllowed)
-			return
-		}
-		h.preview(w, r)
 	default:
 		h.static(w, r)
 	}
@@ -163,11 +163,7 @@ type conceptDoc struct {
 	// Group 是左栏分组（见 lib/view 的 Concept.Group）：同组的卡在竖栏里归到一个
 	// 标题下。空串 = 自己一档。**只影响排列**，不参与任何身份判断。
 	Group string `json:"group,omitempty"`
-	// Previewable = 贡献者给了 Preview（见 lib/view 的 Concept.Preview）：这张卡
-	// 能拿同一份文件另一半的草稿问一句「我该显示成什么样」。界面据此决定要不要在
-	// 原文改动之后去问——没有它就别问，问了也是白跑一趟。
-	Previewable bool `json:"previewable,omitempty"`
-	Data        any  `json:"data"`
+	Data  any    `json:"data"`
 	// Error 非空 = 这个概念**此刻读不出来**（文件被删了、JSON 坏了）。卡片照
 	// 常出现、写着原因，而不是从列表里消失——消失了用户会以为它不存在。
 	Error string `json:"error,omitempty"`
@@ -202,6 +198,9 @@ type sectionDoc struct {
 	// 报**（view.Section.Group）：BFF 不认识任何模块，也就无从判断「熔断该跟网关
 	// 一类」这件事。
 	Group string `json:"group,omitempty"`
+	// Actions 是这一栏上的按钮（见 view.Section.Actions）。BFF 只搬 ID 与标签，
+	// 「点了会发生什么」住在贡献者那边——它的 Run 是个函数，端不出去。
+	Actions []view.ActionInfo `json:"actions,omitempty"`
 }
 
 // snapshot 问一遍贡献者要这一刻的样子。
@@ -222,7 +221,9 @@ func (h *Handler) snapshot(sources ...string) (snapshotDoc, error) {
 	// （只是把登记的栏目名取出来），所以不花钱；而侧栏的徽标数与「这个模块还在
 	// 不在」正是那几秒一次的刷新最该跟上的东西。
 	for _, s := range h.views.Sections() {
-		doc.Sections = append(doc.Sections, sectionDoc{Source: s.Source, Title: s.Title, Group: s.Group})
+		doc.Sections = append(doc.Sections, sectionDoc{
+			Source: s.Source, Title: s.Title, Group: s.Group, Actions: s.Actions,
+		})
 	}
 	if doc.Sections == nil {
 		doc.Sections = []sectionDoc{}
@@ -235,7 +236,7 @@ func (h *Handler) snapshot(sources ...string) (snapshotDoc, error) {
 		doc.Concepts = append(doc.Concepts, conceptDoc{
 			ID: c.ID, Kind: c.Kind, Title: c.Title, Source: c.Source,
 			Writable: c.Apply != nil, Live: c.Live, Group: c.Group,
-			Previewable: c.Preview != nil, Data: c.Data, Error: c.Broken,
+			Data: c.Data, Error: c.Broken,
 		})
 	}
 	if doc.Concepts == nil {
@@ -258,7 +259,10 @@ type applyRequest struct {
 type applyResponse struct {
 	OK bool `json:"ok"`
 	// Base 是写完之后的**新基线**：前端续着改不用刷新页面。
-	Base     string       `json:"base,omitempty"`
+	Base string `json:"base,omitempty"`
+	// Focus 是**动作做完之后该切到哪个概念**（见 view.Action.Run）——「新建」最需要
+	// 它：新建出来的东西叫什么名字只有实现者知道，界面据此切过去。空 = 留在原地。
+	Focus    string       `json:"focus,omitempty"`
 	Conflict *conflictDoc `json:"conflict,omitempty"`
 	Error    string       `json:"error,omitempty"`
 }
@@ -324,58 +328,42 @@ func (h *Handler) apply(w http.ResponseWriter, r *http.Request) {
 	h.writeJSONStatus(w, http.StatusOK, applyResponse{OK: true, Base: newBase})
 }
 
-// ---------- 预览 ----------
+// ---------- 栏目动作 ----------
 
-type previewRequest struct {
-	// ID 是那张**要被预览的**概念的稳定身份（控件那一半，不是交草稿的那一半）。
-	ID string `json:"id"`
-	// Text 是同一份文件**还没落盘的**草稿（界面从原文那一半手里拿的）。
-	Text string `json:"text"`
+type sectionActionRequest struct {
+	// Source 是哪一节（机器标记，快照里那个）。
+	Source string `json:"source"`
+	// Action 是那一节里的哪个动作（见 view.Action.ID）。
+	Action string `json:"action"`
 }
 
-type previewResponse struct {
-	Data  any    `json:"data,omitempty"`
-	Error string `json:"error,omitempty"`
-}
-
-// preview 把一份草稿交给拥有那份文件的贡献者，换回「这张卡此刻该显示成什么样」。
+// sectionAction 跑一个挂在栏目上的动作——「再建一份档位文件」这类。
 //
-// 与 apply 同一道门（必须是 JSON）：它虽然不落盘，但**请求里带的是用户的配置
-// 内容**，而且响应会把配置的形状回给页面。两道门的理由在 apply 那里写全了。
+// 与 apply 分开是本条设计的要点：动作**不属于任何一张卡**（新建出来的东西此刻还
+// 没有概念），所以它没有 base、没有 edit，只有「哪一节、哪个动作」。BFF 依旧只
+// 转交：它不知道那个动作会干什么。
 //
-// 失败一律 200：草稿解析不出来是**打字途中的常态**（正敲着的那一行本来就不完整），
-// 不是「这次请求坏了」。用 4xx 的话，界面就得为「正常的半成品」和「真的出错了」
-// 写两套分支，而它想做的事两处一模一样——保持上一次的样子。
-func (h *Handler) preview(w http.ResponseWriter, r *http.Request) {
+// 与 apply 同一道门（必须是 JSON）：它改的是磁盘上的配置。
+func (h *Handler) sectionAction(w http.ResponseWriter, r *http.Request) {
 	if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
-		h.writeJSONStatus(w, http.StatusUnsupportedMediaType, previewResponse{
-			Error: i18n.T("previewing needs Content-Type: application/json (got {ct})", i18n.A{"ct": ct})})
+		h.writeJSONStatus(w, http.StatusUnsupportedMediaType, applyResponse{
+			Error: i18n.T("section actions need Content-Type: application/json (got {ct})", i18n.A{"ct": ct})})
 		return
 	}
-	var req previewRequest
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<20)).Decode(&req); err != nil {
-		h.writeJSONStatus(w, http.StatusBadRequest, previewResponse{
+	var req sectionActionRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
+		h.writeJSONStatus(w, http.StatusBadRequest, applyResponse{
 			Error: i18n.T("the request body is not valid JSON: {err}", i18n.A{"err": err})})
 		return
 	}
-	c, err := h.views.Get(req.ID)
+	focus, err := h.views.RunAction(req.Source, req.Action)
 	if err != nil {
-		// 贡献者没有这个 id：回空。界面那边这只是一次「顺手更新」，不是用户按的
-		// 某个按钮——为它弹一条报错，等于让一次打字在屏幕上变成一次故障。
-		h.writeJSONStatus(w, http.StatusOK, previewResponse{})
+		// 贡献者的报错原样带出去（「那一节里没有这个动作」也在这里）——它比 BFF
+		// 转述一句「操作失败」有用得多。
+		h.writeJSONStatus(w, http.StatusBadRequest, applyResponse{Error: err.Error()})
 		return
 	}
-	if c.Preview == nil {
-		// 这个概念没有第二半（它自己就是原文），没什么可预览的。
-		h.writeJSONStatus(w, http.StatusOK, previewResponse{})
-		return
-	}
-	data, err := c.Preview([]byte(req.Text))
-	if err != nil {
-		h.writeJSONStatus(w, http.StatusOK, previewResponse{Error: err.Error()})
-		return
-	}
-	h.writeJSONStatus(w, http.StatusOK, previewResponse{Data: data})
+	h.writeJSONStatus(w, http.StatusOK, applyResponse{OK: true, Focus: focus})
 }
 
 // ---------- 静态资源 ----------

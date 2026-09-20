@@ -46,17 +46,17 @@
     readonly,
     onEdit,
     onDeleteFile,
-    onCreateFile,
   }: {
     data: Data;
     draft: unknown;
     readonly: boolean;
     onEdit: (v: unknown) => void;
-    // 删除与新建**立刻生效**（不走「改完再点保存」）：它们动的是磁盘上的文件本身，
-    // 让用户先点一次删除、再点一次保存，等于给一个不可撤销的动作配一道没用的仪式。
-    // 两者都作用在**这一张卡自己**的文件上，所以不需要参数。
+    // 删除**立刻生效**（不走「改完再点保存」）：它动的是磁盘上的文件本身，让用户
+    // 先点一次删除、再点一次保存，等于给一个不可撤销的动作配一道没用的仪式。
+    // 它作用在**这一张卡自己**的文件上，所以不需要参数。
+    //
+    // 「新建」不在这里（见下面模板里那段注释）：它属于**这一节的工具条**。
     onDeleteFile?: () => void;
-    onCreateFile?: () => void;
   } = $props();
 
   // 本地编辑（null = 还没动过）。**为什么不是「挂载时拷一份副本」**：副本只在
@@ -192,13 +192,9 @@
   {#if data.excluded}<span class="pill">{t("excluded")}</span>{/if}
   <span class="spacer"></span>
   <span class="mono dim file">{data.file}</span>
-  {#if !readonly && onCreateFile}
-    <button
-      class="tiny ghost"
-      title={t("create another profile file")}
-      onclick={onCreateFile}
-    >{t("+ profile")}</button>
-  {/if}
+  <!-- 「再建一份」**不在这张卡上**：新建出来的那一份此刻还没有概念，没有哪张卡能
+       挂它。它挂在**这一节的工具条**上（见 App.svelte 的 .secbar 与
+       core/lib/view 的 Section.Actions），那儿永远够得着。 -->
   {#if !readonly && onDeleteFile}
     <button
       class="tiny ghost danger"

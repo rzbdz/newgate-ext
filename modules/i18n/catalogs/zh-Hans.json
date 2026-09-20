@@ -628,14 +628,6 @@
       "text": "opencode",
       "reviewed": true
     },
-    "previewing needs Content-Type: application/json (got {ct})": {
-      "text": "预览要求 Content-Type: application/json（这次是 {ct}）",
-      "reviewed": true
-    },
-    "previewing uses POST": {
-      "text": "预览使用 POST",
-      "reviewed": true
-    },
     "profile selection": {
       "text": "profile 选择",
       "reviewed": true
@@ -690,6 +682,14 @@
     },
     "secrets updated (gen {gen})": {
       "text": "已更新密钥（gen {gen}）",
+      "reviewed": true
+    },
+    "section actions need Content-Type: application/json (got {ct})": {
+      "text": "栏目动作要求 Content-Type: application/json（这次是 {ct}）",
+      "reviewed": true
+    },
+    "section actions use POST": {
+      "text": "栏目动作使用 POST",
       "reviewed": true
     },
     "short-circuit the Bash classifier: on=60s / forever=permanent / off=disabled": {

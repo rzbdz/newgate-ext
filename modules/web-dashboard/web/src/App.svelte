@@ -12,7 +12,15 @@
   // 开关」这件四步就能做完的事，第一步是滚三屏。现在：**左侧是节的目录**（点一下
   // 切一节）、**一节里多张卡走 tab**、**同一份文件的控件与原文并排**。验收线是
   // 「任何东西 4-5 次操作内到达」，操作数在下面每个动作旁边写着。
-  import { apply, preview, snapshot, type Concept, type Conflict, type Section } from "./api";
+  import {
+    apply,
+    runSectionAction,
+    snapshot,
+    type Concept,
+    type Conflict,
+    type Section,
+    type SectionAction,
+  } from "./api";
   import { setLang, t } from "./i18n";
   import { emptyRoute, fileOf, parseHash, writeHash, type Action, type Route } from "./nav";
   import ConflictDialog from "./ConflictDialog.svelte";
@@ -144,6 +152,10 @@
     );
   });
 
+  /** 当前这一节：它的名字与它注入的动作（见 api.ts 的 SectionAction）。 */
+  const section = $derived(sections.find((s) => s.source === route.section));
+  const sectionActions = $derived(section?.actions ?? []);
+
   /** 并排时哪一半在左：控件那一半。 */
   const leftCard = $derived(active?.kind === "code" && pair ? pair : active);
   const rightCard = $derived(active?.kind === "code" && pair ? active : pair);
@@ -252,8 +264,7 @@
         // 已经过去了（该看的人看过这一眼了），留着那句话只会变成一条永远擦不掉的
         // 提示（它描述的是一个已经不存在的情况）。预览同理：盘上的内容已经就是
         // 「草稿生效之后」的样子，再拿草稿去覆盖显示就成了显示一份不存在的东西。
-        dropped = "";
-        previews = {};
+
       }
       resolveRoute();
       note = localTime(doc.generated_at, doc.lang);
@@ -281,119 +292,13 @@
   }
 
   /**
-   * 一份文件的两半：**最后被改的是哪一半**（`"ui"` 控件 / `"raw"` 原文）。
+   * 一个概念被改了：记成草稿，点保存才落盘。
    *
-   * 为什么必须有它：控件半与原文半是两个概念、两份草稿、两个基线，而它们写的是
-   * **同一份文件**。改了原文之后控件那边手里还是「改之前那份盘上内容」——两边一起
-   * 保存，后写的那一半必然撞在过期基线上（报「这个文件在页面加载之后被别人改过」），
-   * 用户看到的是「怎么改都保存不了」。
-   *
-   * 所以：谁后改，谁说了算。另一半的草稿在**这边一改**的时候就作废丢掉——它是照着
-   * 改动之前那份盘上内容渲染的，留着只会把人送进冲突。保存完的整份重读（见
-   * saveAll）就是「编辑完马上同步另一半」那一步：两半都从盘上重新读一遍。
+   * **一份文件只有一个可写的面**（见 core/modules/config/view.go 里 fileConcepts
+   * 那段）：有结构化控件的那份文件，它原文那一半是只读的。所以这里既不用判断
+   * 「谁后改的」，也不用挤掉谁的草稿——同一份文件永远只会有**一个**草稿。
    */
-  let lastEdit = $state<Record<string, "ui" | "raw">>({});
-
-  /**
-   * dropped 是「刚才丢掉的是哪一份文件另一半的草稿」——一句给用户看的话，不是错误。
-   *
-   * 为什么必须有：另一半的草稿是被**这一半**的编辑挤掉的（见 edit），而那是用户
-   * 刚敲进去的字。不声不响地丢掉它违背这个仓库那条硬规矩（不静默），而且他多半
-   * 会以为那段字还在——等他想起来回来看时，屏幕上已经是盘上那份旧内容了。
-   */
-  let dropped = $state("");
-
-  /**
-   * previews 是「原文那一半的草稿长这样时，**控件**那一半该显示成什么」——按控件
-   * 那张卡的 id 存（见 api.ts 的 preview、内核 lib/view 的 Concept.Preview）。
-   *
-   * 为什么必须有它：一份文件的两半都能改，而控件那一半的编辑载荷是**整份文件**
-   * （一张档位表整个交上去，不是那一格）。所以「在原文里粘一整份、再去动一个下拉
-   * 框」如果没有这一问，交上去的就是**改之前**那份旧表——刚粘的东西当场没了，而
-   * 屏幕上从头到尾没显示过它，用户不会觉得自己正在覆盖什么。
-   *
-   * 生命周期跟着**原文那份草稿**走：草稿在，预览在；草稿被挤掉/保存掉/撤销掉，
-   * 预览跟着消失（否则控件那一半会停在一份磁盘上并不存在的内容上）。
-   */
-  let previews = $state<Record<string, unknown>>({});
-
-  /** 这份文件上「控件那一半」：不是 code、且和它指同一份文件的那张卡。 */
-  function controlOf(f: string): Concept | undefined {
-    return concepts.find((c) => c.kind !== "code" && fileOf(c) === f);
-  }
-
-  /** 原文那一半此刻的草稿文本（没有草稿就是 undefined）。 */
-  function rawDraftOf(f: string): string | undefined {
-    const raw = concepts.find((c) => c.kind === "code" && fileOf(c) === f);
-    const d = raw ? (drafts[raw.id] as { text?: unknown } | undefined) : undefined;
-    return typeof d?.text === "string" ? d.text : undefined;
-  }
-
-  function dropPreview(f: string) {
-    const ctl = controlOf(f);
-    if (ctl && previews[ctl.id] !== undefined) {
-      delete previews[ctl.id];
-      previews = { ...previews };
-    }
-  }
-
-  /**
-   * 原文改了 → 问一句控件那一半现在该长什么样。
-   *
-   * **防抖 200ms**：CodeMirror 每敲一个字符就 onEdit 一次，而每敲一下就发一个请求
-   * 是白费——敲到一半的 KV 本来就解析不了（后端那时回 error，界面保持上一次的
-   * 样子，见 BFF 的 preview）。200ms 是「停手」的粗判：够短，看着像即时；够长，
-   * 一次连续的输入只问一次。
-   *
-   * 回来晚了就用**内容**判一次：这中间草稿可能已经被挤掉或改过了，那时这一问的
-   * 答案属于上一个版本，画上去就是在显示一份不存在的草稿。
-   */
-  let previewTimer: ReturnType<typeof setTimeout> | undefined;
-
-  function schedulePreview(f: string, text: string) {
-    const ctl = controlOf(f);
-    if (!ctl?.previewable) return;
-    clearTimeout(previewTimer);
-    const id = ctl.id;
-    previewTimer = setTimeout(() => {
-      void (async () => {
-        if (rawDraftOf(f) !== text) return;
-        const res = await preview(id, text);
-        if (res.error || rawDraftOf(f) !== text) return;
-        previews[id] = res.data;
-        previews = { ...previews };
-      })();
-    }, 200);
-  }
-
   function edit(id: string, value: unknown) {
-    const c = concepts.find((x) => x.id === id);
-    const f = c ? fileOf(c) : undefined;
-    if (c && f) {
-      const side: "ui" | "raw" = c.kind === "code" ? "raw" : "ui";
-      lastEdit[f] = side;
-      let lost = "";
-      for (const other of concepts) {
-        if (other.id === id || fileOf(other) !== f) continue;
-        const otherSide = other.kind === "code" ? "raw" : "ui";
-        if (otherSide === side || drafts[other.id] === undefined) continue;
-        lost = f;
-        delete drafts[other.id];
-      }
-      dropped = lost
-        ? t("both panes edit {file}, and only the one you touched last is saved — what was pending in the other pane has been dropped", {
-            file: lost,
-          })
-        : "";
-      // 改的是原文那一半 → 让控件那一半跟上（见 previews 的注释）。改的是控件那一
-      // 半 → 原文的草稿刚被挤掉，预览也就没有依据了，跟着撤掉。
-      if (side === "raw") {
-        const text = (value as { text?: unknown } | null)?.text;
-        if (typeof text === "string") schedulePreview(f, text);
-      } else if (lost) {
-        dropPreview(f);
-      }
-    }
     drafts[id] = value;
     drafts = { ...drafts };
   }
@@ -414,18 +319,6 @@
     for (const id of dirty) {
       const c = concepts.find((x) => x.id === id);
       if (!c) continue;
-      // 一份文件的两半只能有一半说了算（见 edit 里 lastEdit 的注释）：万一两边都
-      // 还带着草稿（比如从别处塞进来的），只交**后改**的那一半——一起交必然有一半
-      // 撞过期基线，用户看到的是「怎么保存都报错」。另一半的草稿就此丢掉：它写的
-      // 是同一份文件的旧内容，留着只会再错一次。
-      const f = fileOf(c);
-      if (f && lastEdit[f]) {
-        const side = c.kind === "code" ? "raw" : "ui";
-        if (side !== lastEdit[f]) {
-          delete drafts[id];
-          continue;
-        }
-      }
       const res = await apply(id, baseOf(c), drafts[id]);
       if (res.conflict) {
         stillConflicting.push(res.conflict);
@@ -480,39 +373,34 @@
   }
 
   /**
-   * 新建一份档位文件。名字由这里挑（`new-profile`，重名就往后加序号）——后端拒绝
-   * 覆盖已有的文件，所以「挑一个没被占用的」这件事得有人做，而只有界面知道现在有哪些。
+   * 跑当前这一节上的一个动作（见 api.ts 的 runSectionAction）。
    *
-   * 打完就重读并**切到新那张卡**：新建的下一步一定是「去填它」，停在原地等于让用户
-   * 自己再找一次。
+   * 界面**不知道那个动作会干什么**，也不该知道：「再建一份档位文件」这个名字怎么挑、
+   * 建出来是什么形状，全是拥有那一节的人的活。界面只做两件事——把点击转过去、
+   * 然后重读（与保存那条路一样，干完活就重新拉一份快照）。
    */
-  async function createProfile() {
-    if (!active) return;
-    const taken = new Set(
-      concepts
-        .map((c) => c.id)
-        .filter((id) => id.startsWith("config.profile."))
-        .map((id) => id.slice("config.profile.".length)),
-    );
-    let name = "new-profile";
-    for (let i = 2; taken.has(name); i++) name = `new-profile-${i}`;
-
+  async function runAction(a: SectionAction) {
     busy = true;
     error = "";
-    const res = await apply(active.id, baseOf(active), { create: name });
+    const res = await runSectionAction(route.section, a.id);
     busy = false;
     if (res.error) {
       error = res.error;
       return;
     }
+    // 草稿先丢掉：动作改的是磁盘，重读之后手里那些草稿的基线全是旧的。
     drafts = {};
-    // **先把目的地写进 route，再重读**：`load()` 结尾会跑 resolveRoute()，它按
-    // 「这张卡存不存在」决定留还是清；重读之后那张新卡已经在了，于是它被原样保留
-    // 并写进地址栏。反过来（先 load 再改 route）会与 resolveRoute 自己那次写 hash
-    // 抢时序——hashchange 是异步的，谁后到不一定，于是「新建之后停在原来那张卡」
-    // 时有时无（实测）。
-    route = { ...route, card: "config.profile." + name };
     await load();
+    // 动作说它做出了什么（res.focus），就切过去——「新建」的下一步一定是去填它，
+    // 让用户自己在一堆卡里找刚建的那一张，等于把「它叫什么名字」这个问题的答案
+    // 又藏起来一次。
+    //
+    // 界面**不猜**那个 id：找不到就留在原地（那边刚重读过，新卡就在导航里）。
+    const target = res.focus ? concepts.find((c) => c.id === res.focus) : undefined;
+    if (target) {
+      route = { section: target.source, card: target.id, split: route.split };
+      writeHash(route);
+    }
   }
 
   /** 冲突里选「保留我的」：拿磁盘上那份的基线重放一次。 */
@@ -678,9 +566,6 @@
       {#if error}
         <div class="banner">{error}</div>
       {/if}
-      {#if dropped}
-        <div class="notice">{dropped}</div>
-      {/if}
       {#each conflicts as cf (cf.concept + cf.current)}
         <!-- 自己就是一块 .banner.conflict（不套壳：两层边框看着像两个东西）。 -->
         <ConflictDialog
@@ -693,6 +578,20 @@
 
     <!-- 包一层 .nav-slot：TabStrip 是组件，App 的 scoped 样式给不了它根元素的网格
          位置，标在包这一层清楚了（见 app.css 的 .content.subcol）。 -->
+    <!-- 这一节的工具条：它自己注入的动作（「再建一份档位文件」这类）。
+         动作住在**栏目**上而不是某张卡上——新建出来的那一份此刻还没有概念，没有哪张
+         卡能挂这个按钮；挂在栏目上它还永远够得着，不管你正看着哪一张卡。
+         没有动作就整条不画（空着的一条只会把内容往下推）。 -->
+    {#if sectionActions.length}
+      <div class="secbar">
+        <span class="name">{section?.title}</span>
+        <span class="spacer"></span>
+        {#each sectionActions as a (a.id)}
+          <button class="tiny ghost" disabled={busy} onclick={() => runAction(a)}>{a.label}</button>
+        {/each}
+      </div>
+    {/if}
+
     <div class="nav-slot">
       <TabStrip
         cards={sectionCards}
@@ -709,12 +608,10 @@
           left={leftCard}
           right={rightCard}
           {drafts}
-          {previews}
           split={route.split}
           onEdit={edit}
           onRevert={revert}
           onDeleteFile={deleteActive}
-          onCreateFile={createProfile}
           onToggleSplit={toggleSplit}
         />
       {:else if concepts.length}

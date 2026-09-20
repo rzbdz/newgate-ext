@@ -17,42 +17,34 @@
   let {
     concept,
     draft,
-    preview,
     onEdit,
     onRevert,
     onDeleteFile,
-    onCreateFile,
   }: {
     concept: Concept;
     draft: unknown;
-    /**
-     * 「同一份文件**另一半**的草稿长这样时，这张卡该显示成什么」（见 App.svelte
-     * 的 previews 与内核的 Concept.Preview）。有它就用它，没有就用快照里那份。
-     *
-     * 走 data 这条路（而不是另开一个 prop 给渲染器）是刻意的：渲染器本来就只认
-     * `data` 一个形状，多一条路等于每个渲染器都要再学一遍「两份数据谁优先」。
-     * 而且它**换了新对象**这件事本身就够渲染器清掉自己那份本地编辑缓存了
-     * （见 MappingEditor 里 `seen === data` 那个 effect）——那正是我们要的：
-     * 原文改过之后，控件那一半必须重新照着新内容画。
-     */
-    preview?: unknown;
     onEdit: (v: unknown) => void;
     onRevert: () => void;
-    // 删/建这一份文件（不带参数：作用在这张卡自己身上，见 kinds/MappingEditor）。
+    // 删这一份文件（不带参数：作用在这张卡自己身上）。
     onDeleteFile?: () => void;
-    onCreateFile?: () => void;
   } = $props();
 
   const isDirty = $derived(draft !== undefined);
-  /** 渲染器看到的那份数据：草稿预览优先于快照。 */
-  const shown = $derived(preview !== undefined ? preview : concept.data);
 
   function changed(v: unknown) {
     onEdit(v);
   }
 </script>
 
-<section class="card" class:dirty={isDirty} class:broken={!!concept.error}>
+<!-- `fills`：这一种 Kind 要占满可用高度（今天只有 log，理由见 app.css）。判据挂在
+     卡片上而不是让 CSS 去猜，因为「我要多高」是**这一种 Kind 的属性**，不是它碰巧
+     画出来的形状。 -->
+<section
+  class="card"
+  class:dirty={isDirty}
+  class:broken={!!concept.error}
+  class:fills={concept.kind === "log" && !concept.error}
+>
   <header>
     <h3>{concept.title}</h3>
     <span class="meta">{concept.id}</span>
@@ -85,25 +77,24 @@
       <p class="dim">{concept.error}</p>
     {:else if concept.kind === "mapping-editor"}
       <MappingEditor
-        data={shown}
+        data={concept.data}
         {draft}
         readonly={!concept.writable}
         onEdit={changed}
         {onDeleteFile}
-        {onCreateFile}
       />
     {:else if concept.kind === "code"}
-      <CodeEditor data={shown} {draft} readonly={!concept.writable} onEdit={changed} />
+      <CodeEditor data={concept.data} {draft} readonly={!concept.writable} onEdit={changed} />
     {:else if concept.kind === "toggles"}
-      <Toggles data={shown} {draft} readonly={!concept.writable} onEdit={changed} />
+      <Toggles data={concept.data} {draft} readonly={!concept.writable} onEdit={changed} />
     {:else if concept.kind === "records"}
-      <Records data={shown} {draft} readonly={!concept.writable} onEdit={changed} />
+      <Records data={concept.data} {draft} readonly={!concept.writable} onEdit={changed} />
     {:else if concept.kind === "table"}
-      <Table data={shown} />
+      <Table data={concept.data} />
     {:else if concept.kind === "series"}
-      <Series data={shown} />
+      <Series data={concept.data} />
     {:else if concept.kind === "log"}
-      <LogView data={shown} />
+      <LogView data={concept.data} />
     {:else}
       <!-- 还没有渲染器的 Kind（将来加的那种）：把原文摆出来，而不是假装它不
            存在。加渲染器是前端的事，不该由后端等。

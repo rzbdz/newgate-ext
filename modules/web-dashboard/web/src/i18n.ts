@@ -34,6 +34,8 @@ const en: Record<string, string> = {
   unsaved: "unsaved",
   revert: "revert",
   "read-only": "read-only",
+  "read-only — the controls for this file are in the other pane":
+    "read-only — the controls for this file are in the other pane",
   "the contributor offers no way to write this one back (it may hold credentials)":
     "the contributor offers no way to write this one back (it may hold credentials)",
   "no renderer for kind “{kind}” yet — raw data:":
@@ -52,8 +54,6 @@ const en: Record<string, string> = {
   "delete this file": "delete this file",
   "name": "name",
   "extends": "extends",
-  "+ profile": "+ profile",
-  "create another profile file": "create another profile file",
   "Delete profile “{name}” ({file})? This removes the file.":
     "Delete profile “{name}” ({file})? This removes the file.",
   "Profile files": "Profile files",
@@ -83,13 +83,9 @@ const en: Record<string, string> = {
   follow: "follow",
   "no log file yet — this daemon has not written anything.":
     "no log file yet — this daemon has not written anything.",
-  "both panes edit {file}, and only the one you touched last is saved — what was pending in the other pane has been dropped":
-    "both panes edit {file}, and only the one you touched last is saved — what was pending in the other pane has been dropped",
 };
 
 const zhHans: Record<string, string> = {
-  "both panes edit {file}, and only the one you touched last is saved — what was pending in the other pane has been dropped":
-    "{file} 的两栏改的是同一份文件，只保存你最后动的那一栏 —— 另一栏里没保存的改动已经丢掉了",
   sections: "目录",
   "nothing is contributing a view in this process.":
     "这个进程里没有模块贡献界面内容。",
@@ -113,6 +109,8 @@ const zhHans: Record<string, string> = {
   unsaved: "未保存",
   revert: "撤销改动",
   "read-only": "只读",
+  "read-only — the controls for this file are in the other pane":
+    "只读 —— 这一栏是看那份文件的，改它用旁边那一栏控件",
   "the contributor offers no way to write this one back (it may hold credentials)":
     "贡献它的模块没有提供写回的方式（这份内容可能带凭据）",
   "no renderer for kind “{kind}” yet — raw data:":
@@ -131,8 +129,6 @@ const zhHans: Record<string, string> = {
   "delete this file": "删除这个文件",
   "name": "名字",
   "extends": "继承自",
-  "+ profile": "＋新建档位",
-  "create another profile file": "再建一份档位文件",
   "Delete profile “{name}” ({file})? This removes the file.":
     "删除档位“{name}”（{file}）？这会删掉这个文件。",
   "Profile files": "档位文件",

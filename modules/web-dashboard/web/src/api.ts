@@ -29,10 +29,6 @@ export interface Concept {
       标题画不画由 TabStrip 按「这一段底下有没有 ≥2 张卡」决定。
       **只影响排列**，不参与任何身份判断（路由与草稿都按 id 走）。 */
   group?: string;
-  /** true = 这张卡能拿**同一份文件另一半的草稿**问一句「我该显示成什么样」
-      （见 lib/view 的 Concept.Preview 与 api.ts 的 preview）。只有一半能问是
-      常态：原文那一半自己就是原文，没有第二半。 */
-  previewable?: boolean;
   data: any;
   /** 非空 = 这个概念此刻读不出来（文件删了、JSON 坏了）。卡片照常显示，写原因。 */
   error?: string;
@@ -48,9 +44,18 @@ export interface Concept {
  * 它**不走 t()**：那是模块的内容（与概念标题同一类），后端已经按当时的语言翻好
  * 了。t() 是界面自己的字（按钮、提示）。
  */
+/** 栏目上的一个按钮（见 lib/view 的 Section.Actions）。ID 回传时用，label 是字。 */
+export interface SectionAction {
+  id: string;
+  label: string;
+}
+
 export interface Section {
   source: string;
   title: string;
+  /** 这一栏上的动作（「再建一份档位文件」这类）。**由贡献者注入**——新建出来的
+      东西此刻还没有概念，所以它不属于任何一张卡；界面也不知道那一节能长出什么。 */
+  actions?: SectionAction[];
   /** 侧栏里的分组（见 lib/view 的 Section.Group）。空 = 不归任何一档，排在最上面。
       **由贡献者声明**，所以单成员的组也照画标题——与 TabStrip 那条「≥2 才画」刻意
       不同：那边是内核从名字推出来的族（一个人一族的标题是噪音），这边是模块自己
@@ -81,6 +86,9 @@ export interface Conflict {
 export interface ApplyResult {
   ok?: boolean;
   base?: string;
+  /** 做完之后该切到哪个概念（目前只有栏目动作会给，见 view.Action.Run）。界面据此
+      把路由挪过去——**它不认识那个 id 是什么**，只是照着跳。 */
+  focus?: string;
   conflict?: Conflict;
   error?: string;
 }
@@ -176,28 +184,22 @@ export async function apply(id: string, base: string, edit: unknown): Promise<Ap
   );
 }
 
-export interface PreviewResult {
-  /** 这个概念在「文件长这样」时该显示的数据（形状与快照里的 data 一样）。 */
-  data?: unknown;
-  /** 草稿还解析不出来（**打字途中的常态**，不是故障）：界面保持上一次的样子。 */
-  error?: string;
-}
 
 /**
- * 问一句：「这份文件**还没落盘的草稿**长这样时，这张卡该显示成什么样？」
+ * 跑一个栏目上的动作，然后由调用方重读快照（与保存那条路一样）。
  *
- * 用途只有一处，但很要命：一份文件的两半（控件 + 原文）都能改。用户在原文里粘了
- * 一整份档位、再去动一个下拉框——控件那一半手里还是**改之前**那份盘上内容，它交
- * 上去的是整份旧表，刚粘的东西当场没了。有了这一问，两半始终说的是同一份内容。
+ * 它**不带参数**，这是刻意的：界面能提供的只有「用户点了这个按钮」，别的（新档位
+ * 该叫什么名字、哪些字段要预填）都得由拥有那批数据的人自己看盘上有什么决定。
  *
- * 解析是**贡献者**的事（那份文件的格式是它的知识），所以这里只搬字节。
+ * 返回值里的 `focus` 是**那个动作做出来的东西的 id**（「新建」才有）——界面拿它
+ * 跳过去，而不是自己拼一个 id 出来猜。
  */
-export async function preview(id: string, text: string): Promise<PreviewResult> {
-  return json<PreviewResult>(
-    await fetch(`${API}/preview`, {
+export async function runSectionAction(source: string, action: string): Promise<ApplyResult> {
+  return json<ApplyResult>(
+    await fetch(`${API}/section`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, text }),
+      body: JSON.stringify({ source, action }),
     }),
   );
 }

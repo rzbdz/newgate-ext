@@ -16,26 +16,20 @@
     left,
     right,
     drafts,
-    previews,
     split,
     onEdit,
     onRevert,
     onDeleteFile,
-    onCreateFile,
     onToggleSplit,
   }: {
     left: Concept;
     right: Concept | undefined;
     drafts: Record<string, unknown>;
-    // 「同一份文件另一半的草稿长这样时，这张卡该显示成什么」，按卡片 id 存（见
-    // App.svelte 的 previews）。**只有控件那一半会有**——原文那一半自己就是原文。
-    previews: Record<string, unknown>;
     split: boolean;
     onEdit: (id: string, v: unknown) => void;
     onRevert: (id: string) => void;
-    // 都作用在**卡片自己那份文件**上，所以不带参数（见 kinds/MappingEditor）。
+    // 作用在**卡片自己那份文件**上，所以不带参数（见 kinds/MappingEditor）。
     onDeleteFile?: () => void;
-    onCreateFile?: () => void;
     onToggleSplit: () => void;
   } = $props();
 
@@ -55,11 +49,9 @@
       <ConceptCard
         concept={left}
         draft={drafts[left.id]}
-        preview={previews[left.id]}
         onEdit={(v) => onEdit(left.id, v)}
         onRevert={() => onRevert(left.id)}
         {onDeleteFile}
-        {onCreateFile}
       />
     </div>
     {#if two && right}
