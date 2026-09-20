@@ -45,7 +45,7 @@ func NewHandler(assets fs.FS, views *view.Registry) *Handler {
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.URL.Path == "/api/snapshot":
-		doc, err := h.snapshot()
+		doc, err := h.snapshot(r.URL.Query()["source"]...)
 		if err != nil {
 			// 贡献者自己产不出来（配置目录整个读不了这类）。说清楚是哪一步坏了，
 			// 而不是回一份空快照——空快照在界面上表现成「一个模块都没有」。
@@ -90,13 +90,17 @@ type snapshotDoc struct {
 	Concepts    []conceptDoc `json:"concepts"`
 }
 
-// snapshot 问一遍所有贡献者要这一刻的样子。
+// snapshot 问一遍贡献者要这一刻的样子。
 //
 // 「问」这件事本身是有代价的（有人要重新读盘、重新算指标），所以它只发生在这里
 // ——有人真的打开界面/点刷新的时候。装配期一次都不问。
-func (h *Handler) snapshot() (snapshotDoc, error) {
+//
+// `?source=` 是给**自动刷新**用的（可以重复给）：界面每隔几秒刷的是计数器与日志，
+// 而那两位的产出是便宜的；配置那一位要重读并重新解析每一份 profile、每一个源
+// 文件，不该被顺带叫醒。不带 = 全部（首次加载要的就是全部）。
+func (h *Handler) snapshot(sources ...string) (snapshotDoc, error) {
 	doc := snapshotDoc{Contract: Contract, GeneratedAt: time.Now().UTC().Format(time.RFC3339)}
-	concepts, err := h.views.Snapshot()
+	concepts, err := h.views.Snapshot(sources...)
 	if err != nil {
 		return doc, err
 	}

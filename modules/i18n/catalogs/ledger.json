@@ -553,7 +553,7 @@
       ]
     },
     "no such concept: {id} — the page is probably stale, reload it": {
-      "where": "modules/web-dashboard/bff.go:154",
+      "where": "modules/web-dashboard/bff.go:158",
       "args": [
         "id"
       ]
@@ -790,7 +790,7 @@
       "where": "modules/opencodeomo/diagnostics.go:30"
     },
     "the request body is not valid JSON: {err}": {
-      "where": "modules/web-dashboard/bff.go:146",
+      "where": "modules/web-dashboard/bff.go:150",
       "args": [
         "err"
       ]
@@ -1033,7 +1033,7 @@
       ]
     },
     "{title} is read-only": {
-      "where": "modules/web-dashboard/bff.go:163",
+      "where": "modules/web-dashboard/bff.go:167",
       "args": [
         "title"
       ]

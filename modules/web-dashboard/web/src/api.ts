@@ -59,8 +59,17 @@ async function json<T>(res: Response): Promise<T> {
   }
 }
 
-export async function snapshot(): Promise<Snapshot> {
-  const doc = await json<Snapshot & { error?: string }>(await fetch(`${API}/snapshot`));
+/**
+ * 读一次快照。`sources` 给出时**只问这几位贡献者**。
+ *
+ * 自动刷新走这条路：计数器与日志的产出是廉价的，而配置那一位要重读并重新解析
+ * 每一份 profile 与每一个源文件。不带参数 = 全部（首次加载要的就是全部）。
+ */
+export async function snapshot(sources?: string[]): Promise<Snapshot> {
+  const q = (sources ?? []).map((s) => `source=${encodeURIComponent(s)}`).join("&");
+  const doc = await json<Snapshot & { error?: string }>(
+    await fetch(`${API}/snapshot${q ? "?" + q : ""}`),
+  );
   if (doc.error) throw new Error(doc.error);
   if (doc.contract !== CONTRACT) {
     throw new Error(

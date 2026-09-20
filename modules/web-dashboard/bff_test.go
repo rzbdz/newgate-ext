@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"testing/fstest"
 
@@ -208,6 +209,51 @@ func TestSnapshotKeepsBrokenConceptsVisible(t *testing.T) {
 	}
 	if byID["config.state"].Error != "" {
 		t.Error("好的那张卡片不该被连累")
+	}
+}
+
+// TestSnapshotCanBeAskedForOneSource：自动刷新只问计数器与日志那几位（便宜），
+// 别顺带把配置那一位也叫醒——它要重读并重新解析每一份 profile 与每一个源文件。
+// 这条锁的是「刷新真的省下了那笔开销」，不只是少回几个字段。
+func TestSnapshotCanBeAskedForOneSource(t *testing.T) {
+	h := newHandler()
+	var cheap, expensive atomic.Int64
+	contributeCount(t, h, "gateway", &cheap)
+	contributeCount(t, h, "config", &expensive)
+
+	if rec := get(t, h, "/api/snapshot"); rec.Code != http.StatusOK {
+		t.Fatalf("不带 source 该问全部，实际 %d", rec.Code)
+	}
+	if cheap.Load() != 1 || expensive.Load() != 1 {
+		t.Fatalf("首次加载该问全部: gateway=%d config=%d", cheap.Load(), expensive.Load())
+	}
+
+	rec := get(t, h, "/api/snapshot?source=gateway")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("按来源过滤该 200，实际 %d", rec.Code)
+	}
+	if cheap.Load() != 2 {
+		t.Errorf("点名的那位该被再问一次: %d", cheap.Load())
+	}
+	if expensive.Load() != 1 {
+		t.Errorf("没点名的那位不该被吵醒: %d 次", expensive.Load())
+	}
+	var doc snapshotDoc
+	if err := json.Unmarshal(rec.Body.Bytes(), &doc); err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.Concepts) != 1 || doc.Concepts[0].Source != "gateway" {
+		t.Errorf("只该回被点名那位的概念: %+v", doc.Concepts)
+	}
+}
+
+func contributeCount(t *testing.T, h *Handler, source string, n *atomic.Int64) {
+	t.Helper()
+	if _, err := h.views.Register(source, func() ([]view.Concept, error) {
+		n.Add(1)
+		return []view.Concept{{ID: source + ".x", Kind: view.KindSeries, Title: source}}, nil
+	}); err != nil {
+		t.Fatal(err)
 	}
 }
 

@@ -35,24 +35,48 @@
     return typeof b === "string" ? b : "";
   }
 
-  async function load(keepDrafts = false) {
-    busy = true;
+  /** 只有这几位值得每几秒刷一次（计数器、日志）。配置那一位要重读并重新解析
+      每一份 profile 与每一个源文件——让「刷一下计数器」顺带付那笔账，是把钱花在
+      没人看的地方（见 api.ts 的 snapshot）。 */
+  const liveSources = $derived([
+    ...new Set(
+      concepts.filter((c) => c.kind === "series" || c.kind === "log").map((c) => c.source),
+    ),
+  ]);
+
+  function bySourceId(list: Concept[]): Concept[] {
+    return [...list].sort((a, b) => (a.source + "/" + a.id).localeCompare(b.source + "/" + b.id));
+  }
+
+  /**
+   * sources 给出时是一次**增量**刷新：只问这几位，只替换这几位。
+   * 不给 = 整份重读（首次加载、或者用户点了 reload）。
+   */
+  async function load(sources?: string[], quiet = false) {
+    if (!quiet) busy = true;
     error = "";
     try {
-      const doc = await snapshot();
-      if (!keepDrafts) drafts = {};
-      // 刷新**不覆盖**有草稿的卡片：那是用户正在改的东西，被后台刷新抹掉是最
-      // 不可原谅的一种丢失（他连自己丢在哪都不知道）。
-      const merged = doc.concepts.map((c) =>
-        drafts[c.id] && keepDrafts ? { ...c } : c,
-      );
-      const byId = new Map(concepts.map((c) => [c.id, c]));
-      concepts = merged.map((c) => (drafts[c.id] && keepDrafts ? byId.get(c.id) ?? c : c));
+      const doc = await snapshot(sources);
+      if (sources) {
+        const byId = new Map(concepts.map((c) => [c.id, c]));
+        // 有草稿的卡片不换：那可能是只读概念之外的意外（读数与写数撞在同一张
+        // 卡上），而用户正在改的东西被后台刷新顶掉是最不可原谅的一种丢失。
+        for (const c of doc.concepts) if (drafts[c.id] === undefined) byId.set(c.id, c);
+        concepts = bySourceId([...byId.values()]);
+      } else {
+        concepts = doc.concepts;
+        // 整份重读之后，磁盘上已经不存在的概念（模块被关掉）没有地方可去了，
+        // 它的草稿也该跟着走——留着它只会让「保存」按一个已经不存在的 id 发。
+        const alive = new Set(doc.concepts.map((c) => c.id));
+        for (const id of Object.keys(drafts)) if (!alive.has(id)) delete drafts[id];
+        drafts = { ...drafts };
+        conflicts = [];
+      }
       note = doc.generated_at;
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     } finally {
-      busy = false;
+      if (!quiet) busy = false;
     }
   }
 
@@ -118,18 +142,18 @@
     delete drafts[cf.concept];
     drafts = { ...drafts };
     conflicts = conflicts.filter((x) => x !== cf);
-    void load(true);
+    void load();
   }
 
   load();
 
-  // 自动刷新只对**指标**有意义（配置是静态的，而计数器一直在动）。有草稿时
-  // 一律不刷：看的时候数字在跳可以接受，正在改的输入框被抹掉不行。
+  // 自动刷新只问**活着的那几位**（计数器、日志）。整份重读会把配置目录每三秒
+  // 重读一遍，而那个成本换不到任何新信息——配置文件不会自己变。
   $effect(() => {
     if (!auto) return;
-    const t = setInterval(() => {
-      if (!dirty.length) void load(true);
-    }, 5000);
+    const src = liveSources;
+    if (!src.length) return;
+    const t = setInterval(() => void load(src, true), 3000);
     return () => clearInterval(t);
   });
 </script>
@@ -141,7 +165,7 @@
   <span class="spacer"></span>
   {#if note}<span class="dim mono">as of {note}</span>{/if}
   <label class="dim row"><input type="checkbox" bind:checked={auto} /> auto-refresh</label>
-  <button onclick={() => load(false)} disabled={busy}>reload</button>
+  <button onclick={() => load()} disabled={busy}>reload</button>
   <button class="primary" onclick={saveAll} disabled={busy || !dirty.length}>
     save{dirty.length ? ` (${dirty.length})` : ""}
   </button>

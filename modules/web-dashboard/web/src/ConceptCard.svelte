@@ -9,6 +9,7 @@
   import MappingEditor from "./kinds/MappingEditor.svelte";
   import Toggles from "./kinds/Toggles.svelte";
   import Series from "./kinds/Series.svelte";
+  import LogView from "./kinds/LogView.svelte";
 
   let {
     concept,
@@ -57,6 +58,8 @@
       <Toggles data={concept.data} {draft} readonly={!concept.writable} onEdit={changed} />
     {:else if concept.kind === "series"}
       <Series data={concept.data} />
+    {:else if concept.kind === "log"}
+      <LogView data={concept.data} />
     {:else}
       <!-- 没有渲染器的 Kind（table / log / 将来加的）：把原文摆出来，而不是
            假装它不存在。加渲染器是前端的事，不该由后端等。 -->
