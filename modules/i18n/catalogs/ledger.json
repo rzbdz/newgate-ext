@@ -173,12 +173,6 @@
     "adopt them all": {
       "where": "modules/opencodeomo/command.go:116"
     },
-    "an operation is missing its file path": {
-      "where": "modules/web-dashboard/commit.go:171"
-    },
-    "another save is in progress, try again in a moment": {
-      "where": "modules/web-dashboard/commit.go:346"
-    },
     "another sync round is already running; this round was skipped": {
       "where": "modules/configshare/proto/client.go:142"
     },
@@ -558,6 +552,12 @@
         "file"
       ]
     },
+    "no such concept: {id} — the page is probably stale, reload it": {
+      "where": "modules/web-dashboard/bff.go:154",
+      "args": [
+        "id"
+      ]
+    },
     "no such slot key {key} (list them with newgate omo)": {
       "where": "modules/opencodeomo/command.go:183",
       "args": [
@@ -637,7 +637,7 @@
       ]
     },
     "saving uses POST": {
-      "where": "modules/web-dashboard/bff.go:57"
+      "where": "modules/web-dashboard/bff.go:61"
     },
     "secrets updated (gen {gen})": {
       "where": "modules/configshare/proto/poller.go:187",
@@ -721,9 +721,6 @@
     "the configshare bookkeeping file is corrupt; starting over from the initial state: {err}": {
       "where": "modules/configshare/proto/state.go:177"
     },
-    "the configuration could not be read": {
-      "where": "modules/web-dashboard/bff.go:137"
-    },
     "the endpoint is empty (run newgate config join <endpoint> first)": {
       "where": "modules/configshare/proto/client.go:61"
     },
@@ -760,12 +757,6 @@
     "the file does not exist": {
       "where": "modules/opencodeomo/takeover.go:432"
     },
-    "the file {path} is outside the configuration directory": {
-      "where": "modules/web-dashboard/commit.go:176",
-      "args": [
-        "path"
-      ]
-    },
     "the haiku tier; background features": {
       "where": "modules/claudecode/agent.go:25"
     },
@@ -799,7 +790,7 @@
       "where": "modules/opencodeomo/diagnostics.go:30"
     },
     "the request body is not valid JSON: {err}": {
-      "where": "modules/web-dashboard/commit.go:104",
+      "where": "modules/web-dashboard/bff.go:146",
       "args": [
         "err"
       ]
@@ -834,9 +825,6 @@
     },
     "the trailing user turn holds only tool_result and no user instruction — appended a continue instruction (the upstream misreports an instruction-less tail as a missing reasoning_content)": {
       "where": "modules/deepseek/st-reasoning.go:337"
-    },
-    "there is nothing to save": {
-      "where": "modules/web-dashboard/commit.go:108"
     },
     "there was no concrete model name before takeover": {
       "where": "modules/opencodeomo/slots.go:286"
@@ -887,12 +875,6 @@
         "cmd"
       ]
     },
-    "unknown operation kind {kind}": {
-      "where": "modules/web-dashboard/commit.go:192",
-      "args": [
-        "kind"
-      ]
-    },
     "value": {
       "where": "modules/opencodeomo/command.go:315"
     },
@@ -935,12 +917,6 @@
       "args": [
         "got",
         "want"
-      ]
-    },
-    "{file} is not valid JSON": {
-      "where": "modules/web-dashboard/commit.go:221",
-      "args": [
-        "file"
       ]
     },
     "{head} · the highest priority globally, ahead of any profile": {
@@ -1054,6 +1030,12 @@
         "provider",
         "section",
         "suggested"
+      ]
+    },
+    "{title} is read-only": {
+      "where": "modules/web-dashboard/bff.go:163",
+      "args": [
+        "title"
       ]
     },
     "{url} returned {status}: {body}": {

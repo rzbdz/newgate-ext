@@ -192,14 +192,6 @@
       "text": "全部采纳",
       "reviewed": true
     },
-    "an operation is missing its file path": {
-      "text": "操作缺少文件路径",
-      "reviewed": true
-    },
-    "another save is in progress, try again in a moment": {
-      "text": "另一个保存正在进行，请稍后重试",
-      "reviewed": true
-    },
     "another sync round is already running; this round was skipped": {
       "text": "另一轮同步正在进行，这一轮跳过了",
       "reviewed": true
@@ -540,6 +532,10 @@
       "text": "没有槽位登记表 {file}",
       "reviewed": true
     },
+    "no such concept: {id} — the page is probably stale, reload it": {
+      "text": "没有这个概念：{id} —— 页面多半已经过期了，重新载入一下",
+      "reviewed": true
+    },
     "no such slot key {key} (list them with newgate omo)": {
       "text": "没有这个槽位键 {key}（newgate omo 看列表）",
       "reviewed": true
@@ -684,10 +680,6 @@
       "text": "configshare 记账文件损坏，已按初始状态重来: {err}",
       "reviewed": true
     },
-    "the configuration could not be read": {
-      "text": "无法读取配置",
-      "reviewed": true
-    },
     "the endpoint is empty (run newgate config join <endpoint> first)": {
       "text": "endpoint 是空的（先 newgate config join <endpoint>）",
       "reviewed": true
@@ -718,10 +710,6 @@
     },
     "the file does not exist": {
       "text": "文件不存在",
-      "reviewed": true
-    },
-    "the file {path} is outside the configuration directory": {
-      "text": "文件 {path} 在配置目录之外",
       "reviewed": true
     },
     "the haiku tier; background features": {
@@ -784,10 +772,6 @@
       "text": "末尾的 user 轮只有 tool_result 没有用户指令——追加一条继续指令（上游对空指令尾部误报 reasoning_content 缺失）",
       "reviewed": true
     },
-    "there is nothing to save": {
-      "text": "没有可保存的内容",
-      "reviewed": true
-    },
     "there was no concrete model name before takeover": {
       "text": "接管前没有具体模型名",
       "reviewed": true
@@ -828,10 +812,6 @@
       "text": "不认识 \"{cmd}\"（newgate status 看清单）",
       "reviewed": true
     },
-    "unknown operation kind {kind}": {
-      "text": "未知操作类型 {kind}",
-      "reviewed": true
-    },
     "value": {
       "text": "值",
       "reviewed": true
@@ -866,10 +846,6 @@
     },
     "{err} (nonce length {got}, expected {want})": {
       "text": "{err}（nonce 长度 {got}，应为 {want}）",
-      "reviewed": true
-    },
-    "{file} is not valid JSON": {
-      "text": "{file} 不是有效的 JSON",
       "reviewed": true
     },
     "{head} · the highest priority globally, ahead of any profile": {
@@ -934,6 +910,10 @@
     },
     "{section}.{name} → {provider}/{key} (now {now}{suggested})": {
       "text": "{section}.{name} → {provider}/{key}（现状 {now}{suggested}）",
+      "reviewed": true
+    },
+    "{title} is read-only": {
+      "text": "{title} 是只读的",
       "reviewed": true
     },
     "{url} returned {status}: {body}": {

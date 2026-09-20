@@ -2,12 +2,16 @@
 //
 // 它挂在 gateway 那个端口上（默认 8899）的 /ui 前缀下——**共用一个端口**是部署
 // 上的硬要求（防火墙、反代、ACL 都按端口配），而这件事的机制在内核的 porthub：
-// 这里只负责「把我的 handler 挂上去」，分派是 gateway 的事。
+// 这里只负责「把我的 handler 挂上去」，分派是 porthub 的事。
 //
-// BFF 不认识任何具体模块：它读的是共享叶子（config/store、gateway/metrics、
-// gateway/controlplane…），要展示模块自己的东西时，模块通过 view capability 把
-// **结构化的概念**贡献进来（见 bff.go 的说明）。所以加一个模块的界面不需要改这
-// 个包，也不需要改前端——前端只认 concept 的形状。
+// # 它不认识任何模块
+//
+// BFF 读的是一本**概念账本**（core/lib/view）：各模块自己 Optional 依赖这个能力，
+// 在自己的 Start 里注册「我这一面长什么样、怎么改」。所以加一个模块的界面不需要
+// 改这个包，也不需要改前端——这跟 cli 与它的注入点（modules/cli/extension）是
+// 同一条规矩的两份实现。
+//
+// 提供出去的 Service 只有 Register：查询那半边留给界面自己（它要渲染）。
 package webdashboard
 
 import (
@@ -17,6 +21,7 @@ import (
 	"net/http"
 
 	modules "github.com/rzbdz/newgate/component"
+	viewapi "github.com/rzbdz/newgate/lib/view"
 	cliapi "github.com/rzbdz/newgate/modules/cli/extension"
 	porthubapi "github.com/rzbdz/newgate/modules/porthub"
 )
@@ -45,12 +50,16 @@ const (
 //     入口账本认（见本包 README 的待办），v1 先不做。
 //   - cliapi 在 → 以后挂 `newgate web`（打印 URL / 打开浏览器）；现在还没做。
 func New() modules.Component {
+	views := viewapi.NewRegistry()
 	var release func()
 	return modules.Component{
 		Name:     "web-dashboard",
 		Type:     "cli", // 「界面壳」这一类的既有取值（tui / simple-cli 也是它）
 		Requires: []modules.Requirement{modules.Optional(porthubapi.Capability), modules.Optional(cliapi.Capability)},
-		Provides: nil,
+		// 这本账就是**它提供出去的东西**：别的模块 Optional 依赖它，在自己的
+		// Start 里往里注册概念。所以它必须在 Bind 期就存在（New 里建），而不是
+		// Start 里——后者的话，比它先 Start 的模块就注册不进来了。
+		Provides: []modules.Provision{modules.Provide(viewapi.Capability, viewapi.Service(views))},
 		Start: func(_ context.Context, ctx modules.Context) error {
 			sub, err := fs.Sub(assets, AssetDir)
 			if err != nil {
@@ -62,7 +71,7 @@ func New() modules.Component {
 			if !ok {
 				return nil
 			}
-			rel, err := hub.Mount(Prefix, "web-dashboard", http.StripPrefix(Prefix, NewHandler(sub)))
+			rel, err := hub.Mount(Prefix, "web-dashboard", http.StripPrefix(Prefix, NewHandler(sub, views)))
 			if err != nil {
 				return err
 			}
