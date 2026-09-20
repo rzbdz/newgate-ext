@@ -607,7 +607,7 @@
       ]
     },
     "no such concept: {id} — the page is probably stale, reload it": {
-      "where": "modules/web-dashboard/bff.go:298",
+      "where": "modules/web-dashboard/bff.go:301",
       "args": [
         "id"
       ]
@@ -712,7 +712,7 @@
       ]
     },
     "saving needs Content-Type: application/json (got {ct})": {
-      "where": "modules/web-dashboard/bff.go:285",
+      "where": "modules/web-dashboard/bff.go:288",
       "args": [
         "ct"
       ]
@@ -727,7 +727,7 @@
       ]
     },
     "section actions need Content-Type: application/json (got {ct})": {
-      "where": "modules/web-dashboard/bff.go:347",
+      "where": "modules/web-dashboard/bff.go:350",
       "args": [
         "ct"
       ]
@@ -898,7 +898,7 @@
       "where": "modules/opencodeomo/diagnostics.go:30"
     },
     "the request body is not valid JSON: {err}": {
-      "where": "modules/web-dashboard/bff.go:290",
+      "where": "modules/web-dashboard/bff.go:293",
       "args": [
         "err"
       ]
@@ -1219,7 +1219,7 @@
       ]
     },
     "{title} is read-only": {
-      "where": "modules/web-dashboard/bff.go:307",
+      "where": "modules/web-dashboard/bff.go:310",
       "args": [
         "title"
       ]
