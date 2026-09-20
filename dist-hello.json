@@ -1,0 +1,21 @@
+{
+  "distribution": "hello",
+  "modules": [
+    "hello"
+  ],
+  "disable": [
+    "breaker",
+    "claudecode",
+    "cli",
+    "config",
+    "confighook",
+    "gateway",
+    "opencode",
+    "opencodeomo",
+    "pluginmanager",
+    "runtime",
+    "thinking",
+    "tui",
+    "wrapper"
+  ]
+}

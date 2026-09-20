@@ -1,7 +1,6 @@
 {
-  "distribution": "newgate-default",
+  "distribution": "default",
   "modules": [
-    "hello",
     "deepseek",
     "glm",
     "claudecode_deepseek",

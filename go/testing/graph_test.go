@@ -71,14 +71,19 @@ func TestEverySpecBuilds(t *testing.T) {
 	}
 }
 
-// TestEverySpecHasExactlyOneUI 每份规格书里**界面只能有一个**。
+// TestEverySpecHasAtMostOneUI 每份规格书里界面**最多一个**，而旗舰那份必须正好有一个。
 //
 // 为什么值得单独一条（内核侧有一条同样的 TestExactlyOneUI）：端口不声明基数，而
 // cli 的 capability 恰恰是按设计唯一的——装第二个 ui 的后果是**完全静默**的：装配
 // 成功、不报错，而它拿到的命令/状态行/体检项全是零个（注入只进声明顺序里的第一个，
 // 而顺序是**目录名字母序**）。`dist-simple-cli.json` 这份规格书存在的全部意义就是
 // 把内核的 cli 换成 simple-cli；这里就是那个「换」字有没有做对的判据。
-func TestEverySpecHasExactlyOneUI(t *testing.T) {
+//
+// 为什么上界才是判据（2026-09-20 改，原来是「正好一个」）：骨架配置
+// `dist-hello.json` **根本没有界面**——它整个发行版就是「框架 + 一个 hello」，
+// `newgate` 那个入口由 hello 自己申报（见 go/modules/hello）。所以「多于一个」是
+// 那条静默失效，「一个都没有」只是骨架配置的常态；后者只对旗舰发行版是错的。
+func TestEverySpecHasAtMostOneUI(t *testing.T) {
 	for _, name := range manifest.SpecNames() {
 		t.Run(name, func(t *testing.T) {
 			testkit.Sandbox(t)
@@ -94,9 +99,23 @@ func TestEverySpecHasExactlyOneUI(t *testing.T) {
 			}
 			t.Cleanup(func() { _ = manager.Stop(context.Background()) })
 
-			if uis := modules.GetAll(manager.Context(), cliapi.Capability); len(uis) != 1 {
-				t.Fatalf("装了 %d 个 ui，应当正好 1 个——多于一个时只有目录名排最前的那个生效，"+
-					"其余完全静默；图 = %v", len(uis), manager.ComponentNames())
+			names := manager.ComponentNames()
+			uis := modules.GetAll(manager.Context(), cliapi.Capability)
+			if len(uis) > 1 {
+				t.Fatalf("装了 %d 个 ui，最多只能 1 个——多于一个时只有目录名排最前的那个生效，"+
+					"其余完全静默；图 = %v", len(uis), names)
+			}
+			if name == "dist.json" && len(uis) == 0 {
+				t.Fatalf("旗舰发行版一个界面都没有：`newgate <动词>` 会没人认领；图 = %v", names)
+			}
+
+			// 兜底入口（entry.DefaultRank）只能有一个申报者：cli 与 hello 都在那一档
+			// 上，两个同图时谁被 Resolve 选中会退化成「目录名字母序决定进程行为」。
+			// 那是隐式判据，所以在规格书这一层直接禁掉这个组合。
+			if len(uis) == 1 && contains(names, "hello") {
+				t.Fatalf("这张图里既有界面又有 hello：两者都在兜底档上申报入口，"+
+					"谁被选中取决于目录名字母序（cli 排在前面）——hello 属于骨架配置，"+
+					"别把它装进带界面的发行版；图 = %v", names)
 			}
 		})
 	}

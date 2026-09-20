@@ -25,7 +25,7 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CORE="${NEWGATE_E2E_CORE:-$ROOT/core}"
 # 二进制来自本仓库的构建入口（build/build.sh），文件名里带发行版名与平台。
-DIST_NAME="${NEWGATE_E2E_DIST:-newgate-default}"
+DIST_NAME="${NEWGATE_E2E_DIST:-default}"
 # 产物名里的架构用 **Go 的叫法**（amd64），不是 uname 的叫法（x86_64）——build.sh
 # 就是按 Go 的叫法命名的，两边必须一致，否则这里会找不到二进制。映射与 build.sh
 # 里那段是同一份判据（那一段的注释写了为什么需要它）。

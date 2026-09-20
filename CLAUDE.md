@@ -73,12 +73,22 @@ newgate-ext/           ← 你在这里（发行版：产品）
 
 ```bash
 git submodule update --init --recursive   # 第一次
-build/build.sh                            # → dist/newgate-<发行版>-<平台>-<架构>
-NEWGATE_DIST=dist-simple-cli.json build/build.sh out/   # 换规格书的变体
+build/build.sh                            # → dist/newgate-default-<平台>-<架构>（只编主配置）
+NEWGATE_ALL=1 build/build.sh              # 每份规格书都编一遍 → 多个二进制
+NEWGATE_DISTS="dist.json dist-hello.json" build/build.sh out/   # 点名几份
+NEWGATE_DIST=dist-simple-cli.json build/build.sh out/           # 只编那一份
 
 # 发布时给一份平台矩阵（默认只编本机）
 NEWGATE_PLATFORMS="linux/amd64 linux/arm64 darwin/arm64" build/build.sh dist/
 ```
+
+- **产物名 = `newgate-<规格书里的 distribution>-<平台>-<架构>`**。今天是三份：
+  `default`（旗舰）、`simple-cli`（换掉界面）、`hello`（**骨架**：整个框架 + 一个
+  hello，`newgate` 跑起来就是一句 hello world）。多编几份是为了**调试**——
+  想看骨架配置的行为，`NEWGATE_ALL=1` 编出来直接跑，不必切到 `template` 分支。
+- **发什么由流水线决定**：Release 只发重点那份（`release.yml` 里的
+  `NEWGATE_DISTS: dist.json`），CI 则编**全部**规格书（「另一份配置编不过」这种
+  故障本地看不见，谁也不天天编骨架配置）。
 
 - 脚本做四件事：检查 `core/` → 生成装配清单（`go/tools/distgen`）→ 编静态二进制
   → 拷到 `dist/`。本地与 CI（`.github/workflows/release.yml`）走的是同一条路。

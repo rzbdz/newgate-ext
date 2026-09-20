@@ -29,10 +29,15 @@ const DefaultSpec = "dist.json"
 // Specs 是仓库根每份规格书各自的装配选择。
 func Specs() map[string]app.Selection {
 	return map[string]app.Selection{
+		"dist-hello.json": {
+			Disable: []string{"breaker", "claudecode", "cli", "config", "confighook", "gateway", "opencode", "opencodeomo", "pluginmanager", "runtime", "thinking", "tui", "wrapper"},
+			Extra: []app.Entry{
+				{Dir: "hello", Component: ext_hello.New()},
+			},
+		},
 		"dist-simple-cli.json": {
 			Disable: []string{"cli"},
 			Extra: []app.Entry{
-				{Dir: "hello", Component: ext_hello.New()},
 				{Dir: "simple-cli", Component: ext_simple_cli.New()},
 				{Dir: "deepseek", Component: ext_deepseek.New()},
 				{Dir: "glm", Component: ext_glm.New()},
@@ -42,7 +47,6 @@ func Specs() map[string]app.Selection {
 		},
 		"dist.json": {
 			Extra: []app.Entry{
-				{Dir: "hello", Component: ext_hello.New()},
 				{Dir: "deepseek", Component: ext_deepseek.New()},
 				{Dir: "glm", Component: ext_glm.New()},
 				{Dir: "claudecode_deepseek", Component: ext_claudecode_deepseek.New()},
@@ -53,7 +57,7 @@ func Specs() map[string]app.Selection {
 }
 
 // SpecNames 列出全部规格书名，按文件名排序。
-func SpecNames() []string { return []string{"dist-simple-cli.json", "dist.json"} }
+func SpecNames() []string { return []string{"dist-hello.json", "dist-simple-cli.json", "dist.json"} }
 
 // Loader 按规格书名装图。名字认不出来就**报错**，不退回默认那份：
 // 「我明明编的是简单版，怎么界面上有两个 ui」这种问题，值得在启动的第一秒

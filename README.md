@@ -17,8 +17,9 @@ fork 它 → 改 `dist.json` 与 `go/modules/` → 就有了你自己的发行�
 | `go/manifest/modules_gen.go` | **生成物**（进版本控制）：规格书 → 装配选择 |
 | `go/tools/distgen/` | 读规格书、生成上面那份清单 |
 | `go/cmd/newgate/` | 本发行版的 main：交出「装哪张图 + 版本号」，其余交给内核的组合根 |
-| `dist.json` | **规格书**：本发行版由哪些模块组成、关掉内核的哪几个 |
-| `dist-simple-cli.json` | 第二个规格书：同一个仓库的另一个变体（换掉界面） |
+| `dist.json` | **规格书**（旗舰）：本发行版由哪些模块组成、关掉内核的哪几个 |
+| `dist-simple-cli.json` | 变体：换掉界面（内核的 `cli` → 本仓库的 `simple-cli`） |
+| `dist-hello.json` | 骨架：整个框架 + 一个 `hello`，`newgate` 跑起来就是一句 hello world |
 | `mock/` | 本发行版模块的端到端（复用内核的假上游） |
 | `build/build.sh` | 唯一的构建入口 |
 | `CLAUDE.md` | 在这里干活的人（和 agent）要先读的那份说明 |
@@ -29,10 +30,10 @@ Release 页面上有各平台的静态二进制（`linux/amd64` `linux/arm64` `d
 `darwin/arm64`）与 `SHA256SUMS`：
 
 ```bash
-gh release download v0.1.1 -p 'newgate-*-linux-amd64' -p SHA256SUMS
+gh release download v0.2.0 -p 'newgate-*-linux-amd64' -p SHA256SUMS
 sha256sum -c SHA256SUMS --ignore-missing
-chmod +x newgate-newgate-default-linux-amd64     # GitHub 不保存权限位，必须自己加
-mv newgate-newgate-default-linux-amd64 ~/.local/bin/newgate   # 多调用型：装成 newgate
+chmod +x newgate-default-linux-amd64     # GitHub 不保存权限位，必须自己加
+mv newgate-default-linux-amd64 ~/.local/bin/newgate   # 多调用型：装成 newgate
 newgate version
 ```
 
@@ -51,8 +52,13 @@ newgate version
 ```bash
 git clone --recursive <这个仓库> my-dist && cd my-dist
 $EDITOR dist.json                     # 选模块、关掉不要的
-build/build.sh                        # → dist/newgate-<发行版>-<平台>-<架构>
+build/build.sh                        # → dist/newgate-default-<平台>-<架构>
+NEWGATE_ALL=1 build/build.sh          # 一次编仓库里每一份规格书 → 多个二进制
 ```
+
+产物名 = `newgate-<规格书里的 distribution>-<平台>-<架构>`。仓库里现在有三份规格书
+（`default` 旗舰、`simple-cli` 换界面、`hello` 骨架）。`NEWGATE_ALL=1` 多编几份的
+用处是**调试**：骨架配置（框架 + hello，`newgate` 就是 hello world）不必切分支就能跑。
 
 编的是**你自己的 main + core/ 那一发的内核**：发行版是独立 module（`go/go.mod`），
 内核只是它的一份依赖（replace 到 submodule）。于是没有中间产物要同步——改完直接编，
@@ -85,7 +91,7 @@ build/build.sh dist && bash mock/e2e_claude_dist.sh    # 端到端（零 token�
 
 | 模块 | 作用 |
 | --- | --- |
-| `hello` | 最小样例：Start 时打印一行 hello。零依赖，用来验证 external 通路是通的 |
+| `hello` | 最小样例，也是骨架配置（`dist-hello.json`）的全部内容：Start 打一行日志，并**申报兜底入口**——所以「框架 + hello」的 `newgate` 就是一句 hello world |
 | `simple-cli` | 极简界面：只渲染 `status` 与已注入的命令，用于验证「换掉界面，别的模块照常」 |
 | `deepseek` | DeepSeek 的请求改写：思考模式要求逐字回传推理内容，客户端会剥掉/丢帧 → 补形状 |
 | `glm` | GLM 的思维链回传与默认思考开关 |

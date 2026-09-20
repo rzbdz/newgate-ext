@@ -38,8 +38,12 @@ jobs:
           # 仓库里没有 go.sum，指着一个不存在的文件算不出缓存键。
           cache-dependency-path: go/go.mod
 
+      # 只发**重点那份**（发行版的主配置）：骨架配置（dist-hello.json）是给人 fork
+      # 的样板，不是产品，不需要挂在 Release 上。要发哪几份由这里的 NEWGATE_DISTS
+      # 决定——build/build.sh 的能力是「一次编多份」，发什么是流水线的事。
       - name: 构建（平台矩阵）
         env:
+          NEWGATE_DISTS: dist.json
           NEWGATE_PLATFORMS: linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
         run: bash build/build.sh dist
 

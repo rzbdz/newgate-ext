@@ -1,18 +1,40 @@
 #!/usr/bin/env bash
-# 从本发行版编出一个静态二进制。
+# 从本发行版编出静态二进制。可以一次编**多份配置**（规格书）→ 多个二进制。
 #
 # 这是**唯一的构建入口**：本地怎么编、CI 怎么编、fork 的人怎么编，都是这一条命令。
 # 它做四件事：
 #
 #   1. 检查 core/ 这个 submodule 在不在——它是内核源码，也是 go.mod 里那条
 #      `replace github.com/rzbdz/newgate/go => ../core/go` 的目标；
-#   2. 生成装配清单（go/manifest/modules_gen.go，按仓库根的规格书）；
-#   3. 编一个全静态二进制；
-#   4. 拷到 dist/。
+#   2. 生成装配清单（go/manifest/modules_gen.go，按仓库根的**全部**规格书）；
+#   3. 每份规格书 × 每个平台各编一个全静态二进制；
+#   4. 拷到 dist/，附一份 SHA256SUMS。
 #
 # 用法
-#   build/build.sh [输出目录]              默认 dist/
-#   NEWGATE_DIST=dist-simple-cli.json      换一份规格书（同一个仓库的变体）
+#   build/build.sh [输出目录]                 默认只编 dist.json（日常开发要的就是它）
+#   NEWGATE_DISTS="dist.json dist-hello.json" 一次编多份规格书 → 多个二进制
+#   NEWGATE_ALL=1                             仓库根所有 dist*.json
+#   NEWGATE_DIST=dist-hello.json              单份（= NEWGATE_DISTS 里只有它）
+#   NEWGATE_PLATFORMS="linux/amd64 linux/arm64"  平台矩阵（发布时由 CI 给）
+#
+# # 为什么要多份（2026-09-20）
+#
+# `dist-hello.json` 是「整个框架 + 一个 hello」的骨架配置。调试发行版机制本身时，
+# 编一个这样的二进制比切到 `template` 分支去调有用得多：切分支会让主分支上的改动
+# 和骨架配置没法同时验证（而「改完在两边各编一次」正是最容易漏的那一步）。多编
+# 一份的代价是几秒钟，所以本地调试直接 `NEWGATE_DISTS="dist.json dist-hello.json"`。
+#
+# GitHub Release 只发**重点的那份**（发行版的主配置）——那是产品，骨架是给人 fork
+# 的样板，不需要挂在 Release 上。这件事由 CI 的 release.yml 用 NEWGATE_DISTS 决定，
+# 不在本脚本里写死：脚本只回答「怎么编」，回答「发什么」是流水线的事。
+#
+# # 产物名
+#
+#   newgate-<规格书里的 distribution>-<平台>-<架构>
+#
+# 例如 `newgate-default-linux-amd64`、`newgate-hello-darwin-arm64`。注意它是**多调用
+# 型**的（argv0 决定入口：newgate / claude / opencode…），拿去跑之前先按正确的名字
+# 落一份（见 README 与 CLAUDE.md §3）。
 #
 # # 与 2026-09-20 之前那版的区别
 #
@@ -35,38 +57,45 @@ case "$out" in
   /*) : ;;
   *)  out="$(pwd)/$out" ;;
 esac
-spec_name=${NEWGATE_DIST:-dist.json}
 core=$here/core
 gomod=$here/go
 
-[ -f "$here/$spec_name" ] || { echo "找不到规格书 $here/$spec_name" >&2; exit 1; }
+# 编哪几份。三个开关的优先顺序：全都要 > 点名几份 > 就一份（默认 dist.json）。
+if [ -n "${NEWGATE_ALL:-}" ]; then
+  specs=$(cd "$here" && ls dist*.json)
+elif [ -n "${NEWGATE_DISTS:-}" ]; then
+  specs=${NEWGATE_DISTS}
+else
+  specs=${NEWGATE_DIST:-dist.json}
+fi
+
 if [ ! -f "$core/go/go.mod" ]; then
   echo "core/ 里没有内核源码。它是个 submodule，先：" >&2
   echo "  git submodule update --init --recursive" >&2
   exit 1
 fi
-
-dist=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["distribution"])' "$here/$spec_name")
+for s in $specs; do
+  [ -f "$here/$s" ] || { echo "找不到规格书 $here/$s" >&2; exit 1; }
+done
 
 # 版本号带上工作区状态。旧版在工作区脏时只**警告一句**，而二进制的版本仍然记成
 # 那个提交号——两个说法对不上。现在直接写进二进制：`newgate version` 自己会说
 # 「这是 dirty 的」，谎报不了。
 rev=$(git -C "$here" describe --tags --always --dirty 2>/dev/null || echo unknown)
-if [ -n "$(git -C "$here" status --porcelain -- go dist.json dist-simple-cli.json)" ]; then
+if [ -n "$(git -C "$here" status --porcelain -- go 'dist*.json')" ]; then
   echo "⚠ 发行版有未提交的改动：版本号带 -dirty，内容与任何提交都不完全一致" >&2
 fi
 
 echo "── 内核：$core @ $(git -C "$core" rev-parse --short HEAD)"
-echo "── 发行版：$dist @ $rev（规格书 $spec_name）"
+echo "── 发行版规格书：$specs"
 
+# 清单只生成一次：distgen 扫的是仓库根的全部规格书，一次就写全（选哪份是链接期的事）。
 cd "$gomod"
 go run ./tools/distgen
 
 mkdir -p "$out"
 build_time=$(date '+%Y-%m-%d_%H:%M:%S%z')
 commit_time=$(git -C "$here" log -1 --date=format:'%Y-%m-%d_%H:%M:%S%z' --format=%cd 2>/dev/null || echo unknown)
-ldflags_common="-s -w -X main.version=$dist-$rev -X main.buildTime=$build_time"
-ldflags_common="$ldflags_common -X main.commitTime=$commit_time -X main.spec=$spec_name"
 
 # 编一个平台。linux 额外要求全静态（跨机器部署靠它：snode1 那台 glibc 旧，
 # 动态链接的二进制直接起不来）。darwin 不要求——macOS 上不存在「全静态」这种
@@ -93,20 +122,31 @@ esac
 platforms=${NEWGATE_PLATFORMS:-"$host_os/$host_arch"}
 
 failed=""
-for p in $platforms; do
-  goos=${p%/*}; goarch=${p#*/}
-  artifact="$out/newgate-$dist-$goos-$goarch"
-  ldflags="$ldflags_common"
-  if [ "$goos" = linux ]; then
-    ldflags="$ldflags -extldflags '-static'"
-  fi
-  if build_one "$goos" "$goarch" "$artifact" "$ldflags"; then
-    echo "  ok  $goos/$goarch  $artifact"
-  else
-    echo "  --  $goos/$goarch  编不出来（本机工具链不支持这个目标？）" >&2
-    failed="$failed $goos/$goarch"
-    rm -f "$artifact"
-  fi
+host_artifacts=""
+for spec in $specs; do
+  dist=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["distribution"])' "$here/$spec")
+  # 规格书里的 distribution 同时是**版本号的前缀**和产物名里的那一段。两者是同一个
+  # 事实，所以从同一处读——手工拼一个产物名去跑 e2e，最容易在这里对不上。
+  ldflags_common="-s -w -X main.version=$dist-$rev -X main.buildTime=$build_time"
+  ldflags_common="$ldflags_common -X main.commitTime=$commit_time -X main.spec=$spec"
+  for p in $platforms; do
+    goos=${p%/*}; goarch=${p#*/}
+    artifact="$out/newgate-$dist-$goos-$goarch"
+    ldflags="$ldflags_common"
+    if [ "$goos" = linux ]; then
+      ldflags="$ldflags -extldflags '-static'"
+    fi
+    if build_one "$goos" "$goarch" "$artifact" "$ldflags"; then
+      echo "  ok  $spec  $goos/$goarch  $artifact"
+    else
+      echo "  --  $spec  $goos/$goarch  编不出来（本机工具链不支持这个目标？）" >&2
+      failed="$failed $spec:$goos/$goarch"
+      rm -f "$artifact"
+    fi
+    if [ "$goos" = "$host_os" ] && [ "$goarch" = "$host_arch" ]; then
+      host_artifacts="$host_artifacts $artifact"
+    fi
+  done
 done
 
 # 本机平台的静态断言：写坏一处引号就会退化成动态链接，而那个症状要到**另一台
@@ -115,23 +155,25 @@ done
 # 先取输出再判断，不要写成 `ldd … | grep -q`：脚本开着 pipefail，而 ldd 对静态
 # 二进制**返回非零**（"not a dynamic executable" 是它的失败输出），管道于是整体
 # 算失败——正好把唯一成功的那一格判成失败。2026-09-20 实测踩过。
-host_artifact="$out/newgate-$dist-$host_os-$host_arch"
-if [ "$host_os" = linux ] && [ -x "$host_artifact" ] && command -v ldd >/dev/null; then
-  ldd_out=$(ldd "$host_artifact" 2>&1 || true)
-  case "$ldd_out" in
-    *"not a dynamic executable"*|*"statically linked"*) : ;;
-    *)
-      echo "本机产物不是静态二进制（跨机器会起不来）：" >&2
-      echo "$ldd_out" >&2
-      exit 1
-      ;;
-  esac
+if [ "$host_os" = linux ] && command -v ldd >/dev/null; then
+  for artifact in $host_artifacts; do
+    [ -x "$artifact" ] || continue
+    ldd_out=$(ldd "$artifact" 2>&1 || true)
+    case "$ldd_out" in
+      *"not a dynamic executable"*|*"statically linked"*) : ;;
+      *)
+        echo "本机产物 $artifact 不是静态二进制（跨机器会起不来）：" >&2
+        echo "$ldd_out" >&2
+        exit 1
+        ;;
+    esac
+  done
 fi
 
 if [ -n "$failed" ]; then
-  echo "这些平台没编出来:$failed" >&2
+  echo "这些组合没编出来:$failed" >&2
   exit 1
 fi
 
-( cd "$out" && sha256sum newgate-$dist-* > SHA256SUMS 2>/dev/null || shasum -a 256 newgate-$dist-* > SHA256SUMS )
+( cd "$out" && sha256sum newgate-* > SHA256SUMS 2>/dev/null || shasum -a 256 newgate-* > SHA256SUMS )
 ls -l "$out"

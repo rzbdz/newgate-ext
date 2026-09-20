@@ -1,7 +1,6 @@
 {
-  "distribution": "newgate-simple-cli",
+  "distribution": "simple-cli",
   "modules": [
-    "hello",
     "simple-cli",
     "deepseek",
     "glm",
