@@ -1150,6 +1150,79 @@ if (!(await openSwitches())) {
   }
 }
 
+// —— 22. 「应用 / 应用到全部」：把一份档位设成全局默认 ——
+//
+// 用户的要求：「配置再增加个功能，当处于特定 kv 详情页的时候，新增一个按钮可以把
+// 当前配置配置成默认，同样有强制 apply 按钮。」
+//
+// 措辞是他后来定的（原话：「你应该搞成 apply 和 apply all 啊。应用。应用到全部。」）
+// ——第一版写成 `set as the default profile`，第二版写成 `force: …`，而 `force`
+// 是**他描述需求时的口语**，不是界面上的词。所以这里按 `data-action` 找按钮，
+// 一个字都不碰：措辞是产品决定，会变；机器标记不会。
+//
+// 三条一起验：
+//   1. 非默认的那张卡上**两个**按钮都在；
+//   2. 点「应用到全部」→ 它成为全局默认，且每个客户端的链头都被清掉；
+//   3. 成了默认之后那张卡上**不再有按钮**——「一个提议去做已经成立的事的按钮，
+//      站在一排真会做事的按钮旁边就是噪音」（见 config/view.go 的 profileActions）。
+{
+  const sec = page.locator(`nav.side button[title="config"]`);
+  if ((await sec.count()) === 0) {
+    skip("这份装配里没有配置那一节，跳过第 22 条");
+  } else {
+    await sec.click();
+    await page.waitForTimeout(250);
+    const st0 = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+    const def = st0.default_profile;
+    const target = snap.concepts.find(
+      (c) => c.id.startsWith("config.profile.") && c.id !== `config.profile.${def}`,
+    );
+    if (!target) {
+      skip("这个沙箱只有一份档位，跳过第 22 条");
+    } else {
+      const name = target.id.slice("config.profile.".length);
+      // 打开某一张卡：横 tab 条与左侧竖栏都试一遍（哪一种是这一节当前的版式，
+      // 取决于这一节有几张卡——见第 6 条）。与 openSwitches 同一个写法。
+      const open = async (id) => {
+        await page.locator(`button.tab[title="${id}"], nav.v button[title="${id}"]`).first().click();
+        await page.waitForTimeout(250);
+      };
+      await open(target.id);
+      const card = page.locator("section.card").first();
+      const applyOne = card.locator('button[data-action="set-default"]');
+      const applyAll = card.locator('button[data-action="set-default-all"]');
+      check("非默认的档位卡上有「应用」与「应用到全部」两个按钮",
+        (await applyOne.count()) === 1 && (await applyAll.count()) === 1,
+        `apply=${await applyOne.count()} applyAll=${await applyAll.count()}`);
+
+      // 默认那一张卡上不该有——先跳过去确认（这一步同时验了「两边都画得出来」）。
+      await open(`config.profile.${def}`);
+      const defCard = page.locator("section.card").first();
+      check("已经是默认的那张卡上没有这两个按钮",
+        (await defCard.locator('button[data-action="set-default"]').count()) === 0 &&
+          (await defCard.locator('button[data-action="set-default-all"]').count()) === 0,
+        "给一个「去做已经成立的事」的按钮，会把旁边真会做事的按钮淹掉");
+
+      // 回到目标那张卡，点「应用到全部」。
+      await open(target.id);
+      await card.locator('button[data-action="set-default-all"]').first().click();
+      await page.waitForTimeout(900);
+
+      const st = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+      check("点了「应用到全部」之后它成了全局默认", st.default_profile === name,
+        `默认还是 ${JSON.stringify(st.default_profile)}`);
+      check("每个客户端的链头都被清掉了（不留 `{\"claude\": \"\"}` 这种记录）",
+        Object.keys(st.active ?? {}).length === 0, JSON.stringify(st.active ?? {}));
+
+      // 重读之后那张卡已经成了默认——按钮该自己消失（界面重读快照，不是自己猜）。
+      const after = page.locator("section.card").first();
+      check("成了默认之后那张卡上的按钮自己消失了",
+        (await after.locator('button[data-action="set-default-all"]').count()) === 0,
+        "快照重读之后按钮还在，说明它读的是旧的那份");
+    }
+  }
+}
+
 check("整场没有页面错误", pageErrors.length === 0, pageErrors.slice(0, 2).join(" / "));
 
 console.log(`\n结果: ${pass} 通过, ${fail} 失败`);
