@@ -17,6 +17,7 @@ import (
 	ext_claudecode "github.com/rzbdz/newgate-ext/modules/claudecode"
 	ext_claudecode_deepseek "github.com/rzbdz/newgate-ext/modules/claudecode_deepseek"
 	ext_claudecode_glm "github.com/rzbdz/newgate-ext/modules/claudecode_glm"
+	ext_codex "github.com/rzbdz/newgate-ext/modules/codex"
 	ext_deepseek "github.com/rzbdz/newgate-ext/modules/deepseek"
 	ext_glm "github.com/rzbdz/newgate-ext/modules/glm"
 	ext_hello "github.com/rzbdz/newgate-ext/modules/hello"
@@ -101,6 +102,7 @@ func Specs() map[string]app.Selection {
 				{Dir: "opencode", Component: ext_opencode.New()},
 				{Dir: "opencodeomo", Component: ext_opencodeomo.New()},
 				{Dir: "web-dashboard", Component: ext_web_dashboard.New()},
+				{Dir: "codex", Component: ext_codex.New()},
 			},
 		},
 	}

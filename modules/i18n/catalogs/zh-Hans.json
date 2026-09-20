@@ -860,6 +860,10 @@
       "text": "界面只监听 loopback，其他网卡上没有监听",
       "reviewed": true
     },
+    "the model and provider live in ~/.codex/config.toml": {
+      "text": "模型与 provider 住在 ~/.codex/config.toml 里",
+      "reviewed": true
+    },
     "the model field in settings.json is left untouched; what a tier means is decided by the env": {
       "text": "settings.json 的 model 字段不动；档位含义由 env 决定",
       "reviewed": true

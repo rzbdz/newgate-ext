@@ -915,6 +915,9 @@
     "the interface is on loopback only; nothing listens on other interfaces": {
       "where": "modules/web-dashboard/command.go:75"
     },
+    "the model and provider live in ~/.codex/config.toml": {
+      "where": "modules/codex/agent.go:30"
+    },
     "the model field in settings.json is left untouched; what a tier means is decided by the env": {
       "where": "modules/claudecode/agent.go:44"
     },
