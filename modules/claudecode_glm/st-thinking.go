@@ -43,6 +43,12 @@ func Treatments(client claudeapi.Client, model glmapi.Model) []special.Plugin {
 // `newgate st off glm` 即可验证；确认不需要了整文件可删。
 func (thinking) Name() string { return "glm" }
 
+// Before/After 见发行版 modules/deepseek 里同一段注释：产品插件的排序边由产品
+// 自己声明（内核不认识 glm 这个名字）。分工是 claude-bg（内核，后台非流式先改道）
+// → 本插件（写 thinking）→ always-thinks（内核，兜底翻译）。
+func (thinking) Before() []string { return []string{"always-thinks"} }
+func (thinking) After() []string  { return []string{"claude-bg"} }
+
 func (thinking) Why() string {
 	return "GLM 系模型把「没写 thinking」当默认开思考（Anthropic 语义是关）" +
 		"→ 没要求思考的请求被拖进十几秒\n" +

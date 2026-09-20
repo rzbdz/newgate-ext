@@ -125,6 +125,17 @@ type reasoning struct{}
 
 func (reasoning) Name() string { return "deepseek" }
 
+// Before/After 是**产品这一侧**的排序声明——内核 2026-09-20 起不再认识产品插件名
+// （那条边以前写在内核的 st-always.go / st-background.go 里，方向是反的，而且
+// 未注册的名字在排序图里静默忽略，所以在纯内核构建里一直空转）。
+// 只有本插件同时知道两边的名字，所以由本插件声明：
+//
+//	After(["claude-bg"])       claude-bg 先动手（后台非流式请求改道/补 thinking），
+//	                           本插件处理剩下的形态
+//	Before(["always-thinks"]) 本插件先动手，内核那个兜底翻译器最后扫尾
+func (reasoning) Before() []string { return []string{"always-thinks"} }
+func (reasoning) After() []string  { return []string{"claude-bg"} }
+
 func (reasoning) Why() string {
 	return "DeepSeek 思考模式要求逐字回传推理内容，客户端却会把它剥掉 → 400\n" +
 		"套着就补回去（客户端带回的原文 → thinkcache；**没有原文就跳过，绝不编**）；" +
