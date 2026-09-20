@@ -221,6 +221,14 @@ if (snap.sections.length) {
     check("竖栏出现时没有横 tab 条", horiz === 0, `还剩 ${horiz} 条横的`);
     const items = await page.locator(".content nav.v button").count();
     check("竖栏列出这节全部卡", items === n, `${items} vs ${n}`);
+    // 竖栏必须是滚动容器。回归点不在「这次真的溢出了没」（沙箱的卡数够不够挤满
+    // 一屏是内容的事），而在「容器是不是设成了可以滚」——用户那次 bug 是 38 行
+    // 摆出来却永远不会滚，因为里面那层高度跟着内容走。机制在做，溢出才生效。
+    const slotCss = await page.evaluate(() => {
+      const slot = document.querySelector(".content.subcol > .nav-slot");
+      return slot ? getComputedStyle(slot).overflowY : "";
+    });
+    check("竖栏是滚动容器（滚轮能生效）", slotCss === "auto", `overflow-y=${slotCss}`);
     // 点竖栏里一张卡要真的切过去
     const target = snap.concepts.filter((c) => c.source === "config")[1];
     await page.locator(`.content nav.v button[title="${target.id}"]`).click();
