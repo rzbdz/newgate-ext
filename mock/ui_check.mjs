@@ -78,6 +78,16 @@ page.on("console", (m) => {
   pageErrors.push("console: " + text);
 });
 
+// 有未保存的改动时，界面会挂一个 beforeunload 问询（见 App.svelte）。Playwright
+// 默认**自动消掉**所有对话框，而消掉 beforeunload 的意思是「留在原地」——那样
+// 下面那次 reload 会静静不发生，之后的断言全在测一个没刷新过的页面。所以这里
+// 明确接受它。别的类型的对话框一个都不该出现（出现了就是 bug），记成页面错误。
+page.on("dialog", (d) => {
+  if (d.type() === "beforeunload") return void d.accept();
+  pageErrors.push(`dialog(${d.type()}): ${d.message()}`);
+  void d.dismiss();
+});
+
 // 后端那份快照：栏目名、概念 id 都从这儿取（**不猜翻译**）。
 async function fetchSnapshot() {
   const r = await fetch(bare + "/api/snapshot");
@@ -125,7 +135,8 @@ check("页面没有抛错", pageErrors.length === 0, pageErrors.slice(0, 2).join
   const headers = await page.locator("h2.srch").count();
   check("分组标题（一条瀑布的化石）没有了", headers === 0, `还有 ${headers} 个`);
   const h = await page.evaluate(() => document.documentElement.scrollHeight);
-  check("整页高度回到一屏内", h < 900 * 1.5, `实际 ${h}px（改版前 4303px）`);
+  console.log(`  · 整页高度 ${h}px（改版前 4303px ≈ 4.8 屏）`);
+  check("整页高度回到一屏内", h < 900 * 1.5, `实际 ${h}px`);
   const side = await page.locator("nav.side button").count();
   check("侧栏列出了各节", side > 0, `实际 ${side} 行`);
 }
@@ -167,17 +178,28 @@ if (snap.sections.length) {
 //
 // 这是「改配置」最常见的动作（这个值在文件里长什么样），改版前要滚过去再滚回来。
 {
-  const conf = snap.sections.find((s) => snap.concepts.some((c) => c.source === s.source));
-  await page.locator(`nav.side button[title="${conf.source}"]`).click();
-  await page.waitForTimeout(300);
-  const split = await page.locator(".split.two").count();
-  const panes = await page.locator(".pane-l, .pane-r").count();
-  if (split) {
-    check("控件与原文并排了", panes === 2, `实际 ${panes} 栏`);
-    const right = await page.locator(".pane-r .mono").first().innerText().catch(() => "");
-    check("右栏是那份文件的原文", right.length > 0, "右栏没有文件名");
+  // 按**数据**找一对（与 nav.ts 的 fileOf 同一条约定：控件那半带 file、原文那半
+  // 带 path，同一个相对路径就是同一份文件）。不写死 config —— 那是模块名，测里
+  // 认了它，界面里那条「不认识模块」的规矩就只剩一半。
+  const fileOf = (c) => c.data?.file ?? c.data?.path;
+  const pair = snap.concepts.find(
+    (c) =>
+      c.kind !== "code" &&
+      fileOf(c) &&
+      snap.concepts.some((x) => x.kind === "code" && x.source === c.source && fileOf(x) === fileOf(c)),
+  );
+  if (!pair) {
+    skip("这份装配里没有「同一份文件的两半」，跳过并排那条");
   } else {
-    skip("这一节的第一张卡没有可并排的原文");
+    await page.locator(`nav.side button[title="${pair.source}"]`).click();
+    await page.waitForTimeout(200);
+    await page.locator(`button.tab[title="${pair.id}"]`).click().catch(() => {});
+    await page.waitForTimeout(300);
+    const split = await page.locator(".split.two").count();
+    const panes = await page.locator(".pane-l, .pane-r").count();
+    check("控件与原文并排了", split > 0 && panes === 2, `实际 ${panes} 栏`);
+    const right = await page.locator(".pane-r .mono").first().innerText().catch(() => "");
+    check("右栏是那份文件的原文", right.includes(fileOf(pair)), `右栏是 ${JSON.stringify(right)}`);
   }
 }
 
@@ -218,11 +240,17 @@ if (!(await openSwitches())) {
     check("换节再回来，草稿还在", /\d/.test(still), `保存按钮显示 ${JSON.stringify(still)}`);
 
     // 顺带：选中的那一节进了 URL，刷新之后还在（「少操作」的一部分）。
+    //
+    // 注意草稿**不过**刷新：它住在页面内存里，而刷新就是重来（App 里那条
+    // beforeunload 会在真刷新之前拦一下，见那里的注释）。所以这里刷完要重新点
+    // 一下开关，再造一个草稿出来——这不是将就，是这条语义本来的样子。
     await page.reload({ waitUntil: "networkidle" });
     await page.waitForTimeout(900);
     const active = await page.locator("nav.side button.on").getAttribute("title");
     check("刷新之后还在原来那一节", active === "plugin-manager", `实际 ${active}`);
     await openSwitches();
+    await box.click();
+    await page.waitForTimeout(200);
   }
 
   await page.locator("header.top button.primary").click();

@@ -348,6 +348,23 @@
     return () => window.removeEventListener("hashchange", onHashChange);
   });
 
+  /**
+   * 有没保存的改动时，刷新/关标签页要先问一句。
+   *
+   * 草稿住在页面内存里（那是刻意的：一次编辑攒成一次 CAS 写），所以 F5 就是丢掉
+   * 它——而「按错了刷新」与「只是想看看最新状态」长得一模一样。浏览器这一道问询
+   * 是唯一拦得住它的地方（界面自己拦不住：刷新不是我们的代码发起的）。
+   *
+   * 文案由浏览器定（现代浏览器一律显示自己的那句），所以这里只 preventDefault。
+   * 代价是这条会**跟着草稿来去**：没有草稿时不留监听，免得连正常刷新都弹框。
+   */
+  $effect(() => {
+    if (!dirty.length) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  });
+
   route = parseHash(location.hash);
   load();
 
