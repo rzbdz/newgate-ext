@@ -9,6 +9,7 @@ import (
 	"github.com/rzbdz/newgate/lib/view"
 	"github.com/rzbdz/newgate/modules/config/domain"
 	"github.com/rzbdz/newgate/modules/config/store"
+	agentapi "github.com/rzbdz/newgate/modules/confighook"
 	"github.com/rzbdz/newgate/modules/gateway/gatewaystate"
 )
 
@@ -239,7 +240,9 @@ func slotsConcept() view.Concept {
 		}
 		items = append(items, clToggle{
 			ID: s.Name, Label: s.Name, Kind: "select",
-			Value: a.TierOf(s),
+			// 此刻走哪儿：本模块交给内核的那份事实（见 slots.go 的 facts），
+			// 与注入路径问的是同一个实现——界面显示的和真正注入的不会分家。
+			Value: agentapi.TierOf(facts{}, s),
 			// 档位 + 这个槽位自己认的例外（`inherit` 那类，见 agentapi.Slot.Also）：
 			// 下拉里没有的取值，用户就没法设——而说明里写着可以。
 			Options: allowedFor(s.Name),

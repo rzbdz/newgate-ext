@@ -52,6 +52,14 @@ func New() modules.Component {
 				return err
 			}
 			releases = append(releases, release)
+			// 运行期事实（装没装、槽位此刻走哪儿）**另注册**，不塞进描述符：
+			// 描述符说「这个客户端是什么」，事实说「它此刻怎么样」。见
+			// confighookapi.AgentFacts。
+			release, err = config.RegisterAgentFacts(ID, facts{})
+			if err != nil {
+				return err
+			}
+			releases = append(releases, release)
 			release, err = config.RegisterStateField("claudecode", "classifier_override")
 			if err != nil {
 				return err

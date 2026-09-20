@@ -33,10 +33,10 @@ func TestASlotFollowsTheConfig(t *testing.T) {
 	writeState(t, map[string]any{SlotsKey: map[string]string{"sonnet": "normal"}})
 
 	a := Agent()
-	if got := a.TierOf(slotOf(t, "sonnet")); got != "normal" {
+	if got := agentapi.TierOf(facts{}, slotOf(t, "sonnet")); got != "normal" {
 		t.Errorf("sonnet 该走 normal（配置里改了），实际 %q", got)
 	}
-	env := a.BuildEnv(8899, "tok")
+	env := a.BuildEnv(8899, "tok", facts{})
 	if got := env["ANTHROPIC_DEFAULT_SONNET_MODEL"]; got != "normal" {
 		t.Errorf("注入的该是改过的档位，实际 %q", got)
 	}
@@ -70,7 +70,7 @@ func TestWritingASlotReturnsItToTheDefault(t *testing.T) {
 	if v, there := ok["sonnet"]; there {
 		t.Errorf("改回缺省之后那个键该消失，实际还留着 %q", v)
 	}
-	if got := Agent().TierOf(slotOf(t, "sonnet")); got != "mid" {
+	if got := agentapi.TierOf(facts{}, slotOf(t, "sonnet")); got != "mid" {
 		t.Errorf("改回缺省之后该走缺省 mid，实际 %q", got)
 	}
 }
@@ -84,7 +84,7 @@ func TestABadTierIsRefusedOnTheWayIn(t *testing.T) {
 	if err := WriteSlotTiers(map[string]string{"sonnet": "hevy"}); err == nil {
 		t.Fatal("写一个不存在的档位该被拒绝")
 	}
-	if got := Agent().TierOf(slotOf(t, "sonnet")); got != "mid" {
+	if got := agentapi.TierOf(facts{}, slotOf(t, "sonnet")); got != "mid" {
 		t.Errorf("被拒的写不该留下任何痕迹，实际走 %q", got)
 	}
 }
@@ -98,11 +98,10 @@ func TestABadTierInTheFileDoesNotBreakTakeover(t *testing.T) {
 	testkit.Sandbox(t)
 	writeState(t, map[string]any{SlotsKey: map[string]string{"sonnet": "hevy", "opus": "light"}})
 
-	a := Agent()
-	if got := a.TierOf(slotOf(t, "sonnet")); got != "mid" {
+	if got := agentapi.TierOf(facts{}, slotOf(t, "sonnet")); got != "mid" {
 		t.Errorf("坏值该回落到缺省 mid，实际 %q", got)
 	}
-	if got := a.TierOf(slotOf(t, "opus")); got != "light" {
+	if got := agentapi.TierOf(facts{}, slotOf(t, "opus")); got != "light" {
 		t.Errorf("同一个文件里好的那一行该照常生效，实际 %q", got)
 	}
 	// 坏的那一行要在界面上说出来：不说的话它会一直静静地不起作用。
@@ -141,10 +140,10 @@ func TestAClientSpecificValueSurvives(t *testing.T) {
 		t.Fatalf("客户端自己的取值该收得下: %v", err)
 	}
 	a := Agent()
-	if got := a.TierOf(slotOf(t, "subagent")); got != "inherit" {
+	if got := agentapi.TierOf(facts{}, slotOf(t, "subagent")); got != "inherit" {
 		t.Errorf("该原样走 inherit，实际 %q", got)
 	}
-	if got := a.BuildEnv(8899, "tok")["CLAUDE_CODE_SUBAGENT_MODEL"]; got != "inherit" {
+	if got := a.BuildEnv(8899, "tok", facts{})["CLAUDE_CODE_SUBAGENT_MODEL"]; got != "inherit" {
 		t.Errorf("该原样注入，实际 %q", got)
 	}
 	// 这个例外只属于声明了它的那个槽位：别的槽位写 inherit 仍然是打错。

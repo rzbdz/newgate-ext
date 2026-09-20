@@ -96,16 +96,16 @@
       "where": "modules/claudecode/st-background.go:136"
     },
     "Claude Code": {
-      "where": "modules/claudecode/module.go:86"
+      "where": "modules/claudecode/module.go:94"
     },
     "Claude Code Bash classifier": {
-      "where": "modules/claudecode/view.go:68"
+      "where": "modules/claudecode/view.go:69"
     },
     "Claude Code Bash classifier → the light-tier chain": {
       "where": "modules/claudecode/st-background.go:137"
     },
     "Claude Code slots": {
-      "where": "modules/claudecode/view.go:258"
+      "where": "modules/claudecode/view.go:261"
     },
     "Claude Code strips third-party DeepSeek thinking blocks; turn DeepSeek thinking off unless it was explicitly asked for, so the next round does not 400 for a block that must be passed back": {
       "where": "modules/claudecode_deepseek/st-thinking.go:31"
@@ -117,7 +117,7 @@
       "where": "modules/claudecode_deepseek/switches.go:26"
     },
     "Clients": {
-      "where": "modules/claudecode/module.go:87"
+      "where": "modules/claudecode/module.go:95"
     },
     "DeepSeek thinking mode wants reasoning passed back verbatim, but the client strips it → 400\nso we put it back (the original the client carries → thinkcache; **no original means skip it, never invent one**); only the Claude Code path turns thinking off outright (it strips the blocks, so thinking would be spent for nothing); a foreign unclosed tool loop is first lossily rebuilt from the visible tool results, then DeepSeek takes over": {
       "where": "modules/deepseek/st-reasoning.go:141"
@@ -562,7 +562,7 @@
       ]
     },
     "naked must be off, on or forever, got {value}": {
-      "where": "modules/claudecode/view.go:170",
+      "where": "modules/claudecode/view.go:171",
       "args": [
         "value"
       ]
@@ -637,19 +637,19 @@
       "where": "modules/opencodeomo/command.go:139"
     },
     "off — the Bash classifier is asked as usual": {
-      "where": "modules/claudecode/view.go:95"
+      "where": "modules/claudecode/view.go:96"
     },
     "omo slot bindings": {
       "where": "modules/opencodeomo/view.go:134"
     },
     "on (forever) — the classifier is short-circuited and every request logs [naked]": {
-      "where": "modules/claudecode/view.go:98"
+      "where": "modules/claudecode/view.go:99"
     },
     "on (forever) — the classifier is short-circuited and every request logs [naked]; newgate naked off ends it": {
       "where": "modules/claudecode/classifier-naked.go:199"
     },
     "on — it turns itself off in {left}": {
-      "where": "modules/claudecode/view.go:100",
+      "where": "modules/claudecode/view.go:101",
       "args": [
         "left"
       ]
@@ -708,7 +708,7 @@
       ]
     },
     "provider/model, or @key to follow another tier. Empty = the Bash classifier rides the light tier.": {
-      "where": "modules/claudecode/view.go:116"
+      "where": "modules/claudecode/view.go:117"
     },
     "refusing to back up: {file} has already been taken over by newgate, but {orig} does not exist.\n  Using it as the original backup would lose your original config for good.\n  Either put a clean copy from backups/<timestamp>/ back into original/,\n  or revert the config by hand and run newgate start again": {
       "where": "modules/opencodeomo/takeover.go:49",
@@ -778,7 +778,7 @@
       "where": "modules/opencode/agent.go:17"
     },
     "state.json — {key} could not be read, the defaults are in use": {
-      "where": "modules/claudecode/view.go:253",
+      "where": "modules/claudecode/view.go:256",
       "args": [
         "key"
       ]
@@ -837,7 +837,7 @@
       "where": "modules/configshare/proto/seal.go:144"
     },
     "the classifier settings in this request are not readable: {err}": {
-      "where": "modules/claudecode/view.go:145",
+      "where": "modules/claudecode/view.go:146",
       "args": [
         "err"
       ]
@@ -910,7 +910,7 @@
       "where": "modules/web-dashboard/command.go:75"
     },
     "the model field in settings.json is left untouched; what a tier means is decided by the env": {
-      "where": "modules/claudecode/agent.go:48"
+      "where": "modules/claudecode/agent.go:44"
     },
     "the opus tier (the workhorse); the main loop runs here (Claude Code's default), and so does opusplan in Plan Mode": {
       "where": "modules/claudecode/agent.go:21"
@@ -957,7 +957,7 @@
       ]
     },
     "the slot map in this request is not readable: {err}": {
-      "where": "modules/claudecode/view.go:275",
+      "where": "modules/claudecode/view.go:278",
       "args": [
         "err"
       ]
@@ -981,7 +981,7 @@
       "where": "modules/deepseek/st-reasoning.go:337"
     },
     "the whole special_treatment layer is off — none of this counts until it is switched back on": {
-      "where": "modules/claudecode/view.go:130"
+      "where": "modules/claudecode/view.go:131"
     },
     "there was no concrete model name before takeover": {
       "where": "modules/opencodeomo/slots.go:286"
@@ -1154,7 +1154,7 @@
       ]
     },
     "{names}: switched off individually, so that setting counts for nothing right now": {
-      "where": "modules/claudecode/view.go:133",
+      "where": "modules/claudecode/view.go:134",
       "args": [
         "names"
       ]

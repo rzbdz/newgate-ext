@@ -29,10 +29,6 @@ func Agent() *agentapi.Agent {
 			{Name: "subagent", Tier: "mid", EnvVar: "CLAUDE_CODE_SUBAGENT_MODEL", Also: []string{"inherit"},
 				Desc: i18n.T("every subagent / agent team / workflow; set it to inherit to hand that back to per-slot resolution", nil)},
 		},
-		// 槽位归哪一档**可以由用户改**（见 slots.go）：这里给的是出厂缺省，
-		// 改过的存在 state.json 里，由这个回调现问。内核那边注入时走 TierOf，
-		// 所以改完下一次接管就生效。
-		SlotTier:   slotTier,
 		BaseURLEnv: "ANTHROPIC_BASE_URL",
 		AuthEnv:    "ANTHROPIC_AUTH_TOKEN",
 		// 窗口声明两个变量的**名字**（内核只负责「配置里声明了就按这个名字注入」，

@@ -147,3 +147,33 @@ func slotNote(name, def string) string {
 	}
 	return ""
 }
+
+// facts 是本模块交给内核的**运行时事实**（见 confighookapi.AgentFacts）。
+//
+// # 为什么是一个类型，而不是描述符上的两个函数字段
+//
+// 描述符（Agent）说的是「这个客户端是什么」：二进制名、方言、槽位表、环境变量名
+// ——那些是不变的、可以打印给人看的。而「装没装」「某个槽位此刻走哪个档位」是
+// **此刻怎么样**，随磁盘与配置变。塞进同一个 struct 的话，依赖注入那一侧就没了：
+// 内核只是捡到一个恰好被赋了值的函数指针，谁提供、能不能替换、测试里怎么塞一个
+// 假的，全都无从谈起。
+//
+// 端口这一侧是完整的：RegisterAgentFacts 拿得到 Release（Stop 时自动撤销）、
+// 没注册时内核有一份写死的缺省（见 confighookapi.InstalledDefault）。
+type facts struct{}
+
+var _ agentapi.AgentFacts = facts{}
+
+// Installed 这台机器上有没有 claude。
+//
+// 走内核那份通用判据（在 PATH 上找 Bin 里的名字），**不必自己写**：本客户端没有
+// 什么特别的知识。skipDirs 由内核给（我们的 shim 目录），不忽略的话这条永远为真。
+func (facts) Installed(skipDirs ...string) bool { return Agent().OnPath(skipDirs...) }
+
+// SlotTier 这个槽位此刻走哪个档位：用户改过就用改的，没改返回空串（内核据此回落到
+// 描述符里的缺省）。**不在这里兜底**——「没改过就用缺省」只有一份实现（内核的
+// confighookapi.TierOf），两处各兜一遍的话，那个问题就又要看两个地方才知道答案。
+func (facts) SlotTier(s agentapi.Slot) string {
+	ok, _ := ReadSlotTiers()
+	return ok[s.Name]
+}
