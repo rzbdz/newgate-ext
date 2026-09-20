@@ -1,97 +1,183 @@
-# newgate-ext —— 一个 newgate 发行版（顶层仓库）
+<div align="center">
 
-newgate 的内核只做机制；**产品决策在发行版这一层**：装哪些模块、修哪家的怪癖、
-按什么顺序修。这个仓库就是那个发行版，而且它是**顶层**——内核源码作为 submodule
-钉在 `core/`，写模块、编二进制、发版本都在这里发生。
+# newgate-ext
 
-fork 它 → 改 `dist.json` 与 `modules/` → 就有了你自己的发行版。
+### A [newgate](https://github.com/rzbdz/newgate) distribution — wired for Claude Code and OpenCode
 
-## 目录
+The kernel does mechanism. **This repo does product**: which modules ship, whose
+upstream quirks get patched, and in what order they run.
 
-| 路径 | 是什么 |
-| --- | --- |
-| `core/` | **submodule**：内核源码（`github.com/rzbdz/newgate`），钉在一个提交上 |
-| `go.mod` | 本发行版**自己就是一个 Go module**，`replace github.com/rzbdz/newgate => ./core`——内核是这里的一份依赖 |
-| `modules/<名字>/module.go` | 本发行版的模块，形态与内核的 `modules/` 完全一致 |
-| `manifest/modules_gen.go` | **生成物**（进版本控制）：规格书 → 装配选择 |
-| `tools/distgen/` | 读规格书、生成上面那份清单 |
-| `cmd/newgate/` | 本发行版的 main：交出「装哪张图 + 版本号」，其余交给内核的组合根 |
-| `dist.json` | **规格书**（旗舰）：本发行版由哪些模块组成、关掉内核的哪几个 |
-| `dist-simple-cli.json` | 变体：换掉界面（内核的 `cli` → 本仓库的 `simple-cli`） |
-| `dist-hello.json` | 骨架：整个框架 + 一个 `hello`，`newgate` 跑起来就是一句 hello world。它的 `"disable": ["*"]` 读作**内核自带的全都不要**（只剩摘不掉的那个入口账本） |
-| `mock/` | 本发行版模块的端到端（复用内核的假上游） |
-| `build/build.sh` | 唯一的构建入口 |
-| `CLAUDE.md` | 在这里干活的人（和 agent）要先读的那份说明 |
+[![CI](https://github.com/rzbdz/newgate-ext/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/rzbdz/newgate-ext/actions/workflows/ci.yml)
+![release](https://github.com/rzbdz/newgate-ext/actions/workflows/release.yml/badge.svg)
+![Go](https://img.shields.io/badge/go-1.27-00ADD8?logo=go&logoColor=white)
+![dependencies](https://img.shields.io/badge/third--party_deps-0-brightgreen)
+![platforms](https://img.shields.io/badge/platforms-linux%20%7C%20darwin-informational)
 
-## 下载现成的
+</div>
 
-Release 页面上有各平台的静态二进制（`linux/amd64` `linux/arm64` `darwin/amd64`
-`darwin/arm64`）与 `SHA256SUMS`：
+---
+
+## Install
+
+Static, single-file, no runtime dependencies. Grab the binary for your platform
+from the [latest release](https://github.com/rzbdz/newgate-ext/releases/latest):
 
 ```bash
-gh release download v0.2.0 -p 'newgate-*-linux-amd64' -p SHA256SUMS
+gh release download -p 'newgate-*-linux-amd64' -p SHA256SUMS
 sha256sum -c SHA256SUMS --ignore-missing
-chmod +x newgate-default-linux-amd64     # GitHub 不保存权限位，必须自己加
-mv newgate-default-linux-amd64 ~/.local/bin/newgate   # 多调用型：装成 newgate
+chmod +x newgate-default-linux-amd64      # GitHub does not preserve the exec bit
+mv newgate-default-linux-amd64 ~/.local/bin/newgate
 newgate version
 ```
 
-最后那步的**改名是必须的**：这个二进制按 argv0 决定入口（`newgate` / `claude` /
-`opencode`…），叫别的名字时它认不出自己是谁。
+**The rename is not cosmetic.** The binary is multi-call: `argv[0]` decides which
+entry claims the invocation (`newgate`, `claude`, `opencode`, …). Run it under
+any other name and it cannot tell who it is.
 
-## 两条分支
-
-| 分支 | 是什么 |
-| --- | --- |
-| `main` | **官方发行版**：内核之外我们维护的模块 |
-| `template` | 给别人 fork 的骨架：只有 `hello` 与 `simple-cli` 两个样例模块 |
-
-## 编一个
+Then point a client at it:
 
 ```bash
-git clone --recursive <这个仓库> my-dist && cd my-dist
-$EDITOR dist.json                     # 选模块、关掉不要的
-build/build.sh                        # → dist/newgate-default-<平台>-<架构>
-NEWGATE_ALL=1 build/build.sh          # 一次编仓库里每一份规格书 → 多个二进制
+newgate init          # scaffold config
+newgate start         # daemon on 127.0.0.1:8899
+newgate status
 ```
 
-产物名 = `newgate-<规格书里的 distribution>-<平台>-<架构>`。仓库里现在有三份规格书
-（`default` 旗舰、`simple-cli` 换界面、`hello` 骨架）。`NEWGATE_ALL=1` 多编几份的
-用处是**调试**：骨架配置（框架 + hello，`newgate` 就是 hello world）不必切分支就能跑。
+## What's in the box
 
-编的是**你自己的 main + core/ 那一发的内核**：发行版是独立 module（`go.mod`），
-内核只是它的一份依赖（replace 到 submodule）。于是没有中间产物要同步——改完直接编，
-不必先 commit，内核的工作区也不会被改写。
+| module | what it owns |
+| --- | --- |
+| `tui` | menuconfig-style terminal UI — edit profiles and tier bindings |
+| `deepseek` | DeepSeek family: reasoning content save/backfill, tail-shape repair, cross-provider tool-loop migration |
+| `glm` | GLM family: reasoning hand-back and the default thinking switch |
+| `claudecode` | Claude Code as a client: model slots, env contract, background calls |
+| `claudecode_deepseek` / `claudecode_glm` | behaviour that only exists at the *cross point* of that client and that model |
+| `opencode` | OpenCode as a client |
+| `opencodeomo` | Oh My OpenAgent as an optional OpenCode extension |
+| `configshare` | multi-machine config sharing — **a library, not yet a module**: no `New()`, not in any spec, in no binary |
+| `simple-cli` | a minimal UI sample: renders `status`, ignores the rest |
+| `hello` | the smallest module there is, and the entire skeleton distribution |
 
-要发布多平台产物：
+Everything else — the gateway, the breaker, config, runtime, the CLI — comes
+from the kernel at `core/`.
+
+## Three binaries, one repo
+
+A **spec** (`dist*.json`) says which modules go in and which kernel modules stay
+out. `build/build.sh` compiles one binary per spec.
+
+| spec | distribution | what it is |
+| --- | --- | --- |
+| `dist.json` | `default` | **the flagship** — everything above, kernel `cli` + `tui` |
+| `dist-simple-cli.json` | `simple-cli` | same gateway, kernel `cli` swapped for `simple-cli` |
+| `dist-hello.json` | `hello` | the skeleton: the whole framework + one `hello` module |
+
+```jsonc
+// dist-hello.json — "none of the kernel's modules, just mine"
+{ "distribution": "hello", "modules": ["hello"], "disable": ["*"] }
+```
+
+`"disable": ["*"]` reads as **all of the kernel's own modules**. Spelling the
+directory names out instead would be a copy of the kernel's module table, and a
+copy rots: add a module to the kernel and a list-everything distribution silently
+grows it. `*` grows with the kernel — by not growing at all.
+
+## Build
 
 ```bash
+git clone --recursive git@github.com:rzbdz/newgate-ext.git && cd newgate-ext
+build/build.sh                    # → dist/newgate-default-<os>-<arch>
+
+NEWGATE_ALL=1 build/build.sh      # every spec in the repo → several binaries
+NEWGATE_DISTS="dist.json dist-hello.json" build/build.sh out/
+NEWGATE_DIST=dist-simple-cli.json build/build.sh out/
 NEWGATE_PLATFORMS="linux/amd64 linux/arm64 darwin/arm64" build/build.sh dist/
 ```
 
-**产物是多调用型的**（argv0 决定入口：`newgate` / `claude` / `opencode`…），
-拿去跑之前先按正确的名字落一份：
+Artifacts are named `newgate-<distribution>-<os>-<arch>`, and `build/build.sh` is
+the *only* entry point — local, CI, and release all go through it. It checks the
+`core/` submodule, regenerates the assembly manifest, cross-compiles fully static
+binaries, asserts each host artifact really is static (`ldd`), and writes
+`SHA256SUMS`.
+
+> Build a skeleton binary to debug the framework: `NEWGATE_ALL=1` produces
+> `newgate-hello-linux-amd64`, where `newgate` is a hello world. No branch
+> switching, no stashing.
+
+## Test
+
+Two suites, and the distribution's pipeline runs the kernel's **first**:
 
 ```bash
-cp dist/newgate-<发行版>-linux-amd64 /tmp/newgate && /tmp/newgate version
+cd core && GOPROXY=off go test ./...                    # core-test: the kernel, offline
+gofmt -l . && go vet ./... && go run ./tools/distgen -check && go test ./...   # dist-test
+build/build.sh dist && bash mock/e2e_claude.sh          # e2e: real binary, fake upstream
 ```
 
-## 推之前
+- `core-test` proves the kernel still holds on its own — the kernel needs no
+  network and no second repository to test itself.
+- `dist-test` proves *this* repo's modules and specs assemble.
+- The three end-to-end scripts (`mock/e2e_claude.sh`, `mock/e2e_opencode.sh`,
+  `mock/e2e_claude_dist.sh`, 112 assertions together) drive the real binary
+  against a byte-exact fake upstream. **Zero tokens.** The kernel's own e2e keeps
+  the mechanism-side cases; the client-behaviour cases live here, next to the
+  modules that implement them.
 
-两个仓库各管各的测试，发行版的流水线里**第一项是内核的全部测试**：
+## Fork it
+
+This repo is the top level: `core/` is a submodule pinned to one kernel commit,
+and `go.mod` replaces the kernel module with it. Your fork is a real Go module
+that happens to live next to a copy of its dependency.
 
 ```bash
-cd core && GOPROXY=off go test ./...        # core-test：内核自己的（离线）
-gofmt -l . && go vet ./... && go test ./...   # dist-test：发行版自己的
-build/build.sh dist && bash mock/e2e_claude_dist.sh    # 端到端（零 token）
+$EDITOR dist.json          # pick your modules, disable kernel ones
+mkdir modules/my-thing && $EDITOR modules/my-thing/module.go
+$EDITOR dist.json          # add "my-thing" to modules
+build/build.sh
 ```
 
-## 现有模块
+Then run the generator and commit what it wrote — `manifest/modules_gen.go` is
+**generated but checked in**: it records which modules that commit assembled.
+CI fails on drift (`go run ./tools/distgen -check`).
 
-| 模块 | 作用 |
+The [`template`](https://github.com/rzbdz/newgate-ext/tree/template) branch is
+the same skeleton with nothing but `hello`: the whole framework, one module,
+`newgate` prints hello world.
+
+### Where does a change belong?
+
+> **Would this still be here if someone shipped a completely different
+> distribution?**
+
+A quirk of one upstream, a client × model cross semantic, a UI taste — that is
+this repo. The gateway, the breaker, the component framework, anything every
+distribution needs — that is [the kernel](https://github.com/rzbdz/newgate), and
+it takes a patch there.
+
+Getting it wrong is not silent: the spec says what was assembled, the build log
+prints it, and `newgate plugin` reports what is actually running.
+
+## Layout
+
+```text
+core/                  submodule: the kernel
+modules/<name>/        this distribution's modules (same shape as the kernel's)
+manifest/modules_gen.go generated, checked in: spec → assembly selection
+tools/distgen/         spec JSON → that manifest
+cmd/newgate/           the distribution's main: which graph, which version
+dist*.json             the specs
+build/build.sh         the only build entry point
+mock/                  end-to-end against the kernel's fake upstream (reused, not copied)
+testing/               graph/spec tests: every spec assembles, starts, stops
+```
+
+## Branches
+
+| branch | what |
 | --- | --- |
-| `hello` | 最小样例，也是骨架配置（`dist-hello.json`）的全部内容：Start 打一行日志，并**申报兜底入口**——所以「框架 + hello」的 `newgate` 就是一句 hello world |
-| `simple-cli` | 极简界面：只渲染 `status` 与已注入的命令，用于验证「换掉界面，别的模块照常」 |
-| `deepseek` | DeepSeek 的请求改写：思考模式要求逐字回传推理内容，客户端会剥掉/丢帧 → 补形状 |
-| `glm` | GLM 的思维链回传与默认思考开关 |
-| `claudecode_deepseek` / `claudecode_glm` | 客户端×模型的交叉语义（Claude Code 会剥 thinking 块等） |
+| `main` | the official distribution |
+| `template` | fork skeleton: the framework + `hello` |
+
+## License
+
+No license file yet — this is pre-1.0 and still moving. Ask before you build
+something you intend to depend on.
