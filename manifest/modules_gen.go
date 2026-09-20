@@ -40,6 +40,7 @@ func Specs() map[string]app.Selection {
 		"dist-hello.json": {
 			AllCore: true,
 			Extra: []app.Entry{
+				{Dir: "i18n", Component: ext_i18n.New()},
 				{Dir: "hello", Component: ext_hello.New()},
 			},
 		},

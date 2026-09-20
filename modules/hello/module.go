@@ -19,15 +19,24 @@ import (
 
 	modules "github.com/rzbdz/newgate/component"
 	entryapi "github.com/rzbdz/newgate/component/entry"
+	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
 // TypeExample 是分类标签。词汇表归产品层（见 component.Type 的注释），
 // 这里给出取值：`newgate plugin` 会按它分组显示，装不认识的值也不会报错。
 const TypeExample = "example"
 
-// Greeting 是那一行日志的内容。导出是为了让测试能引用同一份字面量——
-// 断言写死字符串的话，改文案要改两处，而它们是同一个事实。
-const Greeting = "hello from newgate-ext"
+// 这个样例只有两句话，但两句话都**走目录表**——因为翻译这件事最贵的不是工具，
+// 是习惯：一个模块第一次写文案时抄了哪一行，决定它以后长什么样。骨架发行版
+// （`dist-hello.json`）跑的就是这个模块，所以它也是「一句话该怎么写」的样板。
+//
+// 规矩（内核 `docs/13-i18n.md` 是权威原文）：源码里写**英文**（源语言），
+// `i18n.T("那条英文", i18n.A{...})`，中文活在 `modules/i18n/catalogs/zh-Hans.json`。
+// 键就是那句英文本身，所以没有「键写错」这回事；代价是改措辞会让旧译文变孤儿，
+// `tools/i18n check` 会报出来。
+//
+// **不能把消息放进常量再 `i18n.T(常量)`**：扫描器只认调用点上的字符串字面量，
+// 引用常量不算——那条规矩是为了让「这句话长什么样」在调用点一眼可见。
 
 // New 声明这个组件：启动时登记一行日志 + 申报一个兜底的进程入口。
 //
@@ -45,7 +54,7 @@ func New() modules.Component {
 		Type:     TypeExample,
 		Requires: []modules.Requirement{modules.Need(entryapi.Capability)},
 		Start: func(_ context.Context, ctx modules.Context) error {
-			log.Printf("[hello] %s", Greeting)
+			log.Printf("[hello] %s", i18n.T("hello from newgate-ext", nil))
 			registry := modules.MustGet(ctx, entryapi.Capability)
 			rel, err := registry.Register(entry{}, entryapi.DefaultRank)
 			if err != nil {
@@ -81,6 +90,7 @@ func (entry) Claims(entryapi.Process) bool { return true }
 // Handle 是骨架发行版的全部行为。带上 argv0 与版本号：调试「我跑的是哪一份产物」
 // 时，这两样是最先要看的东西。
 func (entry) Handle(p entryapi.Process) int {
-	fmt.Printf("hello world — %s (%s)\n", p.Argv0, p.Version)
+	fmt.Println(i18n.T("hello world — {argv0} ({version})",
+		i18n.A{"argv0": p.Argv0, "version": p.Version}))
 	return 0
 }

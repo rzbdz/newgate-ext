@@ -1,6 +1,7 @@
 {
   "distribution": "hello",
   "modules": [
+    "i18n",
     "hello"
   ],
   "disable": [

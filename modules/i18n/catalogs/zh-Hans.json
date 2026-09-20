@@ -412,6 +412,14 @@
       "text": "术语",
       "reviewed": true
     },
+    "hello from newgate-ext": {
+      "text": "来自 newgate-ext 的问候",
+      "reviewed": true
+    },
+    "hello world — {argv0} ({version})": {
+      "text": "你好，世界 — {argv0}（{version}）",
+      "reviewed": true
+    },
     "inject thinking:disabled (the first step)": {
       "text": "注入 thinking:disabled（第 1 手）",
       "reviewed": true

@@ -424,6 +424,16 @@
     "glossary": {
       "where": "modules/simple-cli/module.go:295"
     },
+    "hello from newgate-ext": {
+      "where": "modules/hello/module.go:57"
+    },
+    "hello world — {argv0} ({version})": {
+      "where": "modules/hello/module.go:93",
+      "args": [
+        "argv0",
+        "version"
+      ]
+    },
     "inject thinking:disabled (the first step)": {
       "where": "modules/claudecode_deepseek/switches.go:25"
     },
