@@ -108,6 +108,10 @@
       "text": "Claude Code Bash 分类器 → light 档链",
       "reviewed": true
     },
+    "Claude Code slots": {
+      "text": "Claude Code 槽位",
+      "reviewed": true
+    },
     "Claude Code strips third-party DeepSeek thinking blocks; turn DeepSeek thinking off unless it was explicitly asked for, so the next round does not 400 for a block that must be passed back": {
       "text": "Claude Code 会剥掉第三方 DeepSeek 的 thinking 块；未显式要求思考时关闭 DeepSeek thinking，避免下一轮要求回传而 400",
       "reviewed": true
@@ -270,6 +274,10 @@
     },
     "cannot derive the encryption key: {err}": {
       "text": "派生加密密钥失败: {err}",
+      "reviewed": true
+    },
+    "cannot encode the slot map: {err}": {
+      "text": "槽位映射编码失败: {err}",
       "reviewed": true
     },
     "cannot fix the permissions of {path}: {err}": {
@@ -628,6 +636,14 @@
       "text": "opencode",
       "reviewed": true
     },
+    "previewing uses POST": {
+      "text": "预览用 POST",
+      "reviewed": true
+    },
+    "previewing needs Content-Type: application/json (got {ct})": {
+      "text": "预览需要 Content-Type: application/json（实际 {ct}）",
+      "reviewed": true
+    },
     "profile selection": {
       "text": "profile 选择",
       "reviewed": true
@@ -692,6 +708,10 @@
       "text": "栏目动作使用 POST",
       "reviewed": true
     },
+    "set in the config: {tier} (the default is {def}) — takes effect the next time claude is taken over (newgate on claude)": {
+      "text": "配置里改过：{tier}（缺省是 {def}）——下次接管 claude 时才生效（newgate on claude）",
+      "reviewed": true
+    },
     "short-circuit the Bash classifier: on=60s / forever=permanent / off=disabled": {
       "text": "短路 Bash 分类器：on=60s / forever=永久 / off=关",
       "reviewed": true
@@ -710,6 +730,10 @@
     },
     "slots are discovered by the config extension module": {
       "text": "槽位由配置扩展模块发现",
+      "reviewed": true
+    },
+    "state.json — {key} could not be read, the defaults are in use": {
+      "text": "state.json — {key} 读不出来，现在用的是缺省值",
       "reviewed": true
     },
     "status blocks": {
@@ -762,6 +786,10 @@
     },
     "the classifier settings in this request are not readable: {err}": {
       "text": "这个请求里的分类器设置读不出来：{err}",
+      "reviewed": true
+    },
+    "the config says {tier}, which is not a tier — the default is in use": {
+      "text": "配置里写的是 {tier}，不是档位——缺省值仍然有效",
       "reviewed": true
     },
     "the configshare bookkeeping file is corrupt; starting over from the initial state: {err}": {
@@ -862,6 +890,10 @@
     },
     "the slot bindings in this request are not readable: {err}": {
       "text": "这个请求里的槽位绑定读不出来：{err}",
+      "reviewed": true
+    },
+    "the slot map in this request is not readable: {err}": {
+      "text": "这份请求里的槽位映射读不出来: {err}",
       "reviewed": true
     },
     "the snapshot carries a file that is not in the managed set: {path} (the protocol never sends files outside the managed set)": {
@@ -1074,6 +1106,10 @@
     },
     "{slot} · now {now} · effective {effective} · suggested {suggested} (differs from now)": {
       "text": "{slot} · 现状 {now} · 生效 {effective} · 建议 {suggested}（与现状不符）",
+      "reviewed": true
+    },
+    "{slot}: {tier} is not a tier — pick one of {known}": {
+      "text": "{slot}: {tier} 不是档位——从 {known} 里挑一个",
       "reviewed": true
     },
     "{title} is read-only": {

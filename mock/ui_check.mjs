@@ -520,43 +520,160 @@ if (!(await openSwitches())) {
 }
 
 
-// —— 11.5. 一份文件只有一个可写的面 ——
+// —— 11. 文本编辑器里打字不会跳回第一行（2026-09-20 实测到的回归） ——
 //
-// 这一条锁的是**整块复杂度的来源被拆掉了**。之前：同一份文件的两个半边都能改，
-// 于是要有「谁后改的说了算」、要挤出输的那一半的草稿、还要让它跟着显示赢的那一半
-// 的内容——为此长出了内核的 Preview 契约、BFF 的 /api/preview、前端的防抖与预览
-// 表。而它们没有一个与「配置」有关。
+// 现场：在原文那一栏按一下 `d`，光标跳到第一行，根本没法编辑。根因是 CodeMirror
+// 那个 `$effect` 读了 `value`（响应式），于是**每敲一个字符**就重建一次编辑器，
+// doc 从头灌进去、光标回到 0（见 kinds/CodeEditor.svelte 里的 untrack）。
 //
-// 规则改成：**有结构化控件的那份文件，它原文那一半只读**（没有结构化控件的，
-// 原文才是写入口）。判据落在「那一栏上有没有只读标记」与「它到底能不能改」。
+// 判据用「敲进去的字符在末尾」而不是「光标在哪」：跳回开头的症状正是字符被**逆序**
+// 插在最前面，这一条判得出来。
 {
-  const pair = snap.concepts.find(
-    (c) => c.kind === "mapping-editor" && snap.concepts.some((x) => x.kind === "code" && (x.data.file ?? x.data.path) === c.data.file),
-  );
-  if (!pair) {
-    skip("这份装配里没有「控件 + 原文」的一对，跳过 11.5");
-  } else {
-    const rawID = "config.file." + pair.data.file;
-    const raw = snap.concepts.find((c) => c.id === rawID);
-    check("同一份文件的原文半边是**只读**的（写入口只有控件那一个）", raw && !raw.writable,
-      `原文半边 writable=${raw && raw.writable}`);
+  // 挑一个**可写**的原文栏：profile 的右栏是 `.kv`（没有凭据，不是只读），而
+  // providers.json 那种带 api_key 的右栏是**只读**的（redacted）——往只读编辑器里
+  // 打字什么都不会发生，那种「失败」测的是别的东西。
+  const editable = snap.concepts.find((c) => c.kind === "mapping-editor");
+  await page.locator(`nav.side button[title="${editable.source}"]`).click();
+  await page.waitForTimeout(250);
+  await page
+    .locator(`button.tab[title="${editable.id}"], nav.v button[title="${editable.id}"]`)
+    .first()
+    .click();
+  await page.waitForTimeout(400);
 
-    // 界面上也要真的这么显示：那一栏上有只读标记，而且编辑器不接受输入。
-    await page.locator(`nav.side button[title="${pair.source}"]`).click();
-    await page.waitForTimeout(250);
-    await page.locator(`button.tab[title="${pair.id}"], nav.v button[title="${pair.id}"]`).first().click();
-    await page.waitForTimeout(400);
-    const pill = await page.locator(".pane-r .pill", { hasText: /只读|read-only/ }).count();
-    check("原文那一栏上写着「只读」", pill > 0, "屏幕上没有任何只读标记，用户会以为它能改");
-    const before = await page.locator(".pane-r .cm-content").first().innerText();
-    await page.locator(".pane-r .cm-content").first().click();
+  const cm = page.locator(".pane-r .cm-content").first();
+  if (await cm.count()) {
+    await cm.click();
     await page.keyboard.press("Control+End");
-    await page.keyboard.type("XYZ");
+    await page.keyboard.type("xyz");
     await page.waitForTimeout(300);
-    const after = await page.locator(".pane-r .cm-content").first().innerText();
-    check("在只读的原文里打字打不进去", after === before, `多出了 ${JSON.stringify(after.slice(-12))}`);
-    check("打不进去也就不会有草稿", (await page.locator("header.top button.primary").innerText()).trim() === "保存",
-      "保存按钮上有数字，说明只读那一栏冒出了一份草稿");
+    const text = (await cm.innerText()).trimEnd();
+    check("在文本编辑器里连打三个字符不会跳回开头", text.endsWith("xyz"),
+      `结尾是 ${JSON.stringify(text.slice(-24))}`);
+    // 留一份脏草稿会影响后面的键盘检查，撤销掉。
+    const revert = page.locator(".card.dirty button").filter({ hasText: /撤销|revert|Revert/ }).first();
+    if (await revert.count()) { await revert.click(); await page.waitForTimeout(300); }
+  } else {
+    skip("文本编辑器没渲染出来（模板变了？）——这一条跳过");
+  }
+}
+
+// —— 11.5. 挤掉另一半的草稿时，必须说一声 ——
+//
+// 两半写的是同一份文件，所以后改的那一半赢、另一半**没保存的**草稿作废（见
+// App.svelte 的 edit/lastEdit，那是用户点名要的语义）。但作废掉的是他刚敲进去的
+// 字——不声不响地丢掉违背这个仓库那条硬规矩（不静默），而且他会以为那段字还在。
+//
+// 判据两条：屏幕上出现了一句提示，且那句话**点名了是哪份文件**（同一个文件的两半
+// 才可能撞上这件事，不说文件名等于让用户自己去猜是哪一份）。
+{
+  const pair = snap.concepts.find((c) => c.kind === "mapping-editor");
+  await page.locator(`nav.side button[title="${pair.source}"]`).click();
+  await page.waitForTimeout(250);
+  await page
+    .locator(`button.tab[title="${pair.id}"], nav.v button[title="${pair.id}"]`)
+    .first()
+    .click();
+  await page.waitForTimeout(400);
+
+  const cm = page.locator(".pane-r .cm-content").first();
+  const name = page.locator(".card .head input.name").first();
+  if ((await cm.count()) && (await name.count())) {
+    // 先在**原文**那一栏敲一句（造一份 raw 草稿），再去**控件**那一栏动一下。
+    await cm.click();
+    await page.keyboard.press("Control+End");
+    await page.keyboard.type("# raw half");
+    await page.waitForTimeout(250);
+    await name.fill("demo-renamed");
+    await page.waitForTimeout(300);
+    const notice = await page.locator(".notice").first().innerText().catch(() => "");
+    check("挤掉另一半的草稿时说了一声", notice.trim().length > 0, "屏幕上一句话都没有，那段字就没了");
+    check(
+      "那句话点名了是哪份文件",
+      notice.includes(pair.data.file),
+      `实际 ${JSON.stringify(notice.slice(0, 90))}`,
+    );
+    // 收尾：把这一节的草稿撤掉，别影响后面的键盘检查。
+    await page
+      .locator(".card.dirty button")
+      .filter({ hasText: /撤销|revert|Revert/ })
+      .first()
+      .click()
+      .catch(() => {});
+    await page.waitForTimeout(400);
+  } else {
+    skip("这一节没有「控件 + 原文」两半，跳过 11.5");
+  }
+}
+
+// —— 11.6. 改原文，控件那一半跟着变 ——
+//
+// 这是用户点名要的那条：「编辑完 raw 后马上刷新 ui controls」。没有它的话，控件
+// 那一半手里还是**改之前**那份盘上内容，而它的编辑载荷是**整份文件**——接着动
+// 一个下拉框交上去的就是整份旧表，刚粘进原文的东西当场没了，而屏幕上从头到尾
+// 没显示过它（见内核 lib/view 的 Concept.Preview）。
+//
+// 判据落在**控件那一栏真的多出一个档位**上，不是「后端回了 200」：回 200 而界面
+// 没换，与这条要的东西差着十万八千里。
+//
+// 用 `.kv` 的档位（沙箱脚本铺的 fill1..fill9）：往末尾加一行 `键=provider/model`
+// 就是合法 KV，而 JSON 那份要在花括号里面插，打字很难构造得干净。
+{
+  const kvProfile = snap.concepts.find((c) => c.kind === "mapping-editor" && c.data.file?.endsWith(".kv"));
+  if (!kvProfile) {
+    skip("这份装配里没有 .kv 档位，跳过 11.6");
+  } else {
+    await page.locator(`nav.side button[title="${kvProfile.source}"]`).click();
+    await page.waitForTimeout(250);
+    await page
+      .locator(`button.tab[title="${kvProfile.id}"], nav.v button[title="${kvProfile.id}"]`)
+      .first()
+      .click();
+    await page.waitForTimeout(400);
+
+    const before = await page.locator(".pane-l .role b.mono").allInnerTexts();
+    const cm = page.locator(".pane-r .cm-content").first();
+    await cm.click();
+    await page.keyboard.press("Control+End");
+    // `role.<名字>=` 是 KV 里「任意档位名」的写法（`zzprobe=` 会被解析器拒掉——
+    // 它不认识的键宁可报错，因为写错一个键原本会被静默忽略）。
+    await page.keyboard.type("\nrole.zzprobe=demo/demo-model");
+    // 防抖 200ms + 一个来回，留足余量（这是本地 BFF，正常几毫秒）。
+    await page.waitForTimeout(1200);
+    const after = await page.locator(".pane-l .role b.mono").allInnerTexts();
+    check(
+      "原文里加的那个档位，控件那一半跟着出现了",
+      after.includes("zzprobe") && !before.includes("zzprobe"),
+      `之前 [${before}] 之后 [${after}]`,
+    );
+
+    // —— 接着在控件上改一格、保存：盘上**两笔都要在** ——
+    //
+    // 这一条才是这个功能存在的全部理由（用户的原话：「编辑完 raw 后马上刷新 ui
+    // controls」）。控件那一半的编辑载荷是**整份文件**，所以它交上去的那一份必须
+    // 建立在原文草稿之上；否则「原文里加的东西」和「控件里改的那一格」只能活一个。
+    //
+    // 实测过的坏法（修之前）：保存写的是**原文那一半、内容 = 盘上原样**——两笔
+    // 编辑一起消失，屏幕上连一句报错都没有，只看到「未保存」自己没了。根因是
+    // CodeEditor 把「外部换内容」那次 dispatch 当成了用户输入又交了回去
+    // （见 kinds/CodeEditor 里 applying 那段）。
+    const home = stateFile.slice(0, stateFile.lastIndexOf("/"));
+    const file = `${home}/${kvProfile.data.file}`;
+    await page
+      .locator(".pane-l .role")
+      .nth(0)
+      .locator('input:not([type="checkbox"])')
+      .first()
+      .fill("m-from-control");
+    await page.waitForTimeout(200);
+    await page.locator("header.top button.primary").click();
+    await page.waitForTimeout(1200);
+    const saved = fs.readFileSync(file, "utf8");
+    check(
+      "保存之后：原文加的那一档、控件改的那一格，两笔都在盘上",
+      saved.includes("zzprobe") && saved.includes("m-from-control"),
+      JSON.stringify(saved),
+    );
   }
 }
 

@@ -86,7 +86,7 @@ func New() modules.Component {
 					viewapi.Title(func() string { return i18n.T("Claude Code", nil) }).
 						In(func() string { return i18n.T("Clients", nil) }),
 					func() ([]viewapi.Concept, error) {
-						return []viewapi.Concept{classifierConcept()}, nil
+						return []viewapi.Concept{classifierConcept(), slotsConcept()}, nil
 					})
 				if err != nil {
 					return err

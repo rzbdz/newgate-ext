@@ -210,3 +210,83 @@ var (
 	nakedPluginName      = classifierNaked{}.Name()
 	backgroundPluginName = background{}.Name()
 )
+
+// slotsConcept 是这张卡：**Claude Code 的哪个槽位归哪个档位**。
+//
+// # 为什么它该有一张卡
+//
+// 映射的缺省值住在 agent.go 里（那是出厂设置），而 2026-09-21 之前它**只**住在
+// 那里——想「让 Bash 分类器走 normal，免得 Sonnet 一挂整场断」或者「subagent 全
+// 降一档省点钱」，只有改代码重编一条路。用户的原话是「目前看 go 代码就是他妈的
+// 写死的吧」。
+//
+// 它是配置，不是代码：改完之后**下一次接管**就生效（env 是启动时注入的，跑着的
+// 会话要 `newgate on claude` 重来一次——这句写在 why 里，不写的话用户会以为点了
+// 没生效）。
+//
+// # 为什么不做成「每个档位一张卡」
+//
+// 一档一行就是这张卡：五行，一眼看完，改哪一行都只有一个下拉。做成五张卡的话，
+// 「我想让 sonnet 走重档」这件事要在五个地方里找出对的那一个。
+func slotsConcept() view.Concept {
+	a := Agent()
+	_, bad := ReadSlotTiers()
+	items := make([]clToggle, 0, len(a.Slots))
+	for _, s := range a.Slots {
+		why := s.Desc
+		if note := slotNote(s.Name, s.Tier); note != "" {
+			why += " · " + note
+		}
+		items = append(items, clToggle{
+			ID: s.Name, Label: s.Name, Kind: "select",
+			Value:   a.TierOf(s),
+			Options: domain.Roles,
+			Why:     why,
+		})
+	}
+	// 解析不了的那一份要单独说：那是一个**改坏了的文件**，而它此刻静静地不起作用
+	// （缺省值仍然是对的）。不报的话，用户会以为自己的改动生效了。
+	file := "state.json"
+	if len(bad) > 0 {
+		file = i18n.T("state.json — {key} could not be read, the defaults are in use",
+			i18n.A{"key": SlotsKey})
+	}
+	return view.Concept{
+		ID: "claudecode.slots", Kind: view.KindToggles,
+		Title: i18n.T("Claude Code slots", nil),
+		Data:  clData{File: file, Items: items},
+		// Order 20：排在分类器那张卡后面。分类器是「此刻安全门关没关」（会变、要
+		// 看），这里是「装完调一次的归属」（很少动）——把会变的放前面。
+		Order: 20,
+		Apply: applySlots,
+	}
+}
+
+// applySlots 写槽位映射。
+//
+// 载荷是**全部槽位**（见 kinds/Toggles.svelte：一次交全部，不是增量）。所以这里
+// 拿到的是一份完整的表，直接交给 WriteSlotTiers——它会把「与缺省相同」的那些丢掉，
+// 于是把某一行改回缺省 = 那一行从配置里消失，而不是留下一条多余的同值记录。
+func applySlots(edit json.RawMessage, _ string) (string, error) {
+	var patch map[string]string
+	if err := json.Unmarshal(edit, &patch); err != nil {
+		return "", i18n.Ef(err, "the slot map in this request is not readable: {err}",
+			i18n.A{"err": err})
+	}
+	known := map[string]bool{}
+	for _, s := range Agent().Slots {
+		known[s.Name] = true
+	}
+	next := map[string]string{}
+	for slot, tier := range patch {
+		// 不认识的槽位名丢掉：那多半是**界面手里那份快照旧了**（模块升级后槽位变了），
+		// 把它写进去只会在 state.json 里留一条谁也不认识的记录。
+		if known[slot] {
+			next[slot] = tier
+		}
+	}
+	if err := WriteSlotTiers(next); err != nil {
+		return "", err
+	}
+	return "", nil
+}

@@ -43,12 +43,12 @@
   // 编辑器**只建一次**——而这件事必须用 untrack 明确说出来。
   //
   // 不 untrack 的话，下面那句 `new EditorView({ doc: value, … })` 会把 value
-  // 登记成这个 effect 的依赖，于是 value 一变 effect 就重跑：旧编辑器 destroy、
-  // 新建一个、doc 从头灌进去——**滚动位置和选区一起没**。这一栏今天是**只读**的
-  // （见 fileConcepts：一份文件只有一个可写的面），所以触发它的是外部更新
-  // （revert、重新拉快照、切回来时草稿已经不在），而不是打字。data.language /
-  // readonly 同理：它们是**建的时候**才需要的参数，不是「变了要重建」的信号
-  // （换文件时 ConceptCard 的 `{#key}` 已经把这个组件整个重建了）。
+  // 登记成这个 effect 的依赖，于是**每敲一个字符**（value 跟着 draft 变）effect
+  // 就重跑一遍：旧编辑器 destroy、新建一个、doc 从头灌进去——光标回到第 0 行，
+  // 撤销栈清零。现场的症状是「在文本编辑框里按一下 d，它跳到第一行，根本没法
+  // 编辑」（2026-09-20 实测）。data.language / readonly 同理：它们是**建的时候**
+  // 才需要的参数，不是「变了要重建」的信号（换文件时 ConceptCard 的 `{#key}`
+  // 已经把这个组件整个重建了）。
   $effect(() => {
     const target = host;
     if (!target) return;
@@ -64,12 +64,7 @@
       EditorView.updateListener.of((u) => {
         // `!applying`：程序性的替换（下面那个 effect）也会走这里，而它不是用户
         // 输入——见 applying 的注释。
-        //
-        // `!readonly`：**只读的编辑器一个字都不回报**。这一条是「一份文件只有一个
-        // 可写的面」那半边的保险（见 core/modules/config/view.go 的 fileConcepts）：
-        // 只读的那一半即使因为某个 effect 动了一下文档，也不该冒出一份草稿来——
-        // 那种草稿只会在保存时撞上「这个概念是只读的」，而用户根本没打过字。
-        if (u.docChanged && !applying && !readonly) onEdit({ text: u.state.doc.toString() });
+        if (u.docChanged && !applying) onEdit({ text: u.state.doc.toString() });
       }),
     ];
     if (lang === "json") ext.push(json());
@@ -82,15 +77,21 @@
     };
   });
 
-  // 外部换了内容（revert、重新拉快照、切回来时草稿已经不在）才覆盖文档；相同就
-  // 什么都不做，否则打字到一半会被自己刚发出去的那份草稿顶回去。
+  // 外部换了内容（revert、重新拉快照、**同一份文件的另一半动了手**）才覆盖文档；
+  // 相同就什么都不做，否则打字到一半会被自己刚发出去的那份草稿顶回去。
   //
   // # applying：这一下替换**必须**标记成程序性的
   //
   // dispatch 同样会走上面的 updateListener，而那条路会把新内容当成一次**用户输入**
-  // 再交出去——于是一次「外部换内容」变成了一次「用户刚编辑过」，回声不断。实测的
-  // 后果是：`revert` 之后文档被重新灌回旧内容，那一次灌回又被当成一次编辑交上去，
-  // 草稿立刻复活——用户点了「撤销」，屏幕上却还是脏的，而且看不出为什么。
+  // 再交出去——于是一次「外部换内容」变成了一次「用户刚编辑过」，回声不断。
+  //
+  // 后果实测过（2026-09-21，一份文件的两半）：原文改完、再去动控件 →
+  //   1. App 按 lastEdit 把原文那份草稿丢掉（那是对的：控件那一半的编辑载荷是
+  //      整份文件，留着必然撞过期基线）；
+  //   2. 这里的 `value` 于是回落成盘上内容，触发这一下替换；
+  //   3. 替换被当成用户输入交回去 → 原文草稿**复活**，还把 lastEdit 抢回 raw；
+  //   4. 保存写的是原文那一半，内容 = 盘上原样 —— **两笔编辑一起没了**，而且屏幕上
+  //      连一句报错都没有（只看到「未保存」自己消失了）。
   //
   // 只在替换期间置位：CodeMirror 的 dispatch 是同步的，updateListener 就在里面跑完。
   let applying = false;
@@ -116,11 +117,6 @@
       class="pill"
       title={t("credentials are replaced with *** before they leave the daemon")}
     >{t("redacted")}</span>
-  {:else if readonly}
-    <!-- 只读**不是**因为凭据，而是因为这份文件已经有结构化的编辑面了（见
-         core/modules/config/view.go 的 fileConcepts）。不说这句的话，用户对着一个
-         打不进字的框只会以为界面坏了。 -->
-    <span class="dim">{t("read-only — the controls for this file are in the other pane")}</span>
   {/if}
 </div>
 <div bind:this={host} class="editor"></div>

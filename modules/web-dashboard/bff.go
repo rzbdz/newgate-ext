@@ -79,6 +79,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.apply(w, r)
+	case r.URL.Path == "/api/preview":
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", http.MethodPost)
+			http.Error(w, i18n.T("previewing uses POST", nil), http.StatusMethodNotAllowed)
+			return
+		}
+		h.preview(w, r)
 	default:
 		h.static(w, r)
 	}
@@ -163,6 +170,10 @@ type conceptDoc struct {
 	// Group 是左栏分组（见 lib/view 的 Concept.Group）：同组的卡在竖栏里归到一个
 	// 标题下。空串 = 自己一档。**只影响排列**，不参与任何身份判断。
 	Group string `json:"group,omitempty"`
+	// Previewable = 贡献者给了 Preview（见 lib/view 的 Concept.Preview）：这张卡
+	// 能拿同一份文件另一半的草稿问一句「我该显示成什么样」。界面据此决定要不要在
+	// 原文改动之后去问——没有它就别问，问了也是白跑一趟。
+	Previewable bool `json:"previewable,omitempty"`
 	// Order 是同一节里谁排前面（见 lib/view 的 Concept.Order）。
 	//
 	// **必须端出去**：快照里的数组本来就是按 (Source, Order, ID) 排好的，但前端会
@@ -243,8 +254,8 @@ func (h *Handler) snapshot(sources ...string) (snapshotDoc, error) {
 	for _, c := range concepts {
 		doc.Concepts = append(doc.Concepts, conceptDoc{
 			ID: c.ID, Kind: c.Kind, Title: c.Title, Source: c.Source,
-			Writable: c.Apply != nil, Live: c.Live, Group: c.Group, Order: c.Order,
-			Data: c.Data, Error: c.Broken,
+			Writable: c.Apply != nil, Live: c.Live, Group: c.Group,
+			Previewable: c.Preview != nil, Order: c.Order, Data: c.Data, Error: c.Broken,
 		})
 	}
 	if doc.Concepts == nil {
@@ -372,6 +383,60 @@ func (h *Handler) sectionAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.writeJSONStatus(w, http.StatusOK, applyResponse{OK: true, Focus: focus})
+}
+
+// ---------- 预览 ----------
+
+type previewRequest struct {
+	// ID 是那张**要被预览的**概念的稳定身份（控件那一半，不是交草稿的那一半）。
+	ID string `json:"id"`
+	// Text 是同一份文件**还没落盘的**草稿（界面从原文那一半手里拿的）。
+	Text string `json:"text"`
+}
+
+type previewResponse struct {
+	Data  any    `json:"data,omitempty"`
+	Error string `json:"error,omitempty"`
+}
+
+// preview 把一份草稿交给拥有那份文件的贡献者，换回「这张卡此刻该显示成什么样」。
+//
+// 与 apply 同一道门（必须是 JSON）：它虽然不落盘，但**请求里带的是用户的配置
+// 内容**，而且响应会把配置的形状回给页面。两道门的理由在 apply 那里写全了。
+//
+// 失败一律 200：草稿解析不出来是**打字途中的常态**（正敲着的那一行本来就不完整），
+// 不是「这次请求坏了」。用 4xx 的话，界面就得为「正常的半成品」和「真的出错了」
+// 写两套分支，而它想做的事两处一模一样——保持上一次的样子。
+func (h *Handler) preview(w http.ResponseWriter, r *http.Request) {
+	if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		h.writeJSONStatus(w, http.StatusUnsupportedMediaType, previewResponse{
+			Error: i18n.T("previewing needs Content-Type: application/json (got {ct})", i18n.A{"ct": ct})})
+		return
+	}
+	var req previewRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<20)).Decode(&req); err != nil {
+		h.writeJSONStatus(w, http.StatusBadRequest, previewResponse{
+			Error: i18n.T("the request body is not valid JSON: {err}", i18n.A{"err": err})})
+		return
+	}
+	c, err := h.views.Get(req.ID)
+	if err != nil {
+		// 贡献者没有这个 id：回空。界面那边这只是一次「顺手更新」，不是用户按的
+		// 某个按钮——为它弹一条报错，等于让一次打字在屏幕上变成一次故障。
+		h.writeJSONStatus(w, http.StatusOK, previewResponse{})
+		return
+	}
+	if c.Preview == nil {
+		// 这个概念没有第二半（它自己就是原文），没什么可预览的。
+		h.writeJSONStatus(w, http.StatusOK, previewResponse{})
+		return
+	}
+	data, err := c.Preview([]byte(req.Text))
+	if err != nil {
+		h.writeJSONStatus(w, http.StatusOK, previewResponse{Error: err.Error()})
+		return
+	}
+	h.writeJSONStatus(w, http.StatusOK, previewResponse{Data: data})
 }
 
 // ---------- 静态资源 ----------
