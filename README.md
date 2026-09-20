@@ -11,6 +11,8 @@
 ![Go](https://img.shields.io/badge/go-1.27-00ADD8?logo=go&logoColor=white)
 ![dependencies](https://img.shields.io/badge/third--party_deps-0-brightgreen)
 
+<sub><b>English</b> · <a href="README.zh-Hans.md">中文</a></sub>
+
 </div>
 
 ---
