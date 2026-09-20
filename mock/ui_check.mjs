@@ -264,6 +264,38 @@ if (snap.sections.length) {
     await page.waitForTimeout(300);
     const on = await page.locator(".content nav.v button.on").getAttribute("title");
     check("点竖栏里一张卡能切过去", on === target.id, `实际选中 ${on}`);
+
+    // —— 分组：大档（`档位`）与族（`claude`）——
+    //
+    // 用户要的是「装完就要配的两项」与「一天天加出来的一堆」在版面上分开（原话：
+    // 「profile 这里就可以做一个分栏了啊」）。标题由后端的两级 group 给
+    // （`档位/claude`），画不画由这里按「这一段底下有没有 ≥2 张卡」定。
+    //
+    // 判据不能只是「有标题」：一行小字下头卡片不缩进的话，那只是一句注释，读的人
+    // 还是分不出那两张属于它。所以这里量**缩进**——标题之后的每一张卡都必须比标题
+    // 本身更靠右。
+    const groups = await page.locator(".content nav.v .group").count();
+    check("竖栏里有分组标题（大档 / 一族档位）", groups > 0, `实际 ${groups} 个`);
+    const nesting = await page.evaluate(() => {
+      const nav = document.querySelector(".content nav.v");
+      const kids = [...nav.children];
+      const at = kids.findIndex((e) => e.classList.contains("group"));
+      if (at < 0) return null;
+      const head = parseFloat(getComputedStyle(kids[at]).paddingLeft);
+      const after = kids.slice(at + 1).filter((e) => e.classList.contains("row"));
+      return {
+        head,
+        n: after.length,
+        flat: after
+          .filter((e) => parseFloat(getComputedStyle(e).paddingLeft) <= head)
+          .map((e) => e.textContent.trim().slice(0, 24)),
+      };
+    });
+    check(
+      "标题底下的卡真的缩进了（不是只加了一行小字）",
+      !!nesting && nesting.n > 0 && nesting.flat.length === 0,
+      JSON.stringify(nesting),
+    );
   } else {
     skip(`这份装配里 config 卡没超阈值（${n} ≤ 8），竖栏那几条不适用`);
   }
