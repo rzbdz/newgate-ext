@@ -54,7 +54,7 @@ func TestGateTruthTable(t *testing.T) {
 				if !strings.Contains(refuse, "schema_version") {
 					t.Fatalf("拒绝文案该点名 schema_version: %q", refuse)
 				}
-				if !strings.Contains(refuse, "上一份") {
+				if !strings.Contains(refuse, "previous configuration is kept") {
 					t.Fatalf("拒绝文案该说明保留了上一份配置: %q", refuse)
 				}
 			}

@@ -2,9 +2,11 @@ package claudecode
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/rzbdz/newgate/lib/durarg"
+	i18n "github.com/rzbdz/newgate/lib/i18n"
 	"github.com/rzbdz/newgate/lib/style"
 	cliapi "github.com/rzbdz/newgate/modules/cli/extension"
 	"github.com/rzbdz/newgate/modules/config/store"
@@ -38,8 +40,8 @@ func (nakedCommand) Names() []string { return []string{"naked"} }
 func (nakedCommand) Help() cliapi.HelpLine {
 	return cliapi.HelpLine{
 		Section: cliapi.SectionMaintenance,
-		Usage:   "naked on|forever|off|<时长>",
-		Summary: "短路 Bash 分类器：on=60s / forever=永久 / off=关",
+		Usage:   i18n.T("naked on|forever|off|<duration>", nil),
+		Summary: i18n.T("short-circuit the Bash classifier: on=60s / forever=permanent / off=disabled", nil),
 	}
 }
 
@@ -58,8 +60,9 @@ func (nakedCommand) Run(host cliapi.Host, args []string) int {
 	default:
 		d, err := durarg.Parse(sub)
 		if err != nil {
-			return host.Die(64, fmt.Sprintf(
-				"naked: 不认识的时长 %q（支持 on / forever / off / 30s / 2m / 2min / 1h）", sub))
+			return host.Die(64, i18n.T(
+				"naked: unknown duration {arg} (supported: on / forever / off / 30s / 2m / 2min / 1h)",
+				i18n.A{"arg": strconv.Quote(sub)}))
 		}
 		return nakedOn(host, d)
 	}
@@ -71,7 +74,7 @@ func nakedOff(host cliapi.Host) int {
 	if err := store.SaveState(s); err != nil {
 		return host.Die(70, err.Error())
 	}
-	fmt.Println(style.Item(style.OK, "裸奔已关闭 —— 分类器恢复正常工作"))
+	fmt.Println(style.Item(style.OK, i18n.T("naked is off — the classifier is working normally again", nil)))
 	host.NotifyProxy()
 	return 0
 }
@@ -84,10 +87,11 @@ func nakedOn(host cliapi.Host, ttl time.Duration) int {
 	if err := saveNakedConfig(cfg); err != nil {
 		return host.Die(70, err.Error())
 	}
-	fmt.Println(style.Item(style.Warn, fmt.Sprintf(
-		"裸奔已开启 —— 分类器短路 %s 后自动关闭", durarg.Format(int(ttl.Seconds())))))
-	fmt.Println(style.Hint("这段时间内所有 Bash 分类器请求直接被批准，不经过任何安全检查"))
-	fmt.Println(style.Hint("提前关闭：newgate naked off"))
+	fmt.Println(style.Item(style.Warn, i18n.T(
+		"naked is on — the classifier stays short-circuited for {ttl}, then turns itself off",
+		i18n.A{"ttl": durarg.Format(int(ttl.Seconds()))})))
+	fmt.Println(style.Hint(i18n.T("within this window every Bash classifier request is approved directly, with no safety check at all", nil)))
+	fmt.Println(style.Hint(i18n.T("end it early: newgate naked off", nil)))
 	host.NotifyProxy()
 	return 0
 }
@@ -97,9 +101,9 @@ func nakedForever(host cliapi.Host) int {
 	if err := saveNakedConfig(cfg); err != nil {
 		return host.Die(70, err.Error())
 	}
-	fmt.Println(style.Item(style.Bad, "裸奔永久模式已开启 —— 分类器被完全短路"))
-	fmt.Println(style.Item(style.Bad, "每一个被拦截的请求都打 [naked] 日志，newgate status 持续显示红色警告"))
-	fmt.Println(style.Hint("关闭：newgate naked off"))
+	fmt.Println(style.Item(style.Bad, i18n.T("naked forever is on — the classifier is short-circuited completely", nil)))
+	fmt.Println(style.Item(style.Bad, i18n.T("every intercepted request logs [naked], and newgate status keeps showing a red warning", nil)))
+	fmt.Println(style.Hint(i18n.T("turn it off: newgate naked off", nil)))
 	host.NotifyProxy()
 	return 0
 }

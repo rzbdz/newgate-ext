@@ -1,6 +1,7 @@
 package claudecode_deepseek
 
 import (
+	i18n "github.com/rzbdz/newgate/lib/i18n"
 	"github.com/rzbdz/newgate/modules/config/domain"
 	"github.com/rzbdz/newgate/modules/gateway/special"
 	"github.com/rzbdz/newgate/modules/pluginmanager"
@@ -20,9 +21,11 @@ const SwitchInjectThinking = "claudecode-deepseek.inject-thinking"
 // Switches 本模块上报的开关点清单，供 module.go 注册。
 func Switches() []pluginmanager.Switch {
 	return []pluginmanager.Switch{{
-		Path:    SwitchInjectThinking,
-		Title:   "注入 thinking:disabled（第 1 手）",
-		Why:     "Claude Code 的请求按缺省进 DeepSeek 思考模式，而它不会把第三方 thinking 块带回下一轮——于是每一发都会撞「thinking 必须回传」的 400",
+		Path:  SwitchInjectThinking,
+		Title: i18n.T("inject thinking:disabled (the first step)", nil),
+		Why: i18n.T("Claude Code's requests fall into DeepSeek thinking mode by default, "+
+			"but it does not carry third-party thinking blocks into the next round — "+
+			"so every call hits the 400 that says thinking must be passed back", nil),
 		Danger:  pluginmanager.DangerQuirk,
 		Default: true,
 	}}

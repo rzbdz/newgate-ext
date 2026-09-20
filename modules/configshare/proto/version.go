@@ -2,8 +2,9 @@ package proto
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
+
+	"github.com/rzbdz/newgate/lib/i18n"
 )
 
 // MetaFileName 是版本/schema 声明的托管文件名。它是托管集合的一员（会被搬到
@@ -68,24 +69,26 @@ func Gate(meta *Meta, in GateInput) (ok bool, warn, refuse string) {
 	if meta == nil {
 		// 宿主没放 newgate-config.json（老版本宿主，或 ser 手写的配置目录）。
 		// 按当前 schema 解释——这与"schema 更高"不同，后者是**已知的解释不了**。
-		return true, "快照里没有 " + MetaFileName + "（对方没声明 schema），按当前 schema 解释", ""
+		return true, i18n.T("the snapshot has no {name} (the peer declared no schema); interpreting it as the current schema",
+			i18n.A{"name": MetaFileName}), ""
 	}
 	if meta.SchemaVersion > SupportedSchema {
-		return false, "", fmt.Sprintf(
-			"这份配置的 schema_version=%d，本二进制只认到 %d：字段含义可能已经变了，误读不会报错（会路由到错的上游或报 provider 没有 api_key）。已保留上一份配置继续服务。升级 newgate 后会自动跟上。",
-			meta.SchemaVersion, SupportedSchema)
+		return false, "", i18n.T(
+			"this configuration declares schema_version={got}, but this binary only understands up to {max}: the meaning of fields may have changed, and misreading them raises no error (it routes to the wrong upstream or reports that a provider has no api_key). The previous configuration is kept in service. Upgrading newgate catches up automatically.",
+			i18n.A{"got": meta.SchemaVersion, "max": SupportedSchema})
 	}
 	if meta.SchemaVersion <= 0 {
-		return true, MetaFileName + " 没写 schema_version，按当前 schema 解释", ""
+		return true, i18n.T("{name} has no schema_version; interpreting it as the current schema",
+			i18n.A{"name": MetaFileName}), ""
 	}
 	// 构建串相等才算匹配。dev 构建（没注入版本）跳过——否则每个开发机上都是
 	// 一句噪音。
 	if want := strings.TrimSpace(meta.MinNewgateVersion); want != "" {
 		got := strings.TrimSpace(in.CurrentVersion)
 		if got != "" && got != "dev" && got != want {
-			return true, fmt.Sprintf(
-				"宿主声明的构建是 %s，本机是 %s：本机仍能解析这份配置（未知字段忽略/缺席走默认），已放行。要完全对齐就升级 newgate。",
-				want, got), ""
+			return true, i18n.T(
+				"the host declares build {want}, this machine is {got}: this machine can still parse the configuration (unknown fields are ignored, missing ones fall back to defaults), so it was let through. Upgrade newgate to line up exactly.",
+				i18n.A{"want": want, "got": got}), ""
 		}
 	}
 	return true, "", ""
@@ -102,7 +105,7 @@ func ParseMeta(files map[string][]byte) (*Meta, error) {
 	}
 	var meta Meta
 	if err := json.Unmarshal(raw, &meta); err != nil {
-		return nil, fmt.Errorf("%s 解析失败: %w", MetaFileName, err)
+		return nil, i18n.Ef(err, "cannot parse {path}: {err}", i18n.A{"path": MetaFileName})
 	}
 	return &meta, nil
 }

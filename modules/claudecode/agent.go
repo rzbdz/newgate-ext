@@ -2,7 +2,10 @@
 // behavior. It must not import model-family modules.
 package claudecode
 
-import agentapi "github.com/rzbdz/newgate/modules/confighook"
+import (
+	i18n "github.com/rzbdz/newgate/lib/i18n"
+	agentapi "github.com/rzbdz/newgate/modules/confighook"
+)
 
 const ID = "claude"
 
@@ -13,15 +16,15 @@ func Agent() *agentapi.Agent {
 		Dialect: "anthropic",
 		Slots: []agentapi.Slot{
 			{Name: "fable", Tier: "heavy", EnvVar: "ANTHROPIC_DEFAULT_FABLE_MODEL",
-				Desc: "fable 档（最贵档）；也是第三方模型族自动回退的识别依据"},
+				Desc: i18n.T("the fable tier (the most expensive); also the marker used to spot a third-party model family falling back automatically", nil)},
 			{Name: "opus", Tier: "normal", EnvVar: "ANTHROPIC_DEFAULT_OPUS_MODEL",
-				Desc: "opus 档（主力档）；主循环在这跑（cc 默认），Plan Mode 下的 opusplan"},
+				Desc: i18n.T("the opus tier (the workhorse); the main loop runs here (Claude Code's default), and so does opusplan in Plan Mode", nil)},
 			{Name: "sonnet", Tier: "mid", EnvVar: "ANTHROPIC_DEFAULT_SONNET_MODEL",
-				Desc: "sonnet 档；Bash 分类器与 /compact 总结在这跑"},
+				Desc: i18n.T("the sonnet tier; the Bash classifier and /compact summaries run here", nil)},
 			{Name: "haiku", Tier: "light", EnvVar: "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-				Desc: "haiku 档；后台功能"},
+				Desc: i18n.T("the haiku tier; background features", nil)},
 			{Name: "subagent", Tier: "mid", EnvVar: "CLAUDE_CODE_SUBAGENT_MODEL",
-				Desc: "所有 subagent / agent team / workflow；设 inherit 可交还给各自解析"},
+				Desc: i18n.T("every subagent / agent team / workflow; set it to inherit to hand that back to per-slot resolution", nil)},
 		},
 		BaseURLEnv: "ANTHROPIC_BASE_URL",
 		AuthEnv:    "ANTHROPIC_AUTH_TOKEN",
@@ -35,6 +38,6 @@ func Agent() *agentapi.Agent {
 			"ANTHROPIC_MODEL",
 			"ANTHROPIC_SMALL_FAST_MODEL",
 		},
-		Notes: "settings.json 的 model 字段不动；档位含义由 env 决定",
+		Notes: i18n.T("the model field in settings.json is left untouched; what a tier means is decided by the env", nil),
 	}
 }

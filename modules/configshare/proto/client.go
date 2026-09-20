@@ -4,14 +4,14 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
-	"fmt"
-	paths "github.com/rzbdz/newgate/modules/config/paths"
 	"io"
 	"log"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/rzbdz/newgate/lib/i18n"
+	paths "github.com/rzbdz/newgate/modules/config/paths"
 )
 
 // maxEnvelopeBytes 单次拉取的大小上限。
@@ -24,9 +24,13 @@ const maxEnvelopeBytes = 8 << 20
 
 // 两种要说人话的拉取失败。它们都是**第一分钟就会遇到**的错（没设 role、
 // blob 拷错），所以文案直接写排查方向，而不是抛一个状态码。
+//
+// 这里用 i18n.E 而不是 i18n.T：E 只把源语言原文存下来（消息身份），渲染发生在
+// Error() 被调用的那一刻，也就是语言装好之后。包级变量里写 i18n.T 会把译文
+// 永久冻在源语言上（见 lib/i18n 的包注释）。
 var (
-	ErrNotHost = errors.New("对端不是宿主（端点返回 404）——对方的 role 没设成 host？")
-	ErrAuth    = errors.New("鉴权被拒：本机的根密钥与宿主不是同一把（config trust 那个 blob 拷错或没拷）")
+	ErrNotHost = i18n.E("the peer is not a host (the endpoint returned 404) — is its role not set to host?", nil)
+	ErrAuth    = i18n.E("authentication refused: this machine's root key differs from the host's (the config trust blob was copied wrong or not at all)", nil)
 )
 
 // Config 是构造一个副本客户端需要的全部东西。
@@ -54,7 +58,7 @@ type Client struct {
 // New 派生密钥并构造客户端。
 func New(cfg Config) (*Client, error) {
 	if strings.TrimSpace(cfg.Endpoint) == "" {
-		return nil, errors.New("endpoint 是空的（先 newgate config join <endpoint>）")
+		return nil, i18n.E("the endpoint is empty (run newgate config join <endpoint> first)", nil)
 	}
 	encKey, token, err := DeriveKeys(cfg.RootKey)
 	if err != nil {
@@ -135,7 +139,7 @@ func (c *Client) Pull(ctx context.Context, force bool) (Outcome, error) {
 		return out, err
 	}
 	if !ran {
-		out.Notes = append(out.Notes, "另一轮同步正在进行，这一轮跳过了")
+		out.Notes = append(out.Notes, i18n.T("another sync round is already running; this round was skipped", nil))
 	}
 	return out, nil
 }
@@ -169,7 +173,9 @@ func (o *Outcome) finalize(st *State, now time.Time) {
 		return
 	}
 	o.Failed = true
-	o.ErrText = strings.Join(msgs, "；")
+	// 连接符过 i18n（中文是「；」）。ErrText 的稳定性不受影响：一次进程只装一门
+	// 语言，同一类问题在同一进程里拼出来的串还是一模一样的。
+	o.ErrText = strings.Join(msgs, i18n.T("; ", nil))
 	st.FailCount++
 	st.LastError = o.ErrText
 	st.LastErrorAt = now
@@ -208,7 +214,7 @@ func (c *Client) pullConfig(ctx context.Context, st *State, force bool) Channel 
 	}
 	var snap Snapshot
 	if err := json.Unmarshal(plain, &snap); err != nil {
-		ch.Err = fmt.Errorf("快照解析失败: %w", err)
+		ch.Err = i18n.Ef(err, "cannot parse the snapshot: {err}", nil)
 		return ch
 	}
 	if snap.HostID == "" {
@@ -216,11 +222,13 @@ func (c *Client) pullConfig(ctx context.Context, st *State, force bool) Channel 
 	}
 	if snap.Generation != env.Gen {
 		// 信封说 42、密文里说 41：宿主端拼装出了 bug。记账只认一个数，猜不得。
-		ch.Err = fmt.Errorf("信封代数 %d 与快照内部代数 %d 不一致（宿主端拼装有问题）", env.Gen, snap.Generation)
+		ch.Err = i18n.E("the envelope generation {envelope} does not match the generation inside the snapshot {snapshot} (the host assembled it wrong)",
+			i18n.A{"envelope": env.Gen, "snapshot": snap.Generation})
 		return ch
 	}
 	if st.HostID != "" && st.HostID != snap.HostID {
-		out := fmt.Sprintf("权威变更（%s → %s），代数基线重置", short(st.HostID), short(snap.HostID))
+		out := i18n.T("authority changed ({from} → {to}); the generation baseline was reset",
+			i18n.A{"from": short(st.HostID), "to": short(snap.HostID)})
 		ch.Warnings = append(ch.Warnings, out)
 		c.logf("[configshare] %s", out)
 		// 重置基线：新宿主的计数从 0 开始，不重置就永远追不上（见 types.go）。
@@ -256,7 +264,10 @@ func (c *Client) pullConfig(ctx context.Context, st *State, force bool) Channel 
 		ch.Drift = &drift
 		if !force {
 			ch.Refused = true
-			ch.Reason = fmt.Sprintf("本机有 %d 个托管文件被本地改过，已停止应用远端配置（不会覆盖你的改动）", len(drift.Paths()))
+			ch.Reason = i18n.N(
+				"{n} managed file on this machine was modified locally; applying the remote configuration stopped (your changes will not be overwritten)",
+				"{n} managed files on this machine were modified locally; applying the remote configuration stopped (your changes will not be overwritten)",
+				len(drift.Paths()), i18n.A{"n": len(drift.Paths())})
 			// 记账**不动**：代数不推进，下一轮还会重试这个决定。这样用户改回去
 			// 或明确 --force 之后，同一个代数会被重新应用一次。
 			st.Drift = &drift
@@ -314,11 +325,12 @@ func (c *Client) pullSecrets(ctx context.Context, st *State, force bool) Channel
 	}
 	var sec Secrets
 	if err := json.Unmarshal(plain, &sec); err != nil {
-		ch.Err = fmt.Errorf("密钥集合解析失败: %w", err)
+		ch.Err = i18n.Ef(err, "cannot parse the secret set: {err}", nil)
 		return ch
 	}
 	if sec.Generation != 0 && sec.Generation != env.Gen {
-		ch.Err = fmt.Errorf("信封代数 %d 与密钥集合内部代数 %d 不一致", env.Gen, sec.Generation)
+		ch.Err = i18n.E("the envelope generation {envelope} does not match the generation inside the secret set {secrets}",
+			i18n.A{"envelope": env.Gen, "secrets": sec.Generation})
 		return ch
 	}
 	want, err := secretsBytes(sec.Keys)
@@ -339,7 +351,8 @@ func (c *Client) pullSecrets(ctx context.Context, st *State, force bool) Channel
 			ch.Drift = dr
 			if !force {
 				ch.Refused = true
-				ch.Reason = "本机的 " + SecretsFileName + " 被本地改过（不会覆盖你的改动）"
+				ch.Reason = i18n.T("this machine's {name} was modified locally (your changes will not be overwritten)",
+					i18n.A{"name": SecretsFileName})
 				st.SecretsDrift = dr
 				return ch
 			}
@@ -385,7 +398,7 @@ func (c *Client) fetch(ctx context.Context, kind, path string) (*Envelope, error
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("连不上 %s: %w", url, err)
+		return nil, i18n.Ef(err, "cannot reach {url}: {err}", i18n.A{"url": url})
 	}
 	defer resp.Body.Close()
 
@@ -397,12 +410,13 @@ func (c *Client) fetch(ctx context.Context, kind, path string) (*Envelope, error
 		return nil, ErrAuth
 	default:
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return nil, fmt.Errorf("%s 返回 %s: %s", url, resp.Status, strings.TrimSpace(string(body)))
+		return nil, i18n.E("{url} returned {status}: {body}",
+			i18n.A{"url": url, "status": resp.Status, "body": strings.TrimSpace(string(body))})
 	}
 
 	var env Envelope
 	if err := json.NewDecoder(io.LimitReader(resp.Body, maxEnvelopeBytes)).Decode(&env); err != nil {
-		return nil, fmt.Errorf("%s 的响应不是合法信封: %w", url, err)
+		return nil, i18n.Ef(err, "the response from {url} is not a valid envelope: {err}", i18n.A{"url": url})
 	}
 	return &env, nil
 }
@@ -419,7 +433,7 @@ func short(id string) string {
 		return id[:8]
 	}
 	if id == "" {
-		return "(无)"
+		return i18n.T("(none)", nil)
 	}
 	return id
 }

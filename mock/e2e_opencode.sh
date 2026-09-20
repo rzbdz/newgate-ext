@@ -40,6 +40,10 @@ bad()  { echo "  ✗ $1"; FAIL=$((FAIL+1)); }
 check(){ if [ "$2" = "$3" ]; then ok "$1"; else bad "$1 (期望 '$3'，实际 '$2')"; fi; }
 
 export NEWGATE_HOME="$SANDBOX/ng"
+# 语言要密闭：脚本断言的是**源语言原文**（英文），而跑它的机器可能是 zh-Hans
+# （我们自己的机器就是）。不钉住的话，「界面上是英文」这类断言在中文机器上假红。
+export NEWGATE_LANG=en
+unset LC_ALL LC_MESSAGES LANG LANGUAGE 2>/dev/null || true
 export NEWGATE_TARGET_DIR="$SANDBOX/cfg"
 mkdir -p "$NEWGATE_HOME" "$NEWGATE_TARGET_DIR"
 

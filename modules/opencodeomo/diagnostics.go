@@ -1,9 +1,9 @@
 package opencodeomo
 
 import (
-	"fmt"
 	"os"
 
+	i18n "github.com/rzbdz/newgate/lib/i18n"
 	cliapi "github.com/rzbdz/newgate/modules/cli/extension"
 )
 
@@ -15,8 +15,8 @@ func (diagnostics) Diagnostics() []cliapi.Diagnostic {
 	reg := ReadOmoSlots()
 	if reg == nil {
 		return []cliapi.Diagnostic{{
-			Label: "槽位", State: "skip",
-			Line: "无注册表（未接管过 oh-my-openagent）",
+			Label: i18n.T("slot", nil), State: "skip",
+			Line: i18n.T("no registry (oh-my-openagent has never been taken over)", nil),
 		}}
 	}
 	keys := 0
@@ -27,23 +27,27 @@ func (diagnostics) Diagnostics() []cliapi.Diagnostic {
 	}
 	if keys == 0 {
 		return []cliapi.Diagnostic{{
-			Label: "槽位", State: "skip", Line: "注册表为空",
+			Label: i18n.T("slot", nil), State: "skip", Line: i18n.T("the registry is empty", nil),
 		}}
 	}
 	if fi, err := os.Stat(SlotsFile()); err == nil && fi.Mode().Perm()&0o040 == 0 {
 		return []cliapi.Diagnostic{{
-			Label: "槽位", State: "warn",
-			Line:    fmt.Sprintf("%d 个槽位键，但注册表组不可读（跑 daemon 的另一个用户看不到）", keys),
+			Label: i18n.T("slot", nil), State: "warn",
+			Line: i18n.N("{n} slot key, but the registry is not group-readable (the user running the daemon cannot see it)",
+				"{n} slot keys, but the registry is not group-readable (the user running the daemon cannot see it)",
+				keys, i18n.A{"n": keys}),
 			Details: []string{"chmod 0660 " + SlotsFile()},
 		}}
 	}
 	item := cliapi.Diagnostic{
-		Label: "槽位", State: "ok",
-		Line: fmt.Sprintf("%d 个槽位键 · 模式 %s", keys, modeName(reg)),
+		Label: i18n.T("slot", nil), State: "ok",
+		Line: i18n.N("{n} slot key · mode {mode}", "{n} slot keys · mode {mode}",
+			keys, i18n.A{"n": keys, "mode": modeName(reg)}),
 	}
 	if n := diffCount(reg); n > 0 {
 		item.Details = append(item.Details,
-			fmt.Sprintf("%d 个键有建议档位（newgate omo ls 查看）", n))
+			i18n.N("{n} key has a suggested tier (see newgate omo ls)",
+				"{n} keys have a suggested tier (see newgate omo ls)", n, i18n.A{"n": n}))
 	}
 	return []cliapi.Diagnostic{item}
 }

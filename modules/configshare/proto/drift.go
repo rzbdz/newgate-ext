@@ -3,13 +3,14 @@ package proto
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
-	paths "github.com/rzbdz/newgate/modules/config/paths"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sort"
 	"time"
+
+	"github.com/rzbdz/newgate/lib/i18n"
+	paths "github.com/rzbdz/newgate/modules/config/paths"
 )
 
 // DriftReport 是本机托管文件相对"我们上次写下去的样子"的偏离。
@@ -174,14 +175,14 @@ func ArchiveFiles(dir, stamp string, rels []string) (string, error) {
 			if isNotExist(err) {
 				continue
 			}
-			return "", fmt.Errorf("归档 %s 失败: %w", rel, err)
+			return "", i18n.Ef(err, "cannot archive {path}: {err}", i18n.A{"path": rel})
 		}
 		target := filepath.Join(dst, filepath.FromSlash(rel))
 		if err := os.MkdirAll(filepath.Dir(target), 0o2770); err != nil {
 			return "", err
 		}
 		if err := ioutil.WriteFile(target, data, 0o660); err != nil {
-			return "", fmt.Errorf("归档 %s 失败: %w", rel, err)
+			return "", i18n.Ef(err, "cannot archive {path}: {err}", i18n.A{"path": rel})
 		}
 	}
 	return dst, nil

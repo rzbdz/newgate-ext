@@ -2,12 +2,13 @@ package proto
 
 import (
 	"encoding/json"
-	"fmt"
-	paths "github.com/rzbdz/newgate/modules/config/paths"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/rzbdz/newgate/lib/i18n"
+	paths "github.com/rzbdz/newgate/modules/config/paths"
 )
 
 // 角色。这是一台机器的**本地事实**，不是共享配置的一部分：同一份共享配置
@@ -87,14 +88,14 @@ func LoadSettings() (Settings, error) {
 	}
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &fields); err != nil {
-		return s, fmt.Errorf("state.json 解析失败: %w", err)
+		return s, i18n.Ef(err, "cannot parse state.json: {err}", nil)
 	}
 	blob, ok := fields[SettingsKey]
 	if !ok {
 		return s, nil
 	}
 	if err := json.Unmarshal(blob, &s); err != nil {
-		return s, fmt.Errorf("state.json 的 %s 解析失败: %w", SettingsKey, err)
+		return s, i18n.Ef(err, "cannot parse {key} in state.json: {err}", i18n.A{"key": SettingsKey})
 	}
 	return s, nil
 }
@@ -173,7 +174,7 @@ func LoadState() (State, error) {
 		// 记账文件坏了不该让同步彻底停摆：当成初始状态重来（代价是丢一次
 		// 漂移基准，下一轮 apply 会重新建立）。但要说出来——静默吞掉的话，
 		// 用户会看到"漂移守卫忽然不工作了"而没有任何线索。
-		return State{}, fmt.Errorf("configshare 记账文件损坏，已按初始状态重来: %w", err)
+		return State{}, i18n.Ef(err, "the configshare bookkeeping file is corrupt; starting over from the initial state: {err}", nil)
 	}
 	return s, nil
 }

@@ -321,13 +321,17 @@ func TestDeepSeekSkipCauseReportedWhenPartlyRestored(t *testing.T) {
 	if strings.Contains(string(out), missID+`","name":"Read","input":{}}],"reasoning_content"`) {
 		t.Fatalf("给缓存没命中的那条也补了内容:\n%s", out)
 	}
+	// 断言的是**英文原文 + 机器标记**（nocache 那类分类词、tool id），不是渲染
+	// 出来的译文：译文随语言变，断言它会红（i18n 迁移时定的规矩）。
 	all := strings.Join(notes, "\n")
-	for _, want := range []string{"1 条用了真实的推理原文", "1 条没有原文可补", "nocache", missID} {
+	for _, want := range []string{"1 used the real reasoning text",
+		"1 had no original text to backfill", "nocache", missID} {
 		if !strings.Contains(all, want) {
 			t.Fatalf("notes 里该有 %q（不静默 + 可反查）:\n%s", want, all)
 		}
 	}
-	if strings.Contains(all, "补 thinking 块：2 条用了真实的推理原文") {
+	if strings.Contains(all, "backfilled thinking block on 2 assistant messages: "+
+		"2 used the real reasoning text") {
 		t.Fatalf("跳过的被虚报成真实原文:\n%s", all)
 	}
 }
@@ -430,7 +434,7 @@ func TestDeepSeekToolLoopMigrationIsScopedAndRebased(t *testing.T) {
 	if !strings.Contains(string(out), toolLoopRebasePrompt) {
 		t.Fatalf("没有追加 rebase 指令:\n%s", out)
 	}
-	if !strings.Contains(note, "有损重建") {
+	if !strings.Contains(note, "lossily rebuilt a foreign tool loop") {
 		t.Fatalf("rebase 没有明确回报: %q", note)
 	}
 }
@@ -482,7 +486,7 @@ func TestTailShapeRepairOnToolResultOnlyTail(t *testing.T) {
 					t.Fatalf("继续指令跑到了尾随 system 插话后面（上游不认 system 里的指令）:\n%s", s)
 				}
 			}
-			if !containsNote(notes, "尾") {
+			if !containsNote(notes, "trailing user turn holds only tool_result") {
 				t.Fatalf("没有回报 notes（不静默是硬要求）: %v", notes)
 			}
 		})
@@ -538,7 +542,7 @@ func TestTailShapeLeavesNormalTailsAlone(t *testing.T) {
 			if after != before {
 				t.Fatalf("不该动的尾部被动了（补了 %d 条）:\n%s", after-before, out)
 			}
-			if containsNote(notes, "尾") {
+			if containsNote(notes, "trailing user turn holds only tool_result") {
 				t.Fatalf("不该动的尾部却报了尾部 note: %v", notes)
 			}
 		})
@@ -560,7 +564,7 @@ func TestTailShapeRepairedWhenThinkingOff(t *testing.T) {
 	if !strings.Contains(string(out), mustJSON(toolLoopRebasePrompt)) {
 		t.Fatalf("思考关着时没补尾部指令（实测这条校验不受 thinking 影响）:\n%s", out)
 	}
-	if !containsNote(notes, "尾") {
+	if !containsNote(notes, "trailing user turn holds only tool_result") {
 		t.Fatalf("没有回报 notes: %v", notes)
 	}
 }

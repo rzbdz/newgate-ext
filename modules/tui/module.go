@@ -29,6 +29,7 @@ import (
 	"fmt"
 
 	modules "github.com/rzbdz/newgate/component"
+	"github.com/rzbdz/newgate/lib/i18n"
 	cliapi "github.com/rzbdz/newgate/modules/cli/extension"
 )
 
@@ -76,11 +77,13 @@ func (tuiCommand) Unstyled([]string) bool { return true }
 
 func (tuiCommand) Help() cliapi.HelpLine {
 	// Rank 50 = 维护那一节（与界面自己的那批同节）。数字是约定，留了空档给插队。
+	//
+	// Summary 在渲染 help 时现算，不在声明期算：这里的 T 必须晚于装语言。
 	return cliapi.HelpLine{
 		Section: cliapi.SectionMaintenance,
 		Rank:    50,
 		Usage:   "tui",
-		Summary: "menuconfig 风格界面",
+		Summary: i18n.T("menuconfig-style UI", nil),
 	}
 }
 

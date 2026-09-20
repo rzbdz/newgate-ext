@@ -2,7 +2,10 @@
 // OMO are separate modules and are composed by the catalog.
 package opencode
 
-import agentapi "github.com/rzbdz/newgate/modules/confighook"
+import (
+	i18n "github.com/rzbdz/newgate/lib/i18n"
+	agentapi "github.com/rzbdz/newgate/modules/confighook"
+)
 
 const ID = "opencode"
 
@@ -11,6 +14,6 @@ func Agent() *agentapi.Agent {
 		ID:      ID,
 		Bin:     []string{"opencode"},
 		Dialect: "openai",
-		Notes:   "槽位由配置扩展模块发现",
+		Notes:   i18n.T("slots are discovered by the config extension module", nil),
 	}
 }

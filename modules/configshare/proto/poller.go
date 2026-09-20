@@ -2,11 +2,12 @@ package proto
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"math/rand"
 	"strings"
 	"time"
+
+	"github.com/rzbdz/newgate/lib/i18n"
 )
 
 // 退避参数：失败后 30 → 60 → 120 → 300（封顶），成功即回基准。
@@ -57,7 +58,9 @@ func StartPoller(ctx context.Context, version string, lg *log.Logger) (*Poller, 
 	if !fromEnv {
 		if rootKey, err = LoadRootKey(); err != nil {
 			// fail-open：daemon 照常转发，只是不拉配置。说清楚怎么修。
-			lg.Printf("[configshare] 后台同步未启动：%v（在宿主机上 newgate config secrets init 拿 blob，在这台机器上 newgate config trust <blob>）", err)
+			lg.Printf("[configshare] %s", i18n.T(
+				"background sync did not start: {err} (on the host run newgate config secrets init to get the blob, then on this machine run newgate config trust <blob>)",
+				i18n.A{"err": err}))
 			return nil, nil
 		}
 	} else if err != nil {
@@ -74,8 +77,9 @@ func StartPoller(ctx context.Context, version string, lg *log.Logger) (*Poller, 
 	}
 	interval := settings.Interval()
 	p := runLoop(ctx, c, interval, lg, nil)
-	lg.Printf("[configshare] 后台同步已启动（副本）：%s，每 %s 一轮，根密钥指纹 %s",
-		settings.Endpoint, interval, RootKeyFingerprint(rootKey))
+	lg.Printf("[configshare] %s", i18n.T(
+		"background sync started (replica): {endpoint}, one round every {interval}, root key fingerprint {fingerprint}",
+		i18n.A{"endpoint": settings.Endpoint, "interval": interval, "fingerprint": RootKeyFingerprint(rootKey)}))
 	return p, nil
 }
 
@@ -113,7 +117,7 @@ func (p *Poller) loop(ctx context.Context, pl puller, interval time.Duration, lg
 		if err != nil {
 			// 连记账都写不下去（磁盘满、权限）：当成一次失败走退避，别退出循环。
 			out.Failed = true
-			out.ErrText = "写记账失败: " + err.Error()
+			out.ErrText = i18n.T("cannot write the bookkeeping: {err}", i18n.A{"err": err.Error()})
 		}
 		rs.report(lg, out, interval)
 
@@ -152,13 +156,13 @@ func (r *roundState) report(lg *log.Logger, out Outcome, interval time.Duration)
 		changed := out.ErrText != r.lastErr
 		r.lastErr = out.ErrText
 		if shouldLog(r.fails, changed) {
-			lg.Printf("[configshare] ⚠ 同步失败（第 %d 次，%s 后重试）: %s",
-				r.fails, humanDur(nextDelay(interval, r.fails, 0.5)), out.ErrText)
+			lg.Printf("[configshare] ⚠ %s", i18n.T("sync failed (attempt {n}, retrying in {delay}): {err}",
+				i18n.A{"n": r.fails, "delay": humanDur(nextDelay(interval, r.fails, 0.5)), "err": out.ErrText}))
 		}
 		return
 	}
 	if r.fails > 0 {
-		lg.Printf("[configshare] 同步恢复（此前连续失败 %d 次）", r.fails)
+		lg.Printf("[configshare] %s", i18n.T("sync recovered (after {n} consecutive failures)", i18n.A{"n": r.fails}))
 	}
 	r.fails = 0
 	r.lastErr = ""
@@ -169,15 +173,18 @@ func (r *roundState) report(lg *log.Logger, out Outcome, interval time.Duration)
 	// 只有真的落盘了东西才报"已更新"：代数涨了但字节没变（宿主重新发布了一份
 	// 一模一样的内容）不是更新，说成更新就是撒谎。
 	if out.Config.Changed {
-		lg.Printf("[configshare] 已更新配置（gen %d → %d，%d 个文件）%s",
-			out.PrevGen, out.Config.Gen,
-			len(out.Config.Written)+len(out.Config.Removed), fileSummary(out.Config))
+		changed := len(out.Config.Written) + len(out.Config.Removed)
+		lg.Printf("[configshare] %s", i18n.N(
+			"configuration updated (gen {from} → {to}, {n} file){files}",
+			"configuration updated (gen {from} → {to}, {n} files){files}",
+			changed, i18n.A{"from": out.PrevGen, "to": out.Config.Gen, "files": fileSummary(out.Config)}))
 		if out.Config.Archive != "" {
-			lg.Printf("[configshare] 本地改动已归档到 %s（要恢复就从那里取）", out.Config.Archive)
+			lg.Printf("[configshare] %s", i18n.T("local changes archived to {dir} (restore from there)",
+				i18n.A{"dir": out.Config.Archive}))
 		}
 	}
 	if out.Secrets.Changed {
-		lg.Printf("[configshare] 已更新密钥（gen %d）", out.Secrets.Gen)
+		lg.Printf("[configshare] %s", i18n.T("secrets updated (gen {gen})", i18n.A{"gen": out.Secrets.Gen}))
 	}
 
 	// 警告只在**内容变了**的时候报一次。它们是每轮重新算出来的，无条件打印会
@@ -185,7 +192,7 @@ func (r *roundState) report(lg *log.Logger, out Outcome, interval time.Duration)
 	warns := strings.Join(out.Config.Warnings, " | ")
 	if warns != "" && warns != r.lastWarn {
 		for _, w := range out.Config.Warnings {
-			lg.Printf("[configshare] 注意: %s", w)
+			lg.Printf("[configshare] %s", i18n.T("note: {msg}", i18n.A{"msg": w}))
 		}
 	}
 	r.lastWarn = warns
@@ -269,10 +276,12 @@ func fileSummary(ch Channel) string {
 		return ""
 	}
 	const maxShow = 6
+	// 截断时给的是**总数**而不是剩下的个数（"等 8 个"）：用户要的是"这一轮动了多少"，
+	// 不是"还有几个没列出来"。TestFileSummaryTruncates 钉着这一条。
 	if len(names) > maxShow {
-		return "：" + strings.Join(names[:maxShow], ", ") + fmt.Sprintf(" 等 %d 个", len(names))
+		return i18n.T(": {names} and {n} in total", i18n.A{"names": strings.Join(names[:maxShow], ", "), "n": len(names)})
 	}
-	return "：" + strings.Join(names, ", ")
+	return i18n.T(": {names}", i18n.A{"names": strings.Join(names, ", ")})
 }
 
 // humanDur 把时长写成给人看的样子（"30s" / "5m0s"），并且**截到整秒**——日志里

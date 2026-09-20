@@ -2,10 +2,11 @@ package proto
 
 import (
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"strings"
+
+	"github.com/rzbdz/newgate/lib/i18n"
 )
 
 // SecretsFileName 是密钥通道落盘的文件。
@@ -39,7 +40,7 @@ func LoadSecretsFile(path string) (SecretsFile, error) {
 	}
 	var f SecretsFile
 	if err := json.Unmarshal(raw, &f); err != nil {
-		return empty, fmt.Errorf("%s 解析失败: %w", path, err)
+		return empty, i18n.Ef(err, "cannot parse {path}: {err}", i18n.A{"path": path})
 	}
 	if f.Keys == nil {
 		f.Keys = map[string]string{}

@@ -78,6 +78,20 @@ jobs:
       - name: 装配清单是否过期
         run: go run ./tools/distgen -check
 
+      # 本地化：账本是否过期、译文与源文的占位符是否对得上、有没有孤儿译文、
+      # 以及「非测试源码里不许再冒出中文字面量」这条棘轮。
+      #
+      # 判据的实现住内核（core/tools/i18n），发行版用**同一把尺子**——所以命令
+      # 从内核那个包跑，路径参数指发行版自己。扫描器遇到嵌套的 Go module 会停下
+      # （见 core/tools/i18n/scan.SkipDir），所以 `core/` 不会被算进来。
+      #
+      # 这里只跑不花钱、不出网的那几条。翻译（`tools/i18n sync`）要调 LLM，
+      # 只能在开发者本地跑——**不进 CI，也不进发版流程**。
+      - name: 本地化（账本与目录）
+        run: |
+          go run github.com/rzbdz/newgate/tools/i18n extract -root . -catalogs modules/i18n/catalogs -check
+          go run github.com/rzbdz/newgate/tools/i18n check -root . -catalogs modules/i18n/catalogs -allowlist tools/i18n-allowlist.json
+
       - name: 模块测试
         run: go test ./...
 

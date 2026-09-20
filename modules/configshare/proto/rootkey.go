@@ -3,14 +3,17 @@ package proto
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
-	"fmt"
 	"os"
 	"strings"
+
+	"github.com/rzbdz/newgate/lib/i18n"
 )
 
 // ErrNoRootKey 本机还没有根密钥（还没 config trust 过）。
-var ErrNoRootKey = errors.New("本机还没有根密钥")
+//
+// i18n.E 只存源语言原文（消息身份），渲染在 Error() 那一刻才发生——所以它可以
+// 安全地待在包级变量里（i18n.T 不行，那会冻在源语言上）。
+var ErrNoRootKey = i18n.E("this machine has no root key yet", nil)
 
 // GenerateRootKey 生成一把新的根密钥。
 //
@@ -20,7 +23,7 @@ var ErrNoRootKey = errors.New("本机还没有根密钥")
 func GenerateRootKey() ([]byte, error) {
 	root := make([]byte, RootKeyLen)
 	if _, err := rand.Read(root); err != nil {
-		return nil, fmt.Errorf("取随机数失败: %w", err)
+		return nil, i18n.Ef(err, "cannot read random bytes: {err}", nil)
 	}
 	return root, nil
 }
@@ -67,8 +70,8 @@ func ParseRootKey(text string) ([]byte, error) {
 	}
 	if b, err := hex.DecodeString(trimmed); err == nil {
 		if len(b) < RootKeyLen {
-			return nil, fmt.Errorf("这串有 %d 字节，至少要 %d——像是被截断了（应是一整串 %d 个十六进制字符）",
-				len(b), RootKeyLen, RootKeyLen*2)
+			return nil, i18n.E("this string is {n} bytes, at least {min} are needed — it looks truncated (it should be {chars} hex characters)",
+				i18n.A{"n": len(b), "min": RootKeyLen, "chars": RootKeyLen * 2})
 		}
 		return b, nil
 	}
@@ -96,8 +99,8 @@ func ParseRootKey(text string) ([]byte, error) {
 	if len(raw) == RootKeyLen {
 		return []byte(raw), nil
 	}
-	return nil, fmt.Errorf("这串既不是十六进制（%d 字节），也不够 %d 字节原文——拷全了吗",
-		len(trimmed), RootKeyLen)
+	return nil, i18n.E("this string is neither hex ({n} bytes) nor long enough as a raw key ({min} bytes) — was it copied in full?",
+		i18n.A{"n": len(trimmed), "min": RootKeyLen})
 }
 
 // RootKeyFingerprint 是根密钥的短指纹，用来**核对两台机器拷的是不是同一把**。

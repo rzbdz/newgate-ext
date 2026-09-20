@@ -205,7 +205,7 @@ func TestRoundStateLogPolicy(t *testing.T) {
 	if n := strings.Count(buf.String(), "\n"); n != 4 {
 		t.Fatalf("12 轮同样的失败该只报 4 次（第 1/2/5/10 次），实际 %d：\n%s", n, buf.String())
 	}
-	if !strings.Contains(buf.String(), "第 1 次") {
+	if !strings.Contains(buf.String(), "attempt 1") {
 		t.Fatalf("第一次必须报（不然「不静默」是空话）:\n%s", buf.String())
 	}
 
@@ -219,7 +219,7 @@ func TestRoundStateLogPolicy(t *testing.T) {
 	// 恢复 → 报一次"同步恢复"。
 	buf.Reset()
 	rs.report(lg, Outcome{}, 30*time.Second)
-	if !strings.Contains(buf.String(), "同步恢复") {
+	if !strings.Contains(buf.String(), "sync recovered") {
 		t.Fatalf("恢复该说一声:\n%s", buf.String())
 	}
 
@@ -241,7 +241,7 @@ func TestRoundStateLogPolicy(t *testing.T) {
 		Secrets: Channel{Kind: KindSecrets, Gen: 7, Changed: true},
 	}, 30*time.Second)
 	out := buf.String()
-	for _, want := range []string{"gen 41 → 42", "providers.json", "-mappings/old.json", "已更新密钥"} {
+	for _, want := range []string{"gen 41 → 42", "providers.json", "-mappings/old.json", "secrets updated"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("日志里该有 %q:\n%s", want, out)
 		}
@@ -254,7 +254,7 @@ func TestFileSummaryTruncates(t *testing.T) {
 		ch.Written = append(ch.Written, n)
 	}
 	got := fileSummary(ch)
-	if !strings.Contains(got, "等 8 个") {
+	if !strings.Contains(got, "and 8 in total") {
 		t.Fatalf("多了该截断并说总数，实际 %q", got)
 	}
 	if strings.Contains(got, ", g") {

@@ -66,8 +66,8 @@ func TestGlmApply(t *testing.T) {
 		if th, _ := m["thinking"].(map[string]interface{}); th["type"] != "disabled" {
 			t.Fatalf("thinking 应为 disabled，实际 %v", m["thinking"])
 		}
-		if len(notes) == 0 || !strings.Contains(notes[0], "GLM") {
-			t.Fatalf("改了就得有 note，实际 %v", notes)
+		if len(notes) == 0 || !strings.Contains(notes[0], `thinking:{"type":"disabled"}`) {
+			t.Fatalf("改了就得有 note 且要说清注入了什么，实际 %v", notes)
 		}
 	})
 

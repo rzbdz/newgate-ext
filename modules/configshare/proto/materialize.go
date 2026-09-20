@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/rzbdz/newgate/lib/i18n"
 	cfg "github.com/rzbdz/newgate/modules/config"
 )
 
@@ -29,14 +30,15 @@ func ValidateSnapshot(dir string, files map[string][]byte) (warnings []string, e
 
 	for _, rel := range sortedKeys(files) {
 		if _, ok := ManagedPath(rel); !ok {
-			return nil, fmt.Errorf("快照里有不在托管集合里的文件 %q（协议不允许发送托管集合之外的文件）", rel)
+			return nil, i18n.E("the snapshot carries a file that is not in the managed set: {path} (the protocol never sends files outside the managed set)",
+				i18n.A{"path": rel})
 		}
 		data := files[rel]
 		switch {
 		case rel == ProvidersName:
 			var p cfg.Providers
 			if err := json.Unmarshal(data, &p); err != nil {
-				return nil, fmt.Errorf("%s 解析失败（不是合法的 provider 表）: %w", rel, err)
+				return nil, i18n.Ef(err, "cannot parse {path} (not a valid provider table): {err}", i18n.A{"path": rel})
 			}
 			if p.Providers == nil {
 				p.Providers = map[string]cfg.Provider{}
@@ -58,25 +60,25 @@ func ValidateSnapshot(dir string, files map[string][]byte) (warnings []string, e
 			}
 			if len(inline) > 0 {
 				sort.Strings(inline)
-				return nil, fmt.Errorf(
-					"%s 里 %s 带了内联 api_key：密钥只能走密钥通道（在宿主上 newgate config secrets），配置通道不含密——它在宿主侧是 git 管的，提交一次就永久进历史",
-					ProvidersName, strings.Join(inline, "、"))
+				return nil, i18n.E(
+					"{providers} carries an inline api_key for {names}: a secret may only travel over the secrets channel (newgate config secrets on the host); the config channel never carries one — on the host it is managed by git, so a single commit puts it in history forever",
+					i18n.A{"providers": ProvidersName, "names": strings.Join(inline, ", ")})
 			}
 		case rel == MetaFileName:
 			var meta Meta
 			if err := json.Unmarshal(data, &meta); err != nil {
-				return nil, fmt.Errorf("%s 解析失败: %w", rel, err)
+				return nil, i18n.Ef(err, "cannot parse {path}: {err}", i18n.A{"path": rel})
 			}
 		case strings.HasSuffix(rel, ".kv"):
 			// 用 daemon 自己那个解析器（cfg.ParseProfileKV），不是另写一个：
 			// 另写一个就成了第二份会漂的真相，"校验通过"也就没有意义了。
 			if _, err := cfg.ParseProfileKV(string(data)); err != nil {
-				return nil, fmt.Errorf("档位 %s 解析失败: %w", rel, err)
+				return nil, i18n.Ef(err, "cannot parse profile {path}: {err}", i18n.A{"path": rel})
 			}
 		case strings.HasSuffix(rel, ".json"):
 			var pr cfg.Profile
 			if err := json.Unmarshal(data, &pr); err != nil {
-				return nil, fmt.Errorf("档位 %s 解析失败: %w", rel, err)
+				return nil, i18n.Ef(err, "cannot parse profile {path}: {err}", i18n.A{"path": rel})
 			}
 			name := profileNameOf(rel)
 			if pr.Name == "" {
@@ -135,12 +137,13 @@ func semanticWarnings(dir string, providers map[string]cfg.Provider, profiles ma
 			check("fallback", *pr.Fallback)
 		}
 		if pr.Extends != "" && !known[pr.Extends] {
-			warns = append(warns, fmt.Sprintf("档位 %s extends %q，但这份配置里没有那个档位", name, pr.Extends))
+			warns = append(warns, i18n.T("profile {name} extends {extends}, but this configuration has no such profile",
+				i18n.A{"name": name, "extends": pr.Extends}))
 		}
 	}
 	for _, prov := range sortedKeysOf(missingProvider) {
-		warns = append(warns, fmt.Sprintf("档位 %s 引用了 provider %q，但 provider 表里没有它",
-			strings.Join(missingProvider[prov], "、"), prov))
+		warns = append(warns, i18n.T("profile {profiles} references provider {provider}, but the provider table has no such entry",
+			i18n.A{"profiles": strings.Join(missingProvider[prov], ", "), "provider": prov}))
 	}
 
 	// 没有密钥来源的 provider：只提醒，不拒绝——密钥可能就在密钥通道里，
@@ -148,7 +151,8 @@ func semanticWarnings(dir string, providers map[string]cfg.Provider, profiles ma
 	for _, name := range sortedProviderNames(providers) {
 		prov := providers[name]
 		if strings.TrimSpace(prov.APIKey) == "" && strings.TrimSpace(prov.APIKeyEnv) == "" {
-			warns = append(warns, fmt.Sprintf("provider %s 没有 api_key_env，密钥得来自密钥通道（宿主上 config secrets）", name))
+			warns = append(warns, i18n.T("provider {name} has no api_key_env; its key has to come from the secrets channel (config secrets on the host)",
+				i18n.A{"name": name}))
 		}
 	}
 	return warns
@@ -189,7 +193,7 @@ func Materialize(dir string, files map[string][]byte, applied map[string]string)
 
 	root, err := os.OpenRoot(dir)
 	if err != nil {
-		return res, fmt.Errorf("打不开配置目录 %s: %w", dir, err)
+		return res, i18n.Ef(err, "cannot open the configuration directory {dir}: {err}", i18n.A{"dir": dir})
 	}
 	defer root.Close()
 
@@ -221,7 +225,7 @@ func Materialize(dir string, files map[string][]byte, applied map[string]string)
 		}
 		tmp := tmpNameOf(rel)
 		if err := root.WriteFile(tmp, data, 0o660); err != nil {
-			return res, fmt.Errorf("写 %s 失败: %w", rel, err)
+			return res, i18n.Ef(err, "cannot write {path}: {err}", i18n.A{"path": rel})
 		}
 		pend = append(pend, pending{rel: rel, tmp: tmp})
 	}
@@ -231,12 +235,13 @@ func Materialize(dir string, files map[string][]byte, applied map[string]string)
 		if err := root.Rename(p.tmp, p.rel); err != nil {
 			// 已经把 rename 过的留在新版本、没轮到的留在旧版本。说出来，别让
 			// 调用方以为这是一次干净的成功。
-			return res, fmt.Errorf("替换 %s 失败（配置可能处于新旧混合状态，下一次同步会重试）: %w", p.rel, err)
+			return res, i18n.Ef(err, "cannot replace {path} (the configuration may be half old and half new; the next sync will retry): {err}",
+				i18n.A{"path": p.rel})
 		}
 		// rename 之后补 chmod：umask 会削掉组写位，而 cfg.writeJSON 的注释
 		// 与 CLAUDE.md §3.1 都记着这个坑（root 写出的文件 daemon 写不了）。
 		if err := root.Chmod(p.rel, 0o660); err != nil {
-			return res, fmt.Errorf("修正 %s 权限失败: %w", p.rel, err)
+			return res, i18n.Ef(err, "cannot fix the permissions of {path}: {err}", i18n.A{"path": p.rel})
 		}
 		res.Written = append(res.Written, p.rel)
 	}
@@ -250,7 +255,7 @@ func Materialize(dir string, files map[string][]byte, applied map[string]string)
 			continue // 已不在托管集合里的老记录，不去碰
 		}
 		if err := root.Remove(rel); err != nil && !os.IsNotExist(err) {
-			return res, fmt.Errorf("删除已下线的 %s 失败: %w", rel, err)
+			return res, i18n.Ef(err, "cannot remove the retired {path}: {err}", i18n.A{"path": rel})
 		}
 		res.Removed = append(res.Removed, rel)
 	}

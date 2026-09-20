@@ -1,6 +1,7 @@
 {
   "distribution": "simple-cli",
   "modules": [
+    "i18n",
     "simple-cli",
     "deepseek",
     "glm",

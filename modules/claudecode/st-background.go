@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	i18n "github.com/rzbdz/newgate/lib/i18n"
 	"github.com/rzbdz/newgate/modules/config/domain"
 	"github.com/rzbdz/newgate/modules/gateway/rewrite"
 	"github.com/rzbdz/newgate/modules/gateway/special"
@@ -86,11 +87,11 @@ func (background) Before() []string { return []string{"always-thinks"} }
 func (background) After() []string  { return nil }
 
 func (background) Why() string {
-	return "Claude Code 的后台非流式请求（Bash 分类器等）不带 thinking，" +
-		"国模却默认思考 → 15-30 秒、成波超时卡死会话\n" +
-		"分类器（system 自报 \"security monitor\"）整条链走 light 档" +
-		"（含 fallback），其余后台调用只禁思考" +
-		"（主循环的流式请求不受影响）"
+	return i18n.T("Claude Code's background non-streaming requests (the Bash classifier, etc.) carry no thinking, "+
+		"yet Chinese models think by default → 15-30 seconds, waves of timeouts, a wedged session\n"+
+		"the classifier (the system prompt says \"security monitor\") takes the whole chain to the light tier "+
+		"(fallback included); other background calls only get thinking disabled "+
+		"(the streaming main loop is unaffected)", nil)
 }
 
 func (background) Route(body []byte, request *special.Request, state *domain.State) (special.RouteDecision, bool) {
@@ -100,16 +101,16 @@ func (background) Route(body []byte, request *special.Request, state *domain.Sta
 	decision := special.RouteDecision{
 		Tier:             "light",
 		FirstByteTimeout: state.Timeouts.ClassifierFirstByte(),
-		Note:             "分类器改道 → light 档链（含 fallback）",
+		Note:             i18n.T("classifier rerouted → the light-tier chain (fallback included)", nil),
 		Metric:           "route_light",
 	}
 	if override, _ := classifierOverride(state); override != nil {
 		head := *override
 		decision.Head = &head
-		decision.OverrideNote = "分类器覆盖 → " + head.String() +
-			"（全局最高优先，先于任何 profile）"
-		decision.OverrideFailNote = "分类器覆盖 " + head.String() +
-			" 未生效，回落 light 档链"
+		decision.OverrideNote = i18n.T("classifier override → {head} (the highest priority globally, ahead of any profile)",
+			i18n.A{"head": head.String()})
+		decision.OverrideFailNote = i18n.T("classifier override {head} did not take effect; falling back to the light-tier chain",
+			i18n.A{"head": head.String()})
 	}
 	return decision, true
 }
@@ -121,19 +122,19 @@ func (background) Status(state *domain.State) []special.StatusItem {
 	override, err := classifierOverride(state)
 	if err != nil {
 		return []special.StatusItem{{
-			Label: "分类器配置",
-			Value: "classifier_override 无效：" + err.Error(),
+			Label: i18n.T("Classifier config", nil),
+			Value: i18n.T("classifier_override is not valid: {err}", i18n.A{"err": err}),
 		}}
 	}
 	if override != nil {
 		return []special.StatusItem{{
-			Label: "分类器覆盖",
-			Value: override.String() + " · 全局最高优先，先于任何 profile",
+			Label: i18n.T("Classifier override", nil),
+			Value: i18n.T("{head} · the highest priority globally, ahead of any profile", i18n.A{"head": override.String()}),
 		}}
 	}
 	return []special.StatusItem{{
-		Label: "分类器改道",
-		Value: "Claude Code Bash 分类器 → light 档链",
+		Label: i18n.T("Classifier rerouting", nil),
+		Value: i18n.T("Claude Code Bash classifier → the light-tier chain", nil),
 	}}
 }
 
@@ -160,7 +161,7 @@ func classifierOverride(state *domain.State) (*domain.Binding, error) {
 		return nil, fmt.Errorf("%w", err)
 	}
 	if binding.Provider == "" || binding.Model == "" {
-		return nil, fmt.Errorf("provider / model 都必须填写")
+		return nil, i18n.E("provider / model must both be filled in", nil)
 	}
 	return &binding, nil
 }
@@ -168,7 +169,7 @@ func classifierOverride(state *domain.State) (*domain.Binding, error) {
 func (background) Metrics() []special.MetricInfo {
 	return []special.MetricInfo{{
 		Action: "route_light",
-		Hint:   "Bash 分类器，整条链改走 light",
+		Hint:   i18n.T("Bash classifier: the whole chain is rerouted to light", nil),
 	}}
 }
 

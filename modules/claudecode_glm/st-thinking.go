@@ -1,10 +1,9 @@
 package claudecode_glm
 
 import (
-	"fmt"
-
 	claudeapi "github.com/rzbdz/newgate-ext/modules/claudecode"
 	glmapi "github.com/rzbdz/newgate-ext/modules/glm"
+	i18n "github.com/rzbdz/newgate/lib/i18n"
 	"github.com/rzbdz/newgate/modules/gateway/rewrite"
 	"github.com/rzbdz/newgate/modules/gateway/special"
 )
@@ -50,10 +49,10 @@ func (thinking) Before() []string { return []string{"always-thinks"} }
 func (thinking) After() []string  { return []string{"claude-bg"} }
 
 func (thinking) Why() string {
-	return "GLM 系模型把「没写 thinking」当默认开思考（Anthropic 语义是关）" +
-		"→ 没要求思考的请求被拖进十几秒\n" +
-		"Claude Code 那条路没写就补显式 disabled（写了不动）；" +
-		"OpenAI 方言的客户端（opencode）没有这个字段可写，不碰"
+	return i18n.T("GLM models treat a missing thinking field as thinking on (Anthropic semantics say off) "+
+		"→ requests that never asked to think get dragged into ten-plus seconds\n"+
+		"on the Claude Code path an explicit disabled is filled in when it is absent (present is left alone); "+
+		"OpenAI-dialect clients (opencode) have no such field to write, so they are not touched", nil)
 }
 
 // Match 只认 GLM：模型名、provider 名、base URL 任一处出现 glm
@@ -82,7 +81,8 @@ func (t thinking) Apply(body []byte, r *special.Request) ([]byte, []string, erro
 	nb, err := rewrite.InsertTopLevelRaw(body, "thinking",
 		[]byte(`{"type":"disabled"}`))
 	if err != nil {
-		return nil, nil, fmt.Errorf("注入 thinking 失败: %w", err)
+		return nil, nil, i18n.Ef(err, "failed to inject thinking: {err}", nil)
 	}
-	return nb, []string{`注入 thinking:{"type":"disabled"}（GLM 把缺省当默认思考）`}, nil
+	return nb, []string{i18n.T("injected {patch} (GLM treats an absent field as thinking on)",
+		i18n.A{"patch": `thinking:{"type":"disabled"}`})}, nil
 }

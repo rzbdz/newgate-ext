@@ -46,6 +46,7 @@ newgate status
 
 | module | what it owns |
 | --- | --- |
+| `i18n` | this distribution's own message catalog, appended to the language the kernel installed |
 | `tui` | menuconfig-style terminal UI — edit profiles and tier bindings |
 | `deepseek` | DeepSeek family: reasoning content save/backfill, tail-shape repair, cross-provider tool-loop migration |
 | `glm` | GLM family: reasoning hand-back and the default thinking switch |
@@ -59,6 +60,25 @@ newgate status
 
 Everything else — the gateway, the breaker, config, runtime, the CLI — comes
 from the kernel at `core/`.
+
+## Language
+
+The interface speaks English (the source language) and follows your system
+locale, with the kernel's precedence:
+
+```text
+NEWGATE_LANG  >  ~/.config/newgate/state.json  >  LC_ALL / LC_MESSAGES / LANG  >  English
+```
+
+This distribution carries its own message catalog (`modules/i18n/catalogs/`) so
+that the parts the kernel cannot know about — the client onboarding, the
+upstream-quirk patchers, the UI — are translated too. `newgate lang` reports
+coverage for both halves.
+
+```bash
+newgate lang            # what is in effect, and how complete each language is
+newgate lang zh-Hans    # persist it
+```
 
 ## Three binaries, one repo
 

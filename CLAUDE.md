@@ -71,6 +71,37 @@ newgate-ext/           ← 你在这里（发行版：产品），这个仓库�
 写模块的完整规矩（fail-open、不静默、注释写「为什么」、字节手术、capability 而不是
 直接调用）**沿用内核仓库那一套**，`core/CLAUDE.md` 与 `core/docs/` 是权威原文。
 
+### 文案与本地化（2026-09-20 起）
+
+**本仓库的模块也不许在源码里写中文文案**——用户可见的文本一律走
+`i18n.T("English {x}", i18n.A{"x": …})`（叶子包 `github.com/rzbdz/newgate/lib/i18n`），
+中文活在**本仓库的** `modules/i18n/catalogs/zh-Hans.json` 里。
+
+- 键 = 那句英文（gettext 的 msgid 传统），所以没有「键写错」这回事；
+  改措辞会让旧译文变孤儿，`check` 会报出来。
+- 机器标记留在消息**外面**：`[tag]`、metrics 计数器名、`ok/warn/bad/skip`、
+  JSON 字段名、命令名、agent 名、路径；**上游报错的原文也不能翻**（那是匹配判据，
+  翻了签名永远匹配不上，见 `modules/deepseek` 里那些 needle）。
+- 发行版是**独立 module**，内核不认识我们的模块名——所以**谁的东西谁带**：
+  `modules/i18n` 在 Start 里把自带的目录**追加**进内核已装好的语言
+  （`lib/i18n.Extend`；安装是内核 `modules/locale` 的事，一次装配只发生一次）。
+  依赖是 `Optional(localeapi.Capability)`——骨架规格书把内核模块全关掉时，
+  这里什么都不做，文案走恒等路径。
+- 工具与判据只有一份（住内核），发行版用**同一把尺子**跑，路径参数指自己：
+
+  ```bash
+  go run github.com/rzbdz/newgate/tools/i18n extract -root . -catalogs modules/i18n/catalogs
+  go run github.com/rzbdz/newgate/tools/i18n check   -root . -catalogs modules/i18n/catalogs \
+                                                     -allowlist tools/i18n-allowlist.json
+  go run github.com/rzbdz/newgate/tools/i18n sync    -root . -catalogs modules/i18n/catalogs
+  ```
+
+  前两条在 CI 里（`ci.yml` 的 dist-test，另有 `testing/i18n_test.go` 作双保险）；
+  `sync` 调本机网关跑 LLM 补译文，**只在开发者本地跑，绝不进 CI，也不进发版流程**。
+- 扫描器遇到嵌套的 Go module 会停下（`core/` 是内核那份 submodule），所以本仓库
+  的账本只装我们自己的消息。
+- 细节与「为什么」见内核 `docs/13-i18n.md`。
+
 ## 3. 编与跑
 
 ```bash

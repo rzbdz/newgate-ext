@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/rzbdz/newgate/lib/i18n"
 	"github.com/rzbdz/newgate/modules/gateway/rewrite"
 	"github.com/rzbdz/newgate/modules/gateway/special"
 	"github.com/rzbdz/newgate/modules/gateway/thinkcache"
@@ -137,16 +138,20 @@ func (reasoning) Before() []string { return []string{"always-thinks"} }
 func (reasoning) After() []string  { return []string{"claude-bg"} }
 
 func (reasoning) Why() string {
-	return "DeepSeek 思考模式要求逐字回传推理内容，客户端却会把它剥掉 → 400\n" +
-		"套着就补回去（客户端带回的原文 → thinkcache；**没有原文就跳过，绝不编**）；" +
-		"只有 Claude Code 那条路干脆显式关掉思考（它剥块，想了也白想）；" +
-		"外来未闭合 tool loop 先从可见工具结果有损重建，再由 DeepSeek 接手"
+	return i18n.T("DeepSeek thinking mode wants reasoning passed back verbatim, but the "+
+		"client strips it → 400\n"+
+		"so we put it back (the original the client carries → thinkcache; **no original "+
+		"means skip it, never invent one**); only the Claude Code path turns thinking "+
+		"off outright (it strips the blocks, so thinking would be spent for nothing); "+
+		"a foreign unclosed tool loop is first lossily rebuilt from the visible tool "+
+		"results, then DeepSeek takes over", nil)
 }
 
 func (reasoning) Metrics() []special.MetricInfo {
 	return []special.MetricInfo{{
 		Action: "tool_loop_rebase",
-		Hint:   "接手外来未闭合 tool loop 前做了有损重建",
+		Hint: i18n.T("a lossy rebuild happened before taking over a foreign unclosed "+
+			"tool loop", nil),
 	}}
 }
 
@@ -166,7 +171,8 @@ func (d reasoning) NeedsToolLoopRebase(originProvider, originModel string,
 		(candidate.Provider == originProvider && candidate.Model == originModel) {
 		return false, ""
 	}
-	return true, "接手其他上游未闭合的 reasoning/tool 状态前需要有损重建"
+	return true, i18n.T("taking over another upstream's unclosed reasoning/tool state "+
+		"needs a lossy rebuild first", nil)
 }
 
 // toolLoopRebasePrompt 是「尾部没有用户指令」时补上去的那一句话。
@@ -188,6 +194,11 @@ func (d reasoning) NeedsToolLoopRebase(originProvider, originModel string,
 //
 // 也**不是**随便什么内容都行：空串不行。实测 [tool_result, text""] 会被上游
 // 以 `missing field text` 拒掉（它的解析层对空串等同于字段缺席）。
+//
+// **这一句不走 i18n，而且永远不该走**：它被 json.Marshal 之后写进**请求体的
+// 字节**，是发给上游的协议数据，不是给谁看的文案。翻译它等于改变发出去的内容
+// （上游对这段文本没有语义要求，但用户的历史里会长住这段字）。它同时也是包级
+// const，而包初始化早于装语言。
 const toolLoopRebasePrompt = "继续"
 
 // RebaseToolLoop 把 tool_result 变成同时带普通用户指令的新回合。旧 reasoning、
@@ -207,7 +218,8 @@ func (reasoning) RebaseToolLoop(body []byte, _ *special.Request) ([]byte, string
 	if !changed {
 		return body, "", nil
 	}
-	return out, "有损重建外来 tool loop：保留工具结果并追加普通用户继续指令", nil
+	return out, i18n.T("lossily rebuilt a foreign tool loop: kept the tool results and "+
+		"appended a plain user instruction to continue", nil), nil
 }
 
 // Match 只认 DeepSeek：模型名、provider 名、base URL 任一处出现 deepseek。
@@ -267,7 +279,8 @@ func (reasoning) Apply(body []byte, r *special.Request) ([]byte, []string, error
 	} else if nb, n, err := rewrite.EnsureArrayItemFieldFunc(out, "messages",
 		"reasoning_content", valReasoning, isAssistant); err != nil {
 		// messages 形状不认识：前面那些仍然有效，这步放弃。
-		notes = append(notes, "messages 未改动（"+err.Error()+"）")
+		notes = append(notes, i18n.T("messages left untouched ({err})",
+			i18n.A{"err": err.Error()}))
 	} else if n > 0 {
 		out = nb
 		notes = append(notes, reasoningNote("reasoning_content", n, restored, sk1))
@@ -296,12 +309,15 @@ func (reasoning) Apply(body []byte, r *special.Request) ([]byte, []string, error
 		}
 		if nb, n, err := rewrite.EnsureArrayItemArrayHeadFunc(out, "messages", "content",
 			valBlock, isAssistant, lacksThinking); err != nil {
-			notes = append(notes, "content 未改动（"+err.Error()+"）")
+			notes = append(notes, i18n.T("content left untouched ({err})",
+				i18n.A{"err": err.Error()}))
 		} else if n > 0 {
 			out = nb
-			notes = append(notes, reasoningNote("thinking 块", n, restored, sk2))
+			notes = append(notes, reasoningNote(i18n.T("thinking block", nil),
+				n, restored, sk2))
 		} else if sk2.total > 0 {
-			pending = append(pending, reasoningNote("thinking 块", sk2.total, 0, sk2))
+			pending = append(pending, reasoningNote(i18n.T("thinking block", nil),
+				sk2.total, 0, sk2))
 		}
 	}
 
@@ -314,11 +330,13 @@ func (reasoning) Apply(body []byte, r *special.Request) ([]byte, []string, error
 		// 第 4 手被关掉，跳过。它是唯一修根因的一手，关掉之后裸 tool_result
 		// 尾部会直接撞上游那条误报的 400。
 	} else if nb, changed, err := repairTailShape(out); err != nil {
-		notes = append(notes, "尾部形状未改动（"+err.Error()+"）")
+		notes = append(notes, i18n.T("tail shape left untouched ({err})",
+			i18n.A{"err": err.Error()}))
 	} else if changed {
 		out = nb
-		notes = append(notes, "末尾的 user 轮只有 tool_result 没有用户指令——"+
-			"追加一条继续指令（上游对空指令尾部误报 reasoning_content 缺失）")
+		notes = append(notes, i18n.T("the trailing user turn holds only tool_result and no "+
+			"user instruction — appended a continue instruction (the upstream misreports "+
+			"an instruction-less tail as a missing reasoning_content)", nil))
 	}
 
 	// 前面攒下的「跳过」报告，只在**这一发确实被改过**时才吐出来。
@@ -525,8 +543,13 @@ func toolIDsAny(item []byte) []string {
 //
 // 有了 id 就能和另外两条日志对起来：
 //
-//	[proxy] #N 记下本轮推理内容 … 个 key        ← 这一轮的推理存进了缓存
-//	[proxy] #N 本轮上游没给推理内容（N 个 tool call）  ← 上游压根没给
+//	[proxy] #N recorded … bytes of reasoning and N keys … this round
+//	            ↑ 这一轮的推理存进了缓存（内核 forward.go 打的）
+//	[proxy] #N 本轮上游没给推理内容（N 个 tool call）
+//	            ↑ 上游压根没给
+//
+// 两条日志行的**原文随 i18n 一起变成了英文**（本模块迁移时同步更新），所以要
+// 去 grep 的是英文那两串，不是这里的转述。
 //
 // 拿跳过消息的 id 去 grep 这两条：
 //   - 命中「没给推理」⇒ 请求本身就没有（上游没思考），跳过是唯一正确动作；
@@ -568,21 +591,23 @@ func (t *skipTally) detail() string {
 	if len(parts) == 0 {
 		return ""
 	}
-	s := "（" + strings.Join(parts, "，")
-	if len(t.ids) > 0 {
-		// 上限 8 个：够看出「是不是同一批老消息每次都出现」，又不至于把一行日志
-		// 撑成几 KB。超出的只报个数。
-		shown := t.ids
-		more := ""
-		if len(shown) > 8 {
-			more = fmt.Sprintf(" 等 %d 个", len(shown))
-			shown = shown[:8]
-		}
-		s += "；跳过消息的 tool id: " + strings.Join(shown, " ") + more
-	} else {
-		s += "；跳过消息没有 tool id（纯文本轮）"
+	// 计数之间的分隔符也是**语言数据**（中文是顿号），所以它自己是一条消息：
+	// 把分隔符硬写成 ASCII 逗号的话，中文那一行会变成中英混排。
+	items := strings.Join(parts, i18n.T(", ", nil))
+	if len(t.ids) == 0 {
+		return i18n.T("({items}; skipped messages have no tool id (plain text turns))",
+			i18n.A{"items": items})
 	}
-	return s + "）"
+	// 上限 8 个：够看出「是不是同一批老消息每次都出现」，又不至于把一行日志
+	// 撑成几 KB。超出的只报个数。
+	shown := t.ids
+	more := ""
+	if len(shown) > 8 {
+		more = i18n.T(" and {n} in all", i18n.A{"n": len(shown)})
+		shown = shown[:8]
+	}
+	return i18n.T("({items}; tool ids of skipped messages: {ids}{more})",
+		i18n.A{"items": items, "ids": strings.Join(shown, " "), "more": more})
 }
 
 // clientThinkingText 抽出这条消息 content[] 里 thinking 块的文本。
@@ -622,11 +647,16 @@ func clientThinkingText(item []byte) string {
 // 分类的理由见 skipCause 的注释——「上游那一轮本来就没给」和
 // 「给了但我们没存住」是两件处置完全相反的事，只报个数等于没报。
 func reasoningNote(what string, total, restored int, sk skipTally) string {
-	s := fmt.Sprintf("给 %d 条 assistant 消息补 %s：%d 条用了真实的推理原文",
-		total, what, restored)
+	// `assistant` 是 JSON 里的 role 值，留在消息外面；`{n}` 由 N() 注入。
+	s := i18n.N("backfilled {what} on {n} assistant message: {restored} used the real "+
+		"reasoning text",
+		"backfilled {what} on {n} assistant messages: {restored} used the real "+
+			"reasoning text",
+		total, i18n.A{"what": what, "restored": restored})
 	if sk.total > 0 {
-		s += fmt.Sprintf("，%d 条没有原文可补、**跳过不动**%s——这几轮模型看不到自己的推理",
-			sk.total, sk.detail())
+		s += i18n.T(", {n} had no original text to backfill and were **left untouched**"+
+			"{detail} — those rounds the model cannot see its own reasoning",
+			i18n.A{"n": sk.total, "detail": sk.detail()})
 	}
 	return s
 }
@@ -669,19 +699,20 @@ func lacksThinking(content []byte) bool {
 //
 // 直接解析 we-sent 的 messages，逐条 assistant 消息标出有没有 reasoning_content。
 // **没有的那些不是我们的错**：那是上游那一轮本来就没给（见文件头的实测）。
-// 报告里连 tool_use id 一起打出来，拿它去 grep 日志里的「记下本轮推理内容」
-// 就能确认——命中说明是我们弄丢的，不命中说明上游没给过。
+// 报告里连 tool_use id 一起打出来，拿它去 grep 日志里的 recorded … bytes of
+// reasoning 那行（内核 forward.go 打的，见报告正文里的原文）就能确认——命中
+// 说明是我们弄丢的，不命中说明上游没给过。
 //
 // 这是纯只读分析，不依赖运行时的缓存状态——缓存此刻可能已经被后续请求顶掉，
 // 但 400 发生时写下的这份报告是当时事实的定格。
 func AuditReasoning(out []byte) string {
 	msgs, ok := rewrite.TopLevelRaw(out, "messages")
 	if !ok {
-		return "（没有 messages 字段，无法审计）\n"
+		return i18n.T("(no messages field, cannot audit)\n", nil)
 	}
 	items, ok := rewrite.ArrayItems(msgs)
 	if !ok {
-		return "（messages 不是数组，无法审计）\n"
+		return i18n.T("(messages is not an array, cannot audit)\n", nil)
 	}
 	var b strings.Builder
 	assistant, real, missing := 0, 0, 0
@@ -695,12 +726,18 @@ func AuditReasoning(out []byte) string {
 			continue
 		}
 		missing++
-		fmt.Fprintf(&b, "msg[%d] 没有 reasoning_content  %s\n", i, msgKeys(it))
+		// `msg[0]` / `reasoning_content` 都是机器标记（字段名与下标），留在外面。
+		b.WriteString(i18n.T("msg[{i}] has no reasoning_content  {keys}\n",
+			i18n.A{"i": i, "keys": msgKeys(it)}))
 	}
-	return fmt.Sprintf("assistant 共 %d 条：带推理原文 %d，没有 %d\n"+
-		"（没有的那些是**上游那一轮本来就没给**，不是被我们弄丢的——见下面的 tool id，\n"+
-		"  拿它去 grep 日志里的「记下本轮推理内容」就能确认）逐条：\n%s",
-		assistant, real, missing, b.String())
+	// 「bytes of reasoning」那句是内核 thinkcache 侧真正打出来的日志行原文
+	// （forward.go 的 recorded … bytes of reasoning），要 grep 就得给原文。
+	return i18n.T("assistant messages: {total} in all, {real} with reasoning text, "+
+		"{missing} without\n"+
+		"(the ones without are **what the upstream never gave us that round**, not "+
+		"something we lost — see the tool id below,\n"+
+		"  grep the log for \"bytes of reasoning\" and you will see) one by one:\n{listing}",
+		i18n.A{"total": assistant, "real": real, "missing": missing, "listing": b.String()})
 }
 
 func (reasoning) AuditResponse(body []byte) string { return AuditReasoning(body) }
@@ -710,7 +747,7 @@ func (reasoning) AuditResponse(body []byte) string { return AuditReasoning(body)
 func msgKeys(item []byte) string {
 	toolIDs := toolUseIDs(item)
 	if len(toolIDs) == 0 {
-		return "（纯文本轮，无 tool_use）"
+		return i18n.T("(plain text turn, no tool_use)", nil)
 	}
 	return "tool_use ids: " + strings.Join(toolIDs, " ")
 }

@@ -6,8 +6,9 @@ import (
 	"crypto/hkdf"
 	"crypto/rand"
 	"crypto/sha256"
-	"errors"
 	"fmt"
+
+	"github.com/rzbdz/newgate/lib/i18n"
 )
 
 // 用途分离用的 info 串。它们是**协议的一部分**：改了等于换了协议，新旧两端会
@@ -28,7 +29,9 @@ const (
 // 改过、两端的根密钥不是同一把、两端的协议版本不一致。给用户看的文案要把三种
 // 可能都说出来，否则第一次部署时最难查的那种错（两台机器 trust 了不同的 blob）
 // 会表现成一句"解密失败"，让人去怀疑网络。
-var ErrTampered = errors.New("信封未通过认证（内容被改动、两端根密钥不同、或协议版本不一致）")
+// i18n.E 只存源语言原文（消息身份），渲染在 Error() 那一刻才发生——所以它可以
+// 安全地待在包级变量里（i18n.T 不行，那会冻在源语言上）。
+var ErrTampered = i18n.E("the envelope failed authentication (its content was changed, the two root keys differ, or the protocol versions do not match)", nil)
 
 // DeriveKeys 从预共享根密钥派生 (AES-GCM 密钥, bearer token)。
 //
@@ -44,15 +47,16 @@ func DeriveKeys(root []byte) (encKey, authToken []byte, err error) {
 	if len(root) < RootKeyLen {
 		// 短了几乎总是"config trust 时少拷了一段"或"拷进来的是 base64 而这里
 		// 按原始字节用"。说清楚长度比 "invalid key" 有用。
-		return nil, nil, fmt.Errorf("根密钥只有 %d 字节，至少要 %d（config trust 给的那串）", len(root), RootKeyLen)
+		return nil, nil, i18n.E("the root key is only {n} bytes, at least {min} are needed (the string config trust gives you)",
+			i18n.A{"n": len(root), "min": RootKeyLen})
 	}
 	encKey, err = hkdf.Key(sha256.New, root, nil, infoEncKey, 32)
 	if err != nil {
-		return nil, nil, fmt.Errorf("派生加密密钥失败: %w", err)
+		return nil, nil, i18n.Ef(err, "cannot derive the encryption key: {err}", nil)
 	}
 	authToken, err = hkdf.Key(sha256.New, root, nil, infoAuthToken, 32)
 	if err != nil {
-		return nil, nil, fmt.Errorf("派生鉴权令牌失败: %w", err)
+		return nil, nil, i18n.Ef(err, "cannot derive the auth token: {err}", nil)
 	}
 	return encKey, authToken, nil
 }
@@ -87,7 +91,7 @@ func Seal(encKey []byte, kind, host string, gen int, plaintext []byte) (*Envelop
 	// 而且计数器要求两端持久化同步的状态，宿主一重装就会重放。随机 nonce 在
 	// 这个量级（一天几十次）下碰撞概率可以忽略。
 	if _, err := rand.Read(nonce); err != nil {
-		return nil, fmt.Errorf("取随机数失败: %w", err)
+		return nil, i18n.Ef(err, "cannot read random bytes: {err}", nil)
 	}
 	return &Envelope{
 		V:     ProtocolVersion,
@@ -107,22 +111,25 @@ func Seal(encKey []byte, kind, host string, gen int, plaintext []byte) (*Envelop
 // 一起被封出来的，改一个字节就开不了。
 func Open(encKey []byte, kind string, env *Envelope) ([]byte, error) {
 	if env == nil {
-		return nil, errors.New("信封是空的")
+		return nil, i18n.E("the envelope is empty", nil)
 	}
 	// 版本/通道先单独判：这两种错是"配置错了"，文案该说人话；混进 ErrTampered
 	// 里就变成一句吓人的"内容被改过"。
 	if env.V != ProtocolVersion {
-		return nil, fmt.Errorf("对端协议版本是 %d，本二进制只认 %d（两端版本要一起升）", env.V, ProtocolVersion)
+		return nil, i18n.E("the peer speaks protocol version {peer}, this binary only understands {mine} (both ends have to be upgraded together)",
+			i18n.A{"peer": env.V, "mine": ProtocolVersion})
 	}
 	if env.Kind != kind {
-		return nil, fmt.Errorf("信封自称是 %q 通道，这里要的是 %q", env.Kind, kind)
+		return nil, i18n.E("the envelope claims to be the {got} channel, but {want} was expected",
+			i18n.A{"got": env.Kind, "want": kind})
 	}
 	gcm, err := newGCM(encKey)
 	if err != nil {
 		return nil, err
 	}
 	if len(env.Nonce) != gcm.NonceSize() {
-		return nil, fmt.Errorf("%w（nonce 长度 %d，应为 %d）", ErrTampered, len(env.Nonce), gcm.NonceSize())
+		return nil, i18n.Ef(ErrTampered, "{err} (nonce length {got}, expected {want})",
+			i18n.A{"got": len(env.Nonce), "want": gcm.NonceSize()})
 	}
 	plain, err := gcm.Open(nil, env.Nonce, env.CT, aad(kind, env.Host, env.Gen))
 	if err != nil {
@@ -134,11 +141,11 @@ func Open(encKey []byte, kind string, env *Envelope) ([]byte, error) {
 func newGCM(key []byte) (cipher.AEAD, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return nil, fmt.Errorf("AES 密钥不可用: %w", err)
+		return nil, i18n.Ef(err, "the AES key is unusable: {err}", nil)
 	}
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, fmt.Errorf("GCM 不可用: %w", err)
+		return nil, i18n.Ef(err, "GCM is unusable: {err}", nil)
 	}
 	return gcm, nil
 }

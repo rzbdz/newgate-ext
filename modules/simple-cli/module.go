@@ -30,8 +30,17 @@ import (
 	modules "github.com/rzbdz/newgate/component"
 	"github.com/rzbdz/newgate/component/entry"
 	"github.com/rzbdz/newgate/lib/buildinfo"
+	"github.com/rzbdz/newgate/lib/i18n"
+	"github.com/rzbdz/newgate/lib/style"
 	cliapi "github.com/rzbdz/newgate/modules/cli/extension"
 )
+
+// statusLabelW 是 status 里标签列的宽度。
+//
+// 它是**版式数据**，所以写成一处常量：中文标签（`界面`）与英文标签（`Interface`）
+// 的**显示**宽度与**字节**长度不是一回事，按字节补空格会在换语言的那一刻歪掉。
+// 宽度本身两门语言共用，不搬进目录（见内核 docs/13-i18n.md §3 的 meta.widths）。
+const statusLabelW = 10
 
 type service struct {
 	self modules.Release
@@ -93,7 +102,7 @@ func (s *service) Claims(entry.Process) bool { return true }
 // Handle 执行一次调用：认识 status 与（无参数时的）自我说明。
 func (s *service) Handle(p entry.Process) int {
 	if len(p.Args) == 0 {
-		fmt.Println("newgate（simple-cli）——极简界面。可用：status")
+		fmt.Println(i18n.T("newgate (simple-cli) — a minimal UI. Available: status", nil))
 		return 0
 	}
 	if p.Args[0] == "status" {
@@ -104,7 +113,13 @@ func (s *service) Handle(p entry.Process) int {
 	if cmd, ok := s.lookup(p.Args[0]); ok {
 		return cmd.Run(simpleHost{}, p.Args[1:])
 	}
-	fmt.Printf("simple-cli: 不认识 %q（newgate status 看清单）\n", p.Args[0])
+	// 前缀 `simple-cli: ` 是**机器标记**（排查时 grep 它），留在消息外面——
+	// 同内核 cli 那条 `errCLI`（见 docs/13-i18n.md §7）。
+	//
+	// 引号写在消息里而不是拿 `%q` 格式化实参：占位符只负责把值填进去，引号是
+	// 版式的一部分（内核那几条 `plugin: unknown verb "{verb}"` 也是这么写的）。
+	fmt.Printf("simple-cli: %s\n", i18n.T("unknown command \"{cmd}\" (see the list with newgate status)",
+		i18n.A{"cmd": p.Args[0]}))
 	return 64
 }
 
@@ -123,7 +138,11 @@ func (s *service) lookup(name string) (cliapi.Command, bool) {
 
 func (s *service) status() int {
 	fmt.Println("newgate " + buildinfo.Version() + "  simple-cli")
-	fmt.Println("  界面        simple-cli（渲染 status 与命令，其余注入点收下不显示）")
+	// 版本号是机器标记（`newgate dev  simple-cli` 那行）不进消息；这一行整句进目录
+	// ——壳的名字夹在句子中间，拆出去英文会粘成一个词（`simple-cli(renders`），
+	// 而中文的「（」自带分隔感，译文里照原样抄一遍就行。
+	fmt.Printf("  %s %s\n", style.Pad(i18n.T("Interface", nil), statusLabelW),
+		i18n.T("simple-cli (renders status and the commands; the other injection points are accepted but not shown)", nil))
 
 	s.mu.Lock()
 	commands := append([]cliapi.Command(nil), s.commands...)
@@ -140,7 +159,7 @@ func (s *service) status() int {
 	}
 	sort.SliceStable(lines, func(i, j int) bool { return lines[i].Rank < lines[j].Rank })
 	for _, l := range lines {
-		fmt.Printf("  %-10s %s\n", l.Label, l.Value)
+		fmt.Printf("  %s %s\n", style.Pad(l.Label, statusLabelW), l.Value)
 	}
 
 	names := []string{}
@@ -148,7 +167,7 @@ func (s *service) status() int {
 		names = append(names, c.Names()...)
 	}
 	sort.Strings(names)
-	fmt.Printf("  命令（%d 条）\n", len(names))
+	fmt.Printf("  %s\n", i18n.N("{n} command", "{n} commands", len(names), i18n.A{"n": len(names)}))
 	for _, n := range names {
 		fmt.Println("             · " + n)
 	}
@@ -158,12 +177,14 @@ func (s *service) status() int {
 			kinds = append(kinds, k)
 		}
 		sort.Strings(kinds)
-		fmt.Printf("  收下但未渲染 ")
+		fmt.Printf("  %s ", i18n.T("accepted but not rendered", nil))
 		for i, k := range kinds {
 			if i > 0 {
-				fmt.Print("、")
+				// 列表分隔符也是文案：中文是「、」，英文是「, 」——它是给人看
+				// 的标点，不是格式串（`×` 那种符号留在外面）。
+				fmt.Print(i18n.T(", ", nil))
 			}
-			fmt.Printf("%s×%d", k, accepted[k])
+			fmt.Printf("%s×%d", kindLabel(k), accepted[k])
 		}
 		fmt.Println()
 	}
@@ -176,10 +197,16 @@ func (s *service) status() int {
 // panic——真有人按接口调它时，得到的结果与入口那条路一致。
 func (s *service) Run(p entry.Process) int { return s.Handle(p) }
 
+// errShell 给本壳的装配错误打上模块前缀。
+//
+// 前缀是**机器标记**（排查时 grep `simple-cli:` 就捞出这个壳说的话），所以留在
+// 消息外面——与内核 cli 的 errCLI 同一条规矩（见 docs/13-i18n.md §7）。
+func errShell(err error) error { return fmt.Errorf("simple-cli: %w", err) }
+
 // RegisterCommand 记账并返回撤销句柄（与 modules/cli 同语义：谁注入谁撤销）。
 func (s *service) RegisterCommand(c cliapi.Command) (modules.Release, error) {
 	if c == nil {
-		return nil, fmt.Errorf("simple-cli: 命令不能为 nil")
+		return nil, errShell(i18n.E("a command cannot be nil", nil))
 	}
 	s.mu.Lock()
 	s.commands = append(s.commands, c)
@@ -199,7 +226,7 @@ func (s *service) RegisterCommand(c cliapi.Command) (modules.Release, error) {
 
 func (s *service) RegisterStatus(p cliapi.StatusProvider) (modules.Release, error) {
 	if p == nil {
-		return nil, fmt.Errorf("simple-cli: 状态提供者不能为 nil")
+		return nil, errShell(i18n.E("a status provider cannot be nil", nil))
 	}
 	s.mu.Lock()
 	s.statuses = append(s.statuses, p)
@@ -224,26 +251,63 @@ func (s *service) RegisterStatus(p cliapi.StatusProvider) (modules.Release, erro
 // 那一行日志 + status 里那一行计数，让「我注入的东西没显示」有据可查（现实里
 // 这正是最容易误判成模块 bug 的一类现象）。
 func (s *service) RegisterDiagnostics(cliapi.DiagnosticProvider) (modules.Release, error) {
-	return s.accept("诊断"), nil
+	return s.accept(kindDiagnostics), nil
 }
 func (s *service) RegisterStatusBlocks(cliapi.BlockProvider) (modules.Release, error) {
-	return s.accept("状态块"), nil
+	return s.accept(kindBlocks), nil
 }
 func (s *service) RegisterDump(cliapi.Dumper) (modules.Release, error) {
-	return s.accept("诊断素材"), nil
+	return s.accept(kindDump), nil
 }
 func (s *service) RegisterGlossary(cliapi.Glossarist) (modules.Release, error) {
-	return s.accept("术语"), nil
+	return s.accept(kindGlossary), nil
 }
 func (s *service) RegisterVerbose(cliapi.Verbose) (modules.Release, error) {
-	return s.accept("详细模式"), nil
+	return s.accept(kindVerbose), nil
+}
+
+// 注入点的**身份**：ASCII、稳定，当记账表的键，也是排查时 grep 的锚点。
+//
+// 它们是身份不是文案——所以不再直接拿中文当键（见 CLAUDE.md「别拿渲染出来的文本
+// 当判据」）：改一句译文不该动到计数表的键。给人看的那句话由 kindLabel 现算。
+const (
+	kindDiagnostics = "diagnostics"
+	kindBlocks      = "status-blocks"
+	kindDump        = "dump"
+	kindGlossary    = "glossary"
+	kindVerbose     = "verbose"
+)
+
+// kindLabel 把身份翻成给人看的那句话。
+//
+// 现算而不是注册时算好存下来：装语言发生在 Start 期间，而各模块的注入也发生在
+// 各自的 Start 里——谁先谁后由依赖图决定，存下来就可能存到装语言之前的那一份
+// （那正是「包级变量里不写 i18n.T」要躲的同一件事）。
+func kindLabel(kind string) string {
+	switch kind {
+	case kindDiagnostics:
+		return i18n.T("diagnostics", nil)
+	case kindBlocks:
+		return i18n.T("status blocks", nil)
+	case kindDump:
+		return i18n.T("dump material", nil)
+	case kindGlossary:
+		return i18n.T("glossary", nil)
+	case kindVerbose:
+		return i18n.T("verbose mode", nil)
+	}
+	return kind // 认不出的身份原样打出来：那是新增注入点忘了登记，看得见比看不见强
 }
 
 func (s *service) accept(kind string) modules.Release {
 	s.mu.Lock()
 	s.accepted[kind]++
 	s.mu.Unlock()
-	fmt.Printf("simple-cli: 收下 %s 注入（本壳不渲染，见 status 的计数）\n", kind)
+	// `{kind}` 是那五类的名字：「诊断」这类词中文不分单复数，英文那几个
+	// （diagnostics / status blocks / …）却是复数形状，所以句子避开冠词，
+	// 也让译文的语序自由一点。
+	fmt.Printf("simple-cli: %s\n", i18n.T("{kind} injection accepted (this shell does not render it; the counts are in status)",
+		i18n.A{"kind": kindLabel(kind)}))
 	return func() error {
 		s.mu.Lock()
 		defer s.mu.Unlock()

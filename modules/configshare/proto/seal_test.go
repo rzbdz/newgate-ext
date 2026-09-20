@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/rzbdz/newgate/lib/i18n"
 )
 
 func TestDeriveKeysDomainSeparatedAndStable(t *testing.T) {
@@ -41,7 +43,7 @@ func TestDeriveKeysDomainSeparatedAndStable(t *testing.T) {
 func TestDeriveKeysRejectsShortRoot(t *testing.T) {
 	if _, _, err := DeriveKeys(bytes.Repeat([]byte{1}, RootKeyLen-1)); err == nil {
 		t.Fatal("短于 32 字节的根密钥该被拒绝")
-	} else if !strings.Contains(err.Error(), "字节") {
+	} else if !strings.Contains(err.Error(), "bytes") {
 		t.Fatalf("错误文案该说清长度，实际: %v", err)
 	}
 }
@@ -92,7 +94,7 @@ func TestSealTamperDetected(t *testing.T) {
 	if _, err := Open(wrong, KindConfig, env); !errors.Is(err, ErrTampered) {
 		t.Fatalf("换根密钥必须解密失败，实际: %v", err)
 	}
-	if !strings.Contains(ErrTampered.Error(), "根密钥") {
+	if !strings.Contains(i18n.ID(ErrTampered), "root key") {
 		t.Fatalf("ErrTampered 的文案该提到根密钥：%v", ErrTampered)
 	}
 }
@@ -131,7 +133,7 @@ func TestSealBindsContext(t *testing.T) {
 		if err == nil || errors.Is(err, ErrTampered) {
 			t.Fatalf("协议版本不匹配该给一句人话（而不是 ErrTampered），实际: %v", err)
 		}
-		if !strings.Contains(err.Error(), "协议版本") {
+		if !strings.Contains(err.Error(), "protocol version") {
 			t.Fatalf("版本不匹配的文案该说清是版本问题: %v", err)
 		}
 	})
@@ -200,7 +202,7 @@ func TestRootKeyParsing(t *testing.T) {
 	}
 
 	// 截断的 hex 必须说清是长度问题，而不是让用户去怀疑协议。
-	if _, err := ParseRootKey(blob[:40]); err == nil || !strings.Contains(err.Error(), "截断") {
+	if _, err := ParseRootKey(blob[:40]); err == nil || !strings.Contains(err.Error(), "truncated") {
 		t.Fatalf("截断的 blob 该给长度提示，实际: %v", err)
 	}
 	if _, err := ParseRootKey("   "); !errors.Is(err, ErrNoRootKey) {

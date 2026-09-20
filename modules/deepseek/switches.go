@@ -1,6 +1,7 @@
 package deepseek
 
 import (
+	"github.com/rzbdz/newgate/lib/i18n"
 	"github.com/rzbdz/newgate/modules/gateway/special"
 	"github.com/rzbdz/newgate/modules/pluginmanager"
 )
@@ -31,29 +32,39 @@ const (
 // DeepSeek 那边开始回 400（因为它们是来修上游怪癖的）。所以不设默认时限——
 // 排查时经常需要开着观察一阵。这也是它们与 gateway.passthrough 的区别：
 // 那个是把这一层整个拆掉，所以必须限时。
+// 文案在这里现算而不做成包级变量：**包初始化早于装语言**（`modules/locale`
+// 在它的 Start 里才把目录装进 lib/i18n），而 Switches 只在 Start 里被调一次
+// ——装配序里 locale 排在 deepseek 之前（本模块排在最末），所以这一刻目录已经
+// 就绪。`reasoning_content` / `content[].thinking` / `tool_result` / `user` /
+// `assistant` 是协议字段名，留在消息外面。
 func Switches() []pluginmanager.Switch {
 	return []pluginmanager.Switch{
 		{
 			Path:  SwitchBackfillReasoning,
-			Title: "补 reasoning_content（第 2 手）",
-			Why: "历史里的 assistant 消息不再补推理原文，OpenAI 方言的 DeepSeek 会对" +
-				"「reasoning_content 必须回传」回 400（自动沿链转移，症状是悄悄换 provider）",
+			Title: i18n.T("Backfill reasoning_content (hand 2)", nil),
+			Why: i18n.T("assistant messages in the history no longer get their reasoning "+
+				"text backfilled, and OpenAI-dialect DeepSeek answers 400 to "+
+				"\"reasoning_content must be passed back\" (the chain then advances on "+
+				"its own; the symptom is a silent provider switch)", nil),
 			Danger:  pluginmanager.DangerQuirk,
 			Default: true,
 		},
 		{
 			Path:  SwitchBackfillThinkingBlock,
-			Title: "补 thinking 块（第 3 手）",
-			Why: "Anthropic 方言下不再给 content[] 开头补 thinking 块，同样触发" +
-				"「content[].thinking 必须回传」400",
+			Title: i18n.T("Backfill the thinking block (hand 3)", nil),
+			Why: i18n.T("Anthropic-dialect requests no longer get a thinking block "+
+				"prepended to content[], which triggers the same "+
+				"\"content[].thinking must be passed back\" 400", nil),
 			Danger:  pluginmanager.DangerQuirk,
 			Default: true,
 		},
 		{
 			Path:  SwitchTailShape,
-			Title: "修尾部形状（第 4 手）",
-			Why: "「最后一条 user 消息只有 tool_result」不再被修（不再追加「继续」），" +
-				"上游会把这种空指令尾部误报成 reasoning_content 缺失而 400",
+			Title: i18n.T("Repair the tail shape (hand 4)", nil),
+			Why: i18n.T("\"the last user message holds only tool_result\" is no longer "+
+				"repaired (no \"continue\" appended), and the upstream misreports such "+
+				"an instruction-less tail as a missing reasoning_content and answers 400",
+				nil),
 			Danger:  pluginmanager.DangerQuirk,
 			Default: true,
 		},

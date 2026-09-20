@@ -5,11 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	paths "github.com/rzbdz/newgate/modules/config/paths"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/rzbdz/newgate/lib/i18n"
+	paths "github.com/rzbdz/newgate/modules/config/paths"
 )
 
 func rootKey(seed byte) []byte { return bytes.Repeat([]byte{seed}, RootKeyLen) }
@@ -178,7 +180,7 @@ func TestPullHostChangeResetsBaseline(t *testing.T) {
 	if !strings.Contains(string(readLive(t, ProvidersName)), "新宿主") {
 		t.Fatal("新权威的内容没落盘")
 	}
-	if !anyContains(out.Config.Warnings, "权威变更") {
+	if !anyContains(out.Config.Warnings, "authority changed") {
 		t.Fatalf("权威变更必须说出来（否则代数的突然重置没人看得懂）: %v", out.Config.Warnings)
 	}
 	st, _ := LoadState()
@@ -400,7 +402,7 @@ func TestPullErrors(t *testing.T) {
 		if !errors.Is(out.Config.Err, ErrAuth) {
 			t.Fatalf("该给 ErrAuth，实际 %v", out.Config.Err)
 		}
-		if !strings.Contains(ErrAuth.Error(), "根密钥") {
+		if !strings.Contains(i18n.ID(ErrAuth), "root key") {
 			t.Fatalf("ErrAuth 文案该提到根密钥: %v", ErrAuth)
 		}
 	})
@@ -472,7 +474,7 @@ func TestPullInlineKeyRefused(t *testing.T) {
 	if !out.Config.Refused {
 		t.Fatalf("内联密钥必须被拒绝: %+v", out.Config)
 	}
-	if !strings.Contains(out.Config.Reason, "密钥通道") {
+	if !strings.Contains(out.Config.Reason, "secrets channel") {
 		t.Fatalf("拒绝理由该说清密钥该走哪条路: %q", out.Config.Reason)
 	}
 }

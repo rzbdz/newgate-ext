@@ -1,6 +1,7 @@
 {
   "distribution": "default",
   "modules": [
+    "i18n",
     "tui",
     "deepseek",
     "glm",

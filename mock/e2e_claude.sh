@@ -81,6 +81,10 @@ mkdir -p "$NEWGATE_HOME/mappings" "$FAKEBIN"
 # 启动时父进程 env 会漏给子进程），不 unset 会让「没声明的 profile」
 # 用例读到父会话的值、假失败。
 unset CLAUDE_CODE_MAX_CONTEXT_TOKENS CLAUDE_CODE_AUTO_COMPACT_WINDOW
+# 语言要密闭：脚本断言的是**源语言原文**（英文），而跑它的机器可能是 zh-Hans
+# （我们自己的机器就是）。不钉住的话，「界面上是英文」这类断言在中文机器上假红。
+export NEWGATE_LANG=en
+unset LC_ALL LC_MESSAGES LANG LANGUAGE 2>/dev/null || true
 
 cleanup() {
   "$BIN" stop >/dev/null 2>&1 || true
@@ -271,7 +275,7 @@ echo; echo "== 5. 不存在的 profile 要立刻报错（退出码 65） =="
 "$BIN" claude --profile=nope >/dev/null 2>"$SANDBOX/nope.err"
 RC=$?
 check "退出码 65" "$RC" "65"
-grep -q '不存在' "$SANDBOX/nope.err" && ok "报错信息说明了 profile 不存在" || bad "报错信息没说 profile 不存在"
+grep -q 'No such profile' "$SANDBOX/nope.err" && ok "报错信息说明了 profile 不存在" || bad "报错信息没说 profile 不存在"
 
 echo; echo "== 6. 上游严格性自检：尾部形状（不是推理字段）才决定 400 =="
 # 先证明假上游真的在执行**实测口径**——否则后面那些 200 不能说明任何问题。
@@ -390,7 +394,7 @@ else
   sleep 0.8  # 流已经跑起来，正在途中
   OUT="$("$BIN" restart 2>&1)"
   echo "$OUT" | sed 's/^/    /'
-  echo "$OUT" | command grep -q '优雅重启' \
+  echo "$OUT" | command grep -q 'gracefully restarted' \
     && ok "restart 走了优雅交接（socket 移交）" \
     || bad "restart 没走交接: $(echo "$OUT" | head -2)"
   wait "$CURL_PID"
@@ -507,14 +511,22 @@ echo "$OUT" | sed 's/^/    /'
 check "裸奔开：bg_plain 仍 200（被短路批准）" "$(echo "$OUT" | grep '^HTTP=' | cut -d= -f2)" "200"
 check "裸奔开：上游收到 0 个请求（真的被短路了）" "$(UPCOUNT)" "0"
 MOUT="$("$BIN" metrics 2>/dev/null)"
-# metrics 表格把长计数器名**截断**显示（special.classifier-naked.shortcircuit
-# 截成 special.classifier-naked.shor），所以按短名 + 那行的人话 hint 一起判。
-echo "$MOUT" | command grep -q "classifier-naked" \
-  && echo "$MOUT" | command grep -q "分类器请求被直接批准" \
-  && ok "metrics 有 special.classifier-naked.shortcircuit（短路已计数）" \
-  || bad "metrics 缺 naked 短路计数（输出：$(echo "$MOUT" | command grep -a classifier-naked)）"
+# 断言**机器事实**：计数器名（标识符，表格保证不折断——见内核 lib/style 的列宽
+# 下限）与说明的开头那几个字。
+#
+# **不逐字匹配整句人话**：说明是散文，按列宽折行、而且是**按字符**断的
+# （第一行以 `naked: the classi` 硬断）。逐字去 match 一整句，断言的就变成了
+# 「终端多宽」。换行压平也救不了——续行带着列缩进，词与词之间是多空格。
+# 2026-09-20 之前这里是逐行 grep：中文说明短、恰好没被折开，英文一长就折了，
+# 落空的样子还像「计数没了」。
+FLAT="$(echo "$MOUT" | tr '\n' ' ' | tr -s ' ')"
+case "$FLAT" in
+  *"classifier-naked.shortcircuit"*"naked:"*)
+    ok "metrics 有 special.classifier-naked.shortcircuit（短路已计数）" ;;
+  *) bad "metrics 缺 naked 短路计数（输出：$(echo "$MOUT" | command grep -a classifier-naked)）" ;;
+esac
 "$BIN" naked off >/dev/null 2>&1
-check "裸奔终于关掉（不留沙箱脏状态）" "$("$BIN" naked 2>&1 | command grep -c '已关闭')" "1"
+check "裸奔终于关掉（不留沙箱脏状态）" "$("$BIN" naked 2>&1 | command grep -c 'naked is off')" "1"
 
 echo; echo "== 19. 运行期开关：模块自己上报、命令自己注册 =="
 # 这一层是「everything is module」的用户界面：模块在 Start 里把自己的开关点
@@ -538,7 +550,7 @@ case "$PLUGIN_OUT" in
   *) bad "plugin 没有按分类分组" ;;
 esac
 case "$PLUGIN_OUT" in
-  *"无法 runtime 开关（v1）"*)
+  *"cannot be toggled at runtime (v1)"*)
     ok "plugin：没上报开关点的模块显式标注（不是静默省略）" ;;
   *) bad "plugin 没标注「无法 runtime 开关」" ;;
 esac
@@ -616,7 +628,7 @@ check "st on（整层）⇒ 插件又跑起来了（开关对称）" "$GOT_BG" "
 "$BIN" schema-repair on >/dev/null 2>&1
 "$BIN" st on >/dev/null 2>&1
 check "收尾：开关都回到出厂态" \
-  "$("$BIN" status 2>&1 | command grep -c 'special 关了\|schema repair off')" "0"
+  "$("$BIN" status 2>&1 | command grep -c 'special off:\|schema-repair=off')" "0"
 
 
 echo

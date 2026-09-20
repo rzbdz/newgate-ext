@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"unsafe"
 
+	"github.com/rzbdz/newgate/lib/i18n"
 	"github.com/rzbdz/newgate/lib/style"
 	"github.com/rzbdz/newgate/modules/config/domain"
 	"github.com/rzbdz/newgate/modules/config/store"
@@ -133,7 +134,9 @@ func readKey(r *bufio.Reader) key {
 func Run() error {
 	old, err := enterRaw()
 	if err != nil {
-		return fmt.Errorf("这个终端不支持 TUI（%v）。用 `newgate --set-profile <name>` 代替", err)
+		// 底层错误由 Ef 放进 {err}（消息里必须写它，见 lib/i18n 的注释）；
+		// `newgate --set-profile` 是命令+flag，原样留在译文里。
+		return i18n.Ef(err, "this terminal does not support the TUI ({err}); use `newgate --set-profile <name>` instead", nil)
 	}
 	defer restore(old)
 	fmt.Print(hideC)
@@ -142,7 +145,7 @@ func Run() error {
 	in := bufio.NewReader(os.Stdin)
 	names, err := store.ListProfiles()
 	if err != nil || len(names) == 0 {
-		return fmt.Errorf("没有 profile，先跑 `newgate init`")
+		return i18n.E("no profiles yet; run `newgate init` first", nil)
 	}
 	st := store.LoadState()
 
@@ -178,7 +181,11 @@ func Run() error {
 				// tui 原来少这一下（2026-09-18 补）。
 				controlplane.Notify()
 				st = store.LoadState()
-				msg = style.Mark(style.OK) + " 已切到 " + style.Cyan(names[cur]) + style.Dim("   下个请求生效")
+				// 版式的空格留在消息外面（`颜色/缩进`都是排版），句子整个进目录；
+				// profile 名上色后当占位符的值传进去，译文不必知道它带转义序列。
+				msg = style.Mark(style.OK) + " " + i18n.T("switched to {name}",
+					i18n.A{"name": style.Cyan(names[cur])}) +
+					style.Dim("   "+i18n.T("takes effect on the next request", nil))
 			}
 		case kQuit:
 			return nil
@@ -189,8 +196,10 @@ func Run() error {
 func drawProfileMenu(names []string, cur int, active, msg string) {
 	var b strings.Builder
 	b.WriteString(clear)
-	b.WriteString(style.Bold(" newgate · profile 选择") + "\n")
-	b.WriteString(style.Dim(" ↑/↓ 或 j/k 移动 · Enter 应用 · q 退出") + "\n\n")
+	b.WriteString(style.Bold(" newgate · "+i18n.T("profile selection", nil)) + "\n")
+	// 按键（↑/↓ · Enter · q）留在消息里：它们夹在词中间，拆出去译文就没法重排
+	// 语序了；译文里照着原样抄一遍——按键名不翻译（命令名/flag 同一条规矩）。
+	b.WriteString(style.Dim(" "+i18n.T("↑/↓ or j/k to move · Enter to apply · q to quit", nil)) + "\n\n")
 
 	provs, _ := store.LoadProviders()
 	for i, n := range names {
@@ -214,15 +223,15 @@ func drawProfileMenu(names []string, cur int, active, msg string) {
 				for _, role := range domain.Roles {
 					bind, ok := pr.Resolve(role)
 					if !ok {
-						b.WriteString("        " + style.Pad(role, 8) + " " + style.Yellow("未绑定") + "\n")
+						b.WriteString("        " + style.Pad(role, 8) + " " + style.Yellow(i18n.T("not bound", nil)) + "\n")
 						continue
 					}
 					warn := ""
 					if provs != nil {
 						if p, ok2 := provs.Providers[bind.Provider]; !ok2 {
-							warn = style.Yellow("   provider 未定义")
+							warn = style.Yellow("   " + i18n.T("provider is not defined", nil))
 						} else if p.Key() == "" {
-							warn = style.Yellow("   缺 api_key")
+							warn = style.Yellow("   " + i18n.T("api_key missing", nil))
 						}
 					}
 					b.WriteString("        " + style.Pad(role, 8) + " " +

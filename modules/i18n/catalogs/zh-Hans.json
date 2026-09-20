@@ -1,0 +1,908 @@
+{
+  "meta": {
+    "language": "zh-Hans",
+    "source": "en"
+  },
+  "messages": {
+    " and {n} in all": {
+      "text": " 等 {n} 个",
+      "reviewed": true
+    },
+    "\"the last user message holds only tool_result\" is no longer repaired (no \"continue\" appended), and the upstream misreports such an instruction-less tail as a missing reasoning_content and answers 400": {
+      "text": "「最后一条 user 消息只有 tool_result」不再被修（不再追加「继续」），上游会把这种空指令尾部误报成 reasoning_content 缺失而 400",
+      "reviewed": true
+    },
+    "(messages is not an array, cannot audit)\n": {
+      "text": "（messages 不是数组，无法审计）\n",
+      "reviewed": true
+    },
+    "(no messages field, cannot audit)\n": {
+      "text": "（没有 messages 字段，无法审计）\n",
+      "reviewed": true
+    },
+    "(none)": {
+      "text": "(无)",
+      "reviewed": true
+    },
+    "(plain text turn, no tool_use)": {
+      "text": "（纯文本轮，无 tool_use）",
+      "reviewed": true
+    },
+    "({items}; skipped messages have no tool id (plain text turns))": {
+      "text": "（{items}；跳过消息没有 tool id（纯文本轮））",
+      "reviewed": true
+    },
+    "({items}; tool ids of skipped messages: {ids}{more})": {
+      "text": "（{items}；跳过消息的 tool id: {ids}{more}）",
+      "reviewed": true
+    },
+    "* has an override (written by newgate omo use), highest priority": {
+      "text": "* 有覆盖（newgate omo use 写入），优先级最高",
+      "reviewed": true
+    },
+    ", ": {
+      "text": "、",
+      "reviewed": true
+    },
+    ", {n} had no original text to backfill and were **left untouched**{detail} — those rounds the model cannot see its own reasoning": {
+      "text": "，{n} 条没有原文可补、**跳过不动**{detail}——这几轮模型看不到自己的推理",
+      "reviewed": true
+    },
+    ", {tier} suggested": {
+      "text": "，建议 {tier}",
+      "reviewed": true
+    },
+    ": {names}": {
+      "text": "：{names}",
+      "reviewed": true
+    },
+    ": {names} and {n} in total": {
+      "text": "：{names} 等 {n} 个",
+      "reviewed": true
+    },
+    "; ": {
+      "text": "；",
+      "reviewed": true
+    },
+    "Anthropic-dialect requests no longer get a thinking block prepended to content[], which triggers the same \"content[].thinking must be passed back\" 400": {
+      "text": "Anthropic 方言下不再给 content[] 开头补 thinking 块，同样触发「content[].thinking 必须回传」400",
+      "reviewed": true
+    },
+    "Backfill reasoning_content (hand 2)": {
+      "text": "补 reasoning_content（第 2 手）",
+      "reviewed": true
+    },
+    "Backfill the thinking block (hand 3)": {
+      "text": "补 thinking 块（第 3 手）",
+      "reviewed": true
+    },
+    "Bash classifier: the whole chain is rerouted to light": {
+      "text": "Bash 分类器，整条链改走 light",
+      "reviewed": true
+    },
+    "Classifier config": {
+      "text": "分类器配置",
+      "reviewed": true
+    },
+    "Classifier override": {
+      "text": "分类器覆盖",
+      "reviewed": true
+    },
+    "Classifier rerouting": {
+      "text": "分类器改道",
+      "reviewed": true
+    },
+    "Claude Code Bash classifier → the light-tier chain": {
+      "text": "Claude Code Bash 分类器 → light 档链",
+      "reviewed": true
+    },
+    "Claude Code strips third-party DeepSeek thinking blocks; turn DeepSeek thinking off unless it was explicitly asked for, so the next round does not 400 for a block that must be passed back": {
+      "text": "Claude Code 会剥掉第三方 DeepSeek 的 thinking 块；未显式要求思考时关闭 DeepSeek thinking，避免下一轮要求回传而 400",
+      "reviewed": true
+    },
+    "Claude Code's background non-streaming requests (the Bash classifier, etc.) carry no thinking, yet Chinese models think by default → 15-30 seconds, waves of timeouts, a wedged session\nthe classifier (the system prompt says \"security monitor\") takes the whole chain to the light tier (fallback included); other background calls only get thinking disabled (the streaming main loop is unaffected)": {
+      "text": "Claude Code 的后台非流式请求（Bash 分类器等）不带 thinking，国模却默认思考 → 15-30 秒、成波超时卡死会话\n分类器（system 自报 \"security monitor\"）整条链走 light 档（含 fallback），其余后台调用只禁思考（主循环的流式请求不受影响）",
+      "reviewed": true
+    },
+    "Claude Code's requests fall into DeepSeek thinking mode by default, but it does not carry third-party thinking blocks into the next round — so every call hits the 400 that says thinking must be passed back": {
+      "text": "Claude Code 的请求按缺省进 DeepSeek 思考模式，而它不会把第三方 thinking 块带回下一轮——于是每一发都会撞「thinking 必须回传」的 400",
+      "reviewed": true
+    },
+    "DeepSeek thinking mode wants reasoning passed back verbatim, but the client strips it → 400\nso we put it back (the original the client carries → thinkcache; **no original means skip it, never invent one**); only the Claude Code path turns thinking off outright (it strips the blocks, so thinking would be spent for nothing); a foreign unclosed tool loop is first lossily rebuilt from the visible tool results, then DeepSeek takes over": {
+      "text": "DeepSeek 思考模式要求逐字回传推理内容，客户端却会把它剥掉 → 400\n套着就补回去（客户端带回的原文 → thinkcache；**没有原文就跳过，绝不编**）；只有 Claude Code 那条路干脆显式关掉思考（它剥块，想了也白想）；外来未闭合 tool loop 先从可见工具结果有损重建，再由 DeepSeek 接手",
+      "reviewed": true
+    },
+    "GCM is unusable: {err}": {
+      "text": "GCM 不可用: {err}",
+      "reviewed": true
+    },
+    "GLM models treat a missing thinking field as thinking on (Anthropic semantics say off) → requests that never asked to think get dragged into ten-plus seconds\non the Claude Code path an explicit disabled is filled in when it is absent (present is left alone); OpenAI-dialect clients (opencode) have no such field to write, so they are not touched": {
+      "text": "GLM 系模型把「没写 thinking」当默认开思考（Anthropic 语义是关）→ 没要求思考的请求被拖进十几秒\nClaude Code 那条路没写就补显式 disabled（写了不动）；OpenAI 方言的客户端（opencode）没有这个字段可写，不碰",
+      "reviewed": true
+    },
+    "Generated automatically when oh-my-openagent is taken over. default is the binding this key falls back to when the profile does not spell it out; to move a slot to another tier, edit overrides (it accepts \"@other-key\" / \"tier name\" / \"provider/model\"), or write this key directly in the profile.": {
+      "text": "接管 oh-my-openagent 时自动生成。default 是这个键在 profile 里没写时的缺省归属；想让某个槽位换档位，改 overrides（支持 \"@别的键\" / \"档位名\" / \"provider/模型\"），或在 profile 里直接写这个键。",
+      "reviewed": true
+    },
+    "Interface": {
+      "text": "界面",
+      "reviewed": true
+    },
+    "Naked": {
+      "text": "裸奔",
+      "reviewed": true
+    },
+    "Repair the tail shape (hand 4)": {
+      "text": "修尾部形状（第 4 手）",
+      "reviewed": true
+    },
+    "Usage: newgate omo [ls | use <key> <binding> | unset <key> | mode current|suggested | explain <key>]": {
+      "text": "用法：newgate omo [ls | use <键> <归属> | unset <键> | mode current|suggested | explain <键>]",
+      "reviewed": true
+    },
+    "Usage: newgate omo explain <slot key>": {
+      "text": "用法：newgate omo explain <槽位键>",
+      "reviewed": true
+    },
+    "Usage: newgate omo unset <slot key>": {
+      "text": "用法：newgate omo unset <槽位键>",
+      "reviewed": true
+    },
+    "Usage: newgate omo use <slot key> <@other-key|tier|provider/model>": {
+      "text": "用法：newgate omo use <槽位键> <@别的键|档位|provider/模型>",
+      "reviewed": true
+    },
+    "[naked] forever mode: the classifier request was approved directly, the upstream was not called": {
+      "text": "[naked] forever 模式：分类器请求被直接批准，未调用上游",
+      "reviewed": true
+    },
+    "[naked] the classifier request was approved directly, the upstream was not called (the configuration is no longer valid)": {
+      "text": "[naked] 分类器请求被直接批准，未调用上游（配置已失效）",
+      "reviewed": true
+    },
+    "[naked] the classifier request was approved directly, the upstream was not called (the window expired right after the interception)": {
+      "text": "[naked] 分类器请求被直接批准，未调用上游（窗口在拦截后立即到期）",
+      "reviewed": true
+    },
+    "[naked] the classifier request was approved directly, the upstream was not called (the window has {left} left)": {
+      "text": "[naked] 分类器请求被直接批准，未调用上游（窗口还剩 {left}）",
+      "reviewed": true
+    },
+    "a command cannot be nil": {
+      "text": "命令不能为 nil",
+      "reviewed": true
+    },
+    "a lossy rebuild happened before taking over a foreign unclosed tool loop": {
+      "text": "接手外来未闭合 tool loop 前做了有损重建",
+      "reviewed": true
+    },
+    "a reference is written as @key (e.g. @normal), got {value}": {
+      "text": "引用写成 @键名（如 @normal），得到 {value}",
+      "reviewed": true
+    },
+    "a status provider cannot be nil": {
+      "text": "状态提供者不能为 nil",
+      "reviewed": true
+    },
+    "accepted but not rendered": {
+      "text": "收下但未渲染",
+      "reviewed": true
+    },
+    "adopt them all": {
+      "text": "全部采纳",
+      "reviewed": true
+    },
+    "another sync round is already running; this round was skipped": {
+      "text": "另一轮同步正在进行，这一轮跳过了",
+      "reviewed": true
+    },
+    "api_key missing": {
+      "text": "缺 api_key",
+      "reviewed": true
+    },
+    "assistant messages in the history no longer get their reasoning text backfilled, and OpenAI-dialect DeepSeek answers 400 to \"reasoning_content must be passed back\" (the chain then advances on its own; the symptom is a silent provider switch)": {
+      "text": "历史里的 assistant 消息不再补推理原文，OpenAI 方言的 DeepSeek 会对「reasoning_content 必须回传」回 400（自动沿链转移，症状是悄悄换 provider）",
+      "reviewed": true
+    },
+    "assistant messages: {total} in all, {real} with reasoning text, {missing} without\n(the ones without are **what the upstream never gave us that round**, not something we lost — see the tool id below,\n  grep the log for \"bytes of reasoning\" and you will see) one by one:\n{listing}": {
+      "text": "assistant 共 {total} 条：带推理原文 {real}，没有 {missing}\n（没有的那些是**上游那一轮本来就没给**，不是被我们弄丢的——见下面的 tool id，\n  拿它去 grep 日志里的 \"bytes of reasoning\" 就能确认）逐条：\n{listing}",
+      "reviewed": true
+    },
+    "authentication refused: this machine's root key differs from the host's (the config trust blob was copied wrong or not at all)": {
+      "text": "鉴权被拒：本机的根密钥与宿主不是同一把（config trust 那个 blob 拷错或没拷）",
+      "reviewed": true
+    },
+    "authority changed ({from} → {to}); the generation baseline was reset": {
+      "text": "权威变更（{from} → {to}），代数基线重置",
+      "reviewed": true
+    },
+    "back to the status recorded at takeover": {
+      "text": "已回到接管时的现状",
+      "reviewed": true
+    },
+    "backfilled {what} on {n} assistant message: {restored} used the real reasoning text": {
+      "text": "给 {n} 条 assistant 消息补 {what}：{restored} 条用了真实的推理原文",
+      "reviewed": true
+    },
+    "background sync did not start: {err} (on the host run newgate config secrets init to get the blob, then on this machine run newgate config trust <blob>)": {
+      "text": "后台同步未启动：{err}（在宿主机上 newgate config secrets init 拿 blob，在这台机器上 newgate config trust <blob>）",
+      "reviewed": true
+    },
+    "background sync started (replica): {endpoint}, one round every {interval}, root key fingerprint {fingerprint}": {
+      "text": "后台同步已启动（副本）：{endpoint}，每 {interval} 一轮，根密钥指纹 {fingerprint}",
+      "reviewed": true
+    },
+    "before takeover": {
+      "text": "接管前",
+      "reviewed": true
+    },
+    "cannot archive {path}: {err}": {
+      "text": "归档 {path} 失败: {err}",
+      "reviewed": true
+    },
+    "cannot derive the auth token: {err}": {
+      "text": "派生鉴权令牌失败: {err}",
+      "reviewed": true
+    },
+    "cannot derive the encryption key: {err}": {
+      "text": "派生加密密钥失败: {err}",
+      "reviewed": true
+    },
+    "cannot fix the permissions of {path}: {err}": {
+      "text": "修正 {path} 权限失败: {err}",
+      "reviewed": true
+    },
+    "cannot open the configuration directory {dir}: {err}": {
+      "text": "打不开配置目录 {dir}: {err}",
+      "reviewed": true
+    },
+    "cannot parse profile {path}: {err}": {
+      "text": "档位 {path} 解析失败: {err}",
+      "reviewed": true
+    },
+    "cannot parse state.json: {err}": {
+      "text": "state.json 解析失败: {err}",
+      "reviewed": true
+    },
+    "cannot parse the secret set: {err}": {
+      "text": "密钥集合解析失败: {err}",
+      "reviewed": true
+    },
+    "cannot parse the snapshot: {err}": {
+      "text": "快照解析失败: {err}",
+      "reviewed": true
+    },
+    "cannot parse {file}: {err}": {
+      "text": "{file} 解析失败: {err}",
+      "reviewed": true
+    },
+    "cannot parse {key} in state.json: {err}": {
+      "text": "state.json 的 {key} 解析失败: {err}",
+      "reviewed": true
+    },
+    "cannot parse {path} (not a valid provider table): {err}": {
+      "text": "{path} 解析失败（不是合法的 provider 表）: {err}",
+      "reviewed": true
+    },
+    "cannot parse {path}: {err}": {
+      "text": "{path} 解析失败: {err}",
+      "reviewed": true
+    },
+    "cannot reach {url}: {err}": {
+      "text": "连不上 {url}: {err}",
+      "reviewed": true
+    },
+    "cannot read random bytes: {err}": {
+      "text": "取随机数失败: {err}",
+      "reviewed": true
+    },
+    "cannot remove the retired {path}: {err}": {
+      "text": "删除已下线的 {path} 失败: {err}",
+      "reviewed": true
+    },
+    "cannot replace {path} (the configuration may be half old and half new; the next sync will retry): {err}": {
+      "text": "替换 {path} 失败（配置可能处于新旧混合状态，下一次同步会重试）: {err}",
+      "reviewed": true
+    },
+    "cannot write the bookkeeping: {err}": {
+      "text": "写记账失败: {err}",
+      "reviewed": true
+    },
+    "cannot write the registry: {err}": {
+      "text": "写注册表失败: {err}",
+      "reviewed": true
+    },
+    "cannot write the slot registry: {err}": {
+      "text": "写槽位注册表失败: {err}",
+      "reviewed": true
+    },
+    "cannot write {path}: {err}": {
+      "text": "写 {path} 失败: {err}",
+      "reviewed": true
+    },
+    "chain head {head}": {
+      "text": "链头 {head}",
+      "reviewed": true
+    },
+    "classifier override {head} did not take effect; falling back to the light-tier chain": {
+      "text": "分类器覆盖 {head} 未生效，回落 light 档链",
+      "reviewed": true
+    },
+    "classifier override → {head} (the highest priority globally, ahead of any profile)": {
+      "text": "分类器覆盖 → {head}（全局最高优先，先于任何 profile）",
+      "reviewed": true
+    },
+    "classifier rerouted → the light-tier chain (fallback included)": {
+      "text": "分类器改道 → light 档链（含 fallback）",
+      "reviewed": true
+    },
+    "classifier_override is not valid: {err}": {
+      "text": "classifier_override 无效：{err}",
+      "reviewed": true
+    },
+    "configuration updated (gen {from} → {to}, {n} file){files}": {
+      "text": "已更新配置（gen {from} → {to}，{n} 个文件）{files}",
+      "reviewed": true
+    },
+    "content left untouched ({err})": {
+      "text": "content 未改动（{err}）",
+      "reviewed": true
+    },
+    "current=takeover status · suggested=recommendation · switch: newgate omo mode <mode>": {
+      "text": "current=接管现状 · suggested=建议 · 切换：newgate omo mode <模式>",
+      "reviewed": true
+    },
+    "decided by the model build; no variant was recorded before takeover": {
+      "text": "按模型体格判定，接管前没记 variant",
+      "reviewed": true
+    },
+    "decided by the model build; variant={variant} does not change the tier": {
+      "text": "按模型体格判定，variant={variant} 不改变档位",
+      "reviewed": true
+    },
+    "default": {
+      "text": "默认",
+      "reviewed": true
+    },
+    "diagnostics": {
+      "text": "诊断",
+      "reviewed": true
+    },
+    "dump material": {
+      "text": "诊断素材",
+      "reviewed": true
+    },
+    "each key follows the recommendation, derived from model build and variant strength": {
+      "text": "每个键按建议，由模型体格与 variant 强度推出",
+      "reviewed": true
+    },
+    "each key keeps the status it had at takeover (the default; behaviour unchanged)": {
+      "text": "每个键按接管时的现状（默认，行为不变）",
+      "reviewed": true
+    },
+    "effective": {
+      "text": "生效",
+      "reviewed": true
+    },
+    "end it early: newgate naked off": {
+      "text": "提前关闭：newgate naked off",
+      "reviewed": true
+    },
+    "every intercepted request logs [naked], and newgate status keeps showing a red warning": {
+      "text": "每一个被拦截的请求都打 [naked] 日志，newgate status 持续显示红色警告",
+      "reviewed": true
+    },
+    "every subagent / agent team / workflow; set it to inherit to hand that back to per-slot resolution": {
+      "text": "所有 subagent / agent team / workflow；设 inherit 可交还给各自解析",
+      "reviewed": true
+    },
+    "failed to inject thinking: {err}": {
+      "text": "注入 thinking 失败: {err}",
+      "reviewed": true
+    },
+    "field": {
+      "text": "字段",
+      "reviewed": true
+    },
+    "generated by one takeover: newgate on opencode": {
+      "text": "接管一次即生成：newgate on opencode",
+      "reviewed": true
+    },
+    "glossary": {
+      "text": "术语",
+      "reviewed": true
+    },
+    "inject thinking:disabled (the first step)": {
+      "text": "注入 thinking:disabled（第 1 手）",
+      "reviewed": true
+    },
+    "injected {patch} (Claude Code will not pass DeepSeek thinking blocks back)": {
+      "text": "注入 {patch}（Claude Code 不会回传 DeepSeek 思考块）",
+      "reviewed": true
+    },
+    "injected {patch} (GLM treats an absent field as thinking on)": {
+      "text": "注入 {patch}（GLM 把缺省当默认思考）",
+      "reviewed": true
+    },
+    "keeping the tier an older takeover wrote": {
+      "text": "沿用老版本接管写下的档位",
+      "reviewed": true
+    },
+    "local changes archived to {dir} (restore from there)": {
+      "text": "本地改动已归档到 {dir}（要恢复就从那里取）",
+      "reviewed": true
+    },
+    "lossily rebuilt a foreign tool loop: kept the tool results and appended a plain user instruction to continue": {
+      "text": "有损重建外来 tool loop：保留工具结果并追加普通用户继续指令",
+      "reviewed": true
+    },
+    "meaning": {
+      "text": "含义",
+      "reviewed": true
+    },
+    "menuconfig-style UI": {
+      "text": "menuconfig 风格界面",
+      "reviewed": true
+    },
+    "messages left untouched ({err})": {
+      "text": "messages 未改动（{err}）",
+      "reviewed": true
+    },
+    "mode": {
+      "text": "模式",
+      "reviewed": true
+    },
+    "mode only accepts current / suggested": {
+      "text": "模式只认 current / suggested",
+      "reviewed": true
+    },
+    "mode → {mode}": {
+      "text": "模式 → {mode}",
+      "reviewed": true
+    },
+    "model name {model} matched no rule; falling back to mid": {
+      "text": "模型名 {model} 没命中规则，按 mid 兜底",
+      "reviewed": true
+    },
+    "model name {model} matched no rule; the build itself is a guess": {
+      "text": "模型名 {model} 没命中规则，体格本身就是猜的",
+      "reviewed": true
+    },
+    "module dynamic role, not an omo slot": {
+      "text": "模块动态角色，非 omo 槽位",
+      "reviewed": true
+    },
+    "msg[{i}] has no reasoning_content  {keys}\n": {
+      "text": "msg[{i}] 没有 reasoning_content  {keys}\n",
+      "reviewed": true
+    },
+    "naked forever is on — the classifier is short-circuited completely": {
+      "text": "裸奔永久模式已开启 —— 分类器被完全短路",
+      "reviewed": true
+    },
+    "naked is off — the classifier is working normally again": {
+      "text": "裸奔已关闭 —— 分类器恢复正常工作",
+      "reviewed": true
+    },
+    "naked is on — the classifier stays short-circuited for {ttl}, then turns itself off": {
+      "text": "裸奔已开启 —— 分类器短路 {ttl} 后自动关闭",
+      "reviewed": true
+    },
+    "naked on|forever|off|<duration>": {
+      "text": "naked on|forever|off|<时长>",
+      "reviewed": true
+    },
+    "naked: the classifier request is approved directly, the upstream is not called": {
+      "text": "裸奔：分类器请求被直接批准，未调用上游",
+      "reviewed": true
+    },
+    "naked: unknown duration {arg} (supported: on / forever / off / 30s / 2m / 2min / 1h)": {
+      "text": "naked: 不认识的时长 {arg}（支持 on / forever / off / 30s / 2m / 2min / 1h）",
+      "reviewed": true
+    },
+    "newgate (simple-cli) — a minimal UI. Available: status": {
+      "text": "newgate（simple-cli）——极简界面。可用：status",
+      "reviewed": true
+    },
+    "no available candidate": {
+      "text": "无可用候选",
+      "reviewed": true
+    },
+    "no omo slot registry; run newgate on opencode first": {
+      "text": "没有 omo 槽位登记表；先 newgate on opencode",
+      "reviewed": true
+    },
+    "no profiles yet; run `newgate init` first": {
+      "text": "没有 profile，先跑 `newgate init`",
+      "reviewed": true
+    },
+    "no registry (oh-my-openagent has never been taken over)": {
+      "text": "无注册表（未接管过 oh-my-openagent）",
+      "reviewed": true
+    },
+    "no slot registry at {file}": {
+      "text": "没有槽位登记表 {file}",
+      "reviewed": true
+    },
+    "no such slot key {key} (list them with newgate omo)": {
+      "text": "没有这个槽位键 {key}（newgate omo 看列表）",
+      "reviewed": true
+    },
+    "not bound": {
+      "text": "未绑定",
+      "reviewed": true
+    },
+    "note: {msg}": {
+      "text": "注意: {msg}",
+      "reviewed": true
+    },
+    "now": {
+      "text": "现状",
+      "reviewed": true
+    },
+    "on (forever) — the classifier is short-circuited and every request logs [naked]; newgate naked off ends it": {
+      "text": "已开启（forever）—— 分类器被短路，每个请求都打 [naked] 日志；newgate naked off 关",
+      "reviewed": true
+    },
+    "on — it turns itself off in {left} (newgate naked off ends it early)": {
+      "text": "已开启 —— 还有 {left} 自动关（newgate naked off 可提前）",
+      "reviewed": true
+    },
+    "profile selection": {
+      "text": "profile 选择",
+      "reviewed": true
+    },
+    "profile {name} extends {extends}, but this configuration has no such profile": {
+      "text": "档位 {name} extends {extends}，但这份配置里没有那个档位",
+      "reviewed": true
+    },
+    "profile {profiles} references provider {provider}, but the provider table has no such entry": {
+      "text": "档位 {profiles} 引用了 provider {provider}，但 provider 表里没有它",
+      "reviewed": true
+    },
+    "provider / model must both be filled in": {
+      "text": "provider / model 都必须填写",
+      "reviewed": true
+    },
+    "provider is not defined": {
+      "text": "provider 未定义",
+      "reviewed": true
+    },
+    "provider {name} has no api_key_env; its key has to come from the secrets channel (config secrets on the host)": {
+      "text": "provider {name} 没有 api_key_env，密钥得来自密钥通道（宿主上 config secrets）",
+      "reviewed": true
+    },
+    "provider.{id} injected (all pre-existing providers kept)": {
+      "text": "provider.{id} 已注入（原有 provider 全部保留）",
+      "reviewed": true
+    },
+    "refusing to back up: {file} has already been taken over by newgate, but {orig} does not exist.\n  Using it as the original backup would lose your original config for good.\n  Either put a clean copy from backups/<timestamp>/ back into original/,\n  or revert the config by hand and run newgate start again": {
+      "text": "拒绝备份：{file} 已经被 newgate 接管过，但 {orig} 不存在。\n  直接拿它当原始备份会让你的原配置永久丢失。\n  要么从 backups/<时间戳>/ 里找一份干净的放回 original/，\n  要么手工把配置改回去后再 newgate start",
+      "reviewed": true
+    },
+    "restore finished, but the slot table was not cleared (the next takeover will reuse the old assignment): {err}": {
+      "text": "还原完成，但槽位表没清掉（下次接管会沿用旧分配）: {err}",
+      "reviewed": true
+    },
+    "restoring {file} failed: {err}": {
+      "text": "还原 {file} 失败: {err}",
+      "reviewed": true
+    },
+    "secrets updated (gen {gen})": {
+      "text": "已更新密钥（gen {gen}）",
+      "reviewed": true
+    },
+    "short-circuit the Bash classifier: on=60s / forever=permanent / off=disabled": {
+      "text": "短路 Bash 分类器：on=60s / forever=永久 / off=关",
+      "reviewed": true
+    },
+    "simple-cli (renders status and the commands; the other injection points are accepted but not shown)": {
+      "text": "simple-cli（渲染 status 与命令，其余注入点收下不显示）",
+      "reviewed": true
+    },
+    "slot": {
+      "text": "槽位",
+      "reviewed": true
+    },
+    "slot registry → {file} ({n} key; default decides which tier each key follows)": {
+      "text": "槽位注册表 → {file}（{n} 个键，default 决定每个键跟哪一档走）",
+      "reviewed": true
+    },
+    "slots are discovered by the config extension module": {
+      "text": "槽位由配置扩展模块发现",
+      "reviewed": true
+    },
+    "status blocks": {
+      "text": "状态块",
+      "reviewed": true
+    },
+    "suggested": {
+      "text": "建议",
+      "reviewed": true
+    },
+    "switch: newgate omo mode current|suggested": {
+      "text": "切换：newgate omo mode current|suggested",
+      "reviewed": true
+    },
+    "switched to {name}": {
+      "text": "已切到 {name}",
+      "reviewed": true
+    },
+    "sync failed (attempt {n}, retrying in {delay}): {err}": {
+      "text": "同步失败（第 {n} 次，{delay} 后重试）: {err}",
+      "reviewed": true
+    },
+    "sync recovered (after {n} consecutive failures)": {
+      "text": "同步恢复（此前连续失败 {n} 次）",
+      "reviewed": true
+    },
+    "tail shape left untouched ({err})": {
+      "text": "尾部形状未改动（{err}）",
+      "reviewed": true
+    },
+    "takes effect on the next request": {
+      "text": "下个请求生效",
+      "reviewed": true
+    },
+    "takes effect within 1 second; if the profile spells out this key, the profile wins": {
+      "text": "1 秒内自动生效；profile 里显式写了这个键则以 profile 为准",
+      "reviewed": true
+    },
+    "taking over another upstream's unclosed reasoning/tool state needs a lossy rebuild first": {
+      "text": "接手其他上游未闭合的 reasoning/tool 状态前需要有损重建",
+      "reviewed": true
+    },
+    "taking over {file} failed: {err}": {
+      "text": "接管 {file} 失败: {err}",
+      "reviewed": true
+    },
+    "the AES key is unusable: {err}": {
+      "text": "AES 密钥不可用: {err}",
+      "reviewed": true
+    },
+    "the configshare bookkeeping file is corrupt; starting over from the initial state: {err}": {
+      "text": "configshare 记账文件损坏，已按初始状态重来: {err}",
+      "reviewed": true
+    },
+    "the endpoint is empty (run newgate config join <endpoint> first)": {
+      "text": "endpoint 是空的（先 newgate config join <endpoint>）",
+      "reviewed": true
+    },
+    "the envelope claims to be the {got} channel, but {want} was expected": {
+      "text": "信封自称是 {got} 通道，这里要的是 {want}",
+      "reviewed": true
+    },
+    "the envelope failed authentication (its content was changed, the two root keys differ, or the protocol versions do not match)": {
+      "text": "信封未通过认证（内容被改动、两端根密钥不同、或协议版本不一致）",
+      "reviewed": true
+    },
+    "the envelope generation {envelope} does not match the generation inside the secret set {secrets}": {
+      "text": "信封代数 {envelope} 与密钥集合内部代数 {secrets} 不一致",
+      "reviewed": true
+    },
+    "the envelope generation {envelope} does not match the generation inside the snapshot {snapshot} (the host assembled it wrong)": {
+      "text": "信封代数 {envelope} 与快照内部代数 {snapshot} 不一致（宿主端拼装有问题）",
+      "reviewed": true
+    },
+    "the envelope is empty": {
+      "text": "信封是空的",
+      "reviewed": true
+    },
+    "the fable tier (the most expensive); also the marker used to spot a third-party model family falling back automatically": {
+      "text": "fable 档（最贵档）；也是第三方模型族自动回退的识别依据",
+      "reviewed": true
+    },
+    "the file does not exist": {
+      "text": "文件不存在",
+      "reviewed": true
+    },
+    "the haiku tier; background features": {
+      "text": "haiku 档；后台功能",
+      "reviewed": true
+    },
+    "the host declares build {want}, this machine is {got}: this machine can still parse the configuration (unknown fields are ignored, missing ones fall back to defaults), so it was let through. Upgrade newgate to line up exactly.": {
+      "text": "宿主声明的构建是 {want}，本机是 {got}：本机仍能解析这份配置（未知字段忽略/缺席走默认），已放行。要完全对齐就升级 newgate。",
+      "reviewed": true
+    },
+    "the model field in settings.json is left untouched; what a tier means is decided by the env": {
+      "text": "settings.json 的 model 字段不动；档位含义由 env 决定",
+      "reviewed": true
+    },
+    "the opus tier (the workhorse); the main loop runs here (Claude Code's default), and so does opusplan in Plan Mode": {
+      "text": "opus 档（主力档）；主循环在这跑（cc 默认），Plan Mode 下的 opusplan",
+      "reviewed": true
+    },
+    "the peer is not a host (the endpoint returned 404) — is its role not set to host?": {
+      "text": "对端不是宿主（端点返回 404）——对方的 role 没设成 host？",
+      "reviewed": true
+    },
+    "the peer speaks protocol version {peer}, this binary only understands {mine} (both ends have to be upgraded together)": {
+      "text": "对端协议版本是 {peer}，本二进制只认 {mine}（两端版本要一起升）",
+      "reviewed": true
+    },
+    "the provider field is not an object: {err}": {
+      "text": "provider 字段不是对象: {err}",
+      "reviewed": true
+    },
+    "the registry is empty": {
+      "text": "注册表为空",
+      "reviewed": true
+    },
+    "the response from {url} is not a valid envelope: {err}": {
+      "text": "{url} 的响应不是合法信封: {err}",
+      "reviewed": true
+    },
+    "the root key is only {n} bytes, at least {min} are needed (the string config trust gives you)": {
+      "text": "根密钥只有 {n} 字节，至少要 {min}（config trust 给的那串）",
+      "reviewed": true
+    },
+    "the snapshot carries a file that is not in the managed set: {path} (the protocol never sends files outside the managed set)": {
+      "text": "快照里有不在托管集合里的文件 {path}（协议不允许发送托管集合之外的文件）",
+      "reviewed": true
+    },
+    "the snapshot has no {name} (the peer declared no schema); interpreting it as the current schema": {
+      "text": "快照里没有 {name}（对方没声明 schema），按当前 schema 解释",
+      "reviewed": true
+    },
+    "the sonnet tier; the Bash classifier and /compact summaries run here": {
+      "text": "sonnet 档；Bash 分类器与 /compact 总结在这跑",
+      "reviewed": true
+    },
+    "the trailing user turn holds only tool_result and no user instruction — appended a continue instruction (the upstream misreports an instruction-less tail as a missing reasoning_content)": {
+      "text": "末尾的 user 轮只有 tool_result 没有用户指令——追加一条继续指令（上游对空指令尾部误报 reasoning_content 缺失）",
+      "reviewed": true
+    },
+    "there was no concrete model name before takeover": {
+      "text": "接管前没有具体模型名",
+      "reviewed": true
+    },
+    "thinking block": {
+      "text": "thinking 块",
+      "reviewed": true
+    },
+    "this configuration declares schema_version={got}, but this binary only understands up to {max}: the meaning of fields may have changed, and misreading them raises no error (it routes to the wrong upstream or reports that a provider has no api_key). The previous configuration is kept in service. Upgrading newgate catches up automatically.": {
+      "text": "这份配置的 schema_version={got}，本二进制只认到 {max}：字段含义可能已经变了，误读不会报错（会路由到错的上游或报 provider 没有 api_key）。已保留上一份配置继续服务。升级 newgate 后会自动跟上。",
+      "reviewed": true
+    },
+    "this machine has no root key yet": {
+      "text": "本机还没有根密钥",
+      "reviewed": true
+    },
+    "this machine's {name} was modified locally (your changes will not be overwritten)": {
+      "text": "本机的 {name} 被本地改过（不会覆盖你的改动）",
+      "reviewed": true
+    },
+    "this string is neither hex ({n} bytes) nor long enough as a raw key ({min} bytes) — was it copied in full?": {
+      "text": "这串既不是十六进制（{n} 字节），也不够 {min} 字节原文——拷全了吗",
+      "reviewed": true
+    },
+    "this string is {n} bytes, at least {min} are needed — it looks truncated (it should be {chars} hex characters)": {
+      "text": "这串有 {n} 字节，至少要 {min}——像是被截断了（应是一整串 {chars} 个十六进制字符）",
+      "reviewed": true
+    },
+    "this terminal does not support the TUI ({err}); use `newgate --set-profile <name>` instead": {
+      "text": "这个终端不支持 TUI（{err}）。用 `newgate --set-profile <name>` 代替",
+      "reviewed": true
+    },
+    "turn it off: newgate naked off": {
+      "text": "关闭：newgate naked off",
+      "reviewed": true
+    },
+    "unknown command \"{cmd}\" (see the list with newgate status)": {
+      "text": "不认识 \"{cmd}\"（newgate status 看清单）",
+      "reviewed": true
+    },
+    "value": {
+      "text": "值",
+      "reviewed": true
+    },
+    "variant={variant} shifts down one step ({from} → {to})": {
+      "text": "variant={variant} 下调一级（{from} → {to}）",
+      "reviewed": true
+    },
+    "variant={variant} shifts up one step ({from} → {to})": {
+      "text": "variant={variant} 上调一级（{from} → {to}）",
+      "reviewed": true
+    },
+    "verbose mode": {
+      "text": "详细模式",
+      "reviewed": true
+    },
+    "when the user explicitly runs newgate naked on/forever, Bash classifier requests are short-circuited into an approval without a single LLM call — no more 15-30s classifier latency and no more sessions wedged by a wrong block\non = a 60-second self-limiting window; forever = always on (every request is logged, status warns)\nonly the Claude Code security-monitor marker is recognised; newgate naked off / st off both end it": {
+      "text": "用户显式 newgate naked on/forever 时，Bash 分类器请求被直接短路成批准，一个 LLM 调用都不发——省掉分类器 15-30s 与误判卡死\non=60 秒自限；forever=常开（每个请求都打日志，status 警告）\n只认 Claude Code security-monitor 标记；newgate naked off / st off 均可关",
+      "reviewed": true
+    },
+    "why: {why}": {
+      "text": "建议依据 {why}",
+      "reviewed": true
+    },
+    "within this window every Bash classifier request is approved directly, with no safety check at all": {
+      "text": "这段时间内所有 Bash 分类器请求直接被批准，不经过任何安全检查",
+      "reviewed": true
+    },
+    "writing the key name directly in a profile works too: omo-sisyphus=@normal, terra/medium": {
+      "text": "profile 里直接写键名同样有效：omo-sisyphus=@normal, terra/medium",
+      "reviewed": true
+    },
+    "{err} (nonce length {got}, expected {want})": {
+      "text": "{err}（nonce 长度 {got}，应为 {want}）",
+      "reviewed": true
+    },
+    "{head} · the highest priority globally, ahead of any profile": {
+      "text": "{head} · 全局最高优先，先于任何 profile",
+      "reviewed": true
+    },
+    "{key} default binding → {value}": {
+      "text": "{key} 缺省归属 → {value}",
+      "reviewed": true
+    },
+    "{key} is not a known role key (list them with newgate omo ls)": {
+      "text": "{key} 不是已知角色键（newgate omo ls 看清单）",
+      "reviewed": true
+    },
+    "{key} override removed, back to {mode}": {
+      "text": "{key} 覆盖已删除，回到 {mode}",
+      "reviewed": true
+    },
+    "{kind} injection accepted (this shell does not render it; the counts are in status)": {
+      "text": "收下 {kind} 注入（本壳不渲染，见 status 的计数）",
+      "reviewed": true
+    },
+    "{name} has no schema_version; interpreting it as the current schema": {
+      "text": "{name} 没写 schema_version，按当前 schema 解释",
+      "reviewed": true
+    },
+    "{note}; {why}": {
+      "text": "{note}；{why}",
+      "reviewed": true
+    },
+    "{n} command": {
+      "text": "命令（{n} 条）",
+      "reviewed": true
+    },
+    "{n} key has a suggested tier (see newgate omo ls)": {
+      "text": "{n} 个键有建议档位（newgate omo ls 查看）",
+      "reviewed": true
+    },
+    "{n} key's binding changes with it (overridden ones are unaffected); not happy? newgate omo mode current": {
+      "text": "{n} 个键的归属随之改变（有覆盖的不受影响）；不满意：newgate omo mode current",
+      "reviewed": true
+    },
+    "{n} managed file on this machine was modified locally; applying the remote configuration stopped (your changes will not be overwritten)": {
+      "text": "本机有 {n} 个托管文件被本地改过，已停止应用远端配置（不会覆盖你的改动）",
+      "reviewed": true
+    },
+    "{n} slot differs from the recommendation": {
+      "text": "建议与现状不同（{n} 个）",
+      "reviewed": true
+    },
+    "{n} slot key · mode {mode}": {
+      "text": "{n} 个槽位键 · 模式 {mode}",
+      "reviewed": true
+    },
+    "{n} slot key, but the registry is not group-readable (the user running the daemon cannot see it)": {
+      "text": "{n} 个槽位键，但注册表组不可读（跑 daemon 的另一个用户看不到）",
+      "reviewed": true
+    },
+    "{providers} carries an inline api_key for {names}: a secret may only travel over the secrets channel (newgate config secrets on the host); the config channel never carries one — on the host it is managed by git, so a single commit puts it in history forever": {
+      "text": "{providers} 里 {names} 带了内联 api_key：密钥只能走密钥通道（在宿主上 newgate config secrets），配置通道不含密——它在宿主侧是 git 管的，提交一次就永久进历史",
+      "reviewed": true
+    },
+    "{section}.{name} → {provider}/{key} (now {now}{suggested})": {
+      "text": "{section}.{name} → {provider}/{key}（现状 {now}{suggested}）",
+      "reviewed": true
+    },
+    "{url} returned {status}: {body}": {
+      "text": "{url} 返回 {status}: {body}",
+      "reviewed": true
+    },
+    "{value} is neither a tier (heavy/normal/mid/light/vision), nor a registered dynamic role key, nor provider/model": {
+      "text": "{value} 既不是档位（heavy/normal/mid/light/vision）、也不是已注册的动态角色键、也不是 provider/模型",
+      "reviewed": true
+    },
+    "↑/↓ or j/k to move · Enter to apply · q to quit": {
+      "text": "↑/↓ 或 j/k 移动 · Enter 应用 · q 退出",
+      "reviewed": true
+    }
+  }
+}

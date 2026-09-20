@@ -43,7 +43,7 @@ func TestThinkingDisablesImplicitDeepSeekThinking(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(out), `"thinking":{"type":"disabled"}`) ||
-		!strings.Contains(strings.Join(notes, "\n"), "注入 thinking") {
+		!strings.Contains(strings.Join(notes, "\n"), `thinking:{"type":"disabled"}`) {
 		t.Fatalf("out=%s notes=%v", out, notes)
 	}
 }

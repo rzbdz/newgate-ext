@@ -13,7 +13,7 @@ func TestValidateSnapshotRejectsUnmanagedPath(t *testing.T) {
 	files := snapshotFiles()
 	files["state.json"] = []byte("{}") // 机器本地状态，绝不该从网上写下来
 	_, err := ValidateSnapshot(paths.Config(), files)
-	if err == nil || !strings.Contains(err.Error(), "托管集合") {
+	if err == nil || !strings.Contains(err.Error(), "managed set") {
 		t.Fatalf("托管集合之外的文件必须被拒绝，实际: %v", err)
 	}
 }
@@ -37,7 +37,7 @@ func TestValidateSnapshotRejectsInlineKey(t *testing.T) {
 	if !strings.Contains(err.Error(), "leaky") {
 		t.Fatalf("错误文案该点名是哪个 provider: %v", err)
 	}
-	if !strings.Contains(err.Error(), "密钥通道") {
+	if !strings.Contains(err.Error(), "secrets channel") {
 		t.Fatalf("错误文案该说清密钥该走哪条路: %v", err)
 	}
 	// api_key_env 是正当的，不该被误伤。
@@ -111,7 +111,7 @@ func TestValidateSnapshotWarnsButAccepts(t *testing.T) {
 	if !strings.Contains(joined, "打错的provider") {
 		t.Fatalf("该报出悬空的 provider 引用，实际: %v", warns)
 	}
-	if !strings.Contains(joined, "provider bare 没有 api_key_env") {
+	if !strings.Contains(joined, "provider bare has no api_key_env") {
 		t.Fatalf("该提醒 bare 没有密钥来源，实际: %v", warns)
 	}
 	if strings.Contains(joined, "provider glm") {

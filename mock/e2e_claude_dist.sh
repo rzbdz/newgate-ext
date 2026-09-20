@@ -59,6 +59,10 @@ mkdir -p "$NEWGATE_HOME/mappings" "$FAKEBIN"
 # 启动时父进程 env 会漏给子进程），不 unset 会让「没声明的 profile」
 # 用例读到父会话的值、假失败。
 unset CLAUDE_CODE_MAX_CONTEXT_TOKENS CLAUDE_CODE_AUTO_COMPACT_WINDOW
+# 语言要密闭：脚本断言的是**源语言原文**（英文），而跑它的机器可能是 zh-Hans
+# （我们自己的机器就是）。不钉住的话，「界面上是英文」这类断言在中文机器上假红。
+export NEWGATE_LANG=en
+unset LC_ALL LC_MESSAGES LANG LANGUAGE 2>/dev/null || true
 
 cleanup() {
   "$BIN" stop >/dev/null 2>&1 || true
@@ -294,8 +298,8 @@ check "追加的就是最简那句「继续」" "$GOT" "继续"
 # 跳过的原因必须分类报出来（这条 tool_use id 从没进过 thinkcache ⇒ nocache）。
 LOGTAIL=$(tail -40 "$NEWGATE_HOME/newgate.log")
 case "$LOGTAIL" in
-  *"跳过不动"*"nocache"*) ok "日志把「没有原文可补」的原因分成 nocache 并说明跳过" ;;
-  *) bad "日志没说清跳过原因（该有 \"跳过不动\" + \"nocache\"）：$(echo "$LOGTAIL" | command grep 'assistant 消息' | tail -2)" ;;
+  *"left untouched"*"nocache"*) ok "日志把「没有原文可补」的原因分成 nocache 并说明跳过" ;;
+  *) bad "日志没说清跳过原因（该有 \"left untouched\" + \"nocache\"）：$(echo "$LOGTAIL" | tail -2)" ;;
 esac
 
 echo; echo "== 17. 形状 400：上游 400 原样透传 + 熔断器只计数、永不摘牌 =="
@@ -350,7 +354,7 @@ LOG="$NEWGATE_HOME/newgate.log"
 for _ in $(seq 20); do
   command grep -q '\[shape-400\]' "$LOG" 2>/dev/null && break; sleep 0.1
 done
-command grep -aq '\[shape-400\].*判据 deepseek' "$LOG" \
+command grep -aq '\[shape-400\].*detector deepseek' "$LOG" \
   && ok "日志有 [shape-400] 判据 deepseek（认领留痕）" \
   || bad "日志里没有 [shape-400] 判据 deepseek"
 
@@ -358,15 +362,15 @@ command grep -aq '\[shape-400\].*判据 deepseek' "$LOG" \
 #     shape-400 只能出现在「只计数、没摘牌」那一段。
 BRK_OUT="$("$BIN" breaker 2>/dev/null)"
 echo "$BRK_OUT" | sed 's/^/    /'
-echo "$BRK_OUT" | command grep -q '只计数、没摘牌' \
+echo "$BRK_OUT" | command grep -q 'counted only, not tripped' \
   && ok "breaker 表里有「只计数、没摘牌」段（shape-400 的归属）" \
-  || bad "breaker 表里找不到「只计数、没摘牌」段"
+  || bad "breaker 表里找不到 counted-only 段"
 echo "$BRK_OUT" | command grep -q 'glm/glm-4-plus' \
   && ok "breaker 表里能找到 glm/glm-4-plus（被记账了）" \
   || bad "breaker 表里找不到 glm/glm-4-plus"
-echo "$BRK_OUT" | command grep -qE '· 0 个被摘牌' \
+echo "$BRK_OUT" | command grep -qE '· 0 tripped' \
   && ok "没有任何 binding 被摘牌（形状 400 只计数）" \
-  || bad "有 binding 被摘牌了（形状 400 不该摘牌）：$(echo "$BRK_OUT" | command grep '被摘牌' | head)"
+  || bad "有 binding 被摘牌了（形状 400 不该摘牌）：$(echo "$BRK_OUT" | command grep 'tripped' | head)"
 
 # (4) metrics 端的形状计数要涨。
 "$BIN" metrics 2>/dev/null | command grep -q 'breaker.skipped.shape_error' \
@@ -449,13 +453,18 @@ check "追加的指令逐字是「继续」（最少字）" "$(ph_get tail_text)
 # (c) 原因分类。日志里那句必须同时说清「跳过了」和「为什么」（nocache）。
 LOGTAIL=$(tail -60 "$NEWGATE_HOME/newgate.log")
 case "$LOGTAIL" in
-  *"跳过不动"*"nocache"*) ok "日志说明跳过、且把原因分成 nocache（有 tool_use、缓存查不到）" ;;
-  *) bad "日志没说清跳过原因（该有 \"跳过不动\" + \"nocache\"）：$(echo "$LOGTAIL" | command grep 'assistant 消息' | tail -2)" ;;
+  *"left untouched"*"nocache"*) ok "日志说明跳过、且把原因分成 nocache（有 tool_use、缓存查不到）" ;;
+  *) bad "日志没说清跳过原因（该有 \"left untouched\" + \"nocache\"）：$(echo "$LOGTAIL" | tail -2)" ;;
 esac
-case "$LOGTAIL" in
-  *"只能补占位符"*) bad "日志里还有「占位符」字样——编占位符这条路应该已经删掉了" ;;
-  *) ok "日志里不再出现「占位符」（那条路已删）" ;;
-esac
+# 这里原本还有一条断言：「日志里不许出现『占位符』字样——编占位符那条路应该已经
+# 删掉了」。**它是一条空断言**：它查的那句话是那条已被删掉的路留下的，所以它从写
+# 下的那天起就没有红过（恒真）。2026-09-20 迁移时先把它换成正面断言（日志要明说
+# 「不编占位符」），一跑就发现那句属于 `newgate deepseek` 的审计输出，**这个场景
+# 不走**——于是它变成另一条假断言。
+#
+# 不留样子：真正的保证在两头——这条脚本上面那两条（跳过要说清、原因要分成
+# nocache），以及 modules/deepseek 自己的单测。「编占位符」这件事今天没有可断言
+# 的界面输出，硬留一条只会让下一个人以为这里有人看着。
 
 echo
 echo "结果: $PASS 通过, $FAIL 失败"

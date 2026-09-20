@@ -3,10 +3,9 @@
 package claudecode_deepseek
 
 import (
-	"fmt"
-
 	claudeapi "github.com/rzbdz/newgate-ext/modules/claudecode"
 	deepseekapi "github.com/rzbdz/newgate-ext/modules/deepseek"
+	i18n "github.com/rzbdz/newgate/lib/i18n"
 	"github.com/rzbdz/newgate/modules/gateway/rewrite"
 	"github.com/rzbdz/newgate/modules/gateway/special"
 	"github.com/rzbdz/newgate/modules/pluginmanager"
@@ -29,8 +28,8 @@ func (thinking) Before() []string { return []string{"deepseek", "always-thinks"}
 func (thinking) After() []string  { return nil }
 
 func (thinking) Why() string {
-	return "Claude Code 会剥掉第三方 DeepSeek 的 thinking 块；" +
-		"未显式要求思考时关闭 DeepSeek thinking，避免下一轮要求回传而 400"
+	return i18n.T("Claude Code strips third-party DeepSeek thinking blocks; turn DeepSeek thinking off "+
+		"unless it was explicitly asked for, so the next round does not 400 for a block that must be passed back", nil)
 }
 
 func (t thinking) Match(request *special.Request) bool {
@@ -57,7 +56,8 @@ func (thinking) Apply(body []byte, r *special.Request) ([]byte, []string, error)
 	}
 	out, err := rewrite.InsertTopLevelRaw(body, "thinking", []byte(`{"type":"disabled"}`))
 	if err != nil {
-		return nil, nil, fmt.Errorf("注入 thinking 失败: %w", err)
+		return nil, nil, i18n.Ef(err, "failed to inject thinking: {err}", nil)
 	}
-	return out, []string{`注入 thinking:{"type":"disabled"}（Claude Code 不会回传 DeepSeek 思考块）`}, nil
+	return out, []string{i18n.T("injected {patch} (Claude Code will not pass DeepSeek thinking blocks back)",
+		i18n.A{"patch": `thinking:{"type":"disabled"}`})}, nil
 }

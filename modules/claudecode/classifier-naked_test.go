@@ -176,7 +176,7 @@ func TestNakedStatusAndNoteAreVisible(t *testing.T) {
 
 	live := nakedState(t, NakedConfig{Mode: "on", ExpiresAt: time.Now().Add(30 * time.Second)})
 	if note := (classifierNaked{}).RespondNote(live); !strings.Contains(note, "[naked]") ||
-		!strings.Contains(note, "窗口还剩") {
+		!strings.Contains(note, "the window has") {
 		t.Fatalf("窗口模式的日志说明没说清还剩多久: %q", note)
 	}
 }
@@ -199,7 +199,7 @@ func TestExpiredWindowLooksOffEverywhere(t *testing.T) {
 	if !strings.Contains(note, "[naked]") {
 		t.Fatalf("日志说明里没有 [naked] 标记: %q", note)
 	}
-	if strings.Contains(note, "窗口还剩") {
+	if strings.Contains(note, "the window has") {
 		t.Fatalf("过期窗口不该报剩余时间: %q", note)
 	}
 }

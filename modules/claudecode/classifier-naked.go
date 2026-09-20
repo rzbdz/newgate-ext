@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	i18n "github.com/rzbdz/newgate/lib/i18n"
 	"github.com/rzbdz/newgate/modules/config/domain"
 	"github.com/rzbdz/newgate/modules/gateway/rewrite"
 	"github.com/rzbdz/newgate/modules/gateway/special"
@@ -106,10 +107,11 @@ func (classifierNaked) Name() string     { return "classifier-naked" }
 func (classifierNaked) Before() []string { return []string{"claude-bg"} }
 func (classifierNaked) After() []string  { return nil }
 func (classifierNaked) Why() string {
-	return "用户显式 newgate naked on/forever 时，Bash 分类器请求被直接短路成批准，" +
-		"一个 LLM 调用都不发——省掉分类器 15-30s 与误判卡死" +
-		"\non=60 秒自限；forever=常开（每个请求都打日志，status 警告）" +
-		"\n只认 Claude Code security-monitor 标记；newgate naked off / st off 均可关"
+	return i18n.T("when the user explicitly runs newgate naked on/forever, Bash classifier requests "+
+		"are short-circuited into an approval without a single LLM call — no more 15-30s "+
+		"classifier latency and no more sessions wedged by a wrong block"+
+		"\non = a 60-second self-limiting window; forever = always on (every request is logged, status warns)"+
+		"\nonly the Claude Code security-monitor marker is recognised; newgate naked off / st off both end it", nil)
 }
 
 // Match 认「Claude Code 的后台小调用」这个类（与 claude-bg 同判据）。真正的
@@ -174,15 +176,15 @@ func (classifierNaked) RespondNote(state *domain.State) string {
 	cfg, active := ParseNakedConfig(state.ModuleConfig[NakedConfigKey])
 	switch {
 	case cfg.Mode == "forever":
-		return "[naked] forever 模式：分类器请求被直接批准，未调用上游"
+		return i18n.T("[naked] forever mode: the classifier request was approved directly, the upstream was not called", nil)
 	case active:
-		return fmt.Sprintf("[naked] 分类器请求被直接批准，未调用上游（窗口还剩 %s）",
-			time.Until(cfg.ExpiresAt).Round(time.Second))
+		return i18n.T("[naked] the classifier request was approved directly, the upstream was not called (the window has {left} left)",
+			i18n.A{"left": time.Until(cfg.ExpiresAt).Round(time.Second)})
 	case !cfg.ExpiresAt.IsZero():
-		return "[naked] 分类器请求被直接批准，未调用上游（窗口在拦截后立即到期）"
+		return i18n.T("[naked] the classifier request was approved directly, the upstream was not called (the window expired right after the interception)", nil)
 	default:
 		// 配置读不出来（坏数据 / 刚被删）：这一发确实短路了，照实说。
-		return "[naked] 分类器请求被直接批准，未调用上游（配置已失效）"
+		return i18n.T("[naked] the classifier request was approved directly, the upstream was not called (the configuration is no longer valid)", nil)
 	}
 }
 
@@ -193,20 +195,20 @@ func (classifierNaked) Status(state *domain.State) []special.StatusItem {
 	}
 	if cfg.Mode == "forever" {
 		return []special.StatusItem{{
-			Label: "裸奔",
-			Value: "已开启（forever）—— 分类器被短路，每个请求都打 [naked] 日志；newgate naked off 关",
+			Label: i18n.T("Naked", nil),
+			Value: i18n.T("on (forever) — the classifier is short-circuited and every request logs [naked]; newgate naked off ends it", nil),
 		}}
 	}
 	return []special.StatusItem{{
-		Label: "裸奔",
-		Value: fmt.Sprintf("已开启 —— 还有 %s 自动关（newgate naked off 可提前）",
-			time.Until(cfg.ExpiresAt).Round(time.Second)),
+		Label: i18n.T("Naked", nil),
+		Value: i18n.T("on — it turns itself off in {left} (newgate naked off ends it early)",
+			i18n.A{"left": time.Until(cfg.ExpiresAt).Round(time.Second)}),
 	}}
 }
 
 func (classifierNaked) Metrics() []special.MetricInfo {
 	return []special.MetricInfo{{
 		Action: "shortcircuit",
-		Hint:   "裸奔：分类器请求被直接批准，未调用上游",
+		Hint:   i18n.T("naked: the classifier request is approved directly, the upstream is not called", nil),
 	}}
 }

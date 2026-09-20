@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	i18n "github.com/rzbdz/newgate/lib/i18n"
 	"github.com/rzbdz/newgate/modules/config/domain"
 	"github.com/rzbdz/newgate/modules/config/paths"
 	agentapi "github.com/rzbdz/newgate/modules/confighook"
@@ -45,12 +46,11 @@ func backup(target string) error {
 	}
 	if _, err := os.Stat(orig); os.IsNotExist(err) {
 		if tainted {
-			return fmt.Errorf(
-				"拒绝备份：%s 已经被 newgate 接管过，但 %s 不存在。\n"+
-					"  直接拿它当原始备份会让你的原配置永久丢失。\n"+
-					"  要么从 backups/<时间戳>/ 里找一份干净的放回 original/，\n"+
-					"  要么手工把配置改回去后再 newgate start",
-				filepath.Base(target), orig)
+			return i18n.E("refusing to back up: {file} has already been taken over by newgate, but {orig} does not exist.\n"+
+				"  Using it as the original backup would lose your original config for good.\n"+
+				"  Either put a clean copy from backups/<timestamp>/ back into original/,\n"+
+				"  or revert the config by hand and run newgate start again",
+				i18n.A{"file": filepath.Base(target), "orig": orig})
 		}
 		if err := ioutil.WriteFile(orig, b, 0o600); err != nil {
 			return err
@@ -153,13 +153,13 @@ func ApplyOpencode(target string, port int, extra []string) (*Report, error) {
 	// 用 map 保留未知键
 	var root map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &root); err != nil {
-		return rep, fmt.Errorf("解析 %s 失败: %w", target, err)
+		return rep, i18n.Ef(err, "cannot parse {file}: {err}", i18n.A{"file": target})
 	}
 
 	provs := map[string]json.RawMessage{}
 	if v, ok := root["provider"]; ok {
 		if err := json.Unmarshal(v, &provs); err != nil {
-			return rep, fmt.Errorf("provider 字段不是对象: %w", err)
+			return rep, i18n.Ef(err, "the provider field is not an object: {err}", nil)
 		}
 	}
 	np, err := marshal(buildNewgateProvider(port, extra))
@@ -179,7 +179,8 @@ func ApplyOpencode(target string, port int, extra []string) (*Report, error) {
 	rep.Rewrites = append(rep.Rewrites,
 		"model -> "+ProviderID+"/normal",
 		"small_model -> "+ProviderID+"/light",
-		"provider."+ProviderID+" 已注入（原有 provider 全部保留）")
+		i18n.T("provider.{id} injected (all pre-existing providers kept)",
+			i18n.A{"id": ProviderID}))
 
 	out, err := marshal(root)
 	if err != nil {
@@ -221,7 +222,7 @@ func ApplyOpenagent(target string, port int) (*Report, error) {
 
 	var root map[string]interface{}
 	if err := json.Unmarshal(raw, &root); err != nil {
-		return rep, fmt.Errorf("解析 %s 失败: %w", target, err)
+		return rep, i18n.Ef(err, "cannot parse {file}: {err}", i18n.A{"file": target})
 	}
 
 	slots, err := DiscoverSlots(target)
@@ -273,8 +274,9 @@ func ApplyOpenagent(target string, port int) (*Report, error) {
 		}
 		reg.Slots = append(reg.Slots, entry)
 		byKey[key] = entry
-		rep.Rewrites = append(rep.Rewrites, fmt.Sprintf("%s.%s → %s/%s（现状 %s%s）",
-			sl.Kind+"s", sl.Name, ProviderID, key, current, suggestTag(suggested, current)))
+		rep.Rewrites = append(rep.Rewrites, i18n.T("{section}.{name} → {provider}/{key} (now {now}{suggested})",
+			i18n.A{"section": sl.Kind + "s", "name": sl.Name, "provider": ProviderID,
+				"key": key, "now": current, "suggested": suggestTag(suggested, current)}))
 	}
 	// 注册表里的 default 以 overrides/mode 为准（写文件的人看得见最终归属）
 	for i := range reg.Slots {
@@ -285,11 +287,12 @@ func ApplyOpenagent(target string, port int) (*Report, error) {
 		byKey[reg.Slots[i].Key] = reg.Slots[i]
 	}
 	if err := WriteOmoSlots(reg); err != nil {
-		return rep, fmt.Errorf("写槽位注册表失败: %w", err)
+		return rep, i18n.Ef(err, "cannot write the slot registry: {err}", nil)
 	}
 	rep.Rewrites = append(rep.Rewrites,
-		fmt.Sprintf("槽位注册表 → %s（%d 个键，default 决定每个键跟哪一档走）",
-			SlotsFile(), len(reg.Slots)))
+		i18n.N("slot registry → {file} ({n} key; default decides which tier each key follows)",
+			"slot registry → {file} ({n} keys; default decides which tier each key follows)",
+			len(reg.Slots), i18n.A{"file": SlotsFile(), "n": len(reg.Slots)}))
 
 	// 改写：只动 agents.*.model / categories.*.model 和它们的 fallback_models
 	fallbackIsObject := map[string]bool{}
@@ -339,7 +342,7 @@ func currentTier(model, key string, prev *OmoSlots, was string) (tier, note stri
 	if strings.HasPrefix(model, ProviderID+"/") {
 		rest := strings.TrimPrefix(model, ProviderID+"/")
 		if domain.IsRole(rest) {
-			return rest, "沿用老版本接管写下的档位"
+			return rest, i18n.T("keeping the tier an older takeover wrote", nil)
 		}
 		if p, ok := prev.SlotOf(key); ok && p.Current != "" {
 			return p.Current, ""
@@ -348,7 +351,8 @@ func currentTier(model, key string, prev *OmoSlots, was string) (tier, note stri
 	name := firstNonEmpty(was, model)
 	t, exact := ClassifyModel(name)
 	if !exact {
-		return t, "模型名 " + name + " 没命中规则，按 mid 兜底"
+		return t, i18n.T("model name {model} matched no rule; falling back to mid",
+			i18n.A{"model": name})
 	}
 	return t, ""
 }
@@ -378,7 +382,7 @@ func joinWhy(note, why string) string {
 	case why == "":
 		return note
 	default:
-		return note + "；" + why
+		return i18n.T("{note}; {why}", i18n.A{"note": note, "why": why})
 	}
 }
 
@@ -386,7 +390,7 @@ func suggestTag(suggested, current string) string {
 	if suggested == "" || suggested == current {
 		return ""
 	}
-	return "，建议 " + suggested
+	return i18n.T(", {tier} suggested", i18n.A{"tier": suggested})
 }
 
 // ---------- 编排 ----------
@@ -425,7 +429,7 @@ func ApplyAll(port int) ([]*Report, error) {
 
 	for _, t := range TargetFiles() {
 		if _, err := os.Stat(t); os.IsNotExist(err) {
-			reps = append(reps, &Report{File: t, Skipped: "文件不存在"})
+			reps = append(reps, &Report{File: t, Skipped: i18n.T("the file does not exist", nil)})
 			continue
 		}
 		var rep *Report
@@ -436,7 +440,7 @@ func ApplyAll(port int) ([]*Report, error) {
 			rep, err = ApplyOpencode(t, port, extra)
 		}
 		if err != nil {
-			return reps, fmt.Errorf("接管 %s 失败: %w", t, err)
+			return reps, i18n.Ef(err, "taking over {file} failed: {err}", i18n.A{"file": t})
 		}
 		reps = append(reps, rep)
 	}
@@ -453,14 +457,14 @@ func RestoreAll() ([]string, error) {
 			continue // 没备份说明没接管过
 		}
 		if err := writeAtomic(t, b); err != nil {
-			return done, fmt.Errorf("还原 %s 失败: %w", t, err)
+			return done, i18n.Ef(err, "restoring {file} failed: {err}", i18n.A{"file": t})
 		}
 		done = append(done, t)
 	}
 	// 槽位键随释放失效；用户手写的 overrides 留着。清不掉要说出来——留着
 	// 的键下一次接管会被当成用户的选择（见 ClearOmoSlots 的说明）。
 	if err := ClearOmoSlots(); err != nil {
-		return done, fmt.Errorf("还原完成，但槽位表没清掉（下次接管会沿用旧分配）: %w", err)
+		return done, i18n.Ef(err, "restore finished, but the slot table was not cleared (the next takeover will reuse the old assignment): {err}", nil)
 	}
 	return done, nil
 }

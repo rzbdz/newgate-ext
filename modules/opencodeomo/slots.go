@@ -3,7 +3,6 @@ package opencodeomo
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -11,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	i18n "github.com/rzbdz/newgate/lib/i18n"
 	"github.com/rzbdz/newgate/modules/config/domain"
 	"github.com/rzbdz/newgate/modules/config/roleprov"
 )
@@ -90,7 +90,7 @@ func DiscoverSlots(target string) ([]Slot, error) {
 		Categories map[string]omoNode `json:"categories"`
 	}
 	if err := json.Unmarshal(b, &root); err != nil {
-		return nil, fmt.Errorf("%s 解析失败: %w", filepath.Base(target), err)
+		return nil, i18n.Ef(err, "cannot parse {file}: {err}", i18n.A{"file": filepath.Base(target)})
 	}
 	var out []Slot
 	for _, kind := range []string{"agent", "category"} {
@@ -259,9 +259,10 @@ func WriteOmoSlots(s *OmoSlots) error {
 	s.Version = 1
 	s.Source = "omo"
 	s.Updated = time.Now().Format(time.RFC3339)
-	s.Note = "接管 oh-my-openagent 时自动生成。default 是这个键在 profile 里没写时的缺省归属；" +
-		"想让某个槽位换档位，改 overrides（支持 \"@别的键\" / \"档位名\" / \"provider/模型\"），" +
-		"或在 profile 里直接写这个键。"
+	s.Note = i18n.T("Generated automatically when oh-my-openagent is taken over. "+
+		"default is the binding this key falls back to when the profile does not spell it out; "+
+		"to move a slot to another tier, edit overrides (it accepts \"@other-key\" / \"tier name\" / \"provider/model\"), "+
+		"or write this key directly in the profile.", nil)
 	b, err := marshal(s)
 	if err != nil {
 		return err
@@ -282,11 +283,12 @@ func WriteOmoSlots(s *OmoSlots) error {
 // 只会把猜测说得更像结论。理由写在 why 里给用户看。
 func Suggest(model, variant string) (tier, why string) {
 	if model == "" {
-		return "", "接管前没有具体模型名"
+		return "", i18n.T("there was no concrete model name before takeover", nil)
 	}
 	t, exact := ClassifyModel(model)
 	if !exact {
-		return "", "模型名 " + model + " 没命中规则，体格本身就是猜的"
+		return "", i18n.T("model name {model} matched no rule; the build itself is a guess",
+			i18n.A{"model": model})
 	}
 	n := variantShift(variant)
 	to := domain.ShiftTier(t, n)
@@ -295,15 +297,19 @@ func Suggest(model, variant string) (tier, why string) {
 		// 差异会是一片空白，用户问「为什么不是我想的那个」时无处可查
 		// （docs/04-configuration.md）。分类本身就命中了规则，这句就是那个答案。
 		if variant == "" {
-			return t, "按模型体格判定，接管前没记 variant"
+			return t, i18n.T("decided by the model build; no variant was recorded before takeover", nil)
 		}
-		return t, "按模型体格判定，variant=" + variant + " 不改变档位"
+		return t, i18n.T("decided by the model build; variant={variant} does not change the tier",
+			i18n.A{"variant": variant})
 	}
-	dir := "上调"
+	// 上/下调各写一条消息：dir 单独做成一条消息再嵌进另一条，译者要面对
+	// 「一句译文里的一个词也是查表结果」，语序一换就拼不出人话（见 lib/i18n）。
 	if n < 0 {
-		dir = "下调"
+		return to, i18n.T("variant={variant} shifts down one step ({from} → {to})",
+			i18n.A{"variant": variant, "from": t, "to": to})
 	}
-	return to, "variant=" + variant + " " + dir + "一级（" + t + " → " + to + "）"
+	return to, i18n.T("variant={variant} shifts up one step ({from} → {to})",
+		i18n.A{"variant": variant, "from": t, "to": to})
 }
 
 // ClearOmoSlots 释放接管时清空槽位，**保留 overrides**：键没了，用户手写的
