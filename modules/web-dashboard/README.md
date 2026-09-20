@@ -116,6 +116,8 @@ newgate --port 8899      # 无子命令 = 起服务（只有本入口自己的 f
 | `plugin-manager.footguns` | `toggles` | plugin-manager | 只读（要带时限，见上） |
 | `plugin-manager.modules` | `table` | plugin-manager | 只读：**这个构建由哪些模块组成** |
 | `breaker.health` | `table` | breaker | 只读 |
+| `runtime.takeover` | `table` | runtime | 只读：**谁在走 newgate**（四态：生效 / 声明了没生效 / 关过却没放开 / 直连） |
+| `opencode-omo.slots` | `table` | opencode-omo | 只读：每个 omo 槽位现在的绑定（写归属只有 `newgate omo use` 一份语义） |
 
 这张表是**产物**不是清单：加一个模块的那一面不需要改它，就像不需要改前端一样
 （前端只认 Kind，账本只认注册）。写在这里是为了让人一眼看到「今天能看什么」，
