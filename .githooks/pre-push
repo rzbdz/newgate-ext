@@ -39,7 +39,9 @@ if fmt=$(gofmt -l .) && [ -n "$fmt" ]; then
 fi
 go vet ./...
 go run ./tools/distgen -check
-go test ./...
+# -race 与 CI 那条一致（见 ci.yml 的说明）：并发错默认表现是「平时都对，
+# 压一下才崩」，而本地不跑的话，推上去才发现就等于没拦。
+go test -race ./...
 
 step "gitlink 指的那个内核提交，远端有吗"
 core_head=$(git -C core rev-parse HEAD)

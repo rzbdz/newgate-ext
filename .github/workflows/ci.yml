@@ -101,8 +101,11 @@ jobs:
           go run github.com/rzbdz/newgate/tools/i18n extract -root . -catalogs modules/i18n/catalogs -check
           go run github.com/rzbdz/newgate/tools/i18n check -root . -catalogs modules/i18n/catalogs -allowlist tools/i18n-allowlist.json
 
-      - name: 模块测试
-        run: go test ./...
+      # -race：发行版自己的模块里也有并发路径（porthub 那张表被多个界面同时读、
+      # web-dashboard 的 BFF、arch-diagram 现场那次构建），而这些错的默认表现是
+      # 「平时都对，压一下才崩」——最贵的一种。代价实测 1s → 6s，买得起。
+      - name: 模块测试（带竞态检测）
+        run: go test -race ./...
 
   e2e:
     name: 零 token 端到端（发行版的二进制）
