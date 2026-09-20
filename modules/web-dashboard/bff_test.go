@@ -37,6 +37,45 @@ func contribute(t *testing.T, h *Handler, source string, concepts ...view.Concep
 	}
 }
 
+// TestLiveSurvivesTheWire：Live 是贡献者在 Go 那边声明的，而界面靠 JSON 里那个
+// 字段决定「哪几个源要每几秒重问一次」（见前端 App.svelte 的 liveSources）。
+//
+// 这一跳断了**不会报错**：字段全丢 → 一个源都不刷 → 页面安静地停在打开那一刻，
+// 而「自动刷新」那个复选框看起来一切正常。所以它值得一条断言，而不是等谁在
+// 浏览器里发现计数器不动了。
+func TestLiveSurvivesTheWire(t *testing.T) {
+	h := newHandler()
+	contribute(t, h, "somewhere",
+		view.Concept{ID: "live.one", Kind: view.KindSeries, Title: "Counters", Live: true},
+		view.Concept{ID: "static.one", Kind: view.KindTable, Title: "Modules"},
+	)
+
+	rec := get(t, h, "/api/snapshot")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("snapshot 该 200，实际 %d", rec.Code)
+	}
+	var doc snapshotDoc
+	if err := json.Unmarshal(rec.Body.Bytes(), &doc); err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]conceptDoc{}
+	for _, c := range doc.Concepts {
+		byID[c.ID] = c
+	}
+	if !byID["live.one"].Live {
+		t.Error("声明了 Live 的概念必须把它端到前端——丢了它，自动刷新谁都不问")
+	}
+	if byID["static.one"].Live {
+		t.Error("没声明的概念不该被当成会变的：那会把整个源拖进几秒一次的轮询")
+	}
+
+	// 同一个源的**其他**概念也一起被端出去：界面的刷新粒度是源，不是这一条
+	// （见 core/lib/view 里 Concept.Live 的注释）。
+	if byID["live.one"].Source != byID["static.one"].Source {
+		t.Fatal("这条用例的前提是两个概念同源")
+	}
+}
+
 // loopback 是测试里默认的 Host。
 //
 // 必须显式设：httptest.NewRequest 默认填 `example.com`，而 BFF 现在只认本机的

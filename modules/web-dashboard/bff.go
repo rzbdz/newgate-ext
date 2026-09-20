@@ -122,7 +122,11 @@ type conceptDoc struct {
 	Source string `json:"source"`
 	// Writable 为 false = 这个概念只读（贡献者没给 Apply）。
 	Writable bool `json:"writable"`
-	Data     any  `json:"data"`
+	// Live 为 true = 这一面的数据会自己变，界面该把它所在的源一起放进那几秒
+	// 一次的刷新里（见 lib/view 的 Concept.Live）。**由贡献者声明**：谁的东西谁
+	// 知道读一次贵不贵，界面无从推断。
+	Live bool `json:"live,omitempty"`
+	Data any  `json:"data"`
 	// Error 非空 = 这个概念**此刻读不出来**（文件被删了、JSON 坏了）。卡片照
 	// 常出现、写着原因，而不是从列表里消失——消失了用户会以为它不存在。
 	Error string `json:"error,omitempty"`
@@ -163,7 +167,7 @@ func (h *Handler) snapshot(sources ...string) (snapshotDoc, error) {
 	for _, c := range concepts {
 		doc.Concepts = append(doc.Concepts, conceptDoc{
 			ID: c.ID, Kind: c.Kind, Title: c.Title, Source: c.Source,
-			Writable: c.Apply != nil, Data: c.Data, Error: c.Broken,
+			Writable: c.Apply != nil, Live: c.Live, Data: c.Data, Error: c.Broken,
 		})
 	}
 	if doc.Concepts == nil {

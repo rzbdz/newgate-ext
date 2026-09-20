@@ -50,6 +50,10 @@ func classifierConcept() view.Concept {
 	return view.Concept{
 		ID: "claudecode.classifier", Kind: view.KindTable,
 		Title: i18n.T("Claude Code Bash classifier", nil),
+		// Live：限时窗口那一格写的是「还有多久自动关闭」——页面开着不动，那个数字
+		// 就是错的（而它说的是安全门什么时候关上）。整张卡读的是内存里的
+		// state.json，常问不亏。
+		Live: true,
 		Data: view.Table{
 			Columns: []view.Column{
 				{ID: "switch", Label: i18n.T("Switch", nil)},

@@ -145,7 +145,7 @@ func TestTheLayerRowAppearsOnlyWhenItMatters(t *testing.T) {
 	writeState(t, forever)
 	noLayerRow(t)
 
-	// 整层关掉：第三行出现，说的是「上面那些此刻不算数」。
+	// 整层关掉：第三行出现，说的是「这里配的都不算数、把层开回来就都算数」。
 	writeState(t, map[string]any{
 		NakedConfigKey: NakedConfig{Mode: "forever"},
 		"gateway":      map[string]any{"special_treatment": false},

@@ -129,10 +129,10 @@
       "where": "modules/deepseek/switches.go:63"
     },
     "State": {
-      "where": "modules/claudecode/view.go:56"
+      "where": "modules/claudecode/view.go:60"
     },
     "Switch": {
-      "where": "modules/claudecode/view.go:55"
+      "where": "modules/claudecode/view.go:59"
     },
     "Usage: newgate omo [ls | use <key> <binding> | unset <key> | mode current|suggested | explain <key>]": {
       "where": "modules/opencodeomo/command.go:64"
@@ -147,7 +147,7 @@
       "where": "modules/opencodeomo/command.go:45"
     },
     "What it means": {
-      "where": "modules/claudecode/view.go:57"
+      "where": "modules/claudecode/view.go:61"
     },
     "[naked] forever mode: the classifier request was approved directly, the upstream was not called": {
       "where": "modules/claudecode/classifier-naked.go:179"
@@ -477,7 +477,7 @@
       ]
     },
     "invalid": {
-      "where": "modules/claudecode/view.go:96"
+      "where": "modules/claudecode/view.go:100"
     },
     "keeping the tier an older takeover wrote": {
       "where": "modules/opencodeomo/takeover.go:345"
@@ -595,7 +595,7 @@
       ]
     },
     "no such concept: {id} — the page is probably stale, reload it": {
-      "where": "modules/web-dashboard/bff.go:225",
+      "where": "modules/web-dashboard/bff.go:229",
       "args": [
         "id"
       ]
@@ -607,7 +607,7 @@
       ]
     },
     "none": {
-      "where": "modules/claudecode/view.go:102"
+      "where": "modules/claudecode/view.go:106"
     },
     "not bound": {
       "where": "modules/tui/tui.go:226"
@@ -622,19 +622,19 @@
       "where": "modules/opencodeomo/command.go:139"
     },
     "off": {
-      "where": "modules/claudecode/view.go:131"
+      "where": "modules/claudecode/view.go:135"
     },
     "omo slot bindings": {
       "where": "modules/opencodeomo/view.go:45"
     },
     "on (forever)": {
-      "where": "modules/claudecode/view.go:74"
+      "where": "modules/claudecode/view.go:78"
     },
     "on (forever) — the classifier is short-circuited and every request logs [naked]; newgate naked off ends it": {
       "where": "modules/claudecode/classifier-naked.go:199"
     },
     "on — it turns itself off in {left}": {
-      "where": "modules/claudecode/view.go:78",
+      "where": "modules/claudecode/view.go:82",
       "args": [
         "left"
       ]
@@ -646,7 +646,7 @@
       ]
     },
     "on, but these plugins are switched off: {names}": {
-      "where": "modules/claudecode/view.go:141",
+      "where": "modules/claudecode/view.go:145",
       "args": [
         "names"
       ]
@@ -703,7 +703,7 @@
       ]
     },
     "saving needs Content-Type: application/json (got {ct})": {
-      "where": "modules/web-dashboard/bff.go:212",
+      "where": "modules/web-dashboard/bff.go:216",
       "args": [
         "ct"
       ]
@@ -741,7 +741,7 @@
       "where": "modules/opencode/agent.go:17"
     },
     "special_treatment layer": {
-      "where": "modules/claudecode/view.go:130"
+      "where": "modules/claudecode/view.go:134"
     },
     "status blocks": {
       "where": "modules/simple-cli/module.go:291"
@@ -797,10 +797,10 @@
       "where": "modules/configshare/proto/seal.go:144"
     },
     "the Bash classifier is asked as usual": {
-      "where": "modules/claudecode/view.go:72"
+      "where": "modules/claudecode/view.go:76"
     },
     "the classifier is short-circuited and every request logs [naked]": {
-      "where": "modules/claudecode/view.go:75"
+      "where": "modules/claudecode/view.go:79"
     },
     "the configshare bookkeeping file is corrupt; starting over from the initial state: {err}": {
       "where": "modules/configshare/proto/state.go:177"
@@ -854,7 +854,7 @@
       "where": "modules/claudecode/agent.go:25"
     },
     "the highest priority globally, ahead of any profile": {
-      "where": "modules/claudecode/view.go:100"
+      "where": "modules/claudecode/view.go:104"
     },
     "the host declares build {want}, this machine is {got}: this machine can still parse the configuration (unknown fields are ignored, missing ones fall back to defaults), so it was let through. Upgrade newgate to line up exactly.": {
       "where": "modules/configshare/proto/version.go:89",
@@ -889,7 +889,7 @@
       "where": "modules/opencodeomo/diagnostics.go:30"
     },
     "the request body is not valid JSON: {err}": {
-      "where": "modules/web-dashboard/bff.go:217",
+      "where": "modules/web-dashboard/bff.go:221",
       "args": [
         "err"
       ]
@@ -926,7 +926,7 @@
       "where": "modules/deepseek/st-reasoning.go:337"
     },
     "the whole layer is off, so nothing configured here counts right now; it counts again the moment the layer is switched back on": {
-      "where": "modules/claudecode/view.go:134"
+      "where": "modules/claudecode/view.go:138"
     },
     "there was no concrete model name before takeover": {
       "where": "modules/opencodeomo/slots.go:286"
@@ -1099,7 +1099,7 @@
       ]
     },
     "{names}: switched off individually, so that row counts for nothing right now; it counts again the moment it is switched back on": {
-      "where": "modules/claudecode/view.go:143",
+      "where": "modules/claudecode/view.go:147",
       "args": [
         "names"
       ]
@@ -1186,7 +1186,7 @@
       ]
     },
     "{title} is read-only": {
-      "where": "modules/web-dashboard/bff.go:234",
+      "where": "modules/web-dashboard/bff.go:238",
       "args": [
         "title"
       ]

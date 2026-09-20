@@ -14,6 +14,9 @@ export interface Concept {
   source: string;
   /** false = 只读（贡献者没给 Apply，比如带凭据的文件）。 */
   writable: boolean;
+  /** true = 这一面会自己变，跟着那几秒一次的刷新走（贡献者声明，见 lib/view 的 Live）。
+      不声明就不刷——「读一次贵不贵」只有贡献者知道，不能从 Kind 猜。 */
+  live?: boolean;
   data: any;
   /** 非空 = 这个概念此刻读不出来（文件删了、JSON 坏了）。卡片照常显示，写原因。 */
   error?: string;

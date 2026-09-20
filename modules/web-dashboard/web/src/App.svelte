@@ -42,13 +42,14 @@
     return typeof b === "string" ? b : "";
   }
 
-  /** 只有这几位值得每几秒刷一次（计数器、日志）。配置那一位要重读并重新解析
-      每一份 profile 与每一个源文件——让「刷一下计数器」顺带付那笔账，是把钱花在
-      没人看的地方（见 api.ts 的 snapshot）。 */
+  /** 只有**自己会变**的那几位值得每几秒刷一次。谁算「会变」由贡献者声明
+      （`Concept.Live`），界面不再按 Kind 猜：那个猜法把「读一次贵不贵」——
+      只有贡献者知道的事——写成了渲染形状的附庸，而且没给别的 Kind 留口子
+      （一张显示「还有多久自动关闭」的表，页面开着不动就永远停在那个数字上）。
+      配置那一位不声明：它要重读并重新解析每一份 profile 与每一个源文件，
+      让「刷一下计数器」顺带付那笔账，是把钱花在没人看的地方（见 api.ts 的 snapshot）。 */
   const liveSources = $derived([
-    ...new Set(
-      concepts.filter((c) => c.kind === "series" || c.kind === "log").map((c) => c.source),
-    ),
+    ...new Set(concepts.filter((c) => c.live).map((c) => c.source)),
   ]);
 
   function bySourceId(list: Concept[]): Concept[] {
