@@ -56,5 +56,8 @@ echo "ok：${core_head:0:7} 在远端"
 step "端到端（真二进制 + 内核的假上游，零 token）"
 build/build.sh dist >/dev/null
 bash mock/e2e_claude_dist.sh
+# 浏览器那条写路径（快照 / 保存 / 冲突 / 两道门）：与上一条共用同一个产物，
+# 不需要假上游，所以很便宜。
+bash mock/e2e_dashboard.sh
 
 printf '\n✓ pre-push 全绿（core-test / dist-test / gitlink / 端到端）\n'
