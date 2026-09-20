@@ -26,7 +26,16 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CORE="${NEWGATE_E2E_CORE:-$ROOT/core}"
 # 二进制来自本仓库的构建入口（build/build.sh），文件名里带发行版名与平台。
 DIST_NAME="${NEWGATE_E2E_DIST:-newgate-default}"
-BIN_SRC="${NEWGATE_E2E_BIN:-$ROOT/dist/newgate-$DIST_NAME-$(uname -s | tr 'A-Z' 'a-z')-$(uname -m)}"
+# 产物名里的架构用 **Go 的叫法**（amd64），不是 uname 的叫法（x86_64）——build.sh
+# 就是按 Go 的叫法命名的，两边必须一致，否则这里会找不到二进制。映射与 build.sh
+# 里那段是同一份判据（那一段的注释写了为什么需要它）。
+case "$(uname -m)" in
+  x86_64)        host_arch=amd64 ;;
+  aarch64|arm64) host_arch=arm64 ;;
+  i386|i686)     host_arch=386 ;;
+  *)             host_arch=$(uname -m) ;;
+esac
+BIN_SRC="${NEWGATE_E2E_BIN:-$ROOT/dist/newgate-$DIST_NAME-$(uname -s | tr 'A-Z' 'a-z')-$host_arch}"
 # 端口默认值与内核那版错开：两边可以同时跑（对照着调试时很有用）。
 SANDBOX="${NEWGATE_E2E_SANDBOX:-$(mktemp -d /tmp/newgate-dist-e2e.XXXXXX)}"
 UP_PORT="${NEWGATE_E2E_UP_PORT:-18091}"
