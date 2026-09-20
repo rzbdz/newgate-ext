@@ -122,10 +122,21 @@ a { color: var(--accent); }
   min-height: 0;
   overflow: hidden;
 }
+/* 卡多到横 tab 条滚不动时（config 那种 38 张），行进 tab 条让位成**左侧竖栏**：
+   nav-slot（竖的 tab 列表）在左边，pane 在右边，errs（报错横幅）横跨两列压顶。
+   这个「多少算多」由 App 的 TAB_OVERFLOW 决定，这里只铺版面。 */
+.content.subcol {
+  grid-template-columns: 210px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+}
+.content.subcol > .errs { grid-column: 1 / -1; grid-row: 1; }
+.content.subcol > .nav-slot { grid-column: 1; grid-row: 2; min-height: 0; min-width: 0; }
+.content.subcol > .pane { grid-column: 2; grid-row: 2; }
 .pane {
   overflow: auto;
   padding: 14px 16px;
   min-height: 0;
+  min-width: 0;
 }
 /* minmax(0, 1fr) 与 min-height: 0 是这块版面的承重墙，不是洁癖：grid 子项的
    默认 min-height 是 auto——它**不肯缩到内容以下**，于是里面那个会滚的东西
@@ -141,4 +152,24 @@ a { color: var(--accent); }
     grid-template-rows: auto auto minmax(0, 1fr);
   }
   .shell > header.top { grid-column: 1; }
+  /* 窄屏上，config 那种竖栏也没地方并排——退回叠加：竖的 tab 列表变回一条横向
+     滚动带（与侧栏同一套退法），pane 在下面。筛掉它比硬并排强：两条竖栏在
+     900px 会让内容只剩一条缝。 */
+  .content.subcol {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
+  }
+  .content.subcol > .errs { grid-column: 1; grid-row: 1; }
+  .content.subcol > .nav-slot { grid-column: 1; grid-row: 2; }
+  .content.subcol > .pane { grid-column: 1; grid-row: 3; }
+  .content.subcol :global(nav.v) {
+    flex-direction: row;
+    align-items: center;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    padding: 4px 8px;
+    white-space: nowrap;
+  }
 }

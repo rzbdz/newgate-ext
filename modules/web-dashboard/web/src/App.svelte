@@ -74,6 +74,16 @@
   /** 当前这一节的卡片（过滤之后）。顺序跟着后端来（(Source, ID) 排序）。 */
   const sectionCards = $derived(concepts.filter((c) => c.source === route.section && matches(c)));
 
+  /**
+   * 一节的卡多到横向 tab 条滚不动时，改用**左侧第二个竖栏**（见 TabStrip）。
+   *
+   * 阈值按下限取：超过这条就该竖着列——config 有 38 张卡，横条要滚好几屏才能扫
+   * 完，而竖着的一列是一眼的事。少于此的节（plugin-manager 两张、gateway 一张）
+   * 横条更省行高。这名字是个玄学数字，所以写这句在这里解释；改它不需要其它地方动。
+   */
+  const TAB_OVERFLOW = 8;
+  const verticalTabs = $derived(sectionCards.length > TAB_OVERFLOW);
+
   /** 当前这张卡。route.card 为空（或者落在一个已经不在的 id 上）时取第一张——
    *  「一节的第一张」是这一节的默认视图，键盘与 URL 都依赖它是确定的。 */
   const active = $derived(sectionCards.find((c) => c.id === route.card) ?? sectionCards[0]);
@@ -410,20 +420,32 @@
 
   <Sidebar {sections} active={route.section} {counts} onPick={pickSection} />
 
-  <section class="content">
-    {#if error}
-      <div class="banner">{error}</div>
-    {/if}
-    {#each conflicts as cf (cf.concept + cf.current)}
-      <!-- 自己就是一块 .banner.conflict（不套壳：两层边框看着像两个东西）。 -->
-      <ConflictDialog
-        conflict={cf}
-        onKeepMine={() => keepMine(cf)}
-        onTakeTheirs={() => takeTheirs(cf)}
-      />
-    {/each}
+  <section class="content" class:subcol={verticalTabs}>
+    <div class="errs">
+      {#if error}
+        <div class="banner">{error}</div>
+      {/if}
+      {#each conflicts as cf (cf.concept + cf.current)}
+        <!-- 自己就是一块 .banner.conflict（不套壳：两层边框看着像两个东西）。 -->
+        <ConflictDialog
+          conflict={cf}
+          onKeepMine={() => keepMine(cf)}
+          onTakeTheirs={() => takeTheirs(cf)}
+        />
+      {/each}
+    </div>
 
-    <TabStrip cards={sectionCards} active={active?.id ?? ""} {drafts} onPick={pickCard} />
+    <!-- 包一层 .nav-slot：TabStrip 是组件，App 的 scoped 样式给不了它根元素的网格
+         位置，标在包这一层清楚了（见 app.css 的 .content.subcol）。 -->
+    <div class="nav-slot">
+      <TabStrip
+        cards={sectionCards}
+        active={active?.id ?? ""}
+        {drafts}
+        vertical={verticalTabs}
+        onPick={pickCard}
+      />
+    </div>
 
     <div class="pane">
       {#if active}

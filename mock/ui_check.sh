@@ -57,6 +57,9 @@ JSON
 cat > "$NEWGATE_HOME/mappings/demo.json" <<'JSON'
 {"description":"ui check","roles":{"normal":[{"provider":"demo","model":"demo-model"}]}}
 JSON
+# 再塞 9 个变化 profile：把 config 一节顶过「横 tab 条转竖栏」的阈值（8），
+# 这样浏览器那层才能验到竖栏真的出现而不是只在单机大配置里有效。
+for i in $(seq 1 9); do printf 'desc=填充 profile %s\n' "$i" > "$NEWGATE_HOME/mappings/fill$i.kv"; done
 printf '%s' "{\"default_profile\":\"demo\",\"port\":$PORT}" > "$NEWGATE_HOME/state.json"
 
 "$BIN" __serve --port "$PORT" >"$SANDBOX/serve.log" 2>&1 &

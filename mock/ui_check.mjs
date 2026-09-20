@@ -193,7 +193,7 @@ if (snap.sections.length) {
   } else {
     await page.locator(`nav.side button[title="${pair.source}"]`).click();
     await page.waitForTimeout(200);
-    await page.locator(`button.tab[title="${pair.id}"]`).click().catch(() => {});
+    await page.locator(`button.tab[title="${pair.id}"], nav.v button[title="${pair.id}"]`).first().click().catch(() => {});
     await page.waitForTimeout(300);
     const split = await page.locator(".split.two").count();
     const panes = await page.locator(".pane-l, .pane-r").count();
@@ -203,7 +203,36 @@ if (snap.sections.length) {
   }
 }
 
-// —— 6. 点一下真的落盘 ——
+// —— 6. 卡一多，横 tab 让位成左侧竖栏 ——
+//
+// 这是「config 38 张横 tab 滚不动」那次的回归：超过阈值（App 的 TAB_OVERFLOW=8）
+// 的节，tab 条改成一个竖向滚动列表放在内容左侧。阈值是内容决定的（不是宽度），
+// 所以这里按「config 的卡数」判断走哪条断言——沙箱注入了 9 个填充 profile，正常
+// 会走到竖栏那半。
+{
+  const cfg = snap.sections.find((s) => s.source === "config");
+  const n = snap.concepts.filter((c) => c.source === "config").length;
+  await page.locator(`nav.side button[title="config"]`).click();
+  await page.waitForTimeout(400);
+  const rows = await page.locator(".content nav.v").count();
+  const horiz = await page.locator(".content .tabs").count();
+  if (n > 8) {
+    check("卡一多就转成左侧竖栏", rows === 1, `nav.v 出现 ${rows} 次`);
+    check("竖栏出现时没有横 tab 条", horiz === 0, `还剩 ${horiz} 条横的`);
+    const items = await page.locator(".content nav.v button").count();
+    check("竖栏列出这节全部卡", items === n, `${items} vs ${n}`);
+    // 点竖栏里一张卡要真的切过去
+    const target = snap.concepts.filter((c) => c.source === "config")[1];
+    await page.locator(`.content nav.v button[title="${target.id}"]`).click();
+    await page.waitForTimeout(300);
+    const on = await page.locator(".content nav.v button.on").getAttribute("title");
+    check("点竖栏里一张卡能切过去", on === target.id, `实际选中 ${on}`);
+  } else {
+    skip(`这份装配里 config 卡没超阈值（${n} ≤ 8），竖栏那几条不适用`);
+  }
+}
+
+// —— 7. 点一下真的落盘 ——
 //
 // 只测**可写的 toggles**（布尔开关）：它是「最少点击」那条设计里的一步操作，
 // 也是用户在界面上改运行期行为的那条路。
@@ -217,7 +246,7 @@ async function openSwitches() {
   if (!src || !sw) return false;
   await page.locator(`nav.side button[title="${src.source}"]`).click();
   await page.waitForTimeout(200);
-  await page.locator(`button.tab[title="${sw.id}"]`).click();
+  await page.locator(`button.tab[title="${sw.id}"], nav.v button[title="${sw.id}"]`).first().click();
   await page.waitForTimeout(250);
   return true;
 }
@@ -258,7 +287,7 @@ if (!(await openSwitches())) {
   const after = (await page.locator("header.top button.primary").innerText()).trim();
   check("保存之后回到「没有未保存的东西」", !/\d/.test(after), `保存按钮显示 ${JSON.stringify(after)}`);
 
-  // —— 7. 别人抢先改过 → 弹冲突，而且**不许覆盖** ——
+  // —— 8. 别人抢先改过 → 弹冲突，而且**不许覆盖** ——
   //
   // 这是这个产品里唯一一处两个写者改同一份文件的地方（命令行与浏览器），也是当初
   // 点名要的语义：「commit 的时候会检测是否冲突，如果有，提示用户」。
@@ -287,7 +316,7 @@ if (!(await openSwitches())) {
   check("被拒的那次写没有覆盖磁盘", after2.written_by_someone_else === true);
 }
 
-// —— 8. provider 表：凭据不出门，但能加能改 ——
+// —— 9. provider 表：凭据不出门，但能加能改 ——
 //
 // 这一段是「用户要在网页上配 provider」那条要求的验收。它验的是一件看起来很矛盾
 // 的事：**浏览器拿不到那个 key，却仍然能改 provider**。做法是值根本不进快照
@@ -308,7 +337,7 @@ if (!(await openSwitches())) {
   } else {
     await page.locator(`nav.side button[title="${card.source}"]`).click();
     await page.waitForTimeout(200);
-    await page.locator(`button.tab[title="${card.id}"]`).click();
+    await page.locator(`button.tab[title="${card.id}"], nav.v button[title="${card.id}"]`).first().click();
     await page.waitForTimeout(300);
 
     const keyBox = page.locator('section.card input[type="password"]').first();
@@ -348,7 +377,7 @@ if (!(await openSwitches())) {
   }
 }
 
-// —— 9. 键盘：`/` 找东西、Esc 退出 ——
+// —— 10. 键盘：`/` 找东西、Esc 退出 ——
 //
 // 这条是「4-5 次操作」那条线的下限保障：鼠标走完侧栏 → tab → 控件 → 保存是四次，
 // 没有余量；`/` 与 Alt+数字 把「回到一个已知位置」压成一次按键。
