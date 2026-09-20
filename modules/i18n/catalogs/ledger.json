@@ -728,7 +728,7 @@
       "where": "modules/configshare/proto/state.go:177"
     },
     "the daemon is not running — the dashboard is served by it, so start it first: newgate start": {
-      "where": "modules/web-dashboard/command.go:61"
+      "where": "modules/web-dashboard/command.go:72"
     },
     "the endpoint is empty (run newgate config join <endpoint> first)": {
       "where": "modules/configshare/proto/client.go:61"
@@ -777,7 +777,7 @@
       ]
     },
     "the interface is on loopback only; nothing listens on other interfaces": {
-      "where": "modules/web-dashboard/command.go:64"
+      "where": "modules/web-dashboard/command.go:75"
     },
     "the model field in settings.json is left untouched; what a tier means is decided by the env": {
       "where": "modules/claudecode/agent.go:41"
@@ -844,8 +844,11 @@
     "thinking block": {
       "where": "modules/deepseek/st-reasoning.go:316"
     },
-    "this build cannot serve a web interface: nothing provides a shared port (the porthub module is not installed)": {
-      "where": "modules/web-dashboard/command.go:43"
+    "this build cannot serve a web interface: nothing provides a shared port (porthub) or a serve-time hook (serving)": {
+      "where": "modules/web-dashboard/command.go:59"
+    },
+    "this build has no shared port, so the interface listens on its own port (the gateway is on a different one)": {
+      "where": "modules/web-dashboard/command.go:54"
     },
     "this configuration declares schema_version={got}, but this binary only understands up to {max}: the meaning of fields may have changed, and misreading them raises no error (it routes to the wrong upstream or reports that a provider has no api_key). The previous configuration is kept in service. Upgrading newgate catches up automatically.": {
       "where": "modules/configshare/proto/version.go:76",

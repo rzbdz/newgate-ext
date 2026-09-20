@@ -37,24 +37,35 @@ func (c *webCommand) Help() cliapi.HelpLine {
 }
 
 func (c *webCommand) Run(host cliapi.Host, _ []string) int {
-	// 「这个构建里没有共享端口」与「守护进程没在跑」是**两件事**，说清楚哪一件，
-	// 用户才知道下一步该做什么（换一份产物 / 起服务）。
-	if !c.self.mounted {
-		return host.Die(69, i18n.T("this build cannot serve a web interface: nothing provides a shared port "+
-			"(the porthub module is not installed)", nil))
+	var port int
+	var note string
+	switch c.self.mode {
+	case modeShared:
+		// 端口来自 state.json——守护进程起监听时写下的那个。它是 CLI 侧唯一知道
+		// 的端口真相（`newgate status` 报的也是它）。
+		port = domain.ProxyPort
+		if st := store.LoadState(); st != nil && st.Port != 0 {
+			port = st.Port
+		}
+	case modeStandalone:
+		// 退路：这个构建里没有共享端口，界面自己监听的号只有它自己知道
+		//（`NEWGATE_WEB_PORT` 覆盖，默认 FallbackPort）。
+		port = standalonePort()
+		note = i18n.T("this build has no shared port, so the interface listens on its own port "+
+			"(the gateway is on a different one)", nil)
+	default:
+		// 「这个构建里没有入口」与「守护进程没在跑」是**两件事**，说清楚哪一件，
+		// 用户才知道下一步该做什么（换一份产物 / 起服务）。
+		return host.Die(69, i18n.T("this build cannot serve a web interface: nothing provides "+
+			"a shared port (porthub) or a serve-time hook (serving)", nil))
 	}
-
-	// 端口来自 state.json——守护进程起监听时写下的那个。它是 CLI 侧唯一知道的
-	// 端口真相（`newgate status` 报的也是它）。
-	port := domain.ProxyPort
-	if st := store.LoadState(); st != nil && st.Port != 0 {
-		port = st.Port
-	}
-	url := fmt.Sprintf("http://127.0.0.1:%d%s/", port, Prefix)
 
 	fmt.Println(style.Title("newgate web", "127.0.0.1"))
 	fmt.Println(style.Rule(72))
-	fmt.Println(style.Item(style.OK, url))
+	fmt.Println(style.Item(style.OK, fmt.Sprintf("http://127.0.0.1:%d%s/", port, Prefix)))
+	if note != "" {
+		fmt.Println(style.Hint(note))
+	}
 	if !host.DaemonRunning() {
 		// 界面是守护进程发出来的：CLI 进程里那个挂载只是账本上的一行，没有
 		// socket 在听。不说这一句，用户会以为命令本身就是把服务起起来。
