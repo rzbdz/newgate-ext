@@ -78,6 +78,23 @@ for s in $specs; do
   [ -f "$here/$s" ] || { echo "找不到规格书 $here/$s" >&2; exit 1; }
 done
 
+# 内核的提交**推上去了才算数**。submodule 平时是 detached 的：在 core/ 里改完、
+# 提交、忘了 `git push`，编出来的二进制就基于一个只存在于本机的提交——别人拿到
+# （CI 拿到）的是一个指向不存在提交的指针，发行版的流水线会在 checkout 那一步
+# **整体**死掉：`fatal: remote error: upload-pack: not our ref`（2026-09-20 实测）。
+#
+# 只警告不报错：本地开发时从「还没推的内核提交」编一份出来是合理的（正是要试它），
+# 但必须说出来——那份产物谁也复现不了，推上去的那一刻 CI 就会替你说。
+if core_head=$(git -C "$core" rev-parse --verify -q HEAD); then
+  if [ -z "$(git -C "$core" for-each-ref --contains "$core_head" --format='%(refname)' refs/remotes/)" ]; then
+    {
+      echo "⚠ core/ 的 HEAD ${core_head:0:7} 不在任何**已获取的**远端分支上。"
+      echo "  要么忘了 push（git -C core push origin main），要么本地没 fetch"
+      echo "  （git -C core fetch）。这份产物别人复现不了，CI 也过不了 checkout。"
+    } >&2
+  fi
+fi
+
 # 版本号带上工作区状态。旧版在工作区脏时只**警告一句**，而二进制的版本仍然记成
 # 那个提交号——两个说法对不上。现在直接写进二进制：`newgate version` 自己会说
 # 「这是 dirty 的」，谎报不了。
