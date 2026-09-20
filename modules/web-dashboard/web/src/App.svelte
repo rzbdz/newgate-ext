@@ -248,6 +248,10 @@
         for (const id of Object.keys(drafts)) if (!alive.has(id)) delete drafts[id];
         drafts = { ...drafts };
         conflicts = [];
+        // 整份重读之后，两半都从盘上重新读了一遍——「另一半的草稿被挤掉」这件事
+        // 已经过去了（该看的人看过这一眼了），留着那句话只会变成一条永远擦不掉的
+        // 提示（它描述的是一个已经不存在的情况）。
+        dropped = "";
       }
       resolveRoute();
       note = localTime(doc.generated_at, doc.lang);
@@ -288,17 +292,34 @@
    */
   let lastEdit = $state<Record<string, "ui" | "raw">>({});
 
+  /**
+   * dropped 是「刚才丢掉的是哪一份文件另一半的草稿」——一句给用户看的话，不是错误。
+   *
+   * 为什么必须有：另一半的草稿是被**这一半**的编辑挤掉的（见 edit），而那是用户
+   * 刚敲进去的字。不声不响地丢掉它违背这个仓库那条硬规矩（不静默），而且他多半
+   * 会以为那段字还在——等他想起来回来看时，屏幕上已经是盘上那份旧内容了。
+   */
+  let dropped = $state("");
+
   function edit(id: string, value: unknown) {
     const c = concepts.find((x) => x.id === id);
     const f = c ? fileOf(c) : undefined;
     if (c && f) {
       const side: "ui" | "raw" = c.kind === "code" ? "raw" : "ui";
       lastEdit[f] = side;
+      let lost = "";
       for (const other of concepts) {
         if (other.id === id || fileOf(other) !== f) continue;
         const otherSide = other.kind === "code" ? "raw" : "ui";
-        if (otherSide !== side) delete drafts[other.id];
+        if (otherSide === side || drafts[other.id] === undefined) continue;
+        lost = f;
+        delete drafts[other.id];
       }
+      dropped = lost
+        ? t("both panes edit {file}, and only the one you touched last is saved — what was pending in the other pane has been dropped", {
+            file: lost,
+          })
+        : "";
     }
     drafts[id] = value;
     drafts = { ...drafts };
@@ -583,6 +604,9 @@
     <div class="errs">
       {#if error}
         <div class="banner">{error}</div>
+      {/if}
+      {#if dropped}
+        <div class="notice">{dropped}</div>
       {/if}
       {#each conflicts as cf (cf.concept + cf.current)}
         <!-- 自己就是一块 .banner.conflict（不套壳：两层边框看着像两个东西）。 -->

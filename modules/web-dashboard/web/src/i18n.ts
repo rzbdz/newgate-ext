@@ -83,9 +83,13 @@ const en: Record<string, string> = {
   follow: "follow",
   "no log file yet — this daemon has not written anything.":
     "no log file yet — this daemon has not written anything.",
+  "both panes edit {file}, and only the one you touched last is saved — what was pending in the other pane has been dropped":
+    "both panes edit {file}, and only the one you touched last is saved — what was pending in the other pane has been dropped",
 };
 
 const zhHans: Record<string, string> = {
+  "both panes edit {file}, and only the one you touched last is saved — what was pending in the other pane has been dropped":
+    "{file} 的两栏改的是同一份文件，只保存你最后动的那一栏 —— 另一栏里没保存的改动已经丢掉了",
   sections: "目录",
   "nothing is contributing a view in this process.":
     "这个进程里没有模块贡献界面内容。",

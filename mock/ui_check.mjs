@@ -555,6 +555,54 @@ if (!(await openSwitches())) {
   }
 }
 
+// —— 11.5. 挤掉另一半的草稿时，必须说一声 ——
+//
+// 两半写的是同一份文件，所以后改的那一半赢、另一半**没保存的**草稿作废（见
+// App.svelte 的 edit/lastEdit，那是用户点名要的语义）。但作废掉的是他刚敲进去的
+// 字——不声不响地丢掉违背这个仓库那条硬规矩（不静默），而且他会以为那段字还在。
+//
+// 判据两条：屏幕上出现了一句提示，且那句话**点名了是哪份文件**（同一个文件的两半
+// 才可能撞上这件事，不说文件名等于让用户自己去猜是哪一份）。
+{
+  const pair = snap.concepts.find((c) => c.kind === "mapping-editor");
+  await page.locator(`nav.side button[title="${pair.source}"]`).click();
+  await page.waitForTimeout(250);
+  await page
+    .locator(`button.tab[title="${pair.id}"], nav.v button[title="${pair.id}"]`)
+    .first()
+    .click();
+  await page.waitForTimeout(400);
+
+  const cm = page.locator(".pane-r .cm-content").first();
+  const name = page.locator(".card .head input.name").first();
+  if ((await cm.count()) && (await name.count())) {
+    // 先在**原文**那一栏敲一句（造一份 raw 草稿），再去**控件**那一栏动一下。
+    await cm.click();
+    await page.keyboard.press("Control+End");
+    await page.keyboard.type("# raw half");
+    await page.waitForTimeout(250);
+    await name.fill("demo-renamed");
+    await page.waitForTimeout(300);
+    const notice = await page.locator(".notice").first().innerText().catch(() => "");
+    check("挤掉另一半的草稿时说了一声", notice.trim().length > 0, "屏幕上一句话都没有，那段字就没了");
+    check(
+      "那句话点名了是哪份文件",
+      notice.includes(pair.data.file),
+      `实际 ${JSON.stringify(notice.slice(0, 90))}`,
+    );
+    // 收尾：把这一节的草稿撤掉，别影响后面的键盘检查。
+    await page
+      .locator(".card.dirty button")
+      .filter({ hasText: /撤销|revert|Revert/ })
+      .first()
+      .click()
+      .catch(() => {});
+    await page.waitForTimeout(400);
+  } else {
+    skip("这一节没有「控件 + 原文」两半，跳过 11.5");
+  }
+}
+
 // —— 12. 运行期开关画成「开关」，不是复选框 ——
 //
 // 用户的原话是「别搞那个傻逼钩啊，用一个可以 toggle 的开关」。判据落在

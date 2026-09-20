@@ -104,6 +104,16 @@ a { color: var(--accent); }
   background: color-mix(in srgb, var(--danger) 12%, transparent);
   margin-bottom: 14px;
 }
+/* notice 是**说一句**，不是报错：东西没坏，只是有个副作用用户该知道（比如同一份
+   文件的另一半有未保存的改动被挤掉了）。所以用 warn 而不是 danger——画成红的会
+   让人以为保存失败了，然后去重试一件已经成功的事。 */
+.notice {
+  padding: 9px 13px;
+  border-radius: var(--radius);
+  border: 1px solid var(--warn);
+  background: color-mix(in srgb, var(--warn) 12%, transparent);
+  margin-bottom: 14px;
+}
 
 /* ---------- 版面：左目录 / 右上 tab 条 / 右下内容 ----------
    页面的网格必须住在这个全局表里，不能写进 App.svelte 的 <style>：Svelte 的
