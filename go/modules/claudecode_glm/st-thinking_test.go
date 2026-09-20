@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rzbdz/newgate/go/modules-ext/modules/glm"
-	glmapi "github.com/rzbdz/newgate/go/modules-ext/modules/glm"
+	"github.com/rzbdz/newgate-modules-ext/go/modules/glm"
+	glmapi "github.com/rzbdz/newgate-modules-ext/go/modules/glm"
 	claudeapi "github.com/rzbdz/newgate/go/modules/claudecode"
 	"github.com/rzbdz/newgate/go/modules/gateway/special"
 	thinkingmodule "github.com/rzbdz/newgate/go/modules/thinking"

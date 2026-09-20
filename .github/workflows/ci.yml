@@ -1,0 +1,119 @@
+name: CI
+
+# 发行版的流水线，三档（对应 docs/10-testing-security.md 的粒度）：
+#
+#   core-test  内核的**全部内部测试** —— 发行版带的就是 core 这份依赖，
+#              它绿不绿直接决定这个产品能不能发。单独一个 job 是为了让它在
+#              run 列表里**有自己的名字**（`core-test passed`），而不是混在
+#              「我们自己的测试」里——出错时一眼能看出是内核的事还是发行版的事。
+#   dist-test  发行版自己的：格式、vet、装配清单是否过期、模块测试
+#   e2e        真二进制 + 内核的假上游，跑发行版模块的端到端行为
+#
+# 触发条件与内核那边一致：只在 main 上跑 + 手动。开发从 main 切分支、完事合回
+# main，所以只有合进去那一下需要权威判定。
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  core-test:
+    name: core-test（内核的全部内部测试）
+    runs-on: ubuntu-latest
+    # 与内核 CI 同一个意图：钉住配置目录，别让 runner 上的真实配置漏进来。
+    env:
+      NEWGATE_HOME: /tmp/nc-core
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: core/go/go.mod
+          # 指 go.mod 而不是 go.sum：内核**没有第三方依赖**，仓库里没有 go.sum，
+          # 指着一个不存在的文件会让 setup-go 算不出缓存键（见内核 CI 的注释）。
+          cache-dependency-path: core/go/go.mod
+
+      # GOPROXY=off：内核的构建与测试**完全离线**（2026-09-20 起，发行版机制搬出
+      # 内核之后成立）。这条把「离线」变成 CI 会红的事实。
+      - name: 内核单测（离线）
+        working-directory: core/go
+        run: GOPROXY=off go test ./...
+
+      - name: 内核格式 / 清单 / vet
+        working-directory: core/go
+        run: |
+          make check-fmt
+          make check-generate
+          go vet ./...
+
+  dist-test:
+    name: dist-test（发行版自己的模块）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go/go.mod
+          cache-dependency-path: go/go.mod
+
+      - name: 格式与 vet
+        working-directory: go
+        run: |
+          out=$(gofmt -l .); if [ -n "$out" ]; then echo "格式不对，跑 gofmt -w："; echo "$out"; exit 1; fi
+          go vet ./...
+
+      # 清单是**生成物但进版本控制**：它记着「这份提交装了什么」。过期了就说明
+      # 有人改了规格书或模块目录却没重新生成——那是产物与源码对不上的静默故障。
+      - name: 装配清单是否过期
+        working-directory: go
+        run: go run ./tools/distgen -check
+
+      - name: 模块测试
+        working-directory: go
+        run: go test ./...
+
+  e2e:
+    name: 零 token 端到端（发行版的二进制）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go/go.mod
+          cache-dependency-path: go/go.mod
+
+      # 脚本的依赖：python3（内核的假上游）、curl（打代理）、coreutils（md5sum）。
+      - name: 装依赖
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq python3 curl coreutils
+
+      - name: 构建（走 build/build.sh，与发布同一条路）
+        run: bash build/build.sh dist
+
+      - name: 发行版模块的端到端
+        run: bash mock/e2e_claude_dist.sh
+
+      - name: 失败时导出日志
+        if: failure()
+        run: |
+          for d in /tmp/newgate-dist-e2e.* /tmp/newgate-claude-e2e.*; do
+            [ -d "$d" ] || continue
+            echo "=== $d ==="
+            find "$d" -name '*.log' -exec sh -c 'echo "--- {}"; tail -80 "{}"' \;
+          done

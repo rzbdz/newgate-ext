@@ -10,33 +10,41 @@
 
 ---
 
-## 0. 两个仓库，三条规矩
+## 0. 两个仓库，四条规矩
 
 ```
 newgate-ext/           ← 你在这里（发行版：产品）
 ├── core/              ← submodule：内核源码，钉在一个提交上
-├── modules/           ← 本发行版的模块
-├── testing/           ← 本发行版的测试（跑在内核的测试设施上）
+├── go/                ← 本发行版的 Go module（与 core/go 平行）
+│   ├── go.mod         ← replace github.com/rzbdz/newgate/go => ../core/go
+│   ├── modules/       ← 本发行版的模块
+│   ├── testing/       ← 本发行版自己的测试
+│   ├── manifest/      ← 生成物：规格书 → 装配选择（进版本控制）
+│   ├── cmd/newgate/   ← 本发行版的 main（十几行）
+│   └── tools/distgen/ ← 读规格书，生成 manifest/
 ├── dist.json          ← 规格书：本发行版由哪些模块组成、关掉内核的哪几个
-└── build/build.sh     ← 唯一的构建入口
+├── build/build.sh     ← 唯一的构建入口
+└── mock/              ← 本发行版模块的端到端（复用内核的假上游）
 ```
 
-1. **`core/` 是 submodule，不是你的工作区**。要改内核（新增 capability、修组件框架、
-   改网关），进 `core/` 里改、提交、推到内核仓库，再回到这里 `git add core` 把
-   gitlink 挪到新提交。**在这里改完不推**，别人拿到的是一个指向不存在提交的指针。
-2. **submodule 在这个方向是对的**（内核塞进发行版），反方向不是：这里构建**真的需要**
-   那份内核源码，所以 `clone --recursive` 就该拿到一棵能编的树；而内核构建**不需要**
-   发行版的代码，它需要的是一张声明（装哪个发行版）——那是数据，不该进内核的版本控制。
+1. **`core/` 是 submodule，不是你的工作区**。要改内核，去内核仓库改、提交、推，
+   再回到这里 `git -C core fetch && git -C core checkout <新提交>`、`git add core`。
+   **在这里改完不推**，别人拿到的是一个指向不存在提交的指针。
+2. **发行版是它自己的 Go module**（`go/go.mod`），内核只是它的一份依赖
+   （`replace` 到 `../core/go`）。所以：
+   - 内核版本**只有一个真相**——submodule 的 gitlink；没有第二个版本号要对;
+   - 构建读的是**工作区**，不必先 commit；
+   - 内核的测试可以在树内直接跑（流水线里的 `core-test` 就是这么来的）。
 3. **两条分支**：`main` = 官方发行版；`template` = 给别人 fork 的骨架（只有两个样例
-   模块）。发行版相关的改动（build / chore）单独提交，需要时 cherry-pick 到 template。
-
----
+   模块）。发行版相关的改动单独提交，需要时 cherry-pick 到 template。
+4. **内核对发行版一无所知**。`app.Selection` 是那条接缝：组合根的装配逻辑在内核，
+   「装哪些」由这里给。别指望内核认识任何模块名——它连 `deepseek` 这个词都不该有。
 
 ## 1. 改哪边（判据）
 
 > **换个发行版，这东西还该在吗？**
 
-| 该在 → `core/` | 不该在 → `modules/` |
+| 该在 → `core/` | 不该在 → `go/modules/` |
 | --- | --- |
 | 网关、熔断、接管、界面、配置、组件框架 | 上游怪癖修补（DeepSeek 尾部形状、GLM 思维链回传） |
 | 客户端接入（Claude Code / opencode） | 客户端×模型的交叉语义 |
@@ -52,9 +60,9 @@ newgate-ext/           ← 你在这里（发行版：产品）
 
 - 对内核的 import 是 `github.com/rzbdz/newgate/go/...`（**用它的公开契约**，
   别 import 内部实现包——那些随时会动）；
-- 模块之间的 import 是 `github.com/rzbdz/newgate/go/modules-ext/modules/<名字>`；
+- 模块之间的 import 是 `github.com/rzbdz/newgate-modules-ext/go/modules/<名字>`；
 - **目录名不必是 Go 标识符**（`simple-cli` 合法），生成器会把 import 别名拧成
-  `ext_simple_cli`；
+  `ext_simple_cli`（判据在内核的 `tools/genmodules/scan.Ident`，两个仓库共用一份）；
 - 依赖方向：可以 `Need`/`Optional` 内核提供的端口；**不要**依赖内核里某个具体模块的
   内部——那是内核自己的事，它也没给你那个口子。
 
@@ -67,47 +75,53 @@ newgate-ext/           ← 你在这里（发行版：产品）
 git submodule update --init --recursive   # 第一次
 build/build.sh                            # → dist/newgate-<发行版>-<平台>-<架构>
 NEWGATE_DIST=dist-simple-cli.json build/build.sh out/   # 换规格书的变体
+
+# 发布时给一份平台矩阵（默认只编本机）
+NEWGATE_PLATFORMS="linux/amd64 linux/arm64 darwin/arm64" build/build.sh dist/
 ```
 
-- 脚本做四件事：检查 `core/` → 写一张 Pin（指向**本仓库当前提交**）→
-  `core/go` 里 `make static` → 拷出来。本地与 CI（`.github/workflows/release.yml`）
-  走的是同一条路。
-- 它**不写任何东西进内核仓库根**：内核根那份 `modules-ext.json` 是**默认发行版**的
-  配置，不是我们的，所以用 `NEWGATE_MODULES_PIN` 指一份临时的。
-- **构建编的是「已提交的状态」**：Pin 钉的是提交号，内核会把这份仓库 clone 到
-  `core/go/modules-ext/`，未提交的改动不在里面。所以改完模块**先 commit**（要回退就先
-  打一个 WIP commit，别用裸 `git stash`）。脚本在工作区脏时会明确警告。
-  （想做到「改完直接编」得让 `core/go/modules-ext` 变成指回本目录的符号链接；
-  代价是 `go test ./...` 不跟进符号链接，测试得显式点名——目前没做。）
-
-### 一个必然的副作用：内核 checkout 会变脏
-
-装配清单（`core/go/app/modules_gen.go`）是**跟着发行版走**的生成物：编一次本发行版，
-内核那份清单就被重写成「内核自带 + 本发行版点名的模块」。于是 `git -C core status`
-会显示它被改过——**这是正常的**，不是你的改动。
-
-- 不要把它提交回内核仓库（那是内核的默认发行版清单，由内核的 Pin 决定）。
-- 要还原：`git -C core checkout -- go/app/modules_gen.go`。
-- 后果要说清楚：只要内核 checkout 脏着，`git -C core pull` / `checkout` 会被
-  工作区挡住。换分支或拉内核之前先还原它。
+- 脚本做四件事：检查 `core/` → 生成装配清单（`go/tools/distgen`）→ 编静态二进制
+  → 拷到 `dist/`。本地与 CI（`.github/workflows/release.yml`）走的是同一条路。
+- **多调用型二进制**：argv0 决定这次调用归谁（`newgate` / `claude` / `opencode` …）。
+  所以拿产物去跑之前，**先按正确的名字落一份**——直接跑
+  `dist/newgate-<发行版>-linux-amd64 plugin` 会被当成 profile 名，报
+  「同时给了 profile … 和 …，不一致」（2026-09-20 实测）。
+- 换规格书 = 改 `dist.json` 或加一份 `dist*.json`，**不用改任何 Go 代码**：
+  `distgen` 会把全部规格书生成进 `go/manifest/modules_gen.go`（那份文件要提交），
+  构建时用 `-X main.spec=<文件名>` 选一份。
+- **`go/manifest/modules_gen.go` 是生成物但进版本控制**：它记着「这份提交装了什么」。
+  改了规格书或模块目录就要重新生成（`cd go && go run ./tools/distgen`），
+  CI 有一步 `-check` 拦「忘了生成」。
 
 ## 4. 测
 
-本发行版的 `testing/` 与各模块的 `_test.go` **编在内核的 module 里**，所以测试在
-内核那侧跑：
+分成两段，**发行版的流水线里第一项就是内核的全部测试**：
 
 ```bash
-cd core/go && gofmt -l . && go vet ./... && go test ./...
+# core-test：内核自己的（离线、不依赖本仓库）
+cd core/go && GOPROXY=off go test ./... && make check-fmt && make check-generate && go vet ./...
+
+# dist-test：本发行版自己的
+cd go && gofmt -l . && go vet ./... && go run ./tools/distgen -check && go test ./...
+
+# 端到端：真二进制 + 内核的假上游（零 token）
+build/build.sh dist && bash mock/e2e_claude_dist.sh
 ```
 
-它带上的是 clone 进 `core/go/modules-ext/` 的那一份 = 你**已提交**的状态。推之前
-跑这三条——内核的 CI 会把它们连内核自己的测试一起跑一遍，这里的格式/vet 不合格会
-红在**内核**的流水线上（离真因隔着一次上下文切换，所以在这里先跑）。
+**测试跟着拥有者走**：
+- 内核的测试只管内核的逻辑与内核的模块（`core/go/...`）；
+- 本发行版的模块行为由本仓库的测试与 `mock/` 里的端到端锁；
+- 需要真 token 的 `mock/e2e_reasoning_affinity.sh` **不在 CI 里**（它花真钱），
+  按需人工跑。
+
+内核的假上游（`mock/fake_upstream.py`）**按路径复用**（`core/mock/…`），不复制：
+它是逐字节复刻真实上游行为的产物，复制必然漂移，而漂移出来的是「绿的假测试」。
 
 ## 5. 发布
 
 ```bash
-git tag v0.1.0 && git push origin main --tags   # CI 编静态二进制并上传 artifact
+git tag v0.1.0 && git push origin main --tags   # CI 编平台矩阵并挂到 GitHub Release
 ```
 
-发行节奏是发行版作者的事：内核今天合了什么，不该决定你的产品什么时候发新版。
+产物直接可下载（`gh release download <tag>` 或 Release 页面）。发行节奏是发行版
+作者的事：内核今天合了什么，不该决定你的产品什么时候发新版。

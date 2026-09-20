@@ -4,18 +4,23 @@ newgate 的内核只做机制；**产品决策在发行版这一层**：装哪�
 按什么顺序修。这个仓库就是那个发行版，而且它是**顶层**——内核源码作为 submodule
 钉在 `core/`，写模块、编二进制、发版本都在这里发生。
 
-fork 它 → 改 `dist.json` 与 `modules/` → 就有了你自己的发行版。
+fork 它 → 改 `dist.json` 与 `go/modules/` → 就有了你自己的发行版。
 
 ## 目录
 
 | 路径 | 是什么 |
 | --- | --- |
 | `core/` | **submodule**：内核源码（`github.com/rzbdz/newgate`），钉在一个提交上 |
-| `modules/<名字>/module.go` | 本发行版的模块，形态与内核的 `modules/` 完全一致 |
+| `go/` | 本发行版的 **Go module**（与 `core/go` 平行） |
+| `go/go.mod` | `replace github.com/rzbdz/newgate/go => ../core/go`——内核是这里的一份依赖 |
+| `go/modules/<名字>/module.go` | 本发行版的模块，形态与内核的 `modules/` 完全一致 |
+| `go/manifest/modules_gen.go` | **生成物**（进版本控制）：规格书 → 装配选择 |
+| `go/tools/distgen/` | 读规格书、生成上面那份清单 |
+| `go/cmd/newgate/` | 本发行版的 main：交出「装哪张图 + 版本号」，其余交给内核的组合根 |
 | `dist.json` | **规格书**：本发行版由哪些模块组成、关掉内核的哪几个 |
 | `dist-simple-cli.json` | 第二个规格书：同一个仓库的另一个变体（换掉界面） |
-| `testing/` | 本发行版自己的测试（跑在内核的测试设施上） |
-| `build/build.sh` | 唯一的构建入口：内核 + 本仓库 → 静态二进制 |
+| `mock/` | 本发行版模块的端到端（复用内核的假上游） |
+| `build/build.sh` | 唯一的构建入口 |
 | `CLAUDE.md` | 在这里干活的人（和 agent）要先读的那份说明 |
 
 ## 两条分支
@@ -33,25 +38,31 @@ $EDITOR dist.json                     # 选模块、关掉不要的
 build/build.sh                        # → dist/newgate-<发行版>-<平台>-<架构>
 ```
 
-`build/build.sh` 写一张 Pin 指向**本仓库当前提交**，让内核把这份仓库 clone 进它的
-`go/modules-ext/`，然后 `make static`。内核仓库根那份 `modules-ext.json` 是**默认
-发行版**的配置，不是我们的——脚本不碰它，用 `NEWGATE_MODULES_PIN` 指一份临时的。
+编的是**你自己的 main + core/ 那一发的内核**：发行版是独立 module（`go/go.mod`），
+内核只是它的一份依赖（replace 到 submodule）。于是没有中间产物要同步——改完直接编，
+不必先 commit，内核的工作区也不会被改写。
 
-**构建编的是已提交的状态**（Pin 钉提交号），未提交的改动不在二进制里：改完先 commit。
-要回退就先打个 WIP commit，别用裸 `git stash`。
+要发布多平台产物：
 
-## 一个必然的副作用
+```bash
+NEWGATE_PLATFORMS="linux/amd64 linux/arm64 darwin/arm64" build/build.sh dist/
+```
 
-装配清单（`core/go/app/modules_gen.go`）跟着发行版走：编一次本发行版，内核那份
-清单就被重写。`git -C core status` 会显示它被改过，**这是正常的**——别提交回内核，
-`git -C core checkout -- go/app/modules_gen.go` 可还原（拉内核/换分支前先还原）。
+**产物是多调用型的**（argv0 决定入口：`newgate` / `claude` / `opencode`…），
+拿去跑之前先按正确的名字落一份：
+
+```bash
+cp dist/newgate-<发行版>-linux-amd64 /tmp/newgate && /tmp/newgate version
+```
 
 ## 推之前
 
-本仓库的包**编进内核的 module**，所以它们的不合格会红在**内核**的 CI 上：
+两个仓库各管各的测试，发行版的流水线里**第一项是内核的全部测试**：
 
 ```bash
-cd core/go && gofmt -l . && go vet ./... && go test ./...
+cd core/go && GOPROXY=off go test ./...        # core-test：内核自己的（离线）
+cd go && gofmt -l . && go vet ./... && go test ./...   # dist-test：发行版自己的
+build/build.sh dist && bash mock/e2e_claude_dist.sh    # 端到端（零 token）
 ```
 
 ## 现有模块

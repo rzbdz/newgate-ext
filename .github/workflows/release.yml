@@ -3,38 +3,72 @@ name: release
 # 发行版自己的发布流水线。它在**这个仓库**里，不在内核仓库里——发行节奏是发行版
 # 作者的事：内核今天合了什么，不该决定你的产品什么时候发新版。
 #
-# 它只有一个动作：跑 build/release.sh。那个脚本已经把「怎么造」写全了（拿内核源码
-# → 写 Pin → make static），CI 只是把它跑一遍再把产物传上去——同一份逻辑，本地和
-# CI 走的是同一条路。
+# 它做的就是把 build/build.sh 跑一遍（一个平台矩阵），然后把产物**发布成 GitHub
+# Release**——这样产物是「可下载的」而不只是躺在 Actions 的 artifact 里（artifact
+# 有保留期、还要登录才能下）。本地与 CI 走的是同一条构建路径，区别只有
+# NEWGATE_PLATFORMS 这一项。
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
 
+# 发布 Release 要写权限（原来只读，那时只上传 artifact）。
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
-    name: 编译静态二进制
+    name: 编译并发布静态二进制
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          # core/ 是 submodule（内核源码钉在那一发上），构建要用它。
+          # core/ 是 submodule（内核源码钉在那一发上），构建要用它——go.mod 里
+          # 那条 replace 指的就是 ./core/go。
           submodules: recursive
-          # 脚本要拿本仓库的提交号当 Pin 的 revision，浅克隆也给得出 HEAD。
-          fetch-depth: 1
+          # fetch-depth 0：版本号来自 `git describe --tags`，浅克隆上它退化成一串
+          # 提交号（发出来的二进制会报不出 tag）。这个仓库不大，全量取值得。
+          fetch-depth: 0
 
       - uses: actions/setup-go@v5
         with:
-          go-version: stable
+          # 跟 go.mod 走，不写死版本——否则升级 toolchain 时这里会静默落后。
+          go-version-file: go/go.mod
+          # 指 go.mod 而不是 go.sum：这个 module **没有第三方依赖**（内核也没有），
+          # 仓库里没有 go.sum，指着一个不存在的文件算不出缓存键。
+          cache-dependency-path: go/go.mod
 
-      - name: 构建
+      - name: 构建（平台矩阵）
+        env:
+          NEWGATE_PLATFORMS: linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
         run: bash build/build.sh dist
+
+      # 产物必须能跑、版本必须对得上。多调用型二进制（argv0 决定入口）——所以
+      # 先按正确的名字落一份再跑，否则 `newgate version` 会被当成 profile 名。
+      - name: 自检：产物能跑
+        run: |
+          mkdir -p /tmp/bin
+          cp dist/newgate-*-linux-amd64 /tmp/bin/newgate
+          export NEWGATE_HOME="$(mktemp -d)/ng"
+          /tmp/bin/newgate version
+          /tmp/bin/newgate plugin | head -4
 
       - uses: actions/upload-artifact@v4
         with:
           name: newgate-static
-          path: dist/*
+          path: |
+            dist/newgate-*
+            dist/SHA256SUMS
           if-no-files-found: error
+
+      # 打 tag 推上来 = 发一版：产物挂到 Release 上，谁都能直接下。
+      # 手动触发（workflow_dispatch）只上传 artifact，不发 Release。
+      - name: 发布 Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            dist/newgate-* dist/SHA256SUMS

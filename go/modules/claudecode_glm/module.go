@@ -7,8 +7,8 @@ package claudecode_glm
 import (
 	"context"
 
+	glmapi "github.com/rzbdz/newgate-modules-ext/go/modules/glm"
 	modules "github.com/rzbdz/newgate/go/component"
-	glmapi "github.com/rzbdz/newgate/go/modules-ext/modules/glm"
 	claudeapi "github.com/rzbdz/newgate/go/modules/claudecode"
 	gatewayapi "github.com/rzbdz/newgate/go/modules/gateway"
 )

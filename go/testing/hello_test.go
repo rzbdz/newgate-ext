@@ -17,7 +17,7 @@ package disttesting
 import (
 	"testing"
 
-	"github.com/rzbdz/newgate/go/modules-ext/modules/hello"
+	"github.com/rzbdz/newgate-modules-ext/go/modules/hello"
 	"github.com/rzbdz/newgate/go/testing/testkit"
 )
 
