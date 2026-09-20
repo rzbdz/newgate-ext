@@ -21,6 +21,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          # core/ 是 submodule（内核源码钉在那一发上），构建要用它。
+          submodules: recursive
           # 脚本要拿本仓库的提交号当 Pin 的 revision，浅克隆也给得出 HEAD。
           fetch-depth: 1
 
@@ -29,7 +31,7 @@ jobs:
           go-version: stable
 
       - name: 构建
-        run: bash build/release.sh dist
+        run: bash build/build.sh dist
 
       - uses: actions/upload-artifact@v4
         with:

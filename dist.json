@@ -1,9 +1,5 @@
 {
   "distribution": "newgate-default",
-  "core": {
-    "repo": "https://github.com/rzbdz/newgate.git",
-    "revision": "5c91b0d649d30b516a8d3729d014a5740e75493c"
-  },
   "modules": [
     "hello",
     "deepseek",
