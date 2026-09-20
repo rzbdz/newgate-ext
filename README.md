@@ -39,6 +39,22 @@ build/release.sh                      # 编出 dist/newgate-<发行版>-<平台>
 `$NEWGATE_CORE` 指的那份）→ 写一张 Pin 指向**本仓库当前提交** → `make static`。
 `.github/workflows/release.yml` 是同一个脚本的 CI 版。
 
+## 分支
+
+| 分支 | 是什么 |
+| --- | --- |
+| `main` | **官方发行版**：内核之外我们维护的模块（上游怪癖修补、客户端×模型交叉语义） |
+| `template` | 给别人 fork 的骨架：只有 `hello` 与 `simple-cli` 两个样例模块 |
+
+## 推之前
+
+本仓库的包**编进内核的 module**（checkout 在 `<core>/go/modules-ext/`），所以它
+们的不合格会在**内核**的 CI 里红。推之前在本机内核 checkout 里跑一遍：
+
+```bash
+cd <core>/go && gofmt -l . && go vet ./... && go test ./...
+```
+
 ## 现有模块
 
 | 模块 | 作用 |
