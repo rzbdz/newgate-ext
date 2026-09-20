@@ -8,7 +8,7 @@
   //
   // 配对由 App 按「写的是不是同一份文件」算好（见 nav.ts 的 fileOf），这里只管
   // 摆。所以它不认识任何模块，也不知道哪一半是「控件」。
-  import type { Concept } from "./api";
+  import type { Concept, ConceptAction } from "./api";
   import ConceptCard from "./ConceptCard.svelte";
   import { t } from "./i18n";
 
@@ -21,6 +21,7 @@
     onEdit,
     onRevert,
     onDeleteFile,
+    onAction,
     onToggleSplit,
   }: {
     left: Concept;
@@ -34,6 +35,9 @@
     onRevert: (id: string) => void;
     // 都作用在**卡片自己那份文件**上，所以不带参数（见 kinds/MappingEditor）。
     onDeleteFile?: () => void;
+    // 跑某张卡上的一个动作（见 api.ts 的 ConceptAction）。**要带 id**：这个组件
+    // 同时拿着两张卡（控件半与原文半），而动作只属于其中一张。
+    onAction?: (id: string, a: ConceptAction) => void;
     onToggleSplit: () => void;
   } = $props();
 
@@ -57,6 +61,7 @@
         onEdit={(v) => onEdit(left.id, v)}
         onRevert={() => onRevert(left.id)}
         {onDeleteFile}
+        onAction={(a) => onAction?.(left.id, a)}
       />
     </div>
     {#if two && right}
@@ -67,6 +72,7 @@
           onEdit={(v) => onEdit(right.id, v)}
           onRevert={() => onRevert(right.id)}
           {onDeleteFile}
+          onAction={(a) => onAction?.(right.id, a)}
         />
       </div>
     {/if}

@@ -72,6 +72,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.sectionAction(w, r)
+	case r.URL.Path == "/api/concept-action":
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", http.MethodPost)
+			http.Error(w, i18n.T("concept actions use POST", nil), http.StatusMethodNotAllowed)
+			return
+		}
+		h.conceptAction(w, r)
 	case r.URL.Path == "/api/apply":
 		if r.Method != http.MethodPost {
 			w.Header().Set("Allow", http.MethodPost)
@@ -187,6 +194,9 @@ type conceptDoc struct {
 	// 用户看到的正是「它们经常会自己跑到下面」）。
 	Order int `json:"order"`
 	Data  any `json:"data"`
+	// Actions 是**这张卡上**的按钮（见 view.Concept.Actions）。与 sectionDoc.Actions
+	// 同一个形状、同一条规矩：BFF 只搬 ID 与标签，「点了会发生什么」住在贡献者那边。
+	Actions []view.ActionInfo `json:"actions,omitempty"`
 	// Error 非空 = 这个概念**此刻读不出来**（文件被删了、JSON 坏了）。卡片照
 	// 常出现、写着原因，而不是从列表里消失——消失了用户会以为它不存在。
 	Error string `json:"error,omitempty"`
@@ -260,6 +270,7 @@ func (h *Handler) snapshot(sources ...string) (snapshotDoc, error) {
 			ID: c.ID, Kind: c.Kind, Title: c.Title, Source: c.Source,
 			Writable: c.Apply != nil, Locked: c.Locked, Live: c.Live, Group: c.Group,
 			Previewable: c.Preview != nil, Order: c.Order, Data: c.Data, Error: c.Broken,
+			Actions: actionInfos(c.Actions),
 		})
 	}
 	if doc.Concepts == nil {
@@ -383,6 +394,59 @@ func (h *Handler) sectionAction(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// 贡献者的报错原样带出去（「那一节里没有这个动作」也在这里）——它比 BFF
 		// 转述一句「操作失败」有用得多。
+		h.writeJSONStatus(w, http.StatusBadRequest, applyResponse{Error: err.Error()})
+		return
+	}
+	h.writeJSONStatus(w, http.StatusOK, applyResponse{OK: true, Focus: focus})
+}
+
+// actionInfos 把贡献者那份动作表端成界面认识的样子（求值标签）。
+//
+// 与 Registry.Sections 里那段是同一件事，抽出来只因为现在有两个调用点（栏目与概念）
+// ——两处各写一遍的话，其中一处会忘了在最前面求值 Label，而那个错误的症状是
+// **按钮上没有字**。
+func actionInfos(acts []view.Action) []view.ActionInfo {
+	var out []view.ActionInfo
+	for _, a := range acts {
+		label := ""
+		if a.Label != nil {
+			label = a.Label()
+		}
+		out = append(out, view.ActionInfo{ID: a.ID, Label: label})
+	}
+	return out
+}
+
+// ---------- 概念动作 ----------
+
+type conceptActionRequest struct {
+	// ID 是哪张卡（概念的稳定身份，快照里那个）。
+	ID string `json:"id"`
+	// Action 是那张卡上的哪个动作（见 view.Action.ID）。
+	Action string `json:"action"`
+}
+
+// conceptAction 跑一个挂在**某张卡**上的动作——「把这一份设为默认」这类。
+//
+// 与 sectionAction 分开而不是合成一个端点，是因为它们的**身份**不同：栏目动作认
+// 来源名，概念动作认概念 ID。合成一个的话，请求里那两个字段就得有一个是可选的，
+// 而「哪一个是空的」这件事会在两处各判断一遍。
+//
+// 与 apply 同一道门（必须是 JSON）：它改的是磁盘上的配置。
+func (h *Handler) conceptAction(w http.ResponseWriter, r *http.Request) {
+	if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		h.writeJSONStatus(w, http.StatusUnsupportedMediaType, applyResponse{
+			Error: i18n.T("concept actions need Content-Type: application/json (got {ct})", i18n.A{"ct": ct})})
+		return
+	}
+	var req conceptActionRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
+		h.writeJSONStatus(w, http.StatusBadRequest, applyResponse{
+			Error: i18n.T("the request body is not valid JSON: {err}", i18n.A{"err": err})})
+		return
+	}
+	focus, err := h.views.RunConceptAction(req.ID, req.Action)
+	if err != nil {
 		h.writeJSONStatus(w, http.StatusBadRequest, applyResponse{Error: err.Error()})
 		return
 	}

@@ -15,9 +15,11 @@
   import {
     apply,
     preview,
+    runConceptAction,
     runSectionAction,
     snapshot,
     type Concept,
+    type ConceptAction,
     type Conflict,
     type Section,
     type SectionAction,
@@ -519,6 +521,36 @@
    * 建出来是什么形状，全是拥有那一节的人的活。界面只做两件事——把点击转过去、
    * 然后重读（与保存那条路一样，干完活就重新拉一份快照）。
    */
+  /**
+   * 跑**某一张卡**上的一个动作（见 api.ts 的 runConceptAction）。
+   *
+   * 与 runAction 是同一件事的两个落点：那边认「这一节」，这边认「这一张卡」。
+   * 两者都**不知道那个动作会干什么**——label 是贡献者写的一句话，改的是磁盘上的
+   * 什么只有那一位知道。界面只做三件事：把点击转过去、丢掉手里的草稿（磁盘变了，
+   * 基线全是旧的）、重读一遍。
+   *
+   * 为什么不像保存那样走 drafts / CAS：动作**不是**「把这份草稿写下去」。它是
+   * 「干一件事」——比如「把这一份设为默认」，那件事改的是 state.json，与这张卡的
+   * 文件没有关系。所以它没有 base、没有 edit，也不该让这张卡变脏。
+   */
+  async function runCardAction(id: string, a: ConceptAction) {
+    busy = true;
+    error = "";
+    const res = await runConceptAction(id, a.id);
+    busy = false;
+    if (res.error) {
+      error = res.error;
+      return;
+    }
+    drafts = {};
+    await load();
+    const target = res.focus ? concepts.find((c) => c.id === res.focus) : undefined;
+    if (target) {
+      route = { section: target.source, card: target.id, split: route.split };
+      writeHash(route);
+    }
+  }
+
   async function runAction(a: SectionAction) {
     busy = true;
     error = "";
@@ -756,6 +788,7 @@
           onEdit={edit}
           onRevert={revert}
           onDeleteFile={deleteActive}
+          onAction={runCardAction}
           onToggleSplit={toggleSplit}
         />
       {:else if concepts.length}

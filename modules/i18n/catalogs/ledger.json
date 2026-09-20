@@ -403,6 +403,15 @@
         "err"
       ]
     },
+    "concept actions need Content-Type: application/json (got {ct})": {
+      "where": "modules/web-dashboard/bff.go:439",
+      "args": [
+        "ct"
+      ]
+    },
+    "concept actions use POST": {
+      "where": "modules/web-dashboard/bff.go:78"
+    },
     "configuration updated (gen {from} → {to}, {n} file){files}": {
       "where": "modules/configshare/proto/poller.go:177",
       "args": [
@@ -625,7 +634,7 @@
       ]
     },
     "no such concept: {id} — the page is probably stale, reload it": {
-      "where": "modules/web-dashboard/bff.go:324",
+      "where": "modules/web-dashboard/bff.go:335",
       "args": [
         "id"
       ]
@@ -685,13 +694,13 @@
       "where": "modules/opencodeomo/module.go:88"
     },
     "previewing needs Content-Type: application/json (got {ct})": {
-      "where": "modules/web-dashboard/bff.go:417",
+      "where": "modules/web-dashboard/bff.go:481",
       "args": [
         "ct"
       ]
     },
     "previewing uses POST": {
-      "where": "modules/web-dashboard/bff.go:85"
+      "where": "modules/web-dashboard/bff.go:92"
     },
     "profile selection": {
       "where": "modules/tui/tui.go:199"
@@ -741,13 +750,13 @@
       ]
     },
     "saving needs Content-Type: application/json (got {ct})": {
-      "where": "modules/web-dashboard/bff.go:311",
+      "where": "modules/web-dashboard/bff.go:322",
       "args": [
         "ct"
       ]
     },
     "saving uses POST": {
-      "where": "modules/web-dashboard/bff.go:78"
+      "where": "modules/web-dashboard/bff.go:85"
     },
     "secrets updated (gen {gen})": {
       "where": "modules/configshare/proto/poller.go:187",
@@ -756,7 +765,7 @@
       ]
     },
     "section actions need Content-Type: application/json (got {ct})": {
-      "where": "modules/web-dashboard/bff.go:373",
+      "where": "modules/web-dashboard/bff.go:384",
       "args": [
         "ct"
       ]
@@ -957,7 +966,7 @@
       "where": "modules/opencodeomo/diagnostics.go:30"
     },
     "the request body is not valid JSON: {err}": {
-      "where": "modules/web-dashboard/bff.go:316",
+      "where": "modules/web-dashboard/bff.go:327",
       "args": [
         "err"
       ]
@@ -1302,7 +1311,7 @@
       ]
     },
     "{title} is read-only": {
-      "where": "modules/web-dashboard/bff.go:333",
+      "where": "modules/web-dashboard/bff.go:344",
       "args": [
         "title"
       ]

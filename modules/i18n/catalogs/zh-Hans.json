@@ -392,6 +392,14 @@
       "text": "classifier_override 无效：{err}",
       "reviewed": true
     },
+    "concept actions need Content-Type: application/json (got {ct})": {
+      "text": "卡内动作需要 Content-Type: application/json（实际是 {ct}）",
+      "reviewed": true
+    },
+    "concept actions use POST": {
+      "text": "卡内动作要用 POST",
+      "reviewed": true
+    },
     "configuration updated (gen {from} → {to}, {n} file){files}": {
       "text": "已更新配置（gen {from} → {to}，{n} 个文件）{files}",
       "reviewed": true

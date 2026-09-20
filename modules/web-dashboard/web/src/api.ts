@@ -41,6 +41,10 @@ export interface Concept {
   /** 同一节里谁排前面（见 lib/view 的 Concept.Order，后端原样端出来）。界面**不解释**
       这些数字，只按它排——排序规则是贡献者的产品决定，不是界面的。 */
   order?: number;
+  /** 这张卡上的按钮（见 lib/view 的 Concept.Actions）：**由贡献者注入**，
+      界面只把它们画出来、把点击转回去。挂在这一张卡上的理由是这件事说的是
+      「**这一张**」——「把这一份设为默认」里的「这一份」只有它自己知道。 */
+  actions?: ConceptAction[];
   data: any;
   /** 非空 = 这个概念此刻读不出来（文件删了、JSON 坏了）。卡片照常显示，写原因。 */
   error?: string;
@@ -231,6 +235,30 @@ export async function preview(id: string, text: string): Promise<PreviewResult> 
  * 返回值里的 `focus` 是**那个动作做出来的东西的 id**（「新建」才有）——界面拿它
  * 跳过去，而不是自己拼一个 id 出来猜。
  */
+/** 某一张卡上的一个按钮（见 lib/view 的 Concept.Actions）。形状与 SectionAction
+    完全一样，只是作用对象不同——那边认来源名，这边认概念 ID。 */
+export interface ConceptAction {
+  id: string;
+  label: string;
+}
+
+/**
+ * 跑一个挂在**某张卡**上的动作（「把这一份设为默认」这类）。
+ *
+ * 与 section 那条分开，是因为它们的身份不同（来源名 vs 概念 ID）。**界面不知道
+ * 那个动作会干什么**：它的 label 是贡献者写的一句话，它改的是磁盘上的什么，
+ * 只有那一位知道。
+ */
+export async function runConceptAction(id: string, action: string): Promise<ApplyResult> {
+  return json<ApplyResult>(
+    await fetch(`${API}/concept-action`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, action }),
+    }),
+  );
+}
+
 export async function runSectionAction(source: string, action: string): Promise<ApplyResult> {
   return json<ApplyResult>(
     await fetch(`${API}/section`, {

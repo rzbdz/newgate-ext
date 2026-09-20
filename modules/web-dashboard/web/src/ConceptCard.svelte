@@ -4,7 +4,7 @@
   //
   // 它**不认识任何模块**：`source` 只是个用来分组的字符串。加一个模块的界面意味着
   // 加一个 Kind 的渲染器（或者复用已有的），而不是在这张卡片里加一个 if。
-  import type { Concept } from "./api";
+  import type { Concept, ConceptAction } from "./api";
   import { t } from "./i18n";
   import CodeEditor from "./kinds/CodeEditor.svelte";
   import MappingEditor from "./kinds/MappingEditor.svelte";
@@ -21,6 +21,7 @@
     onEdit,
     onRevert,
     onDeleteFile,
+    onAction,
   }: {
     concept: Concept;
     draft: unknown;
@@ -39,6 +40,16 @@
     onRevert: () => void;
     // 删/建这一份文件（不带参数：作用在这张卡自己身上，见 kinds/MappingEditor）。
     onDeleteFile?: () => void;
+    /**
+     * 跑这张卡上的一个动作（见 api.ts 的 ConceptAction）。
+     *
+     * 与 `onDeleteFile` 那条同一个形状、同一条理由：动作作用在**这张卡**身上，
+     * 所以界面不需要传「是哪张卡」——App 手里就有这张卡的 id。
+     *
+     * 也**不需要传它要改什么**：那件事住在贡献者那边（lib/view 的
+     * Concept.Actions），界面只把点击转回去，然后重读一遍快照。
+     */
+    onAction?: (a: ConceptAction) => void;
   } = $props();
 
   const isDirty = $derived(draft !== undefined);
@@ -64,6 +75,15 @@
     <h3>{concept.title}</h3>
     <span class="meta">{concept.id}</span>
     <span class="spacer"></span>
+    <!-- 这张卡上的动作（「把这一份设为默认」这类）。**由贡献者注入**，界面只画
+         按钮、把点击转回去——它不知道那个按钮会改什么，也不需要知道。
+         锁死或读不出来时不画：那些动作多半也做不成，而一个点了没反应的按钮比
+         没有按钮更让人困惑。 -->
+    {#if !concept.locked && !concept.error}
+      {#each concept.actions ?? [] as a (a.id)}
+        <button class="tiny ghost" onclick={() => onAction?.(a)}>{a.label}</button>
+      {/each}
+    {/if}
     {#if isDirty}
       <span class="pill">{t("unsaved")}</span>
       <button class="tiny ghost" onclick={onRevert}>{t("revert")}</button>
