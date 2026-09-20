@@ -4,6 +4,8 @@
 
 ### The best gateway for **vibecoding**.
 
+<sub>Transparent takeover · one-command API switching · failover that explains itself · metrics and debug logs · graceful zero-downtime upgrades · modular to the bone</sub>
+
 [![CI](https://github.com/rzbdz/newgate-ext/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/rzbdz/newgate-ext/actions/workflows/ci.yml)
 ![release](https://github.com/rzbdz/newgate-ext/actions/workflows/release.yml/badge.svg)
 ![Go](https://img.shields.io/badge/go-1.27-00ADD8?logo=go&logoColor=white)
@@ -47,7 +49,8 @@ Code's background calls, OpenCode's intra-agent slots — each is a file with a
 written reason for existing, switchable at runtime (`newgate st`). Read it,
 replace it, write the one for the upstream we have never heard of.
 
-**Fork it, and make it yours.**
+## Fork it, and make it yours
+
 A module is one directory with a `New()` in it. Swap our routing policy for
 yours, drop the quirks you don't care about, keep the gateway and the breaker:
 
@@ -62,8 +65,7 @@ Gateway, tier resolution, breaker, UI and entry point are all modules, so
 replacing a policy means replacing a module — not patching a core. `newgate
 restart` hands the socket over, so shipping your version doesn't interrupt
 anyone, including yourself mid-session. Start from `dist-hello.json` (the
-framework plus one `hello`) if you would rather begin at almost nothing. Zero
-third-party dependencies, fully offline build.
+framework plus one `hello`) if you would rather begin at almost nothing.
 
 ## Install
 
@@ -73,10 +75,27 @@ mv newgate-default-linux-amd64 ~/.local/bin/newgate && chmod +x ~/.local/bin/new
 newgate init && newgate on claude     # and: newgate on opencode
 ```
 
-One static binary, no runtime dependencies. Reopen the shell and keep working.
+One static binary, no runtime dependencies. `newgate init` lays down a config
+with placeholders; put your keys in `providers.json` (or in `NEWGATE_KEY_*`
+environment variables), then reopen the shell and keep working.
+
+## What this repository is
+
+newgate is split in two, and the split is the point:
+
+| | |
+| --- | --- |
+| [**rzbdz/newgate**](https://github.com/rzbdz/newgate) | the **kernel**: chains, breaker, gateway, upgrade handoff, the module framework. No product decisions — it knows no upstream and no client by name. |
+| **rzbdz/newgate-ext** *(here)* | one **distribution**: which modules ship, which upstreams get patched, in what order. A product decision, and yours to change. |
+
+This one is the flagship: Claude Code and OpenCode, on the tiers you chose, with
+the quirks of the upstreams you actually use already handled. `dist.json` is the
+whole of it — everything else is modules.
 
 ## Links
 
-[kernel](https://github.com/rzbdz/newgate) ·
+[the kernel](https://github.com/rzbdz/newgate) ·
 [why it is built this way](https://github.com/rzbdz/newgate/blob/main/docs/03-architecture.md) ·
+[the extension guide](https://github.com/rzbdz/newgate/blob/main/docs/09-extension-guide.md) ·
+[releases](https://github.com/rzbdz/newgate-ext/releases) ·
 [CLAUDE.md](CLAUDE.md) — the house rules a contributor follows
