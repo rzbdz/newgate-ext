@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io/fs"
+	"net"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -43,6 +44,15 @@ func NewHandler(assets fs.FS, views *view.Registry) *Handler {
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// 第一道门：这次请求**确实是冲着本机来的**（见 loopbackHost）。它挡的不是
+	// 外面的人——那个由「只监听 loopback」挡——而是**别人网页上的一段脚本**。
+	if !loopbackHost(r) {
+		h.writeJSONStatus(w, http.StatusForbidden, map[string]any{
+			"error": i18n.T("this interface answers on loopback only; reach it as http://127.0.0.1:{port} "+
+				"(the host name in this request was {host})", i18n.A{"port": portOf(r), "host": r.Host}),
+		})
+		return
+	}
 	switch {
 	case r.URL.Path == "/api/snapshot":
 		doc, err := h.snapshot(r.URL.Query()["source"]...)
@@ -65,6 +75,40 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		h.static(w, r)
 	}
+}
+
+// ---------- 这道界面只认本机 ----------
+
+// loopbackHost 报告这次请求的 Host 头**指向本机**。
+//
+// 为什么必须查：这个界面能改配置、能拨运行期开关。只监听 loopback 挡得住外面的
+// 连接，挡不住**别人网页上的一段脚本**——攻击者把自己控制的域名解析到 127.0.0.1
+// （DNS rebinding），浏览器就认为那是同源，于是可以带任意 Content-Type、读任意
+// 响应。浏览器唯一不会骗人的东西是它自己填的 Host：请求发给 evil.com，Host 就是
+// evil.com，哪怕那个名字此刻指向 127.0.0.1。
+//
+// 允许的名字：127.0.0.1、::1、localhost（端口随意）。别的——包括这台机器在局域网
+// 里的 IP、以及任何域名——一律拒绝。**代价说清楚**：在 /etc/hosts 里给自己起个
+// newgate.local 的人会被挡在外面，报错里写明了该用什么地址打开。
+func loopbackHost(r *http.Request) bool {
+	host := r.Host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(strings.Trim(host, "[]"))
+	return ip != nil && ip.IsLoopback()
+}
+
+// portOf 取这次请求连的端口。只为了报错里能拼出一个**能用的** URL——「请用
+// 127.0.0.1 打开」而不说端口，用户还得自己猜。
+func portOf(r *http.Request) string {
+	if _, port, err := net.SplitHostPort(r.Host); err == nil {
+		return port
+	}
+	return ""
 }
 
 // ---------- 快照 ----------
@@ -145,6 +189,17 @@ type conflictDoc struct {
 }
 
 func (h *Handler) apply(w http.ResponseWriter, r *http.Request) {
+	// 第二道门：**写操作必须声明自己是 JSON**。
+	//
+	// 这不是格式洁癖，是把「别的网页替我按保存」挡在门外：跨站的表单提交、以及
+	// no-cors 的 fetch 都发不出 `Content-Type: application/json`（那会触发预检，
+	// 而我们不回任何 CORS 头），但它们**能**发一个 body 长得像 JSON 的 text/plain
+	// 请求——而解码器并不看 Content-Type。所以这一条是那条路唯一的墙。
+	if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		h.writeJSONStatus(w, http.StatusUnsupportedMediaType, applyResponse{
+			Error: i18n.T("saving needs Content-Type: application/json (got {ct})", i18n.A{"ct": ct})})
+		return
+	}
 	var req applyRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<20)).Decode(&req); err != nil {
 		h.writeJSONStatus(w, http.StatusBadRequest, applyResponse{Error: i18n.T("the request body is not valid JSON: {err}", i18n.A{"err": err})})

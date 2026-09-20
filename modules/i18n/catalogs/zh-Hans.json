@@ -600,6 +600,10 @@
       "text": "还原 {file} 失败: {err}",
       "reviewed": true
     },
+    "saving needs Content-Type: application/json (got {ct})": {
+      "text": "保存要求 Content-Type: application/json（这次是 {ct}）",
+      "reviewed": true
+    },
     "saving uses POST": {
       "text": "保存使用 POST",
       "reviewed": true
@@ -794,6 +798,10 @@
     },
     "this configuration declares schema_version={got}, but this binary only understands up to {max}: the meaning of fields may have changed, and misreading them raises no error (it routes to the wrong upstream or reports that a provider has no api_key). The previous configuration is kept in service. Upgrading newgate catches up automatically.": {
       "text": "这份配置的 schema_version={got}，本二进制只认到 {max}：字段含义可能已经变了，误读不会报错（会路由到错的上游或报 provider 没有 api_key）。已保留上一份配置继续服务。升级 newgate 后会自动跟上。",
+      "reviewed": true
+    },
+    "this interface answers on loopback only; reach it as http://127.0.0.1:{port} (the host name in this request was {host})": {
+      "text": "这个界面只答本机；请用 http://127.0.0.1:{port} 打开（这次请求里的主机名是 {host}）",
       "reviewed": true
     },
     "this machine has no root key yet": {

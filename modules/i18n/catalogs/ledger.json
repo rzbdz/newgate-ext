@@ -553,7 +553,7 @@
       ]
     },
     "no such concept: {id} — the page is probably stale, reload it": {
-      "where": "modules/web-dashboard/bff.go:158",
+      "where": "modules/web-dashboard/bff.go:213",
       "args": [
         "id"
       ]
@@ -636,8 +636,14 @@
         "file"
       ]
     },
+    "saving needs Content-Type: application/json (got {ct})": {
+      "where": "modules/web-dashboard/bff.go:200",
+      "args": [
+        "ct"
+      ]
+    },
     "saving uses POST": {
-      "where": "modules/web-dashboard/bff.go:61"
+      "where": "modules/web-dashboard/bff.go:71"
     },
     "secrets updated (gen {gen})": {
       "where": "modules/configshare/proto/poller.go:187",
@@ -796,7 +802,7 @@
       "where": "modules/opencodeomo/diagnostics.go:30"
     },
     "the request body is not valid JSON: {err}": {
-      "where": "modules/web-dashboard/bff.go:150",
+      "where": "modules/web-dashboard/bff.go:205",
       "args": [
         "err"
       ]
@@ -846,6 +852,13 @@
       "args": [
         "got",
         "max"
+      ]
+    },
+    "this interface answers on loopback only; reach it as http://127.0.0.1:{port} (the host name in this request was {host})": {
+      "where": "modules/web-dashboard/bff.go:51",
+      "args": [
+        "host",
+        "port"
       ]
     },
     "this machine has no root key yet": {
@@ -1048,7 +1061,7 @@
       ]
     },
     "{title} is read-only": {
-      "where": "modules/web-dashboard/bff.go:167",
+      "where": "modules/web-dashboard/bff.go:222",
       "args": [
         "title"
       ]

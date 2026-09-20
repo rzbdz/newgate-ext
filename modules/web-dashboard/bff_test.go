@@ -37,17 +37,44 @@ func contribute(t *testing.T, h *Handler, source string, concepts ...view.Concep
 	}
 }
 
+// loopback 是测试里默认的 Host。
+//
+// 必须显式设：httptest.NewRequest 默认填 `example.com`，而 BFF 现在只认本机的
+// Host（见 loopbackHost）——不设的话每条用例都会撞在 403 上，看起来像功能坏了。
+const loopback = "127.0.0.1:8899"
+
+// raw 是「按我给的 Host / Content-Type 发一次」——专门给那两道门的用例用
+// （别的用例走 get/post，它们的 Host 与 Content-Type 都是常规值）。
+func raw(t *testing.T, h http.Handler, method, path, body, host, contentType string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	if host != "" {
+		req.Host = host
+	}
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
 func get(t *testing.T, h http.Handler, path string) *httptest.ResponseRecorder {
 	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	req.Host = loopback
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+	h.ServeHTTP(rec, req)
 	return rec
 }
 
 func post(t *testing.T, h http.Handler, path, body string) *httptest.ResponseRecorder {
 	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+	req.Host = loopback
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, path, strings.NewReader(body)))
+	h.ServeHTTP(rec, req)
 	return rec
 }
 
@@ -172,6 +199,66 @@ func TestApplyIsPostOnly(t *testing.T) {
 	h := newHandler()
 	if rec := get(t, h, "/api/apply"); rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("GET /api/apply 该 405，实际 %d", rec.Code)
+	}
+}
+
+// TestOnlyLoopbackHostsAreAnswered：DNS rebinding。
+//
+// 只监听 loopback 挡得住外面的连接，挡不住**别人网页上的一段脚本**——攻击者把
+// 自己的域名解析到 127.0.0.1，浏览器就认为同源。浏览器唯一不骗人的东西是它自己
+// 填的 Host，所以判据是「这次请求是冲着哪个名字来的」。
+func TestOnlyLoopbackHostsAreAnswered(t *testing.T) {
+	h := newHandler()
+	contribute(t, h, "config", view.Concept{
+		ID: "config.secretish", Kind: view.KindCode, Title: "A file",
+		Data: map[string]any{"path": "x.json", "text": "something worth stealing"},
+	})
+
+	for _, host := range []string{loopback, "localhost:8899", "[::1]:8899"} {
+		if rec := raw(t, h, http.MethodGet, "/api/snapshot", "", host, ""); rec.Code != http.StatusOK {
+			t.Errorf("Host %q 该被接受，实际 %d", host, rec.Code)
+		}
+	}
+	for _, host := range []string{"evil.com:8899", "10.0.50.11:8899", "localhost.evil.com:8899"} {
+		rec := raw(t, h, http.MethodGet, "/api/snapshot", "", host, "")
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("Host %q 该被拒（实际 %d）——它指向的名字不是本机", host, rec.Code)
+		}
+		// 拒绝了就不许漏内容：这条响应里带着配置原文（脱敏过的那些）。
+		if strings.Contains(rec.Body.String(), "worth stealing") {
+			t.Errorf("Host %q 被拒了，却还是把内容发出去了", host)
+		}
+	}
+}
+
+// TestSavingNeedsAJSONContentType：跨站表单与 no-cors 的 fetch 都发不出
+// application/json，但它们**能**发一个 body 长得像 JSON 的 text/plain——而解码器
+// 并不看 Content-Type。所以这一条是那条路唯一的墙。
+func TestSavingNeedsAJSONContentType(t *testing.T) {
+	h := newHandler()
+	var applied bool
+	contribute(t, h, "x", view.Concept{
+		ID: "a.b", Kind: view.KindCode, Title: "A",
+		Apply: func(json.RawMessage, string) (string, error) {
+			applied = true
+			return "sha256:new", nil
+		},
+	})
+
+	body := `{"id":"a.b","base":"","edit":{"text":"x"}}`
+	rec := raw(t, h, http.MethodPost, "/api/apply", body, loopback, "text/plain;charset=UTF-8")
+	if rec.Code != http.StatusUnsupportedMediaType {
+		t.Errorf("text/plain 的写请求该被拒（415），实际 %d", rec.Code)
+	}
+	if applied {
+		t.Error("被拒的请求不该碰到底下的 Apply")
+	}
+	// 正规的前端走这条路，必须照常能用。
+	if rec := raw(t, h, http.MethodPost, "/api/apply", body, loopback, "application/json"); rec.Code != http.StatusOK {
+		t.Fatalf("application/json 该照常放行，实际 %d: %s", rec.Code, rec.Body.String())
+	}
+	if !applied {
+		t.Error("正规请求没有走到 Apply")
 	}
 }
 
