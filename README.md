@@ -14,69 +14,52 @@
 
 ---
 
-A [newgate](https://github.com/rzbdz/newgate) distribution. The kernel does
-mechanism; this repo makes the product decisions — which modules ship, and whose
-upstream quirks get patched before anyone hits them.
+## What you get
+
+**Takes over Claude Code and OpenCode, without either of them knowing.**
+A PATH shim plus `settings.json` / `opencode.json` rewritten in place — env and
+config injected silently, byte-exact backups taken first. Install once; every
+switch after that happens at the gateway, so you never reopen a session and
+never edit a config by hand.
+
+**The upstreams' quirks, already handled.**
+DeepSeek's reasoning pass-back and tail shape, GLM's thinking hand-back, Claude
+Code's background calls, OpenCode's intra-agent slots. Each one is a module with
+a written reason for existing, switchable at runtime with `newgate st`.
+
+**Changing which API answers is one command, not a migration.**
+`newgate profile ark` — the next request takes the new chain. Your client keeps
+running, its config is untouched, no session is interrupted. Tiers resolve
+through ordered fallbacks, so one bad upstream is not your problem either.
+
+**Upgrades that drop nothing.**
+`newgate restart` hands the listening socket to the new process and the old one
+drains what's in flight, streams included. Safe in the middle of a long agent
+session — including one going through the gateway you're replacing.
+
+**Tiers, breaker, metrics — wired for these clients.**
+`newgate tier` explains a chain, `newgate breaker` shows who is tripped and why,
+`newgate metrics` shows latency by context size and what got rewritten,
+`newgate doctor` answers "why is this broken".
+
+**English and 中文, both complete.**
+The interface follows your system locale; a configured language wins, so an
+English box can still read Chinese: `newgate lang zh-Hans`.
+
+**Everything is a module — this repository included.**
+It is one *selection* of modules. Fork it, edit the list, ship your own.
 
 ## Install
 
 ```bash
-gh release download --repo rzbdz/newgate-ext -p '*linux-amd64'   # single static binary
+gh release download --repo rzbdz/newgate-ext -p '*linux-amd64'
 mv newgate-default-linux-amd64 ~/.local/bin/newgate && chmod +x ~/.local/bin/newgate
 newgate init && newgate on       # take over claude + opencode
 ```
 
-Your client is not asked, not reconfigured by hand, and not restarted in a way
-you'd notice. Reopen the shell and keep working.
-
-## See it
-
-```console
-$ newgate status
-  Proxy    ● Running   pid 537422 · 127.0.0.1:8899 · 27req/0err
-  Takeover    claude ✓   opencode ✓
-
-$ newgate st                       # what got patched, and why
-  State  Plugin               Why it exists
-  ✓      claude-bg            Claude Code's background calls carry no thinking, yet Chinese
-                              models think by default → 15-30s, waves of timeouts, wedged sessions
-  ✓      claudecode-deepseek  Claude Code strips DeepSeek thinking blocks; turn thinking off so the
-                              next round does not 400 for a block that must be passed back
-  ✓      deepseek.tail-shape  DeepSeek rejects a request whose tail is a bare tool_result — append
-                              the minimal continuation instead of losing the round
-```
-
-```console
-$ newgate profile glm              # the next request takes glm's chain
-$ newgate tier normal             # …and here is exactly where that request goes
-$ newgate breaker                 # who is tripped, why, and for how long
-```
-
-## What you get
-
-| | |
-| --- | --- |
-| **Takeover you can't feel** | A PATH shim plus `settings.json` / `opencode.json` rewritten in place, byte-exact backups taken first. `newgate off` restores those bytes — not "equivalent settings". |
-| **The quirks, already handled** | DeepSeek's reasoning pass-back and tail shape, GLM's thinking hand-back, Claude Code's background calls, OpenCode's intra-agent slots. Each is a module with a written reason, switchable at runtime. |
-| **One command to change the API** | `newgate profile ark` — no client restart, no config edit, no session interrupted. Per-tier fallback chains, breakers and latency ordering decide what happens when an upstream misbehaves. |
-| **Upgrades that drop nothing** | `newgate restart` hands the listening socket to the new process and drains in flight, streams included. |
-| **Tiers, breaker, metrics** | All of the kernel's mechanism, wired for these clients: `newgate tier`, `newgate breaker`, `newgate metrics`, `newgate doctor`. |
-| **Everything is a module** | Including this repo's own message catalog — see below. |
-
-## Upgrading is a non-event
-
-```bash
-gh release download --repo rzbdz/newgate-ext -p '*linux-amd64' -O /tmp/ng
-mv -f /tmp/ng ~/.local/bin/newgate && newgate restart
-```
-
-`restart` is not stop-then-start: the socket is handed over, in-flight requests
-finish on the old process, and clients see nothing. Safe to run in the middle of
-a long agent session — including one going through the gateway you're replacing.
+One static binary, no runtime dependencies. Reopen the shell and keep working.
 
 ## Compose your own
-
-This repository is one *selection* of modules:
 
 ```jsonc
 // dist.json
@@ -85,22 +68,11 @@ This repository is one *selection* of modules:
   "disable": [] }
 ```
 
-Fork it, edit the list, drop in a module of your own, and `build/build.sh`
-produces a release. `dist-hello.json` is the skeleton — the
-framework plus one `hello` module — and it builds too. That is the point: the
-kernel has no product in it, so a distribution is a **module list**, not a fork
-of the code.
-
-## Language
-
-English is the source language; Simplified Chinese ships beside it (both 100%
-translated). The interface follows your system locale, but a configured
-language wins — plenty of people run an English box and read Chinese:
-
-```bash
-newgate lang zh-Hans     # persist it (beats LANG); NEWGATE_LANG overrides per command
-newgate lang             # what is in effect, and coverage per language
-```
+`build/build.sh` turns that list into a release. `dist-hello.json` is the
+skeleton — the framework plus one `hello` module — and it builds too. That is
+the point: the kernel has no product in it, so a distribution is a **module
+list**, not a fork of the code. See
+[the kernel](https://github.com/rzbdz/newgate) for the mechanism underneath.
 
 ## Links
 
