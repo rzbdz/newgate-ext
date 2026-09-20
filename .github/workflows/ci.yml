@@ -9,10 +9,19 @@ name: CI
 #   dist-test  发行版自己的：格式、vet、装配清单是否过期、模块测试
 #   e2e        真二进制 + 内核的假上游，跑发行版模块的端到端行为
 #
-# 触发条件与内核那边一致：只在 main 上跑 + 手动。开发从 main 切分支、完事合回
-# main，所以只有合进去那一下需要权威判定。
+# 触发条件与内核那边一致：push 到 main、有人开 PR、以及手动（2026-09-20 加回 PR）。
+#
+# 加 `pull_request` 解决的是「别人的 PR 有没有被检查」——本仓库的 README 现在明着
+# 招人 fork，提上来的 PR 不该是一句「没人检查」。它**不改变本仓库自己的流程**：
+# 直推 main 照样只跑 push 那一次。
+#
+# 它**不是门禁**：门禁要 main 上开分支保护、把这三个 job 设成 required，而那意味着
+# 以后不能直推 main。当前取舍是不那么做——直推仍是主路径，所以「推之前先本地跑
+# 一遍」依然是流程的一部分（见 CLAUDE.md §4 的两段命令）。
 on:
   push:
+    branches: [main]
+  pull_request:
     branches: [main]
   workflow_dispatch:
 
