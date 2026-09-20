@@ -192,6 +192,14 @@
       "text": "全部采纳",
       "reviewed": true
     },
+    "an operation is missing its file path": {
+      "text": "操作缺少文件路径",
+      "reviewed": true
+    },
+    "another save is in progress, try again in a moment": {
+      "text": "另一个保存正在进行，请稍后重试",
+      "reviewed": true
+    },
     "another sync round is already running; this round was skipped": {
       "text": "另一轮同步正在进行，这一轮跳过了",
       "reviewed": true
@@ -596,6 +604,10 @@
       "text": "还原 {file} 失败: {err}",
       "reviewed": true
     },
+    "saving uses POST": {
+      "text": "保存使用 POST",
+      "reviewed": true
+    },
     "secrets updated (gen {gen})": {
       "text": "已更新密钥（gen {gen}）",
       "reviewed": true
@@ -672,6 +684,10 @@
       "text": "configshare 记账文件损坏，已按初始状态重来: {err}",
       "reviewed": true
     },
+    "the configuration could not be read": {
+      "text": "无法读取配置",
+      "reviewed": true
+    },
     "the endpoint is empty (run newgate config join <endpoint> first)": {
       "text": "endpoint 是空的（先 newgate config join <endpoint>）",
       "reviewed": true
@@ -702,6 +718,10 @@
     },
     "the file does not exist": {
       "text": "文件不存在",
+      "reviewed": true
+    },
+    "the file {path} is outside the configuration directory": {
+      "text": "文件 {path} 在配置目录之外",
       "reviewed": true
     },
     "the haiku tier; background features": {
@@ -736,6 +756,10 @@
       "text": "注册表为空",
       "reviewed": true
     },
+    "the request body is not valid JSON: {err}": {
+      "text": "请求体不是有效的 JSON：{err}",
+      "reviewed": true
+    },
     "the response from {url} is not a valid envelope: {err}": {
       "text": "{url} 的响应不是合法信封: {err}",
       "reviewed": true
@@ -758,6 +782,10 @@
     },
     "the trailing user turn holds only tool_result and no user instruction — appended a continue instruction (the upstream misreports an instruction-less tail as a missing reasoning_content)": {
       "text": "末尾的 user 轮只有 tool_result 没有用户指令——追加一条继续指令（上游对空指令尾部误报 reasoning_content 缺失）",
+      "reviewed": true
+    },
+    "there is nothing to save": {
+      "text": "没有可保存的内容",
       "reviewed": true
     },
     "there was no concrete model name before takeover": {
@@ -800,6 +828,10 @@
       "text": "不认识 \"{cmd}\"（newgate status 看清单）",
       "reviewed": true
     },
+    "unknown operation kind {kind}": {
+      "text": "未知操作类型 {kind}",
+      "reviewed": true
+    },
     "value": {
       "text": "值",
       "reviewed": true
@@ -834,6 +866,10 @@
     },
     "{err} (nonce length {got}, expected {want})": {
       "text": "{err}（nonce 长度 {got}，应为 {want}）",
+      "reviewed": true
+    },
+    "{file} is not valid JSON": {
+      "text": "{file} 不是有效的 JSON",
       "reviewed": true
     },
     "{head} · the highest priority globally, ahead of any profile": {

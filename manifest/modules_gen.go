@@ -24,6 +24,7 @@ import (
 	ext_opencodeomo "github.com/rzbdz/newgate-ext/modules/opencodeomo"
 	ext_simple_cli "github.com/rzbdz/newgate-ext/modules/simple-cli"
 	ext_tui "github.com/rzbdz/newgate-ext/modules/tui"
+	ext_web_dashboard "github.com/rzbdz/newgate-ext/modules/web-dashboard"
 	app "github.com/rzbdz/newgate/app"
 	modules "github.com/rzbdz/newgate/component"
 )
@@ -69,6 +70,7 @@ func Specs() map[string]app.Selection {
 				{Dir: "claudecode", Component: ext_claudecode.New()},
 				{Dir: "opencode", Component: ext_opencode.New()},
 				{Dir: "opencodeomo", Component: ext_opencodeomo.New()},
+				{Dir: "web-dashboard", Component: ext_web_dashboard.New()},
 			},
 		},
 	}
