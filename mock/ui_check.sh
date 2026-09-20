@@ -69,4 +69,6 @@ if ! curl -sf -o /dev/null "http://127.0.0.1:$PORT/ui/api/snapshot"; then
   echo "沙箱 daemon 没起来，日志："; tail -20 "$SANDBOX/serve.log"; exit 1
 fi
 
-node "$ROOT/mock/ui_check.mjs" "http://127.0.0.1:$PORT/ui/"
+# 第二个参数是沙箱的 state.json：冲突那一段要**从外面**改它，扮演那个抢先写文件
+# 的命令行（浏览器那一层唯一能验「对话框真的弹出来了吗」的办法）。
+node "$ROOT/mock/ui_check.mjs" "http://127.0.0.1:$PORT/ui/" "$NEWGATE_HOME/state.json"

@@ -12,12 +12,16 @@
 // 这一层去装一个 chromium 换不到相应的价值。所以它和那条要真 token 的 e2e 一样：
 // **开发者本地跑**，见 mock/ui_check.sh。
 //
-// 跑法由 ui_check.sh 张罗（起沙箱、起 daemon、调这个脚本）；这里只认一个参数：
-// 界面地址。断言失败即非零退出，红的理由直接打在屏幕上。
+// 跑法由 ui_check.sh 张罗（起沙箱、起 daemon、调这个脚本）；这里认两个参数：
+// 界面地址，以及沙箱的 state.json（冲突那一段要**从外面**改它，扮演那个抢先改
+// 文件的命令行）。断言失败即非零退出，红的理由直接打在屏幕上。
+
+import fs from "node:fs";
 
 const url = process.argv[2];
-if (!url) {
-  console.error("用法: node ui_check.mjs <界面地址，如 http://127.0.0.1:8909/ui/>");
+const stateFile = process.argv[3];
+if (!url || !stateFile) {
+  console.error("用法: node ui_check.mjs <界面地址> <沙箱的 state.json 路径>");
   process.exit(2);
 }
 
@@ -54,7 +58,15 @@ const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
 // 页面自己抛的错一个都不许有：白屏、组件崩了、effect 里炸了，全都先在这里露头。
 const pageErrors = [];
 page.on("pageerror", (e) => pageErrors.push(String(e)));
-page.on("console", (m) => { if (m.type() === "error") pageErrors.push("console: " + m.text()); });
+page.on("console", (m) => {
+  if (m.type() !== "error") return;
+  const text = m.text();
+  // 409 是冲突那一段**预期**的结果：浏览器为任何非 2xx 的 fetch 都打一条 console
+  // error，而「基线过期」正是那里要制造的局面。它不是页面抛的错——把它算进来的
+  // 话，这条断言就变成了「不许测冲突」。排除得很窄，别的错照样算。
+  if (text.includes("status of 409")) return;
+  pageErrors.push("console: " + text);
+});
 
 await page.goto(url, { waitUntil: "networkidle" });
 await page.waitForTimeout(1200);
@@ -102,6 +114,42 @@ if ((await box.count()) === 0) {
   await page.waitForTimeout(900);
   const after = (await page.locator("header.top button.primary").innerText()).trim();
   check("保存之后回到「没有未保存的东西」", !/\d/.test(after), `保存按钮显示 ${JSON.stringify(after)}`);
+}
+
+// —— 4. 别人抢先改过 → 弹冲突，而且**不许覆盖** ——
+//
+// 这是这个产品里唯一一处两个写者改同一份文件的地方（命令行与浏览器），也是当初
+// 点名要的语义：「commit 的时候会检测是否冲突，如果有，提示用户」。
+//
+// 浏览器这一层独有的一条：**对话框真的出现在用户面前了**。Go 那条 e2e 验的是
+// 409 与那几个字段，看不见屏幕上是弹了一张带两边原文的卡片，还是一片空白。
+if ((await box.count()) === 0) {
+  console.log("  · 这份装配里没有布尔开关，跳过冲突那两条");
+} else {
+  await page.reload({ waitUntil: "networkidle" });
+  await page.waitForTimeout(600);
+  // 扮演那个「抢先改文件的命令行」：往 state.json 里塞一个键。塞一个**别人写的、
+  // 浏览器不知道**的键，这样「有没有被覆盖」是可以判定的。
+  const raw = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+  raw.written_by_someone_else = true;
+  fs.writeFileSync(stateFile, JSON.stringify(raw, null, 2));
+
+  await box.click();
+  await page.waitForTimeout(150);
+  await page.locator("header.top button.primary").click();
+  await page.waitForTimeout(900);
+
+  const dialog = page.locator(".banner.conflict");
+  const shown = await dialog.count();
+  check("别人抢先改过之后弹出了冲突", shown > 0, "屏幕上什么都没弹，用户的改动就这么没了");
+  if (shown) {
+    // 两边原文都要摆出来，否则用户没法判断该留谁的。
+    const text = await dialog.first().innerText();
+    check("冲突里点名了文件", text.includes(stateFile), text.slice(0, 80));
+    check("冲突给了两个选择", /keep mine/i.test(text) || text.includes("保留"), text.slice(0, 80));
+  }
+  const after = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+  check("被拒的那次写没有覆盖磁盘", after.written_by_someone_else === true);
 }
 
 check("整场没有页面错误", pageErrors.length === 0, pageErrors.slice(0, 2).join(" / "));
