@@ -37,8 +37,10 @@ newgate-ext/           ← 你在这里（发行版：产品），这个仓库�
    - 内核版本**只有一个真相**——submodule 的 gitlink；没有第二个版本号要对;
    - 构建读的是**工作区**，不必先 commit；
    - 内核的测试可以在树内直接跑（流水线里的 `core-test` 就是这么来的）。
-3. **两条分支**：`main` = 官方发行版；`template` = 给别人 fork 的骨架（只有两个样例
-   模块）。发行版相关的改动单独提交，需要时 cherry-pick 到 template。
+3. **只有一条分支：`main`。** 2026-09-20 删掉了 `template`（给别人 fork 的骨架）——
+   两条要同步的东西，买到的却只是「fork 时不带产品模块」，而那件事规格书本来就能
+   做：想从零开始，写一份自己的 `dist*.json`、模块列表自己填，`dist-hello.json`
+   就是活的最小样例（框架 + 一个 hello，编出来直接跑）。
 4. **内核对发行版一无所知**。`app.Selection` 是那条接缝：组合根的装配逻辑在内核，
    「装哪些」由这里给。别指望内核认识任何模块名——它连 `deepseek` 这个词都不该有。
 
@@ -118,7 +120,7 @@ NEWGATE_PLATFORMS="linux/amd64 linux/arm64 darwin/arm64" build/build.sh dist/
 - **产物名 = `newgate-<规格书里的 distribution>-<平台>-<架构>`**。今天是三份：
   `default`（旗舰）、`simple-cli`（换掉界面）、`hello`（**骨架**：整个框架 + 一个
   hello，`newgate` 跑起来就是一句 hello world）。多编几份是为了**调试**——
-  想看骨架配置的行为，`NEWGATE_ALL=1` 编出来直接跑，不必切到 `template` 分支。
+  想看骨架配置（`dist-hello.json`）的行为，`NEWGATE_ALL=1` 编出来直接跑即可。
 - **发什么由流水线决定**：Release 只发重点那份（`release.yml` 里的
   `NEWGATE_DISTS: dist.json`），CI 则编**全部**规格书（「另一份配置编不过」这种
   故障本地看不见，谁也不天天编骨架配置）。
