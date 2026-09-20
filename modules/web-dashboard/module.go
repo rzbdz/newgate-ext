@@ -48,10 +48,13 @@ const (
 //     每一条 `newgate …` 命令里都会跑（modules/i18n 的教训），所以这里绝不自己
 //     起监听。自起端口的 fallback 只该发生在「正在服务的那个进程」里，判据要用
 //     入口账本认（见本包 README 的待办），v1 先不做。
-//   - cliapi 在 → 以后挂 `newgate web`（打印 URL / 打开浏览器）；现在还没做。
+//   - cliapi 在 → 挂 `newgate web`（告诉用户界面上哪儿找）。
 func New() modules.Component {
 	views := viewapi.NewRegistry()
-	var release func()
+	// self 是这次装配的事实：挂上了没有、挂上之后怎么撤。命令要用它如实回答
+	// 「界面上哪儿找」——装了本模块**不等于**它有入口（porthub 缺席时就没有），
+	// 让命令按实际挂载结果说话，而不是按「我装了没有」猜。
+	self := &instance{views: views}
 	return modules.Component{
 		Name:     "web-dashboard",
 		Type:     "cli", // 「界面壳」这一类的既有取值（tui / simple-cli 也是它）
@@ -67,23 +70,48 @@ func New() modules.Component {
 			}
 			// 挂载是进程内注册（不产生 socket、不产生 goroutine），所以即便在
 			// CLI 进程里跑也没有副作用：那个进程根本没有 HTTP 服务在读这张表。
-			hub, ok := modules.Get(ctx, porthubapi.Capability)
-			if !ok {
-				return nil
+			if hub, ok := modules.Get(ctx, porthubapi.Capability); ok {
+				rel, err := hub.Mount(Prefix, "web-dashboard", http.StripPrefix(Prefix, NewHandler(sub, views)))
+				if err != nil {
+					return err
+				}
+				self.mounted, self.release = true, rel
 			}
-			rel, err := hub.Mount(Prefix, "web-dashboard", http.StripPrefix(Prefix, NewHandler(sub, views)))
-			if err != nil {
-				return err
+			// 命令是**弱依赖**：没装任何界面时本模块的功能一个都不少（概念照常
+			// 注册，模块照常工作），只是没人能敲 `newgate web`。
+			if ui, ok := modules.Get(ctx, cliapi.Capability); ok {
+				rel, err := ui.RegisterCommand(&webCommand{self: self})
+				if err != nil {
+					return err
+				}
+				self.releases = append(self.releases, rel)
 			}
-			release = rel
 			return nil
 		},
 		Stop: func(context.Context) error {
-			if release != nil {
-				release()
-				release = nil
+			for _, rel := range self.releases {
+				_ = rel()
 			}
+			self.releases = nil
+			if self.release != nil {
+				self.release()
+				self.release = nil
+			}
+			self.mounted = false
 			return nil
 		},
 	}
+}
+
+// instance 是这次装配里本模块的事实，Start 与命令共享它。
+//
+// 为什么命令不能自己判断「porthub 在不在」：那是**装配期**的事实，而命令跑在
+// 「这次调用」里——两者在同一个进程里（每条命令都会装配一遍），但让命令去问
+// porthub 等于让它重复一遍装配期的判断，还会在「装配期挂失败、命令期看着像在」
+// 时给出错误答案。
+type instance struct {
+	views    *viewapi.Registry
+	mounted  bool
+	release  func()
+	releases []func() error
 }

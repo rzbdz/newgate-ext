@@ -721,6 +721,9 @@
     "the configshare bookkeeping file is corrupt; starting over from the initial state: {err}": {
       "where": "modules/configshare/proto/state.go:177"
     },
+    "the daemon is not running — the dashboard is served by it, so start it first: newgate start": {
+      "where": "modules/web-dashboard/command.go:61"
+    },
     "the endpoint is empty (run newgate config join <endpoint> first)": {
       "where": "modules/configshare/proto/client.go:61"
     },
@@ -766,6 +769,9 @@
         "got",
         "want"
       ]
+    },
+    "the interface is on loopback only; nothing listens on other interfaces": {
+      "where": "modules/web-dashboard/command.go:64"
     },
     "the model field in settings.json is left untouched; what a tier means is decided by the env": {
       "where": "modules/claudecode/agent.go:41"
@@ -832,6 +838,9 @@
     "thinking block": {
       "where": "modules/deepseek/st-reasoning.go:316"
     },
+    "this build cannot serve a web interface: nothing provides a shared port (the porthub module is not installed)": {
+      "where": "modules/web-dashboard/command.go:43"
+    },
     "this configuration declares schema_version={got}, but this binary only understands up to {max}: the meaning of fields may have changed, and misreading them raises no error (it routes to the wrong upstream or reports that a provider has no api_key). The previous configuration is kept in service. Upgrading newgate catches up automatically.": {
       "where": "modules/configshare/proto/version.go:76",
       "args": [
@@ -897,8 +906,14 @@
     "verbose mode": {
       "where": "modules/simple-cli/module.go:297"
     },
+    "web": {
+      "where": "modules/web-dashboard/command.go:34"
+    },
     "when the user explicitly runs newgate naked on/forever, Bash classifier requests are short-circuited into an approval without a single LLM call — no more 15-30s classifier latency and no more sessions wedged by a wrong block\non = a 60-second self-limiting window; forever = always on (every request is logged, status warns)\nonly the Claude Code security-monitor marker is recognised; newgate naked off / st off both end it": {
       "where": "modules/claudecode/classifier-naked.go:110"
+    },
+    "where the browser interface is served, and how to reach it": {
+      "where": "modules/web-dashboard/command.go:35"
     },
     "why: {why}": {
       "where": "modules/opencodeomo/command.go:322",
