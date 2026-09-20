@@ -22,11 +22,28 @@ export interface Concept {
   error?: string;
 }
 
+/**
+ * 侧栏的一栏：机器标记 + 给人看的名字。
+ *
+ * 名字由**各模块在登记时报**（后端的 `view.Title`），不在这里硬编码，也不从
+ * 来源名猜——名字住在界面里的话，加一个模块就得改一次界面，「前端不认识模块」
+ * 那条规矩就没了。前端只负责把它画出来。
+ *
+ * 它**不走 t()**：那是模块的内容（与概念标题同一类），后端已经按当时的语言翻好
+ * 了。t() 是界面自己的字（按钮、提示）。
+ */
+export interface Section {
+  source: string;
+  title: string;
+}
+
 export interface Snapshot {
   contract: number;
   generated_at: string;
   /** 后端解析出来的语言（见 i18n.ts：界面骨架上的字用它挑目录）。 */
   lang: string;
+  /** 侧栏的栏目表：**登记过的全部来源**，含此刻一条概念都产不出来的那些。 */
+  sections: Section[];
   concepts: Concept[];
 }
 
@@ -50,8 +67,48 @@ export interface ApplyResult {
 /** 与后端 Contract 常量对齐。前端**必须先看它**，不认识的版本宁可白屏报一句。 */
 export const CONTRACT = 1;
 
-/** 挂在 /ui 前缀下（见 module.go 的 Prefix）。 */
-const API = "api";
+/**
+ * 运行期的接口地址，从**构建期的 base** 推出来（vite.config.ts 的 base 是
+ * "/ui/"，所以这里恒等于 "/ui/api"）。
+ *
+ * 为什么不是相对路径 `"api"`（这里原来是那么写的）：相对地址的解析结果取决于
+ * **当前文档**的路径，而那是会变的——用户敲 `/ui` 不带尾斜杠就是一个。实测：
+ * 从 `/ui` 出发，`api/snapshot` 被解析成 `/api/snapshot`，那个路径没被挂载，
+ * 于是落进数据面的 catch-all，被当成一次形状不对的转发请求（400，而且计进
+ * 数据面流量）。页面本身画得出来（资源的 URL 是绝对的），所以症状是「界面
+ * 好好的、一操作就报错」——最费解的那一类。
+ *
+ * 绝对地址把这条路堵死：文档在哪一层都不影响接口地址。（module.go 那边同时做了
+ * `/ui` → `/ui/` 的重定向，那是给人用的 URL 该有的样子；两条各自解决一半。）
+ */
+const API = `${import.meta.env.BASE_URL}api`;
+
+/**
+ * 把后端回来的 `error` 变成一个能看的字符串。
+ *
+ * 那里**不保证是字符串**：BFF 自己回的确实是字符串，但请求没落到 BFF 上时
+ * （地址算错、前缀改了、端口上根本不是 newgate），对面可能是数据面转上来的
+ * 上游错误——一个 `{"type":"error","error":{…}}` 的对象。`new Error(obj)` 会把
+ * 它渲染成 `[object Object]`，横幅上写着这么一句，排查的人连去看哪里都不知道。
+ */
+function errText(v: unknown): string {
+  if (typeof v === "string") return v;
+  if (v == null) return "";
+  if (typeof v === "object") {
+    const o = v as { error?: unknown; message?: unknown };
+    if (typeof o.message === "string") return o.message;
+    if (o.error !== undefined && o.error !== v) {
+      const inner = errText(o.error);
+      if (inner) return inner;
+    }
+    try {
+      return JSON.stringify(v);
+    } catch {
+      return String(v);
+    }
+  }
+  return String(v);
+}
 
 async function json<T>(res: Response): Promise<T> {
   const text = await res.text();
@@ -72,15 +129,18 @@ async function json<T>(res: Response): Promise<T> {
  */
 export async function snapshot(sources?: string[]): Promise<Snapshot> {
   const q = (sources ?? []).map((s) => `source=${encodeURIComponent(s)}`).join("&");
-  const doc = await json<Snapshot & { error?: string }>(
+  const doc = await json<Snapshot & { error?: unknown }>(
     await fetch(`${API}/snapshot${q ? "?" + q : ""}`),
   );
-  if (doc.error) throw new Error(doc.error);
+  if (doc.error) throw new Error(errText(doc.error));
   if (doc.contract !== CONTRACT) {
     throw new Error(
       `the interface is version ${CONTRACT}, the backend speaks ${doc.contract} — reload after rebuilding`,
     );
   }
+  // 老后端不认识 sections（见 CONTRACT 的注释：这个字段是**加**出来的，不动版本
+  // 号）。那种后端下侧栏回落到来源名——难看，但页面照常能用。
+  doc.sections ??= [];
   return doc;
 }
 

@@ -5,12 +5,24 @@
   // 文件，而写文件是一次 CAS（比对基线 → 原子写）。逐字段写会把一次编辑拆成
   // 几次互相看不见的提交，中间任何一次撞上别人的改动，文件就停在半路。攒起来
   // 一次写，前端手里的基线与文件之间只有一次比对。
-  import { apply, snapshot, type Concept, type Conflict } from "./api";
+  //
+  // # 版面：左目录 / 右内容 / 中间分栏
+  //
+  // 第一版是把所有卡片按来源一条瀑布铺下来（实测 4303px ≈ 4.8 屏），于是「改一个
+  // 开关」这件四步就能做完的事，第一步是滚三屏。现在：**左侧是节的目录**（点一下
+  // 切一节）、**一节里多张卡走 tab**、**同一份文件的控件与原文并排**。验收线是
+  // 「任何东西 4-5 次操作内到达」，操作数在下面每个动作旁边写着。
+  import { apply, snapshot, type Concept, type Conflict, type Section } from "./api";
   import { setLang, t } from "./i18n";
-  import ConceptCard from "./ConceptCard.svelte";
+  import { emptyRoute, fileOf, parseHash, writeHash, type Action, type Route } from "./nav";
   import ConflictDialog from "./ConflictDialog.svelte";
+  import Shortcuts from "./Shortcuts.svelte";
+  import Sidebar from "./Sidebar.svelte";
+  import SplitView from "./SplitView.svelte";
+  import TabStrip from "./TabStrip.svelte";
 
   let concepts = $state<Concept[]>([]);
+  let sections = $state<Section[]>([]);
   /** 每个概念**攒着**的改动。空 = 没有未保存的东西。 */
   let drafts = $state<Record<string, unknown>>({});
   let conflicts = $state<Conflict[]>([]);
@@ -19,6 +31,7 @@
   let filter = $state("");
   let auto = $state(false);
   let note = $state("");
+  let filterBox = $state<HTMLInputElement | undefined>(undefined);
   /**
    * lang 是**后端解析出来的**语言（快照带来的）。它在这里单独存一份的原因见
    * 模板外面那个 `{#key}`：`t()` 读的语言住在 i18n.ts 的模块级变量里，而那
@@ -26,15 +39,67 @@
    */
   let lang = $state("");
 
+  /**
+   * 现在在看哪一节、哪一张卡、并排还是折叠。
+   *
+   * 它住在 App 而不是某个子组件里，有一个很硬的理由：外面那个 `{#key lang}` 会在
+   * 语言变化时**重建整棵子树**，子组件里存的东西全部会没。App 自己的状态活得下来
+   * （`drafts` 就是靠这条活到今天的）。
+   */
+  let route = $state<Route>({ ...emptyRoute });
+
   const dirty = $derived(Object.keys(drafts));
-  const sources = $derived([...new Set(concepts.map((c) => c.source))].sort());
-  const shown = $derived(
-    concepts.filter((c) => {
-      if (!filter) return true;
-      const hay = (c.id + " " + c.title + " " + c.source + " " + c.kind).toLowerCase();
-      return hay.includes(filter.toLowerCase());
-    }),
-  );
+
+  /** 过滤是**跨节**的：一处输入，处处生效（忘了某张卡在哪一节时，这是最快的一条路）。 */
+  function matches(c: Concept): boolean {
+    if (!filter) return true;
+    const hay = (c.id + " " + c.title + " " + c.source + " " + c.kind).toLowerCase();
+    return hay.includes(filter.toLowerCase());
+  }
+
+  /** 侧栏徽标：命中数 + 未保存数。过滤时显示的是命中数——不然搜到一个 3 张卡的
+   *  节，徽标还写着 12，看着像搜索没生效。 */
+  const counts = $derived.by(() => {
+    const m = new Map<string, { total: number; dirty: number }>();
+    for (const s of sections) m.set(s.source, { total: 0, dirty: 0 });
+    for (const c of concepts) {
+      const e = m.get(c.source);
+      if (!e || !matches(c)) continue;
+      e.total++;
+      if (drafts[c.id] !== undefined) e.dirty++;
+    }
+    return m;
+  });
+
+  /** 当前这一节的卡片（过滤之后）。顺序跟着后端来（(Source, ID) 排序）。 */
+  const sectionCards = $derived(concepts.filter((c) => c.source === route.section && matches(c)));
+
+  /** 当前这张卡。route.card 为空（或者落在一个已经不在的 id 上）时取第一张——
+   *  「一节的第一张」是这一节的默认视图，键盘与 URL 都依赖它是确定的。 */
+  const active = $derived(sectionCards.find((c) => c.id === route.card) ?? sectionCards[0]);
+
+  /**
+   * 与当前这张卡**说的是同一份文件**的另一半（见 nav.ts 的 fileOf）。
+   *
+   * 从哪一半进来看到的都一样：进来的若是原文（code），配给它的就是控件那一半，
+   * 于是并排永远是「左控件、右原文」。配不上就单栏——没有错误、没有空栏。
+   */
+  const pair = $derived.by(() => {
+    if (!active) return undefined;
+    const f = fileOf(active);
+    if (!f) return undefined;
+    return concepts.find(
+      (x) =>
+        x.id !== active.id &&
+        x.source === active.source &&
+        fileOf(x) === f &&
+        (active.kind === "code" ? x.kind !== "code" : x.kind === "code"),
+    );
+  });
+
+  /** 并排时哪一半在左：控件那一半。 */
+  const leftCard = $derived(active?.kind === "code" && pair ? pair : active);
+  const rightCard = $derived(active?.kind === "code" && pair ? active : pair);
 
   /** 概念的基线（内容哈希）。概念的数据是它自己定义形状的，基线住在里面。 */
   function baseOf(c: Concept): string {
@@ -56,10 +121,6 @@
     return [...list].sort((a, b) => (a.source + "/" + a.id).localeCompare(b.source + "/" + b.id));
   }
 
-  /**
-   * sources 给出时是一次**增量**刷新：只问这几位，只替换这几位。
-   * 不给 = 整份重读（首次加载、或者用户点了 reload）。
-   */
   /**
    * localTime 把后端给的时间戳按**看页面那个人的时区**显示。
    *
@@ -85,6 +146,31 @@
       : d.toLocaleString(tag || undefined);
   }
 
+  /** 默认位置：第一个**有卡片**的节（空节点进去只会看到一句「这里什么都没有」）。 */
+  function defaultRoute(): Route {
+    const withCards = sections.filter((s) => concepts.some((c) => c.source === s.source));
+    const src = (withCards[0] ?? sections[0])?.source ?? "";
+    return { section: src, card: "", split: route.split };
+  }
+
+  /**
+   * 把位置修正到一个**真实存在**的地方，并把它写回地址栏。
+   *
+   * 三种失效都要接住，它们都不是故障而是日常：模块被关掉（那一节没了）、profile
+   * 被删（那张卡没了）、手敲/被截断的链接。回落之后**改写 hash**——URL 不该说着
+   * 一个屏幕上没有的东西（刷新一下又跳回来，那才叫费解）。
+   */
+  function resolveRoute() {
+    if (sections.some((s) => s.source === route.section)) {
+      if (route.card && !concepts.some((c) => c.id === route.card)) {
+        route = { ...route, card: "" };
+      }
+    } else {
+      route = defaultRoute();
+    }
+    writeHash(route);
+  }
+
   async function load(sources?: string[], quiet = false) {
     if (!quiet) busy = true;
     error = "";
@@ -98,6 +184,9 @@
       // <html lang> 也要跟着走：它不参与渲染，但屏幕阅读器靠它选发音、浏览器靠它
       // 选断行与拼写检查——写成 en 而界面是中文，等于对辅助技术说错了话。
       document.documentElement.lang = doc.lang;
+      // 栏目表**每次都换**（两种刷新都带它）：模块是可以被关掉的，「这一节还在
+      // 不在」正是刷新最该跟上的东西。
+      sections = doc.sections;
       if (sources) {
         const byId = new Map(concepts.map((c) => [c.id, c]));
         // 有草稿的卡片不换：那可能是只读概念之外的意外（读数与写数撞在同一张
@@ -113,6 +202,7 @@
         drafts = { ...drafts };
         conflicts = [];
       }
+      resolveRoute();
       note = localTime(doc.generated_at, doc.lang);
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
@@ -186,6 +276,79 @@
     void load();
   }
 
+  // 导航：三处入口（侧栏、tab、键盘）都只改 route，再由 writeHash 落到地址栏。
+  // **只改一处状态**，URL 就不可能与屏幕说的不一样。
+  function pickSection(source: string) {
+    route = { ...route, section: source, card: "" };
+    writeHash(route);
+  }
+
+  function pickCard(id: string) {
+    route = { ...route, card: id };
+    writeHash(route);
+  }
+
+  function toggleSplit() {
+    route = { ...route, split: !route.split };
+    writeHash(route);
+  }
+
+  /**
+   * `[` / `]`：在这一节里换卡。到头了**绕回去**（而不是停在原地）：一个没有反馈
+   * 的按键会让人以为快捷键没生效，然后去试第二次。
+   */
+  function stepCard(delta: 1 | -1) {
+    if (sectionCards.length < 2 || !active) return;
+    const i = sectionCards.findIndex((c) => c.id === active.id);
+    const next = sectionCards[(i + delta + sectionCards.length) % sectionCards.length];
+    if (next) pickCard(next.id);
+  }
+
+  function run(a: Action) {
+    switch (a.kind) {
+      case "save":
+        // 没有草稿时也接（清掉上一次的报错），但不发请求。
+        if (dirty.length && !busy) void saveAll();
+        break;
+      case "focus-filter":
+        filterBox?.focus();
+        filterBox?.select();
+        break;
+      case "card":
+        stepCard(a.delta);
+        break;
+      case "section": {
+        const s = sections[a.index];
+        if (s) pickSection(s.source);
+        break;
+      }
+      case "blur":
+        break;
+    }
+  }
+
+  /** 后退/前进（以及手动改 hash）：这是**唯一**从 URL 读回来的地方。 */
+  function onHashChange() {
+    route = parseHash(location.hash);
+  }
+
+  // 过滤时如果当前这一节一张都没命中，就跳到**第一个命中**的地方（跨节找东西那
+  // 条路的最后一步）。写进 route 之后下一轮 `inSection` 就成立了，所以不会来回跳。
+  $effect(() => {
+    if (!filter || !concepts.length) return;
+    if (concepts.some((c) => c.source === route.section && matches(c))) return;
+    const first = concepts.find(matches);
+    if (!first) return;
+    route = { section: first.source, card: first.id, split: route.split };
+    writeHash(route);
+  });
+
+  $effect(() => {
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  });
+
+  route = parseHash(location.hash);
   load();
 
   // 自动刷新只问**活着的那几位**（计数器、日志）。整份重读会把配置目录每三秒
@@ -208,48 +371,66 @@
 
      {#key} 在 lang 变化时重建子树，所有 t() 重新求值。它只在语言**真的变了**的
      时候发生——正常情况是启动后第一次拿到快照那一下，那时页面还没有任何值得
-     保留的状态（草稿、打开的编辑器都还没建）。 -->
+     保留的状态（草稿、打开的编辑器都还没建，route 在 App 自己身上）。 -->
 {#key lang}
-<header class="top">
-  <strong>newgate</strong>
-  <span class="dim mono">{t("{n} concepts", { n: concepts.length })}</span>
-  <input class="filter" placeholder={t("filter — id, title, kind")} bind:value={filter} />
-  <span class="spacer"></span>
-  {#if note}<span class="dim mono">{t("as of {time}", { time: note })}</span>{/if}
-  <label class="dim row"><input type="checkbox" bind:checked={auto} /> {t("auto-refresh")}</label>
-  <button onclick={() => load()} disabled={busy}>{t("reload")}</button>
-  <button class="primary" onclick={saveAll} disabled={busy || !dirty.length}>
-    {t("save")}{dirty.length ? ` (${dirty.length})` : ""}
-  </button>
-</header>
-
-<main>
-  {#if error}
-    <div class="banner">{error}</div>
-  {/if}
-  {#each conflicts as cf (cf.concept + cf.current)}
-    <ConflictDialog
-      conflict={cf}
-      onKeepMine={() => keepMine(cf)}
-      onTakeTheirs={() => takeTheirs(cf)}
+<div class="shell">
+  <header class="top">
+    <strong>newgate</strong>
+    <input
+      class="filter"
+      bind:this={filterBox}
+      placeholder={t("filter — id, title, kind")}
+      bind:value={filter}
     />
-  {/each}
+    <span class="spacer"></span>
+    {#if note}<span class="dim mono">{t("as of {time}", { time: note })}</span>{/if}
+    <label class="dim row"><input type="checkbox" bind:checked={auto} /> {t("auto-refresh")}</label>
+    <button onclick={() => load()} disabled={busy}>{t("reload")}</button>
+    <button class="primary" onclick={saveAll} disabled={busy || !dirty.length}>
+      {t("save")}{dirty.length ? ` (${dirty.length})` : ""}
+    </button>
+  </header>
 
-  {#each sources as src (src)}
-    {@const cards = shown.filter((c) => c.source === src)}
-    {#if cards.length}
-      <h2 class="srch">{src}<span class="dim"> — {cards.length}</span></h2>
-      {#each cards as c (c.id)}
-        <ConceptCard concept={c} draft={drafts[c.id]} onEdit={(v) => edit(c.id, v)} onRevert={() => revert(c.id)} />
-      {/each}
+  <Sidebar {sections} active={route.section} {counts} onPick={pickSection} />
+
+  <section class="content">
+    {#if error}
+      <div class="banner">{error}</div>
     {/if}
-  {/each}
+    {#each conflicts as cf (cf.concept + cf.current)}
+      <!-- 自己就是一块 .banner.conflict（不套壳：两层边框看着像两个东西）。 -->
+      <ConflictDialog
+        conflict={cf}
+        onKeepMine={() => keepMine(cf)}
+        onTakeTheirs={() => takeTheirs(cf)}
+      />
+    {/each}
 
-  {#if !concepts.length && !error}
-    <p class="dim">{t("no concepts — nothing installed in this process contributes a view.")}</p>
-  {/if}
-</main>
+    <TabStrip cards={sectionCards} active={active?.id ?? ""} {drafts} onPick={pickCard} />
+
+    <div class="pane">
+      {#if active}
+        <SplitView
+          left={leftCard}
+          right={rightCard}
+          {drafts}
+          split={route.split}
+          onEdit={edit}
+          onRevert={revert}
+          onToggleSplit={toggleSplit}
+        />
+      {:else if concepts.length}
+        <p class="dim">{t("nothing in this section matches.")}</p>
+      {:else}
+        <p class="dim">{t("no concepts — nothing installed in this process contributes a view.")}</p>
+      {/if}
+    </div>
+  </section>
+</div>
 {/key}
+
+<!-- 键盘监听放在 `{#key}` **外面**：换语言没有理由把监听摘了再装一遍。 -->
+<Shortcuts onAction={run} />
 
 <style>
   .top {
@@ -259,20 +440,10 @@
     padding: 9px 16px;
     background: var(--panel);
     border-bottom: 1px solid var(--line);
-    position: sticky;
-    top: 0;
-    z-index: 5;
+    /* 不再 sticky：整页不滚了（见 app.css 的 .shell），没有东西需要它粘住。 */
     flex-wrap: wrap;
   }
   /* 只给过滤框定宽。原来是 `.top input`，于是「自动刷新」那个**复选框**也被拉成
      220px，把它的标签顶到几百像素之外——两个本该挨着的东西看起来毫不相干。 */
   .top .filter { width: 220px; }
-  main { padding: 16px; max-width: 1100px; margin: 0 auto; }
-  .srch {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.7px;
-    color: var(--dim);
-    margin: 18px 0 8px;
-  }
 </style>

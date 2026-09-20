@@ -104,3 +104,41 @@ a { color: var(--accent); }
   background: color-mix(in srgb, var(--danger) 12%, transparent);
   margin-bottom: 14px;
 }
+
+/* ---------- 版面：左目录 / 右上 tab 条 / 右下内容 ----------
+   页面的网格必须住在这个全局表里，不能写进 App.svelte 的 <style>：Svelte 的
+   样式是**按组件作用域**的，它给不了子组件**根元素**的样式——而 .shell 的子元素
+   正是 Sidebar / TabStrip / .pane 这几个。`.card` 住在这里也是同一个理由。 */
+.shell {
+  display: grid;
+  grid-template-columns: 208px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+}
+.shell > header.top { grid-column: 1 / -1; }
+.content {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+}
+.pane {
+  overflow: auto;
+  padding: 14px 16px;
+  min-height: 0;
+}
+/* minmax(0, 1fr) 与 min-height: 0 是这块版面的承重墙，不是洁癖：grid 子项的
+   默认 min-height 是 auto——它**不肯缩到内容以下**，于是里面那个会滚的东西
+   会把整页撑高，而不是自己滚。那正好是这次要修的病（4303px 的页面）以另一种
+   长相回来，而症状看起来像「CSS 没生效」。 */
+.pane > :global(.card:last-child) { margin-bottom: 0; }
+
+/* 窄屏：侧栏收成顶上一条，内容占满。900px 是侧栏那 208px 开始挤到
+   mapping-editor（一行要 ~550px）的地方。 */
+@media (max-width: 900px) {
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
+  }
+  .shell > header.top { grid-column: 1; }
+}

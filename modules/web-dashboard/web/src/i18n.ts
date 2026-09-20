@@ -11,6 +11,12 @@
 //
 // 键就是那句英文（与 Go 侧同一条 gettext 传统）：加一句话不需要先想一个键名。
 const en: Record<string, string> = {
+  sections: "sections",
+  "nothing is contributing a view in this process.":
+    "nothing is contributing a view in this process.",
+  "show the raw file": "show the raw file",
+  "hide the raw file": "hide the raw file",
+  "nothing in this section matches.": "nothing in this section matches.",
   "{n} concepts": "{n} concepts",
   "filter — id, title, kind": "filter — id, title, kind",
   "as of {time}": "as of {time}",
@@ -66,6 +72,12 @@ const en: Record<string, string> = {
 };
 
 const zhHans: Record<string, string> = {
+  sections: "目录",
+  "nothing is contributing a view in this process.":
+    "这个进程里没有模块贡献界面内容。",
+  "show the raw file": "显示原文",
+  "hide the raw file": "收起原文",
+  "nothing in this section matches.": "这一节里没有匹配的东西。",
   "{n} concepts": "{n} 个概念",
   "filter — id, title, kind": "过滤 —— id、标题、类型",
   "as of {time}": "数据时间 {time}",

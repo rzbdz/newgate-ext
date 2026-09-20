@@ -13,6 +13,7 @@ import (
 
 	opencodeapi "github.com/rzbdz/newgate-ext/modules/opencode"
 	modules "github.com/rzbdz/newgate/component"
+	i18n "github.com/rzbdz/newgate/lib/i18n"
 	viewapi "github.com/rzbdz/newgate/lib/view"
 	cliapi "github.com/rzbdz/newgate/modules/cli/extension"
 	configapi "github.com/rzbdz/newgate/modules/config"
@@ -72,7 +73,8 @@ func New() modules.Component {
 			// web 界面那一份（槽位归属）**先**注册：它不依赖 cli，只装 dashboard
 			// 的装配里也要有——下面那段一旦 return，这里就永远不会跑。
 			if v, ok := modules.Get(ctx, viewapi.Capability); ok {
-				viewRelease, err := v.Register("opencode-omo", omoConcepts)
+				viewRelease, err := v.Register("opencode-omo",
+					viewapi.Title(func() string { return i18n.T("opencode", nil) }), omoConcepts)
 				if err != nil {
 					return err
 				}

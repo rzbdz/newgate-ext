@@ -117,8 +117,8 @@ type conceptDoc struct {
 	ID    string `json:"id"`
 	Kind  string `json:"kind"`
 	Title string `json:"title"`
-	// Source 是谁贡献的。前端拿它分组（「配置」那一栏、「网关」那一栏），
-	// 而**不需要知道那个模块叫什么**——它只是个标签。
+	// Source 是谁贡献的：前端按它分栏、也用它把概念跟 sectionDoc 对上。
+	// **机器标记**（模块名），不翻译——界面那一栏叫什么由 sectionDoc 说。
 	Source string `json:"source"`
 	// Writable 为 false = 这个概念只读（贡献者没给 Apply）。
 	Writable bool `json:"writable"`
@@ -142,8 +142,21 @@ type snapshotDoc struct {
 	// 为什么由后端给而不是前端猜：语言的解析规则只有一处实现（那个模块），前端
 	// 再猜一遍（navigator.language？）就等于有了第二处，两处不一致时页面会中英
 	// 混排，而那种错没人会报成 bug。
-	Lang     string       `json:"lang"`
+	Lang string `json:"lang"`
+	// Sections 是侧栏的栏目表：**登记过的全部来源**，包括此刻一条概念都产不出来
+	// 的那几位（配置目录整个读不了、omo 还没接管过）。从概念里反推来源会让那些
+	// 栏目消失，而用户看到的是「这个模块不存在」——然后去别处找。
+	//
+	// 名字由各模块在登记时报（`view.Title`），BFF 只搬——它不认识任何模块，
+	// 也不该认识。
+	Sections []sectionDoc `json:"sections"`
 	Concepts []conceptDoc `json:"concepts"`
+}
+
+// sectionDoc 是栏目表的一行：机器标记 + 给人看的名字。
+type sectionDoc struct {
+	Source string `json:"source"`
+	Title  string `json:"title"`
 }
 
 // snapshot 问一遍贡献者要这一刻的样子。
@@ -159,6 +172,15 @@ func (h *Handler) snapshot(sources ...string) (snapshotDoc, error) {
 		Contract:    Contract,
 		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
 		Lang:        i18n.Current(),
+	}
+	// 栏目表**每次都带**，即使这是一次按来源过滤的刷新：它不调用任何产出函数
+	// （只是把登记的栏目名取出来），所以不花钱；而侧栏的徽标数与「这个模块还在
+	// 不在」正是那几秒一次的刷新最该跟上的东西。
+	for _, s := range h.views.Sections() {
+		doc.Sections = append(doc.Sections, sectionDoc{Source: s.Source, Title: s.Title})
+	}
+	if doc.Sections == nil {
+		doc.Sections = []sectionDoc{}
 	}
 	concepts, err := h.views.Snapshot(sources...)
 	if err != nil {

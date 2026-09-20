@@ -18,6 +18,7 @@ import (
 	gatewayapi "github.com/rzbdz/newgate/modules/gateway"
 	thinkingapi "github.com/rzbdz/newgate/modules/thinking"
 
+	i18n "github.com/rzbdz/newgate/lib/i18n"
 	viewapi "github.com/rzbdz/newgate/lib/view"
 )
 
@@ -81,9 +82,11 @@ func New() modules.Component {
 			// 而那份装配里这张卡是**唯一**能看见裸奔的地方（status 与 naked 命令
 			// 都是 cli 的），见 view.go 的注释。
 			if v, ok := modules.Get(ctx, viewapi.Capability); ok {
-				release, err = v.Register("claudecode", func() ([]viewapi.Concept, error) {
-					return []viewapi.Concept{classifierConcept()}, nil
-				})
+				release, err = v.Register("claudecode",
+					viewapi.Title(func() string { return i18n.T("Claude Code", nil) }),
+					func() ([]viewapi.Concept, error) {
+						return []viewapi.Concept{classifierConcept()}, nil
+					})
 				if err != nil {
 					return err
 				}

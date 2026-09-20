@@ -68,8 +68,10 @@
     {:else if concept.kind === "log"}
       <LogView data={concept.data} />
     {:else}
-      <!-- 没有渲染器的 Kind（table / log / 将来加的）：把原文摆出来，而不是
-           假装它不存在。加渲染器是前端的事，不该由后端等。 -->
+      <!-- 还没有渲染器的 Kind（将来加的那种）：把原文摆出来，而不是假装它不
+           存在。加渲染器是前端的事，不该由后端等。
+           （2026-09-20 更正：这条注释原来把 table 与 log 也列成没渲染器的，
+           那两位各自的分支就在上面十几行、渲染器也都在 kinds/ 里。） -->
       <p class="dim">{t("no renderer for kind “{kind}” yet — raw data:", { kind: concept.kind })}</p>
       <pre class="raw">{JSON.stringify(concept.data, null, 2)}</pre>
     {/if}

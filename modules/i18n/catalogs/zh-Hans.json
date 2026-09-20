@@ -1079,6 +1079,14 @@
     "↑/↓ or j/k to move · Enter to apply · q to quit": {
       "text": "↑/↓ 或 j/k 移动 · Enter 应用 · q 退出",
       "reviewed": true
+    },
+    "Claude Code": {
+      "text": "Claude Code",
+      "reviewed": true
+    },
+    "opencode": {
+      "text": "opencode",
+      "reviewed": true
     }
   }
 }

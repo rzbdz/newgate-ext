@@ -92,8 +92,27 @@ func New() modules.Component {
 			listeners, hasServing := modules.Get(ctx, servingapi.Capability)
 			switch {
 			case hasHub:
+				// 挂在 Prefix 上（不是 Prefix+"/"）：porthub 的 matches 认「正好等于
+				// 前缀」与「前缀 + /」两种，都由这一条挂载接住（见 lib/porthub）。
+				// 于是 `/ui` 落进来时，StripPrefix 交出来的是**空路径**。
+				//
+				// 空路径本身能画（static 把它当 index.html），但**浏览器解析相对地址
+				// 时会拿当前文档的路径去截**：从 `/ui` 出发，`api/snapshot` 成了
+				// `/api/snapshot`——那个路径没人认领，落进数据面的 catch-all，被当成
+				// 一次形状不认识的转发请求（400，还算进了数据面流量）。所以空路径先
+				// 重定向到带斜杠的那一份。
+				//
+				// 302 而不是 301：永久重定向会被浏览器近乎永久地缓存，将来 Prefix 一
+				// 改，见过 301 的机器就再也纠正不回来了（standalone.go 那边同理）。
+				stem := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if r.URL.Path == "" {
+						http.Redirect(w, r, Prefix+"/", http.StatusFound)
+						return
+					}
+					handler.ServeHTTP(w, r)
+				})
 				rel, err := hub.Mount(Prefix, "web-dashboard",
-					http.StripPrefix(Prefix, handler))
+					http.StripPrefix(Prefix, stem))
 				if err != nil {
 					return err
 				}

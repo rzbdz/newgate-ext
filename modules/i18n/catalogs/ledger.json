@@ -92,6 +92,9 @@
     "Classifier rerouting": {
       "where": "modules/claudecode/st-background.go:136"
     },
+    "Claude Code": {
+      "where": "modules/claudecode/module.go:86"
+    },
     "Claude Code Bash classifier": {
       "where": "modules/claudecode/view.go:52"
     },
@@ -595,7 +598,7 @@
       ]
     },
     "no such concept: {id} — the page is probably stale, reload it": {
-      "where": "modules/web-dashboard/bff.go:229",
+      "where": "modules/web-dashboard/bff.go:251",
       "args": [
         "id"
       ]
@@ -651,6 +654,9 @@
         "names"
       ]
     },
+    "opencode": {
+      "where": "modules/opencodeomo/module.go:77"
+    },
     "profile selection": {
       "where": "modules/tui/tui.go:199"
     },
@@ -703,7 +709,7 @@
       ]
     },
     "saving needs Content-Type: application/json (got {ct})": {
-      "where": "modules/web-dashboard/bff.go:216",
+      "where": "modules/web-dashboard/bff.go:238",
       "args": [
         "ct"
       ]
@@ -889,7 +895,7 @@
       "where": "modules/opencodeomo/diagnostics.go:30"
     },
     "the request body is not valid JSON: {err}": {
-      "where": "modules/web-dashboard/bff.go:221",
+      "where": "modules/web-dashboard/bff.go:243",
       "args": [
         "err"
       ]
@@ -1186,7 +1192,7 @@
       ]
     },
     "{title} is read-only": {
-      "where": "modules/web-dashboard/bff.go:238",
+      "where": "modules/web-dashboard/bff.go:260",
       "args": [
         "title"
       ]

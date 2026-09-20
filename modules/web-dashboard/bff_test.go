@@ -32,7 +32,8 @@ func newHandler() *Handler {
 // contribute 登记一个贡献者：产出函数每次被调用都原样交出这批概念。
 func contribute(t *testing.T, h *Handler, source string, concepts ...view.Concept) {
 	t.Helper()
-	if _, err := h.views.Register(source, func() ([]view.Concept, error) { return concepts, nil }); err != nil {
+	if _, err := h.views.Register(source, view.Title(func() string { return source }),
+		func() ([]view.Concept, error) { return concepts, nil }); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -73,6 +74,78 @@ func TestLiveSurvivesTheWire(t *testing.T) {
 	// （见 core/lib/view 里 Concept.Live 的注释）。
 	if byID["live.one"].Source != byID["static.one"].Source {
 		t.Fatal("这条用例的前提是两个概念同源")
+	}
+}
+
+// TestSectionsSurviveTheWire 是侧栏那一栏的**名字**从模块走到浏览器的整条路。
+//
+// 名字由各模块在登记时报（`view.Title`），BFF 一个模块都不认识、只搬。这条断了
+// **不会报错**：前端的兜底是把来源名当标题画出来（那是刻意的兼容那条路），于是
+// 侧栏里出现的是 config / plugin-manager / opencode-omo 这种机器标记，看着只像
+// 「没翻」，不像一条 bug。所以它值得一条断言，而不是等谁在浏览器里看出来。
+func TestSectionsSurviveTheWire(t *testing.T) {
+	h := newHandler()
+	// 一个**此刻产不出任何概念**的源：配置目录整个读不了、omo 还没接管过——那一栏
+	// 仍然要在侧栏里有一个位置（它消失了，用户会以为那个模块没装）。
+	if _, err := h.views.Register("quiet", view.Title(func() string { return "Quiet module" }),
+		func() ([]view.Concept, error) { return nil, nil }); err != nil {
+		t.Fatal(err)
+	}
+	contribute(t, h, "config", view.Concept{ID: "config.state", Kind: view.KindToggles, Title: "Global settings"})
+
+	rec := get(t, h, "/api/snapshot")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("snapshot 该 200，实际 %d", rec.Code)
+	}
+	var doc snapshotDoc
+	if err := json.Unmarshal(rec.Body.Bytes(), &doc); err != nil {
+		t.Fatal(err)
+	}
+	titles := map[string]string{}
+	for _, s := range doc.Sections {
+		titles[s.Source] = s.Title
+	}
+	if len(doc.Sections) != 2 {
+		t.Fatalf("两个登记过的源都该在栏目表里，实际 %+v", doc.Sections)
+	}
+	if titles["quiet"] != "Quiet module" {
+		t.Errorf("没产出概念的源也该带着名字出现: %+v", doc.Sections)
+	}
+	// 标题来自登记时报的那一句，不是来源名（来源名是机器标记：它也要端出去，
+	// 但那是给前端对号用的，不是给人看的）。
+	if titles["config"] != "config" {
+		t.Errorf("这条用例的前提是测试里那个源名与标题同形: %+v", doc.Sections)
+	}
+	if got := doc.Sections[0].Source; got != "config" {
+		t.Errorf("栏目表按 source 排序（界面顺序要跨重启稳定），第一个该是 config，实际 %q", got)
+	}
+}
+
+// TestFilteredSnapshotStillCarriesEverySection：按来源过滤的那次快照（界面每几秒
+// 刷一次）必须**照旧带上完整的栏目表**。
+//
+// 反过来的做法（只回被点名那几位的栏目）看起来更"一致"，实际是把侧栏变成一块
+// 会缩水的板子：刷一次少一栏、再刷回来，而那几秒一次、人未必盯着。栏目表不调用
+// 任何产出函数，带上它一分钱不花。
+func TestFilteredSnapshotStillCarriesEverySection(t *testing.T) {
+	h := newHandler()
+	var cheap, expensive atomic.Int64
+	contributeCount(t, h, "gateway", &cheap)
+	contributeCount(t, h, "config", &expensive)
+
+	rec := get(t, h, "/api/snapshot?source=gateway")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("按来源过滤该 200，实际 %d", rec.Code)
+	}
+	var doc snapshotDoc
+	if err := json.Unmarshal(rec.Body.Bytes(), &doc); err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.Concepts) != 1 {
+		t.Fatalf("概念该只剩被点名那位，实际 %d", len(doc.Concepts))
+	}
+	if len(doc.Sections) != 2 {
+		t.Errorf("栏目表该是完整的（侧栏不该跟着刷新缩水），实际 %+v", doc.Sections)
 	}
 }
 
@@ -375,10 +448,11 @@ func TestSnapshotCanBeAskedForOneSource(t *testing.T) {
 
 func contributeCount(t *testing.T, h *Handler, source string, n *atomic.Int64) {
 	t.Helper()
-	if _, err := h.views.Register(source, func() ([]view.Concept, error) {
-		n.Add(1)
-		return []view.Concept{{ID: source + ".x", Kind: view.KindSeries, Title: source}}, nil
-	}); err != nil {
+	if _, err := h.views.Register(source, view.Title(func() string { return source }),
+		func() ([]view.Concept, error) {
+			n.Add(1)
+			return []view.Concept{{ID: source + ".x", Kind: view.KindSeries, Title: source}}, nil
+		}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -387,9 +461,10 @@ func contributeCount(t *testing.T, h *Handler, source string, n *atomic.Int64) {
 // 坏的，而不是回一份空快照——空快照在界面上表现成「一个模块都没有」。
 func TestSnapshotFailureIsLoud(t *testing.T) {
 	h := newHandler()
-	if _, err := h.views.Register("config", func() ([]view.Concept, error) {
-		return nil, errors.New("permission denied")
-	}); err != nil {
+	if _, err := h.views.Register("config", view.Title(func() string { return "Configuration" }),
+		func() ([]view.Concept, error) {
+			return nil, errors.New("permission denied")
+		}); err != nil {
 		t.Fatal(err)
 	}
 	rec := get(t, h, "/api/snapshot")
