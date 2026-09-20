@@ -100,6 +100,9 @@ jobs:
         run: |
           go run github.com/rzbdz/newgate/tools/i18n extract -root . -catalogs modules/i18n/catalogs -check
           go run github.com/rzbdz/newgate/tools/i18n check -root . -catalogs modules/i18n/catalogs -allowlist tools/i18n-allowlist.json
+          # 目录表的编译期形态：运行期读的是 .bin，所以「改了 JSON 忘了重生成」的
+          # 后果是译文静默地少几句（测试里另有一条棘轮，这里是流水线那一份）。
+          go run github.com/rzbdz/newgate/tools/i18n bundle -root . -catalogs modules/i18n/catalogs -check
 
       # -race：发行版自己的模块里也有并发路径（porthub 那张表被多个界面同时读、
       # web-dashboard 的 BFF、arch-diagram 现场那次构建），而这些错的默认表现是

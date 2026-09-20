@@ -37,7 +37,12 @@ import (
 	localeapi "github.com/rzbdz/newgate/modules/locale"
 )
 
-//go:embed catalogs/*.json
+// 嵌的是 **bundle（.bin）**，不是 JSON——理由与内核那一份完全相同（见内核
+// lib/i18n/catalogs.go 与 bundle.go）：每条 `newgate …` 命令都要读一遍这些表，
+// 而解析 JSON 是那次装配里最贵的一笔。JSON 仍然是唯一真相，两者由
+// `tools/i18n bundle` 对齐，CI 与测试拦「改了 JSON 忘了重生成」。
+//
+//go:embed catalogs/*.bin
 var catalogsFS embed.FS
 
 // CatalogDir 是嵌入目录在 FS 里的路径。
@@ -72,16 +77,16 @@ func start(_ context.Context, ctx modules.Context) error {
 		return nil
 	}
 
-	raw, err := fs.ReadFile(catalogsFS, CatalogDir+"/"+corei18n.LedgerName)
+	raw, err := fs.ReadFile(catalogsFS, CatalogDir+"/"+corei18n.LedgerBundleName)
 	if err != nil {
 		// 账本就在这个包里嵌着，读不到只可能是打包错了——报出来，别静默。
 		return err
 	}
-	led, err := corei18n.ParseLedger(raw)
+	led, err := corei18n.DecodeLedger(raw)
 	if err != nil {
 		return err
 	}
-	cats, err := corei18n.CatalogsFromFS(catalogsFS, CatalogDir)
+	cats, err := corei18n.BundlesFromFS(catalogsFS, CatalogDir)
 	if err != nil {
 		return err
 	}

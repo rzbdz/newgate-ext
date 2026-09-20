@@ -110,6 +110,11 @@ echo "── 发行版规格书：$specs"
 cd "$gomod"
 go run ./tools/distgen
 
+# 本发行版自己的目录表也要编成运行期直接读的那一份（见内核 lib/i18n/bundle.go）：
+# go:embed 要的是 .bin，所以这一步必须在编译之前。内核那一份由内核的 `make generate`
+# 管（build.sh 前面已经跑过 make），这里管的是发行版自己带的那几张表。
+go run github.com/rzbdz/newgate/tools/i18n bundle -root . -catalogs modules/i18n/catalogs
+
 mkdir -p "$out"
 build_time=$(date '+%Y-%m-%d_%H:%M:%S%z')
 commit_time=$(git -C "$here" log -1 --date=format:'%Y-%m-%d_%H:%M:%S%z' --format=%cd 2>/dev/null || echo unknown)
