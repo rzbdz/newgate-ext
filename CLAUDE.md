@@ -117,10 +117,11 @@ NEWGATE_DIST=dist-simple-cli.json build/build.sh out/           # 只编那一�
 NEWGATE_PLATFORMS="linux/amd64 linux/arm64 darwin/arm64" build/build.sh dist/
 ```
 
-- **产物名 = `newgate-<规格书里的 distribution>-<平台>-<架构>`**。今天是三份：
+- **产物名 = `newgate-<规格书里的 distribution>-<平台>-<架构>`**。今天是四份：
   `default`（旗舰）、`simple-cli`（换掉界面）、`hello`（**骨架**：整个框架 + 一个
-  hello，`newgate` 跑起来就是一句 hello world）。多编几份是为了**调试**——
-  想看骨架配置（`dist-hello.json`）的行为，`NEWGATE_ALL=1` 编出来直接跑即可。
+  hello，`newgate` 跑起来就是一句 hello world）、`dev`（**开发用**：默认模块 +
+  arch-diagram，见 §5）。多编几份是为了**调试**——想看骨架配置（`dist-hello.json`）
+  的行为，`NEWGATE_ALL=1` 编出来直接跑即可。
 - **发什么由流水线决定**：Release 只发重点那份（`release.yml` 里的
   `NEWGATE_DISTS: dist.json`），CI 则编**全部**规格书（「另一份配置编不过」这种
   故障本地看不见，谁也不天天编骨架配置）。
@@ -222,6 +223,18 @@ import 的共享叶子（`config/domain`、`cli/extension`、`gateway/policy`…
 
 产物落在 `dist/`（进 .gitignore）：它是**这一刻**的图，不进版本控制——图和代码
 一样会过期，过期的那张会让人以为架构是那样。
+
+**在线那一份**：`modules/arch-diagram` 把同一张图挂到共享端口的 `/arch` 上
+（`newgate arch` 打出地址）。它服务的是**这个进程此刻装了什么**，不是「这份产物里
+有哪些规格书」——后者的表长在模块们上面（生成的清单 import 了每个模块），模块抬头
+看它就是编译环（实测撞上过）。所以：
+
+- **dev 规格书**是 `dist-dev.json`（默认模块 + arch-diagram）。产品规格书里不装它：
+  它摊开的是内部结构，而产品二进制里也没有源码树，只有装配那半张图。
+- **import 那半张要源码树**（`go list`）。没有就只画装配图并写明原因——**不报错**：
+  部署出去的机器上没有源码，那不是故障。
+- 它是**只读 + 只答 loopback**（判据与 web-dashboard 那道门同一条：挡 DNS rebinding
+  要看 Host，不是看对端地址）。
 
 ## 6. 发布
 
