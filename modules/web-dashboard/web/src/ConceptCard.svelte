@@ -8,6 +8,7 @@
   import { t } from "./i18n";
   import CodeEditor from "./kinds/CodeEditor.svelte";
   import MappingEditor from "./kinds/MappingEditor.svelte";
+  import Records from "./kinds/Records.svelte";
   import Toggles from "./kinds/Toggles.svelte";
   import Series from "./kinds/Series.svelte";
   import LogView from "./kinds/LogView.svelte";
@@ -61,6 +62,8 @@
       <CodeEditor data={concept.data} {draft} readonly={!concept.writable} onEdit={changed} />
     {:else if concept.kind === "toggles"}
       <Toggles data={concept.data} {draft} readonly={!concept.writable} onEdit={changed} />
+    {:else if concept.kind === "records"}
+      <Records data={concept.data} {draft} readonly={!concept.writable} onEdit={changed} />
     {:else if concept.kind === "table"}
       <Table data={concept.data} />
     {:else if concept.kind === "series"}

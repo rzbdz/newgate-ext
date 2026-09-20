@@ -4,7 +4,14 @@
 // 模块的界面不需要改这个文件，正如加一个模块的界面不需要改 BFF：那条规矩的
 // 前端一半就是这个文件。
 
-export type Kind = "mapping-editor" | "code" | "toggles" | "series" | "table" | "log";
+export type Kind =
+  | "mapping-editor"
+  | "code"
+  | "toggles"
+  | "records"
+  | "series"
+  | "table"
+  | "log";
 
 export interface Concept {
   id: string;

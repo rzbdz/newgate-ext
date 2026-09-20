@@ -287,7 +287,68 @@ if (!(await openSwitches())) {
   check("被拒的那次写没有覆盖磁盘", after2.written_by_someone_else === true);
 }
 
-// —— 8. 键盘：`/` 找东西、Esc 退出 ——
+// —— 8. provider 表：凭据不出门，但能加能改 ——
+//
+// 这一段是「用户要在网页上配 provider」那条要求的验收。它验的是一件看起来很矛盾
+// 的事：**浏览器拿不到那个 key，却仍然能改 provider**。做法是值根本不进快照
+// （FieldSecret），界面回传空串 = 别动它。所以这里两条都要验：
+//
+//   - 那一格来时是空的、类型是 password（凭据不出门）；
+//   - 改完别处保存之后，磁盘上的 key **还在**（空串没有被当成「删掉」）。
+//
+// 第二条错了的话，症状是「改一次 base_url，下一次请求 401」，而且保存是成功的。
+{
+  const providersFile = stateFile.replace(/state\.json$/, "providers.json");
+  const before = fs.existsSync(providersFile) ? fs.readFileSync(providersFile, "utf8") : "";
+  const keyBefore = (JSON.parse(before || "{}").providers?.demo?.api_key) ?? "";
+
+  const card = snap.concepts.find((c) => c.kind === "records" && c.data?.file === "providers.json");
+  if (!card) {
+    skip("这份装配里没有 provider 表那张卡，跳过 provider 那几条");
+  } else {
+    await page.locator(`nav.side button[title="${card.source}"]`).click();
+    await page.waitForTimeout(200);
+    await page.locator(`button.tab[title="${card.id}"]`).click();
+    await page.waitForTimeout(300);
+
+    const keyBox = page.locator('section.card input[type="password"]').first();
+    check("凭据那一格是遮蔽的", (await keyBox.count()) > 0);
+    check("凭据的值没有随快照过来", (await keyBox.inputValue()) === "", "浏览器手里不该有这个值");
+
+    // 改一个**不是凭据**的字段，保存，然后看磁盘。
+    //
+    // 上一段故意制造的那个冲突还挂在屏幕上（那是它要验的东西），所以「没有报错」
+    // 的判据是**横幅没有变多**，不是「屏幕上一个横幅都没有」。
+    const bannerBefore = await page.locator(".banner").first().innerText().catch(() => "");
+    const baseURL = page.locator(`#f-0-base_url`);
+    await baseURL.fill("http://127.0.0.1:9/changed");
+    await page.waitForTimeout(150);
+    await page.locator("header.top button.primary").click();
+    await page.waitForTimeout(900);
+    // 保存报错要说出来。少了这一条，「没写下去」与「写了但我读错了」在屏幕上长得
+    // 一模一样——文件没变的真实原因会被猜成十几种。
+    const banner = await page.locator(".banner").first().innerText().catch(() => "");
+    check("保存没有多出新的报错", banner === bannerBefore, `${banner.slice(0, 120)}`.trim());
+    const after = JSON.parse(fs.readFileSync(providersFile, "utf8")).providers?.demo ?? {};
+    check("改得动 provider 的字段", after.base_url === "http://127.0.0.1:9/changed", JSON.stringify(after));
+    check("回传空的凭据格没有把 key 弄丢", after.api_key === keyBefore && keyBefore !== "", `现在 ${JSON.stringify(after.api_key)}`);
+
+    // 眼睛：点了之后输入框变明文。值是我们自己刚敲的，所以这条验的是「那个按钮真的
+    // 接到了这一格」——粘一串 key 之后核对一眼，是最常见的动作。
+    //
+    // 按 **id** 找那一格，不按 `input[type=password]`：点亮之后类型就变了，用类型
+    // 当选择器会变成「元素不存在」而超时——那看起来像界面坏了，其实是在测一个
+    // 已经不存在的东西。
+    const keyField = page.locator(`#f-0-api_key`);
+    await keyField.fill("sk-typed-in-the-browser");
+    await page.waitForTimeout(150);
+    await page.locator(".rec button[title]").first().click();
+    await page.waitForTimeout(150);
+    check("眼睛把那格变成明文", (await keyField.getAttribute("type")) === "text");
+  }
+}
+
+// —— 9. 键盘：`/` 找东西、Esc 退出 ——
 //
 // 这条是「4-5 次操作」那条线的下限保障：鼠标走完侧栏 → tab → 控件 → 保存是四次，
 // 没有余量；`/` 与 Alt+数字 把「回到一个已知位置」压成一次按键。
