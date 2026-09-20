@@ -72,7 +72,16 @@ build_one() {
 # 平台矩阵：默认只编本机（日常开发要的就是它）。发布时由 CI 给一份清单，
 # 例如 NEWGATE_PLATFORMS="linux/amd64 linux/arm64 darwin/arm64"。
 host_os=$(uname -s | tr 'A-Z' 'a-z')
-host_arch=$(uname -m)
+# uname -m 给的是机器自己的叫法，Go 用的是另一套：x86_64 → amd64、aarch64 → arm64。
+# 不映射的话**默认这条路**（不给 NEWGATE_PLATFORMS）会直接失败：
+#   go: unsupported GOOS/GOARCH pair linux/x86_64
+# 2026-09-20 实测踩过——上一版脚本只把 uname -m 用在文件名上，所以从没暴露。
+case "$(uname -m)" in
+  x86_64)        host_arch=amd64 ;;
+  aarch64|arm64) host_arch=arm64 ;;
+  i386|i686)     host_arch=386 ;;
+  *)             host_arch=$(uname -m) ;;
+esac
 platforms=${NEWGATE_PLATFORMS:-"$host_os/$host_arch"}
 
 failed=""
