@@ -5,6 +5,8 @@
   // 产出的 edit 形状由贡献者定义（core/modules/config/view.go 的
   // applyProfileRoles）：`{"roles": {"<档位>": [{"provider","model"} | {"ref"}]}}`。
   // 关键一条：**整个 roles 一起交**，不是增量——后端是「替换 roles 这一个键」。
+  import { t } from "../i18n";
+
   type Binding = { provider?: string; model?: string; ref?: string };
   type Role = { id: string; bindings: Binding[] };
   type Provider = {
@@ -113,10 +115,10 @@
 
 <div class="head">
   <span class="mono dim">{data.file}</span>
-  {#if data.default}<span class="pill">default</span>{/if}
-  {#if data.pinned}<span class="pill">pinned</span>{/if}
-  {#if data.excluded}<span class="pill">excluded</span>{/if}
-  {#if data.extends}<span class="pill">extends {data.extends}</span>{/if}
+  {#if data.default}<span class="pill">{t("default")}</span>{/if}
+  {#if data.pinned}<span class="pill">{t("pinned")}</span>{/if}
+  {#if data.excluded}<span class="pill">{t("excluded")}</span>{/if}
+  {#if data.extends}<span class="pill">{t("extends {name}", { name: data.extends })}</span>{/if}
   {#if data.description}<span class="dim">{data.description}</span>{/if}
 </div>
 
@@ -124,11 +126,15 @@
   <div class="role">
     <div class="row">
       <b class="mono">{id}</b>
-      {#if !roles[id].length}<span class="dim">no candidates — this tier resolves to nothing</span>{/if}
+      {#if !roles[id].length}<span class="dim">{t("no candidates — this tier resolves to nothing")}</span>{/if}
       <span class="spacer"></span>
       {#if !readonly}
-        <button class="tiny" onclick={() => addCandidate(id)}>+ candidate</button>
-        <button class="tiny ghost" onclick={() => removeRole(id)} title="remove this tier from the file">remove tier</button>
+        <button class="tiny" onclick={() => addCandidate(id)}>{t("+ candidate")}</button>
+        <button
+          class="tiny ghost"
+          onclick={() => removeRole(id)}
+          title={t("remove this tier from the file")}
+        >{t("remove tier")}</button>
       {/if}
     </div>
     {#each roles[id] as b, i (i)}
@@ -138,7 +144,7 @@
           <input
             class="mono"
             value={b.ref}
-            placeholder="another tier id"
+            placeholder={t("another tier id")}
             disabled={readonly}
             oninput={(e) => setRef(id, i, e.currentTarget.value)}
           />
@@ -154,19 +160,19 @@
               });
             }}
           >
-            <option value="">— provider —</option>
+            <option value="">{t("— provider —")}</option>
             {#each data.providers as p (p.name)}
-              <option value={p.name}>{p.name}{p.has_key ? "" : " (no key)"}</option>
+              <option value={p.name}>{p.name}{p.has_key ? "" : t(" (no key)")}</option>
             {/each}
             {#if b.provider && !data.providers.some((p) => p.name === b.provider)}
-              <option value={b.provider}>{b.provider} (not declared)</option>
+              <option value={b.provider}>{b.provider}{t(" (not declared)")}</option>
             {/if}
           </select>
           <input
             class="mono model"
             list="models-{id}-{i}"
             value={b.model ?? ""}
-            placeholder="model"
+            placeholder={t("model")}
             disabled={readonly}
             oninput={(e) => {
               const m = e.currentTarget.value;
@@ -180,7 +186,7 @@
         <span class="spacer"></span>
         {#if !readonly}
           <label class="dim tiny">
-            ref
+            {t("ref")}
             <input
               type="checkbox"
               checked={b.ref !== undefined}
@@ -199,11 +205,11 @@
 {#if !readonly}
   <div class="row">
     <input
-      placeholder="add a tier (e.g. vision)"
+      placeholder={t("add a tier (e.g. vision)")}
       bind:value={newRole}
       onkeydown={(e) => e.key === "Enter" && addRole()}
     />
-    <button class="tiny" onclick={addRole} disabled={!newRole.trim()}>add tier</button>
+    <button class="tiny" onclick={addRole} disabled={!newRole.trim()}>{t("add tier")}</button>
   </div>
 {/if}
 

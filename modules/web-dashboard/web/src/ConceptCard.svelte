@@ -5,6 +5,7 @@
   // 它**不认识任何模块**：`source` 只是个用来分组的字符串。加一个模块的界面意味着
   // 加一个 Kind 的渲染器（或者复用已有的），而不是在这张卡片里加一个 if。
   import type { Concept } from "./api";
+  import { t } from "./i18n";
   import CodeEditor from "./kinds/CodeEditor.svelte";
   import MappingEditor from "./kinds/MappingEditor.svelte";
   import Toggles from "./kinds/Toggles.svelte";
@@ -36,12 +37,15 @@
     <span class="meta">{concept.id}</span>
     <span class="spacer"></span>
     {#if isDirty}
-      <span class="pill">unsaved</span>
-      <button class="tiny ghost" onclick={onRevert}>revert</button>
+      <span class="pill">{t("unsaved")}</span>
+      <button class="tiny ghost" onclick={onRevert}>{t("revert")}</button>
     {/if}
     {#if !concept.writable && !concept.error}
-      <span class="pill" title="the contributor offers no way to write this one back (it may hold credentials)">
-        read-only
+      <span
+        class="pill"
+        title={t("the contributor offers no way to write this one back (it may hold credentials)")}
+      >
+        {t("read-only")}
       </span>
     {/if}
   </header>
@@ -63,7 +67,7 @@
     {:else}
       <!-- 没有渲染器的 Kind（table / log / 将来加的）：把原文摆出来，而不是
            假装它不存在。加渲染器是前端的事，不该由后端等。 -->
-      <p class="dim">no renderer for kind “{concept.kind}” yet — raw data:</p>
+      <p class="dim">{t("no renderer for kind “{kind}” yet — raw data:", { kind: concept.kind })}</p>
       <pre class="raw">{JSON.stringify(concept.data, null, 2)}</pre>
     {/if}
   </div>

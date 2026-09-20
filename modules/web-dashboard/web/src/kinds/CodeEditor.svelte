@@ -11,6 +11,7 @@
   import { EditorState } from "@codemirror/state";
   import { EditorView } from "@codemirror/view";
   import { json } from "@codemirror/lang-json";
+  import { t } from "../i18n";
 
   type Data = { path: string; language: string; text: string; redacted?: boolean };
 
@@ -76,7 +77,10 @@
   <span class="mono dim">{data.path}</span>
   <span class="pill">{data.language}</span>
   {#if data.redacted}
-    <span class="pill" title="credentials are replaced with *** before they leave the daemon">redacted</span>
+    <span
+      class="pill"
+      title={t("credentials are replaced with *** before they leave the daemon")}
+    >{t("redacted")}</span>
   {/if}
 </div>
 <div bind:this={host} class="editor"></div>

@@ -8,6 +8,8 @@
   // 自动滚到底：看日志的人要的是最后一行。往上翻的时候不打断他（见 onscroll）。
   type Data = { path: string; lines: string[]; truncated?: boolean; missing?: boolean };
 
+  import { t } from "../i18n";
+
   let { data }: { data: Data } = $props();
 
   let follow = $state(true);
@@ -32,13 +34,15 @@
 
 <div class="row head">
   <span class="mono dim">{data.path}</span>
-  {#if data.truncated}<span class="pill" title="only the tail is shown">tail</span>{/if}
+  {#if data.truncated}
+    <span class="pill" title={t("only the tail is shown")}>{t("tail")}</span>
+  {/if}
   <span class="spacer"></span>
-  <label class="dim tiny"><input type="checkbox" bind:checked={follow} /> follow</label>
+  <label class="dim tiny"><input type="checkbox" bind:checked={follow} /> {t("follow")}</label>
 </div>
 
 {#if data.missing}
-  <p class="dim">no log file yet — this daemon has not written anything.</p>
+  <p class="dim">{t("no log file yet — this daemon has not written anything.")}</p>
 {:else}
   <div class="log" bind:this={box} {onscroll}>
     {#each data.lines ?? [] as line, i (i)}

@@ -6,6 +6,7 @@
   // 几次互相看不见的提交，中间任何一次撞上别人的改动，文件就停在半路。攒起来
   // 一次写，前端手里的基线与文件之间只有一次比对。
   import { apply, snapshot, type Concept, type Conflict } from "./api";
+  import { setLang, t } from "./i18n";
   import ConceptCard from "./ConceptCard.svelte";
   import ConflictDialog from "./ConflictDialog.svelte";
 
@@ -57,6 +58,9 @@
     error = "";
     try {
       const doc = await snapshot(sources);
+      // 语言跟着后端走（每次快照都设一次：用户在命令行 `newgate lang zh-Hans`
+      // 之后刷新页面就该变）。概念标题是后端翻译的，这一步只管界面骨架。
+      setLang(doc.lang);
       if (sources) {
         const byId = new Map(concepts.map((c) => [c.id, c]));
         // 有草稿的卡片不换：那可能是只读概念之外的意外（读数与写数撞在同一张
@@ -160,14 +164,14 @@
 
 <header class="top">
   <strong>newgate</strong>
-  <span class="dim mono">{concepts.length} concepts</span>
-  <input placeholder="filter — id, title, kind" bind:value={filter} />
+  <span class="dim mono">{t("{n} concepts", { n: concepts.length })}</span>
+  <input placeholder={t("filter — id, title, kind")} bind:value={filter} />
   <span class="spacer"></span>
-  {#if note}<span class="dim mono">as of {note}</span>{/if}
-  <label class="dim row"><input type="checkbox" bind:checked={auto} /> auto-refresh</label>
-  <button onclick={() => load()} disabled={busy}>reload</button>
+  {#if note}<span class="dim mono">{t("as of {time}", { time: note })}</span>{/if}
+  <label class="dim row"><input type="checkbox" bind:checked={auto} /> {t("auto-refresh")}</label>
+  <button onclick={() => load()} disabled={busy}>{t("reload")}</button>
   <button class="primary" onclick={saveAll} disabled={busy || !dirty.length}>
-    save{dirty.length ? ` (${dirty.length})` : ""}
+    {t("save")}{dirty.length ? ` (${dirty.length})` : ""}
   </button>
 </header>
 
@@ -194,7 +198,7 @@
   {/each}
 
   {#if !concepts.length && !error}
-    <p class="dim">no concepts — nothing installed in this process contributes a view.</p>
+    <p class="dim">{t("no concepts — nothing installed in this process contributes a view.")}</p>
   {/if}
 </main>
 

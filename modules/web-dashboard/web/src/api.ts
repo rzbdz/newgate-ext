@@ -22,6 +22,8 @@ export interface Concept {
 export interface Snapshot {
   contract: number;
   generated_at: string;
+  /** 后端解析出来的语言（见 i18n.ts：界面骨架上的字用它挑目录）。 */
+  lang: string;
   concepts: Concept[];
 }
 

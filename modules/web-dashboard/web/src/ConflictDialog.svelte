@@ -7,6 +7,7 @@
   //
   // 「保存失败，请重试」把这件事交给用户去猜，而猜错的代价是丢数据。
   import type { Conflict } from "./api";
+  import { t } from "./i18n";
 
   let {
     conflict,
@@ -21,23 +22,24 @@
 
 <div class="banner conflict">
   <div class="row">
-    <b>{conflict.path} changed on disk</b>
+    <b>{t("{path} changed on disk", { path: conflict.path })}</b>
     <span class="pill mono">{conflict.base.slice(0, 14)} → {conflict.current.slice(0, 14)}</span>
     <span class="spacer"></span>
-    <button onclick={onTakeTheirs}>use theirs (drop my edit)</button>
-    <button class="primary" onclick={onKeepMine}>keep mine</button>
+    <button onclick={onTakeTheirs}>{t("use theirs (drop my edit)")}</button>
+    <button class="primary" onclick={onKeepMine}>{t("keep mine")}</button>
   </div>
   <p class="dim">
-    Something else wrote this file after this page loaded it (a CLI command, another
-    browser tab, or a program of yours). Nothing has been written — pick one.
+    {t(
+      "Something else wrote this file after this page loaded it (a CLI command, another browser tab, or a program of yours). Nothing has been written — pick one.",
+    )}
   </p>
   <div class="side">
     <div>
-      <h4>yours</h4>
+      <h4>{t("yours")}</h4>
       <pre>{conflict.yours}</pre>
     </div>
     <div>
-      <h4>on disk now</h4>
+      <h4>{t("on disk now")}</h4>
       <pre>{conflict.theirs}</pre>
     </div>
   </div>

@@ -9,6 +9,8 @@
   type Group = { id: string; label: string; counters: Entry[] };
   type Data = { groups: Group[]; total: number };
 
+  import { t } from "../i18n";
+
   let { data }: { data: Data } = $props();
 
   function max(group: Group): number {
@@ -17,9 +19,9 @@
 </script>
 
 <div class="row">
-  <span class="dim">total {data.total ?? 0}</span>
+  <span class="dim">{t("total {n}", { n: data.total ?? 0 })}</span>
   <span class="spacer"></span>
-  <span class="dim">counters are process-local — they reset when the daemon restarts</span>
+  <span class="dim">{t("counters are process-local — they reset when the daemon restarts")}</span>
 </div>
 
 {#each data.groups ?? [] as g (g.id)}
@@ -37,7 +39,7 @@
 {/each}
 
 {#if !(data.groups ?? []).length}
-  <p class="dim">no counters yet — nothing has gone through the gateway since it started.</p>
+  <p class="dim">{t("no counters yet — nothing has gone through the gateway since it started.")}</p>
 {/if}
 
 <style>

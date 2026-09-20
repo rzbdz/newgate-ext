@@ -129,9 +129,17 @@ type conceptDoc struct {
 }
 
 type snapshotDoc struct {
-	Contract    int          `json:"contract"`
-	GeneratedAt string       `json:"generated_at"`
-	Concepts    []conceptDoc `json:"concepts"`
+	Contract    int    `json:"contract"`
+	GeneratedAt string `json:"generated_at"`
+	// Lang 是这个进程**解析出来**的语言（NEWGATE_LANG > 配置 > LC_ALL > …，见
+	// modules/locale）。前端拿它挑自己那份界面文案——概念标题已经是后端翻译好的，
+	// 而按钮、提示这些界面骨架上的字属于前端自己。
+	//
+	// 为什么由后端给而不是前端猜：语言的解析规则只有一处实现（那个模块），前端
+	// 再猜一遍（navigator.language？）就等于有了第二处，两处不一致时页面会中英
+	// 混排，而那种错没人会报成 bug。
+	Lang     string       `json:"lang"`
+	Concepts []conceptDoc `json:"concepts"`
 }
 
 // snapshot 问一遍贡献者要这一刻的样子。
@@ -143,7 +151,11 @@ type snapshotDoc struct {
 // 而那两位的产出是便宜的；配置那一位要重读并重新解析每一份 profile、每一个源
 // 文件，不该被顺带叫醒。不带 = 全部（首次加载要的就是全部）。
 func (h *Handler) snapshot(sources ...string) (snapshotDoc, error) {
-	doc := snapshotDoc{Contract: Contract, GeneratedAt: time.Now().UTC().Format(time.RFC3339)}
+	doc := snapshotDoc{
+		Contract:    Contract,
+		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
+		Lang:        i18n.Current(),
+	}
 	concepts, err := h.views.Snapshot(sources...)
 	if err != nil {
 		return doc, err
