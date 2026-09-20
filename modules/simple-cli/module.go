@@ -242,7 +242,6 @@ func (s *service) RegisterVerbose(cliapi.Verbose) (modules.Release, error) {
 func (s *service) accept(kind string) modules.Release {
 	s.mu.Lock()
 	s.accepted[kind]++
-	n := s.accepted[kind]
 	s.mu.Unlock()
 	fmt.Printf("simple-cli: 收下 %s 注入（本壳不渲染，见 status 的计数）\n", kind)
 	return func() error {
