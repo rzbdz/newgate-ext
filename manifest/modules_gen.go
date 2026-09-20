@@ -39,6 +39,20 @@ const DefaultSpec = "dist.json"
 // Specs 是仓库根每份规格书各自的装配选择。
 func Specs() map[string]app.Selection {
 	return map[string]app.Selection{
+		"dist-dashboard.json": {
+			Disable: []string{"cli"},
+			Extra: []app.Entry{
+				{Dir: "i18n", Component: ext_i18n.New()},
+				{Dir: "deepseek", Component: ext_deepseek.New()},
+				{Dir: "glm", Component: ext_glm.New()},
+				{Dir: "claudecode_deepseek", Component: ext_claudecode_deepseek.New()},
+				{Dir: "claudecode_glm", Component: ext_claudecode_glm.New()},
+				{Dir: "claudecode", Component: ext_claudecode.New()},
+				{Dir: "opencode", Component: ext_opencode.New()},
+				{Dir: "opencodeomo", Component: ext_opencodeomo.New()},
+				{Dir: "web-dashboard", Component: ext_web_dashboard.New()},
+			},
+		},
 		"dist-dev.json": {
 			Extra: []app.Entry{
 				{Dir: "i18n", Component: ext_i18n.New()},
@@ -94,7 +108,7 @@ func Specs() map[string]app.Selection {
 
 // SpecNames 列出全部规格书名，按文件名排序。
 func SpecNames() []string {
-	return []string{"dist-dev.json", "dist-hello.json", "dist-simple-cli.json", "dist.json"}
+	return []string{"dist-dashboard.json", "dist-dev.json", "dist-hello.json", "dist-simple-cli.json", "dist.json"}
 }
 
 // Loader 按规格书名装图。名字认不出来就**报错**，不退回默认那份：
