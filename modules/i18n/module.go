@@ -31,7 +31,6 @@ import (
 	"context"
 	"embed"
 	"io/fs"
-	"log"
 
 	modules "github.com/rzbdz/newgate/component"
 	corei18n "github.com/rzbdz/newgate/lib/i18n"
@@ -86,16 +85,15 @@ func start(_ context.Context, ctx modules.Context) error {
 	if err != nil {
 		return err
 	}
-	if len(cats) == 0 && len(led.Messages) == 0 {
-		// 空目录是**合法**的（这个发行版今天还没有自己的文案），但它是「工具还没
-		// 跑过」与「工具跑过、确实没有」这两种情况共同的形状。说一句，让人分得清
-		// 自己看到的是哪一种。
-		log.Printf("[%s] no catalogs of its own yet (%s/*.json is empty)", Name, CatalogDir)
-		return nil
-	}
+	// 空目录是**合法**的（这个发行版今天还没有自己的文案）：什么都没得追加，
+	// 而这与「追加成功」在行为上是同一件事——源语言那条路是恒等的。
+	//
+	// **这里刻意不写日志**：Start 是**每条 `newgate …` 命令**都会跑的（CLI 自己
+	// 也装配一张图），在这里打一行等于给每条命令都加一句噪音。可见性在别处：
+	// `newgate lang` 报覆盖率，doctor 报缺口。2026-09-20 实测踩过——一版里每次
+	// 敲命令都先来一行 `[i18n] 225 messages appended…`。
 	if err := corei18n.Extend(led, cats); err != nil {
 		return err
 	}
-	log.Printf("[%s] %d messages appended to the %s catalog", Name, len(led.Messages), corei18n.Current())
 	return nil
 }

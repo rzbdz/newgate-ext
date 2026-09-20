@@ -17,6 +17,57 @@ upstream quirks get patched, and in what order they run.
 
 ---
 
+## What it does
+
+**Takes over your CLI, without your CLI knowing.** `newgate on` puts a PATH shim
+in front of `claude` and `opencode` and rewrites their own config in place —
+`settings.json`, env blocks, `opencode.json` — model names becoming tier names.
+Byte-exact backups are taken first, and `newgate off` restores those bytes (the
+end-to-end suite verifies the restore with a checksum). Your editor, your
+client, your muscle memory: unchanged. One binary serves every client, because
+`argv[0]` decides who is being invoked.
+
+**One command to switch which API is behind it.** `newgate profile glm` — the
+next request takes glm's chain. No client restart, no config edit, no session
+interrupted. Tiers resolve through ordered candidate chains, with fallback,
+first-byte timeouts, breaker health and latency ordering deciding what happens
+when an upstream misbehaves; every reroute is reported, never silent.
+
+**Upgrades never drop a request.** `newgate restart` hands the listening socket
+to the new process and lets the old one drain what is still in flight, streaming
+responses included. Swapping the binary is safe at any moment — including from
+a session that is itself going through the gateway.
+
+**Patches the quirks the upstreams actually have**, and only at the crossings
+where they matter: DeepSeek's tail shape and reasoning pass-back, GLM's thinking
+hand-back, Claude Code's background calls, OpenCode's intra-agent slots. Every
+patch is a module you can switch off at runtime (`newgate st`), and each one
+says why it exists.
+
+**Compat first.** The client keeps its dialect, its env contract and its idea
+of which model it is talking to. Requests are rewritten as bytes, never
+re-serialized, so fields you have never heard of survive the trip.
+
+## Compose your own
+
+Everything here is a module — the gateway, the breaker, the UI, the entry
+point, even the message catalog. This repository is one *selection* of them:
+
+```jsonc
+// dist.json
+{ "distribution": "default",
+  "modules": ["i18n", "tui", "deepseek", "glm", "claudecode", "opencode"],
+  "disable": [] }
+```
+
+Fork it, edit that list, drop in a module of your own, and
+`build/build.sh` gives you a release. `dist-hello.json` in this repo is the
+skeleton — the framework plus one `hello` module — and it builds too, which is
+the point: **the kernel has no product in it**, so a distribution is a module
+list rather than a fork of the code. See
+[the kernel's README](https://github.com/rzbdz/newgate#everything-is-a-module)
+for what that buys.
+
 ## Install
 
 Static, single-file, no runtime dependencies. Grab the binary for your platform
