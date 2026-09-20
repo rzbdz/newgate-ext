@@ -31,6 +31,13 @@ by hand again, and you never reopen a session.
 `newgate --set-profile ark` — the next request takes the new chain. Your client
 keeps running, its config untouched, the old provider one command away.
 
+**Global when you want it, ad-hoc when the task is small.**
+Set the tiers once and every client follows them. When one little job deserves a
+different model, override it for that single run — `newgate claude
+--profile=kimi` — and nothing global changes. The override travels in the
+request path, so two clients running at the same time can never pick up each
+other's choice.
+
 **Nothing dies with a single upstream.**
 Every tier is an ordered fallback chain — your rules first, then predicted
 time-to-first-byte. Every skip is explained and every reroute logged.
