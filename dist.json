@@ -1,6 +1,7 @@
 {
   "distribution": "default",
   "modules": [
+    "tui",
     "deepseek",
     "glm",
     "claudecode_deepseek",

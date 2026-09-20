@@ -19,6 +19,7 @@ import (
 	ext_glm "github.com/rzbdz/newgate-ext/modules/glm"
 	ext_hello "github.com/rzbdz/newgate-ext/modules/hello"
 	ext_simple_cli "github.com/rzbdz/newgate-ext/modules/simple-cli"
+	ext_tui "github.com/rzbdz/newgate-ext/modules/tui"
 	app "github.com/rzbdz/newgate/app"
 	modules "github.com/rzbdz/newgate/component"
 )
@@ -50,6 +51,7 @@ func Specs() map[string]app.Selection {
 		},
 		"dist.json": {
 			Extra: []app.Entry{
+				{Dir: "tui", Component: ext_tui.New()},
 				{Dir: "deepseek", Component: ext_deepseek.New()},
 				{Dir: "glm", Component: ext_glm.New()},
 				{Dir: "claudecode_deepseek", Component: ext_claudecode_deepseek.New()},
