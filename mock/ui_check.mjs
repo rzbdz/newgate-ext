@@ -804,6 +804,60 @@ if (!(await openSwitches())) {
   await page.locator('header.top input[type="checkbox"]').uncheck();
 }
 
+// —— 16. Claude Code 的槽位映射能改，而且真的落盘 ——
+//
+// 2026-09-21 之前这个映射**只**住在 Go 源码里（`modules/claudecode/agent.go` 的
+// Slots），想「让 Bash 分类器走 normal，免得 Sonnet 一挂整场断」只有改代码重编。
+// 用户的原话：「目前看 go 代码就是他妈的写死的吧，我觉得要搞成可配置的，前端也要
+// 支持上」。
+//
+// 判据落在**磁盘上**而不是「下拉框显示成新值」：后者在只改前端状态时也是绿的，而
+// 这条要的是「改完下一次接管真的会用新的档位」。顺带锁住那条容易做错的取舍——
+// 与缺省相同的行**不落盘**（留下同值记录，会让以后改缺省的人发现自己的改动对
+// 一部分用户不生效，而那些用户从没配过任何东西）。
+{
+  await page.locator(`nav.side button[title="claudecode"]`).click();
+  await page.waitForTimeout(250);
+  await page
+    .locator(`button.tab[title="claudecode.slots"], nav.v button[title="claudecode.slots"]`)
+    .first()
+    .click();
+  await page.waitForTimeout(400);
+
+  const rows = page.locator(".card .body .item");
+  const n = await rows.count();
+  check("槽位卡一个槽位一行", n >= 4, `实际 ${n} 行`);
+
+  // 找到 sonnet 那一行的下拉（缺省 mid），改成 normal。
+  const sonnet = rows.filter({ has: page.locator('b:text-is("sonnet")') }).locator("select");
+  const before = await sonnet.inputValue();
+  check("sonnet 出厂缺省是 mid", before === "mid", `实际 ${JSON.stringify(before)}`);
+  const opts = await sonnet.locator("option").allInnerTexts();
+  check(
+    "下拉里是语义档位（不是模型名）",
+    ["heavy", "normal", "mid", "light"].every((t) => opts.includes(t)),
+    opts.join(","),
+  );
+  await sonnet.selectOption("normal");
+  await page.waitForTimeout(200);
+  await page.locator("header.top button.primary").click();
+  await page.waitForTimeout(600);
+
+  const st = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+  const slots = st.claude_slots ?? {};
+  check("改过的槽位落到了 state.json", slots.sonnet === "normal", JSON.stringify(slots));
+  check(
+    "与缺省相同的槽位不写进去",
+    slots.opus === undefined && slots.haiku === undefined,
+    `opus=${JSON.stringify(slots.opus)} haiku=${JSON.stringify(slots.haiku)}`,
+  );
+  check(
+    "卡片上说清了「改了、下次接管才生效」",
+    /下次接管|taken over/.test(await rows.filter({ has: page.locator('b:text-is("sonnet")') }).innerText()),
+    "改完只说了一句「已保存」，用户会以为跑着的会话马上就变了",
+  );
+}
+
 check("整场没有页面错误", pageErrors.length === 0, pageErrors.slice(0, 2).join(" / "));
 
 console.log(`\n结果: ${pass} 通过, ${fail} 失败`);
