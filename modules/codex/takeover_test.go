@@ -35,7 +35,7 @@ trust_level = "trusted"
 // 这是这套实现存在的全部理由。做一次 TOML 解析→序列化的往返，注释、段的顺序、
 // 空行位置全会变——而那种损失不会让任何测试变红，只会让用户发现「我写的注释没了」。
 func TestRewriteKeepsEverythingElse(t *testing.T) {
-	out, reps := rewrite(sample, 8899, "normal", 200000)
+	out, reps := rewrite(sample, 8899, want{Model: "normal", ContextWindow: 200000})
 
 	for _, keep := range []string{
 		"# 我的 codex 配置",
@@ -75,7 +75,7 @@ func TestRewriteDoesNotTouchKeysInsideTables(t *testing.T) {
 model = "user-set-this"
 trust_level = "trusted"
 `
-	out, _ := rewrite(src, 8899, "normal", 0)
+	out, _ := rewrite(src, 8899, want{Model: "normal"})
 	if !strings.Contains(out, `model = "user-set-this"`) {
 		t.Errorf("表里的 model 不是我们的，不许动\n%s", out)
 	}
@@ -93,8 +93,8 @@ trust_level = "trusted"
 // `[model_providers.newgate]`，而 TOML 的同名表重复是**解析错误**——用户下一次
 // 启动 codex 直接起不来。
 func TestRewriteIsIdempotent(t *testing.T) {
-	once, _ := rewrite(sample, 8899, "normal", 200000)
-	twice, _ := rewrite(once, 8899, "normal", 200000)
+	once, _ := rewrite(sample, 8899, want{Model: "normal", ContextWindow: 200000})
+	twice, _ := rewrite(once, 8899, want{Model: "normal", ContextWindow: 200000})
 	if once != twice {
 		t.Errorf("第二次接管改了东西\n--- 一次 ---\n%s\n--- 两次 ---\n%s", once, twice)
 	}
@@ -115,8 +115,8 @@ func TestRewriteIsIdempotent(t *testing.T) {
 // 端口是会变的（配置里能改），而旧的那段如果留着，症状是 codex 一直打一个**没有
 // 在听的端口**——用户看到的是「连接被拒绝」，而配置文件里明明写着 newgate。
 func TestRewriteRefreshesAnOlderTakeover(t *testing.T) {
-	old, _ := rewrite(sample, 8899, "normal", 0)
-	moved, _ := rewrite(old, 9999, "mid", 0)
+	old, _ := rewrite(sample, 8899, want{Model: "normal"})
+	moved, _ := rewrite(old, 9999, want{Model: "mid"})
 
 	if strings.Contains(moved, "127.0.0.1:8899") {
 		t.Errorf("旧端口该被换掉\n%s", moved)
@@ -135,11 +135,11 @@ func TestRewriteRefreshesAnOlderTakeover(t *testing.T) {
 // 的症状是长会话被过早截断——看起来像模型变笨了，没人会怀疑到配置里多出来的
 // 那一行。
 func TestTheWindowIsOnlyWrittenWhenWeKnowIt(t *testing.T) {
-	without, _ := rewrite(sample, 8899, "normal", 0)
+	without, _ := rewrite(sample, 8899, want{Model: "normal"})
 	if strings.Contains(without, "model_context_window") {
 		t.Errorf("不知道窗口时不该写这一行\n%s", without)
 	}
-	with, _ := rewrite(sample, 8899, "normal", 200000)
+	with, _ := rewrite(sample, 8899, want{Model: "normal", ContextWindow: 200000})
 	if !strings.Contains(with, "model_context_window = 200000") {
 		t.Errorf("知道窗口时要写上\n%s", with)
 	}
@@ -159,7 +159,7 @@ func TestApplyThenRestoreGivesBackTheOriginalBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tk := Takeover{Tier: func() string { return "normal" }, ContextWindow: func() int { return 200000 }}
+	tk := Takeover{}
 	reps, err := tk.Apply(8899)
 	if err != nil {
 		t.Fatal(err)
@@ -205,7 +205,7 @@ func TestATaintedFileIsNotUsedAsTheOriginal(t *testing.T) {
 	t.Setenv("CODEX_HOME", codexHome)
 	target := filepath.Join(codexHome, "config.toml")
 
-	taken, _ := rewrite(sample, 8899, "normal", 0)
+	taken, _ := rewrite(sample, 8899, want{Model: "normal"})
 	if err := ioutil.WriteFile(target, []byte(taken), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -213,8 +213,63 @@ func TestATaintedFileIsNotUsedAsTheOriginal(t *testing.T) {
 	if err := os.RemoveAll(filepath.Dir(agentapi.OriginalPath(target))); err != nil {
 		t.Fatal(err)
 	}
-	tk := Takeover{Tier: func() string { return "normal" }}
+	tk := Takeover{}
 	if _, err := tk.Apply(8899); err == nil {
 		t.Fatal("已接管的文件 + 没有原件 = 该报错，而不是把它当原件存下去")
+	}
+}
+
+// TestTheSecondModelKeyIsWritten：codex 的模型**不止一个**，两个都要写对。
+//
+// `review_model` 是 `codex review` 用的那一个（codex 0.155 的 ConfigToml 里与
+// `model` 并列，2026-09-21 查证）。用户的原话：「为什么他的模型只有一个槽位？整改！」
+//
+// 判据打在**两个键各写各的**上：一处写错（比如按下标取槽位，把 review 的档位写进
+// 主模型）在界面上完全看不出来——两个框都填着合法的档位名，只有 review 走了主模型的
+// 档位，而那要等到真跑一次 review 才会发现。
+func TestTheSecondModelKeyIsWritten(t *testing.T) {
+	out, _ := rewrite(sample, 8899, want{Model: "heavy", ReviewModel: "mid"})
+	if !strings.Contains(out, `model = "heavy"`) {
+		t.Errorf("主模型该走 heavy\n%s", out)
+	}
+	if !strings.Contains(out, `review_model = "mid"`) {
+		t.Errorf("review 该走 mid\n%s", out)
+	}
+}
+
+// TestAnEmptyValueIsNotWrittenAtAll：没值的键**一行都不写**，不是写一个空值。
+//
+// 这条是实测踩出来的：`values()` 只给要写的键，而补键的循环按「全部可能写的键」
+// 走了一遍，于是没值的那些被写成了 `review_model = `（一个**空字符串**）。
+// TOML 里那不是「没配」——codex 会把它当模型名发到上游。红的是幂等那条测试
+// （第二次接管看见空值，又改写一次），而这条直接把判据摆在明面上。
+func TestAnEmptyValueIsNotWrittenAtAll(t *testing.T) {
+	out, _ := rewrite(sample, 8899, want{Model: "normal"})
+	for _, k := range []string{"review_model", "model_context_window", "model_auto_compact_token_limit"} {
+		if strings.Contains(out, k) {
+			t.Errorf("没值的键 %s 不该出现在文件里\n%s", k, out)
+		}
+	}
+	// 而且**已有**的那一行也不能被我们清空：只写我们要写的键。
+	const src = "model_auto_compact_token_limit = 12345\nmodel = \"x\"\n"
+	kept, _ := rewrite(src, 8899, want{Model: "normal"})
+	if !strings.Contains(kept, "model_auto_compact_token_limit = 12345") {
+		t.Errorf("用户自己配的那一行不许被我们碰\n%s", kept)
+	}
+}
+
+// TestTheCompactLimitComesFromTheProfile：自动压缩阈值写得进去（拿得到的时候）。
+//
+// 它是 claude 那边 `CLAUDE_CODE_AUTO_COMPACT_WINDOW` 的对位物：codex 按它自己
+// 以为的模型元数据估什么时候压缩，而那份元数据对档位名是不存在的。给个 0 是
+// 「不声明」——codex 自己的缺省比我们猜一个数更对。
+func TestTheCompactLimitComesFromTheProfile(t *testing.T) {
+	out, _ := rewrite(sample, 8899, want{Model: "normal", AutoCompact: 800000})
+	if !strings.Contains(out, "model_auto_compact_token_limit = 800000") {
+		t.Errorf("阈值该写进去\n%s", out)
+	}
+	none, _ := rewrite(sample, 8899, want{Model: "normal"})
+	if strings.Contains(none, "model_auto_compact_token_limit") {
+		t.Errorf("0 表示不声明，不该写这一行\n%s", none)
 	}
 }

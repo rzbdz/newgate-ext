@@ -28,17 +28,26 @@ func slotsOf() agentapi.SlotOverrides {
 	return agentapi.SlotOverrides{
 		Key:     SlotsKey,
 		AgentID: ID,
-		Slots:   func() []agentapi.Slot { return Agent().Slots },
+		Slots:   Agent().Slots,
 	}
 }
 
 // conceptID 是这张卡的稳定身份。
 const conceptID = "codex.model"
 
+// profileOf 是这个客户端的**链头**那一格（读写的实现在内核，见
+// confighook.AgentProfile）：codex 整条链从哪条 profile 起步。
+func profileOf() agentapi.AgentProfile { return agentapi.AgentProfile{AgentID: ID} }
+
 // registerView 把这张卡挂上去。没有 web 界面时什么都不做。
+//
+// `In("Clients")`：与 claudecode / opencode 那两家归到同一档。漏了它的症状是
+// **codex 那一栏掉到侧栏最上面、不属于任何分组**（2026-09-21 实测被用户抓到）
+// ——分组是贡献者报的，界面只画拿到的标题，所以漏了不会有任何东西变红。
 func registerView(v view.Service) (modules.Release, error) {
 	return v.Register("codex",
-		view.Title(func() string { return i18n.T("Codex", nil) }),
+		view.Title(func() string { return i18n.T("Codex", nil) }).
+			In(func() string { return i18n.T("Clients", nil) }),
 		concepts)
 }
 
@@ -50,7 +59,10 @@ func modelConcept() view.Concept {
 	a := Agent()
 	_, bad := slotsOf().Read()
 
-	items := make([]view.ToggleItem, 0, len(a.Slots))
+	// 第一格是**链头**，后面的才是各槽位走哪一档。顺序有意义：档位最终落到哪家
+	// 模型上要先有链，先有链才有档。
+	items := make([]view.ToggleItem, 0, len(a.Slots)+1)
+	items = append(items, profileOf().ProfileItem())
 	for _, s := range a.Slots {
 		why := s.Desc
 		if note := slotsOf().Note(s.Name, s.Tier); note != "" {
@@ -104,6 +116,11 @@ func applyModel(edit json.RawMessage, _ string) (string, error) {
 		return "", i18n.Ef(err, "the slot map in this request is not readable: {err}",
 			i18n.A{"err": err})
 	}
+	// 同一张卡上有两件事：链头（一格）与槽位映射（若干格）。拆包这一步在内核
+	// （见 confighook.SplitProfile）：链头必须从槽位那份里摘掉，否则它会被当成一个
+	// 槽位名丢掉，症状是「链头改了但没保存」，而槽位那边一切正常。
+	profile, patch := agentapi.SplitProfile(patch)
+
 	known := map[string]bool{}
 	for _, s := range Agent().Slots {
 		known[s.Name] = true
@@ -115,6 +132,11 @@ func applyModel(edit json.RawMessage, _ string) (string, error) {
 		if known[slot] {
 			next[slot] = tier
 		}
+	}
+	// 先写链头再写槽位：链头写不进去（profile 不存在）时整个保存失败，而槽位那边
+	// 一个字节都不该动——两份配置要么一起改，要么一起不改。
+	if err := profileOf().Write(profile); err != nil {
+		return "", err
 	}
 	if err := slotsOf().Write(next); err != nil {
 		return "", err

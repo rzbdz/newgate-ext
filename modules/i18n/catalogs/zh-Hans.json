@@ -888,6 +888,10 @@
       "text": "界面只监听 loopback，其他网卡上没有监听",
       "reviewed": true
     },
+    "the model `codex review` runs on; separate from the main one": {
+      "text": "`codex review` 跑的模型；与主模型分开",
+      "reviewed": true
+    },
     "the model and provider live in ~/.codex/config.toml": {
       "text": "模型与 provider 住在 ~/.codex/config.toml 里",
       "reviewed": true

@@ -897,6 +897,124 @@ if (!(await openSwitches())) {
   }
 }
 
+// —— 18. codex 那张卡（接管写的是 TOML，界面也得看得见） ——
+//
+// codex 的档位住在 ~/.codex/config.toml 的 `model = "…"` 里，而那份文件是**接管
+// 时**写的。在这张卡之前，用户没有任何地方能看见「codex 现在跑哪一档」——除了
+// 去终端敲 `newgate agents` 或者直接打开那份 TOML。
+//
+// 判据与第 17 条那条槽位卡**同源但不同路**：这一张的值最终写进一份文件（而不是
+// 注入环境变量），所以「界面上改了」与「接管真的会用」之间多了一跳。这里锁的是
+// 前半段——**改完真的落盘**；后半段（`newgate on codex` 把它写进 TOML）由
+// modules/codex 的单测与真机验收锁。
+//
+// 沙箱里 codex **可能装着也可能没装**（取决于这台机器），所以这里不断言锁不锁：
+// 锁灰那条路已经由第 17 条用 opencode 覆盖过，而它走的是同一份判据。
+{
+  const sec = page.locator(`nav.side button[title="codex"]`);
+  if ((await sec.count()) === 0) {
+    skip("这份装配里没有 codex 那一节，跳过第 18 条");
+  } else {
+    await sec.click();
+    await page.waitForTimeout(300);
+    const card = page.locator(".card").first();
+    const sel = card.locator(".body .item").filter({ has: page.locator('b:text-is("model")') }).locator("select");
+    check("codex 卡上有 model 槽位", (await sel.count()) > 0, "卡上找不到那个下拉");
+
+    const opts = await sel.locator("option").allInnerTexts();
+    check(
+      "下拉里是语义档位（不是模型名）",
+      ["heavy", "normal", "mid", "light"].every((t) => opts.includes(t)),
+      opts.join(","),
+    );
+    const before = await sel.inputValue();
+    check("codex 出厂缺省是 normal", before === "normal", `实际 ${JSON.stringify(before)}`);
+
+    await sel.selectOption("mid");
+    await page.waitForTimeout(200);
+    await page.locator("header.top button.primary").click();
+    await page.waitForTimeout(600);
+
+    const st = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+    check("改过的档位落到了 state.json 的 codex_slots",
+      (st.codex_slots ?? {}).model === "mid", JSON.stringify(st.codex_slots ?? {}));
+    check(
+      "卡片上说清了「下次接管才生效」",
+      /下次接管|taken over/.test(await card.innerText()),
+      "codex 的档位是接管时写进 TOML 的，不说这句用户会以为跑着的会话马上就变了",
+    );
+
+    // 改回缺省 = 那个键消失（与第 17 条同一条规矩，这里再验一次是因为它跨了模块：
+    // claude 与 codex 现在共用内核那一份实现，任一处回退都会在这里红）。
+    await sel.selectOption("normal");
+    await page.waitForTimeout(200);
+    await page.locator("header.top button.primary").click();
+    await page.waitForTimeout(600);
+    const st2 = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+    check("改回缺省之后那个键消失", st2.codex_slots === undefined, JSON.stringify(st2.codex_slots));
+  }
+}
+
+// —— 19. 语言卡：在网页上换语言，**当场**生效 ——
+//
+// 用户的要求：「newgate web 也做一个 locale 切换功能吧，对标 cli」。CLI 那条是
+// `newgate lang <tag>`，web 这条是语言模块自己贡献的一张卡（界面不认识「语言」）。
+//
+// 两件事一起验，缺一条这个功能就不成立：
+//   1. 换完之后**界面真的变了**（不是只写了个文件，等重启才生效——daemon 是长命的，
+//      那种「点了没反应」正是这条要防的）；
+//   2. 换回来之后**发行版的文案还在**（`i18n.Use` 不重装目录表；用 Install 那句
+//      话，发行版在装配期 Extend 进来的译文会被冲掉，症状是「切成中文之后发行版
+//      那一半界面变回英文」，看起来只像「有几条没翻」）。
+{
+  const sec = page.locator(`nav.side button[title="locale"]`);
+  if ((await sec.count()) === 0) {
+    skip("这份装配里没有语言那一节，跳过第 19 条");
+  } else {
+    await sec.click();
+    await page.waitForTimeout(300);
+    const card = page.locator(".card").first();
+    // 语言那一格按**位置**取，不按 label 文本：它的 label 是翻过的（这门界面此刻
+    // 说什么语言，它就是那个词），拿一个译好的词当选择器，等于让这条检查依赖
+    // 「跑的时候是哪门语言」——而这一条检查的全部内容正是要换语言。
+    const sel = card.locator(".body .item select").first();
+    check("语言卡上有那个选择器", (await sel.count()) > 0, "卡上找不到选语言的下拉");
+    const opts = await sel.locator("option").allInnerTexts();
+    check("下拉里是语言 tag", opts.includes("en") && opts.includes("zh-Hans"), opts.join(","));
+
+    // 那时 sidebar 上「配置」那一栏叫什么，等一下要拿它对照。
+    const configTitleBefore = await page.locator(`nav.side button[title="config"]`).innerText();
+
+    await sel.selectOption("en");
+    await page.waitForTimeout(200);
+    await page.locator("header.top button.primary").click();
+    await page.waitForTimeout(900);
+
+    const configTitleEn = await page.locator(`nav.side button[title="config"]`).innerText();
+    check("换成 en 之后界面当场变英文", /Configuration/i.test(configTitleEn),
+      `侧栏那一栏还叫 ${JSON.stringify(configTitleEn)}——保存了但没生效`);
+
+    // 换回来，并顺带验「发行版的译文没被冲掉」：`claudecode` 那一栏的名字是
+    // **发行版**目录里的（内核不认识它），它要是变回英文，就是 Use 被写成了
+    // Install（重装目录表）。
+    await sel.selectOption("zh-Hans");
+    await page.waitForTimeout(200);
+    await page.locator("header.top button.primary").click();
+    await page.waitForTimeout(900);
+
+    const configTitleBack = await page.locator(`nav.side button[title="config"]`).innerText();
+    check("换回中文之后界面跟着回来", configTitleBack === configTitleBefore,
+      `${JSON.stringify(configTitleBefore)} → ${JSON.stringify(configTitleBack)}`);
+    const ccTitle = await page.locator(`nav.side button[title="claudecode"]`).innerText();
+    check("发行版自己的译文在换语言之后还在", ccTitle.trim().length > 0 && ccTitle.trim() !== "claudecode",
+      `claudecode 那一栏显示成 ${JSON.stringify(ccTitle)}——发行版的目录被重装冲掉了`);
+
+    const st = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+    check("语言落到了 state.json", (st.module_config ?? {}).locale?.lang === "zh-Hans",
+      JSON.stringify((st.module_config ?? {}).locale));
+  }
+}
+
 check("整场没有页面错误", pageErrors.length === 0, pageErrors.slice(0, 2).join(" / "));
 
 console.log(`\n结果: ${pass} 通过, ${fail} 失败`);

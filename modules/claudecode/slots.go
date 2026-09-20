@@ -34,7 +34,7 @@ func slotsOf() agentapi.SlotOverrides {
 	return agentapi.SlotOverrides{
 		Key:     SlotsKey,
 		AgentID: ID,
-		Slots:   func() []agentapi.Slot { return Agent().Slots },
+		Slots:   Agent().Slots,
 	}
 }
 
@@ -46,6 +46,13 @@ func ReadSlotTiers() (ok, bad map[string]string) { return slotsOf().Read() }
 func WriteSlotTiers(m map[string]string) error { return slotsOf().Write(m) }
 
 func allowedFor(slot string) []string { return slotsOf().AllowedFor(slot) }
+
+// profileOf 是这个客户端的**链头**那一格（读写的实现在内核，见
+// confighook.AgentProfile）：它整条链从哪条 profile 起步。
+//
+// 它与槽位表是同一张卡上的两件事：先有链（哪些档位绑到哪家 provider），才有
+// 「这个槽位走哪一档」。所以它在界面上排第一格。
+func profileOf() agentapi.AgentProfile { return agentapi.AgentProfile{AgentID: ID} }
 
 func defaultTier(slot string) (string, bool) { return slotsOf().Default(slot) }
 

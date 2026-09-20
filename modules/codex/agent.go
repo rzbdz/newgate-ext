@@ -31,11 +31,27 @@ func Agent() *agentapi.Agent {
 		// 槽位仍然登记出来，而不是让接管自己去读一个写死的档位：登记之后它就与
 		// claude 的档位映射走同一套知识、同一张卡——用户改档位时不需要知道
 		// 「codex 的模型名是写进文件的」这件事。
-		Slots: []agentapi.Slot{{
-			Name: "model",
-			Tier: "normal",
-			Desc: i18n.T("the model codex runs on; written into config.toml by takeover", nil),
-		}},
+		// 槽位表 = codex 配置里**所有取值是模型名的键**。它只有两个，这是查过它的
+		// ConfigToml 字段表（codex 0.155，2026-09-21）之后确定的——不是我们少写了：
+		// `model` 是主模型，`review_model` 是 `codex review` 用的那一个，剩下的
+		// `model_reasoning_effort` / `model_verbosity` 那类是**档位之外的旋钮**
+		// （取值是 low/high 这种，不是模型名），塞进槽位表只会让下拉里出现一堆
+		// 不是档位的取值。
+		//
+		// Claude Code 那边有四个，是因为它有四个环境变量；差异来自两家的接口面，
+		// 不是来自我们的取舍。
+		Slots: []agentapi.Slot{
+			{
+				Name: "model",
+				Tier: "normal",
+				Desc: i18n.T("the model codex runs on; written into config.toml by takeover", nil),
+			},
+			{
+				Name: "review_model",
+				Tier: "normal",
+				Desc: i18n.T("the model `codex review` runs on; separate from the main one", nil),
+			},
+		},
 		Notes: i18n.T("the model and provider live in ~/.codex/config.toml", nil),
 	}
 }

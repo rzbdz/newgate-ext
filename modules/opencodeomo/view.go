@@ -29,11 +29,17 @@ import (
 	"os"
 	"strings"
 
+	opencodeapi "github.com/rzbdz/newgate-ext/modules/opencode"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 	"github.com/rzbdz/newgate/lib/view"
 	"github.com/rzbdz/newgate/modules/config/domain"
 	"github.com/rzbdz/newgate/modules/config/store"
+	agentapi "github.com/rzbdz/newgate/modules/confighook"
 )
+
+// profileOf 是 opencode 的**链头**那一格（读写的实现在内核，见
+// confighook.AgentProfile）：它整条链从哪条 profile 起步。
+func profileOf() agentapi.AgentProfile { return agentapi.AgentProfile{AgentID: opencodeapi.ID} }
 
 // slotsConceptID 是这张卡片的稳定身份。
 const slotsConceptID = "opencode-omo.slots"
@@ -44,21 +50,10 @@ const slotsConceptID = "opencode-omo.slots"
 //
 // 为什么不自己造一个 Kind：多一个 Kind 就多一个渲染器，而这件事的形状
 // （一行一个选择器 + 一句为什么）与「全局设置」那张卡完全一样。
-type omoToggle struct {
-	ID      string   `json:"id"`
-	Label   string   `json:"label"`
-	Kind    string   `json:"kind"`
-	Value   string   `json:"value,omitempty"`
-	Options []string `json:"options,omitempty"`
-	Why     string   `json:"why,omitempty"`
-	Group   string   `json:"group,omitempty"`
-}
-
-type omoData struct {
-	File  string      `json:"file"`
-	Base  string      `json:"base"`
-	Items []omoToggle `json:"items"`
-}
+// omoToggle / omoData 的形状住在契约包里（`lib/view` 的 ToggleItem / Toggles）：
+// 形状是 **Kind 的事**。本模块曾经自己写了一份（第三份），2026-09-21 收掉。
+type omoToggle = view.ToggleItem
+type omoData = view.Toggles
 
 // lock 是「这台机器上有没有 opencode」，由 Start 算好传进来（判据在目录端口那边，
 // 见 module.go）。非空 = 这张卡整张锁灰。
@@ -89,7 +84,9 @@ func omoConcepts(lock string) ([]view.Concept, error) {
 		}
 	}
 
-	items := []omoToggle{{
+	// 第一格是**链头**，第二格是绑定模式，后面才是各槽位。顺序有意义：链决定每个
+	// 档位落到哪家模型上，模式决定接管时按哪一套给它分档，最后才是逐槽位的覆盖。
+	items := []omoToggle{profileOf().ProfileItem(), {
 		ID: "mode", Label: i18n.T("Binding mode", nil), Kind: "select",
 		Value:   modeOrDefault(reg.Mode),
 		Options: []string{"current", "suggested"},
@@ -164,6 +161,13 @@ func applyOmoSlots(edit json.RawMessage, _ string) (string, error) {
 	reg := ReadOmoSlots()
 	if reg == nil {
 		return "", i18n.E("no omo slot registry; run newgate on opencode first", nil)
+	}
+	// 同一张卡上有两件事：链头（一格）与槽位覆盖（若干格）。拆包这一步在内核
+	// （见 confighook.SplitProfile）：链头必须从槽位那份里摘掉，否则它会被当成一个
+	// 不认识的键跳过，症状是「链头改了但没保存」，而槽位那边一切正常。
+	profile, patch := agentapi.SplitProfile(patch)
+	if err := profileOf().Write(profile); err != nil {
+		return "", err
 	}
 	if m, ok := patch["mode"]; ok {
 		m = strings.TrimSpace(m)

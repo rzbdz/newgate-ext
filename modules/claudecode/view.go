@@ -78,20 +78,12 @@ func classifierConcept() view.Concept {
 	}
 }
 
-// clToggle 一行一个控件，形状与 config 的 toggles 一致。
-type clToggle struct {
-	ID      string   `json:"id"`
-	Label   string   `json:"label"`
-	Kind    string   `json:"kind"`
-	Value   string   `json:"value,omitempty"`
-	Options []string `json:"options,omitempty"`
-	Why     string   `json:"why,omitempty"`
-}
-
-type clData struct {
-	File  string     `json:"file"`
-	Items []clToggle `json:"items"`
-}
+// clToggle / clData 的形状住在契约包里（`lib/view` 的 ToggleItem / Toggles）：
+// 形状是 **Kind 的事**，而 Kind 定义在那里。本模块曾经自己写了一份（第三份），
+// 2026-09-21 收掉——留着的话加一个字段就要改三处，而「少改了一处」的症状是那一格
+// 在前端不显示值，看起来只像「刚加的功能还没做」。
+type clToggle = view.ToggleItem
+type clData = view.Toggles
 
 // nakedWhy 把「现在是什么状态」与「这一刻算不算数」写在一句话里。
 func nakedWhy(st *domain.State, cfg NakedConfig, active bool) string {
@@ -234,7 +226,10 @@ var (
 func slotsConcept() view.Concept {
 	a := Agent()
 	_, bad := ReadSlotTiers()
-	items := make([]clToggle, 0, len(a.Slots))
+	// 第一格是**链头**（这个客户端从哪条 profile 起步），后面的才是各槽位走哪一档。
+	// 顺序有意义：档位最终落到哪家模型上要先有链，先有链才有档。
+	items := make([]clToggle, 0, len(a.Slots)+1)
+	items = append(items, profileOf().ProfileItem())
 	for _, s := range a.Slots {
 		why := s.Desc
 		if note := slotNote(s.Name, s.Tier); note != "" {
@@ -281,6 +276,12 @@ func applySlots(edit json.RawMessage, _ string) (string, error) {
 		return "", i18n.Ef(err, "the slot map in this request is not readable: {err}",
 			i18n.A{"err": err})
 	}
+	// 同一张卡上有两件事：链头（一格）与槽位映射（若干格）。拆包这一步在内核
+	// （见 confighook.SplitProfile），理由是「链头必须从槽位那份里摘掉」这条规矩
+	// 三家都要且都不能抄错——留着的话它会被当成一个槽位名丢掉，症状是「链头改了
+	// 但没保存」，而槽位那边一切正常。
+	profile, patch := agentapi.SplitProfile(patch)
+
 	known := map[string]bool{}
 	for _, s := range Agent().Slots {
 		known[s.Name] = true
@@ -292,6 +293,11 @@ func applySlots(edit json.RawMessage, _ string) (string, error) {
 		if known[slot] {
 			next[slot] = tier
 		}
+	}
+	// 先写链头再写槽位：链头写不进去（profile 不存在）时整个保存失败，而槽位那边
+	// 一个字节都不该动——两份配置要么一起改，要么一起不改。
+	if err := profileOf().Write(profile); err != nil {
+		return "", err
 	}
 	if err := WriteSlotTiers(next); err != nil {
 		return "", err

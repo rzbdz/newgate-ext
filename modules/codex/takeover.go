@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/rzbdz/newgate/lib/i18n"
+	"github.com/rzbdz/newgate/modules/config/domain"
 	"github.com/rzbdz/newgate/modules/config/paths"
 	"github.com/rzbdz/newgate/modules/config/store"
 	agentapi "github.com/rzbdz/newgate/modules/confighook"
@@ -64,21 +65,16 @@ func ConfigPath() string {
 var getenv = os.Getenv
 
 // Takeover 是交给 confighook 的那份接管。
-type Takeover struct {
-	// Tier 是这个客户端此刻该用的档位（空 = 用描述符里的缺省）。
-	//
-	// 它由**调用方**在 Apply 那一刻求值（见 module.go 的 tierOf）：槽位映射是
-	// 用户可配的，而配置读一次就定下来的话，用户改完槽位会发现 codex 那边没动。
-	Tier func() string
-	// ContextWindow 是这个客户端此刻该声明的窗口（0 = 不写这一行）。
-	//
-	// 为什么要写它：codex 不认识我们那些档位名，会打一句
-	// `Model metadata for 'X' not found. Defaulting to fallback metadata`，
-	// 而那份兜底元数据决定它**什么时候自动 compact**——猜小了会让长会话被过早
-	// 截断，那是用户直接能感觉到的行为变化。档位映射到真模型这件事只有 newgate
-	// 知道，所以这个数只能由我们告诉它。
-	ContextWindow func() int
-}
+//
+// **它没有字段**，这是刻意的：接管要用到的两个值（档位、窗口声明）都在 Apply
+// 那一刻现算（见 tierOf / contextWindow）。2026-09-21 的第一版把它们做成了两个
+// 函数字段、由 module.go 传闭包进来——那件东西是「DI 的样子，没有 DI 的实质」：
+// 同包内、每个只有一个实现、求值时机与直接调用完全一样。它买到的唯一东西是
+// 「看起来可以替换」，而代价是读的人要多跳一层才知道值从哪来。
+//
+// 真要可替换的东西，判据是**它是不是一条能力缝**：别人提供、别人可以不给
+// （那就是 confighook 的 AgentFacts，走的是注册端口，不是字段）。
+type Takeover struct{}
 
 var _ agentapi.ConfigTakeover = Takeover{}
 
@@ -120,18 +116,7 @@ func (t Takeover) Apply(port int) ([]*agentapi.TakeoverReport, error) {
 		return []*agentapi.TakeoverReport{rep}, err
 	}
 
-	tier := "normal"
-	if t.Tier != nil {
-		if v := t.Tier(); v != "" {
-			tier = v
-		}
-	}
-	window := 0
-	if t.ContextWindow != nil {
-		window = t.ContextWindow()
-	}
-
-	out, reps := rewrite(string(raw), port, tier, window)
+	out, reps := rewrite(string(raw), port, wanted())
 	rep.Rewrites = reps
 	return []*agentapi.TakeoverReport{rep}, agentapi.WriteAtomic(target, []byte(out), 0o600)
 }
@@ -148,10 +133,61 @@ func (Takeover) Restore() ([]string, error) {
 
 // ---------- TOML 手术 ----------
 
+// want 是这次接管要写进 config.toml 的那几个值。
+//
+// 为什么是一个结构体而不是一长串参数：codex 的模型**不止一个**（见 agent.go 的
+// 槽位表），以后还可能再多一个；一串位置参数加到第三个就没人记得住顺序了，而
+// 「把 review 的档位写进了主模型」这种错在界面上完全看不出来。
+//
+// 空串 / 0 = **不写这一行**（不是写一个空值）：codex 自己的缺省行为与我们猜一个
+// 值相比，前者永远更对。
+type want struct {
+	Model         string // 主模型走哪一档
+	ReviewModel   string // `codex review` 走哪一档
+	ContextWindow int    // 上下文窗口（0 = 不声明）
+	AutoCompact   int    // 自动压缩阈值（0 = 不声明）
+}
+
+// values 是「键 → 要写进去的字面量」。**只包含要写的那些**。
+func (w want) values() map[string]string {
+	out := map[string]string{"model_provider": quote(ProviderID)}
+	if w.Model != "" {
+		out["model"] = quote(w.Model)
+	}
+	if w.ReviewModel != "" {
+		out["review_model"] = quote(w.ReviewModel)
+	}
+	if w.ContextWindow > 0 {
+		out["model_context_window"] = strconv.Itoa(w.ContextWindow)
+	}
+	if w.AutoCompact > 0 {
+		out["model_auto_compact_token_limit"] = strconv.Itoa(w.AutoCompact)
+	}
+	return out
+}
+
+// order 是新键补进文件时的**固定顺序**（理由见 rewrite 里补键那一段）。
+func (w want) order() []string {
+	return []string{"model", "model_provider", "review_model",
+		"model_context_window", "model_auto_compact_token_limit"}
+}
+
+// wanted 问出这一刻该写的全部值。
+//
+// 每一格都在**这一刻**现算：槽位映射与活动 profile 都是用户随时能改的。
+func wanted() want {
+	return want{
+		Model:         tierFor("model"),
+		ReviewModel:   tierFor("review_model"),
+		ContextWindow: contextWindow(),
+		AutoCompact:   autoCompactWindow(),
+	}
+}
+
 // rewrite 是**纯函数**：给一份 TOML 原文，还一份改过的 + 一份「改了哪几处」的
 // 账。写成纯函数是为了它能被单测直接钉住——接管这件事最容易坏的地方就是
 // 「改错了行」或「多插了一段」，而这两种错在真机上都要等用户发现。
-func rewrite(src string, port int, tier string, window int) (string, []string) {
+func rewrite(src string, port int, w want) (string, []string) {
 	lines := strings.Split(src, "\n")
 	var reps []string
 
@@ -160,13 +196,7 @@ func rewrite(src string, port int, tier string, window int) (string, []string) {
 	// 只认**第一个表头之前**的键：`[projects."/root"]` 底下也有 `model` 级别的
 	// 短键（`trust_level` 就是），而 TOML 里同名的键在各表里互不相干——认错了
 	// 表就会去改一个跟模型毫无关系的值。
-	want := map[string]string{
-		"model":          quote(tier),
-		"model_provider": quote(ProviderID),
-	}
-	if window > 0 {
-		want["model_context_window"] = strconv.Itoa(window)
-	}
+	values := w.values()
 	seen := map[string]bool{}
 	inTable := false
 	for i, ln := range lines {
@@ -181,8 +211,8 @@ func rewrite(src string, port int, tier string, window int) (string, []string) {
 		if !ok {
 			continue
 		}
-		v, wanted := want[k]
-		if !wanted {
+		v, isWanted := values[k]
+		if !isWanted {
 			continue
 		}
 		seen[k] = true
@@ -197,23 +227,24 @@ func rewrite(src string, port int, tier string, window int) (string, []string) {
 	// 「回到顶层」的写法），所以补的位置只有第一个表头之前。插在最前面而不是
 	// 第一个表头之前，是因为后者要处理「前面有没有空行」这类排版细节，而排在最上面
 	// 的代价只是用户的注释往下挪了一行。
+	//
+	// 顺序按 `order` 走（不是 map 的迭代序）：这份文件是给人看的，而我们每接管
+	// 一次就可能重排它——同一份配置接管两次排出两种样子，用户会以为我们改了别的东西。
 	var head []string
-	for _, k := range []string{"model", "model_provider"} {
-		if seen[k] {
+	for _, k := range w.order() {
+		v, isWanted := values[k]
+		// `values()` 只给**要写的**那些键，而 order 列的是全部可能写的键——两者
+		// 不一致时以 values 为准。少了这一句，没值的键会被写成 `review_model = `
+		// （一个空值），而 TOML 里那不是「没配」，是一个**空字符串**：codex 会拿它
+		// 当模型名发到上游。实测踩到（幂等那条测试先红的）。
+		if !isWanted || seen[k] {
 			continue
 		}
-		head = append(head, k+" = "+want[k])
-		reps = append(reps, k+" -> "+want[k])
+		head = append(head, k+" = "+v)
+		reps = append(reps, k+" -> "+v)
 	}
 	if len(head) > 0 {
 		lines = append(head, lines...)
-	}
-	if window > 0 && !seen["model_context_window"] {
-		// 插在 model_provider 后面而不是文件最前面：`model_provider` 此刻一定在
-		// 顶层（缺的刚补在最前面，有的本来就在第一个表头之前），所以这一行也落在
-		// 顶层。连着 model 那两行放，读的人一眼看得出这三行是一件事。
-		lines = insertAfterKey(lines, "model_provider", "model_context_window = "+strconv.Itoa(window))
-		reps = append(reps, "model_context_window -> "+strconv.Itoa(window))
 	}
 
 	// ---- 2. provider 段 ----
@@ -253,22 +284,6 @@ func rewrite(src string, port int, tier string, window int) (string, []string) {
 		out += "\n"
 	}
 	return out, reps
-}
-
-// insertAfterKey 在某个顶层键那一行之后插一行。
-//
-// 找不到那个键就追加到末尾——那是**兜底**而不是正常路径：调用它之前我们刚保证
-// 过那个键一定存在（缺的补在最前面）。
-func insertAfterKey(lines []string, key, line string) []string {
-	for i, ln := range lines {
-		if k, ok := topLevelKey(ln); ok && k == key {
-			out := make([]string, 0, len(lines)+1)
-			out = append(out, lines[:i+1]...)
-			out = append(out, line)
-			return append(out, lines[i+1:]...)
-		}
-	}
-	return append(lines, line)
 }
 
 // topLevelKey 从一行里取出 `键 = 值` 的键。
@@ -333,7 +348,25 @@ func quote(s string) string { return `"` + s + `"` }
 // 代价说清楚：profile 换了（档位绑到另一家模型）之后这个数不会自己跟着变，
 // 要重新 `newgate on codex`。这与 docs/03 §3.3 那条「改了注入内容要重新接管一次」
 // 是同一件事，不是新加的坑。
-func contextWindow() int {
+func contextWindow() int { return profileValue(func(p *domain.Profile) int { return p.ContextWindow }) }
+
+// autoCompactWindow 取这个客户端此刻该声明的自动压缩阈值，取不到返回 0。
+//
+// 它是 claude 那边 `CLAUDE_CODE_AUTO_COMPACT_WINDOW` 的对位物（见 agent.go）：
+// codex 自己会按窗口估算什么时候压缩，而它估的那个数来自**它以为的**模型元数据
+// ——那份元数据对档位名是不存在的（接管时会打一句 `Model metadata for 'X' not
+// found`）。档位映射到真模型这件事只有 newgate 知道，所以这个数也只能由我们给。
+func autoCompactWindow() int {
+	return profileValue(func(p *domain.Profile) int { return p.AutoCompactWindow })
+}
+
+// profileValue 从**活动 profile** 里取一个数；取不到（没配、profile 读不出来）返回 0。
+//
+// 0 的含义是「不声明」，不是「声明成 0」——codex 自己的缺省行为比我们猜一个数更对。
+//
+// 代价说清楚：profile 换了（档位绑到另一家模型）之后这个数不会自己跟着变，要重新
+// `newgate on codex`。这与 docs 那条「改了注入内容要重新接管一次」是同一件事。
+func profileValue(get func(*domain.Profile) int) int {
 	snap, err := store.Load()
 	if err != nil || snap == nil {
 		return 0
@@ -341,21 +374,25 @@ func contextWindow() int {
 	active := snap.State.ActiveFor(ID)
 	for _, p := range snap.Profiles {
 		if p.Name == active {
-			return p.ContextWindow
+			return get(p)
 		}
 	}
 	return 0
 }
 
-// tierOf 取这个客户端此刻该用的档位。
+// tierFor 取某个槽位此刻该用的档位；没有这个槽位返回空串（= 不写那一行）。
 //
-// 走的是**槽位那一套**（与 claude 的档位映射同一份知识、同一张卡）：codex 的
-// `model` 槽位没有 EnvVar（它的值要写进 TOML，不是注入 env），而 confighook 的
-// Slot 允许 EnvVar 为空正是为这种情况留的口子。
-func tierOf(f agentapi.AgentFacts) string {
-	a := Agent()
-	if len(a.Slots) == 0 {
-		return "normal"
+// 走的是**槽位那一套**（与 claude 的档位映射同一份知识、同一张卡）：codex 的槽位
+// 都没有 EnvVar（它们的值要写进 TOML，不是注入 env），而 confighook 的 Slot 允许
+// EnvVar 为空正是为这种情况留的口子。
+//
+// 按**名字**找而不是按下标：槽位表是会长的（`model` 之外还有 `review_model`），
+// 而下标一挪就会把 review 的档位写进主模型——那种错在界面上完全看不出来。
+func tierFor(name string) string {
+	for _, s := range Agent().Slots {
+		if s.Name == name {
+			return agentapi.TierOf(facts{}, s)
+		}
 	}
-	return agentapi.TierOf(f, a.Slots[0])
+	return ""
 }
