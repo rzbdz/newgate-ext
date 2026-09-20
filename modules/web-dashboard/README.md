@@ -63,9 +63,19 @@ server 自己起在 5173，把 `/ui/api` 代理到上面的 8901 就能热更新
 **不装本模块**则完全没有 web 入口，`/ui` 掉进数据面的 catch-all（与任何未知路径
 一样）。这些组合都成立，是因为本模块的依赖**全是 `Optional`**。
 
-**注意 `__serve` 这个入口是 ui 提供的**（`cli`/`simple-cli` 那条口），所以「一个
-界面模块都不装」的装配里守护进程起不来——这不是本模块的限制，是「入口由界面申报」
-那条设计的直接后果。
+**没有终端界面的装配里，浏览器是唯一的入口**（`dist-dashboard.json` 就是这么一份：
+它关掉内核的 `cli`）。那时：
+
+```bash
+newgate --port 8899      # 无子命令 = 起服务（只有本入口自己的 flag 时不认领别的东西）
+```
+
+这条曾经不成立：`__serve` 原来是 `cli` 的一条命令，于是关掉 `cli` 的装配编得出来
+却起不来（`no entry claimed this call`）。2026-09-21 之后守护进程本体是一个**入口
+申报**（`component/entry`），与界面装不装无关；同一个改动还让「无参数 = 起服务」
+在**没有终端界面**时成立——那时没有子命令可派，这个二进制唯一说得通的行为就是
+服务。带别的参数（`newgate frobnicate`、`newgate --help`）仍然会得到「没人认领
+这次调用」那句人话。
 
 ## 谁能碰它
 
@@ -90,6 +100,28 @@ server 自己起在 5173，把 `/ui/api` 代理到上面的 8901 就能热更新
 - **footgun 的时限选择**：界面上那些开关点里，`DangerFootgun` 的被放进一张**只读**
   卡片（写它们必须带时限，而这一版没有选时限的界面）。今天没有任何模块声明 footgun，
   所以这条是给将来铺路——现在无法用真实数据验证。
-- **`KindTable`**：契约里有这个 Kind，还没有贡献者，前端也还没有渲染器（落到原文 JSON）。
 - **非 loopback 的暴露**：现在只答本机。要开放给别人用，得先有认证（控制令牌是现成
   的一半），见 `docs/12-newgate-remote.md` 那条路线。
+
+## 今天有哪些卡片
+
+| 概念 ID | Kind | 谁贡献的 | 能写吗 |
+| --- | --- | --- | --- |
+| `config.file.*` | `code` | config | `providers.json` 只读（凭据），其余可写 |
+| `config.profile.*` | `mapping-editor` | config | 能 |
+| `config.state` | `toggles` | config | 能 |
+| `gateway.metrics` | `series` | gateway | 只读 |
+| `gateway.log` | `log` | gateway | 只读 |
+| `plugin-manager.switches` | `toggles` | plugin-manager | 能 |
+| `plugin-manager.footguns` | `toggles` | plugin-manager | 只读（要带时限，见上） |
+| `plugin-manager.modules` | `table` | plugin-manager | 只读：**这个构建由哪些模块组成** |
+| `breaker.health` | `table` | breaker | 只读 |
+
+这张表是**产物**不是清单：加一个模块的那一面不需要改它，就像不需要改前端一样
+（前端只认 Kind，账本只认注册）。写在这里是为了让人一眼看到「今天能看什么」，
+别当成需要维护的名单。
+
+`table` 那两张是 2026-09-21 加的：形状定义在 `core/lib/view`（列 + 行，行按**列 ID**
+索引而不是数组下标，所以列顺序是纯展示的事），前端 `kinds/Table.svelte` 认它。
+第二个贡献者（模块清单）一行前端代码都没改——那正是把它做成契约而不是一次性
+渲染器的理由。
