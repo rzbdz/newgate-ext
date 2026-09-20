@@ -1,6 +1,7 @@
 package deepseek
 
 import (
+	"bytes"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -586,4 +587,54 @@ func containsNote(notes []string, sub string) bool {
 		}
 	}
 	return false
+}
+
+// TestImagesSurviveTheDeepSeekPatch：一张带图片的请求，走完 DeepSeek 的 reasoning
+// 补丁，图片块与它的 base64 **必须逐字节原样**。
+//
+// 这就是「newgate 支不支持图片」的定论之一。转发层本身是纯字节直通（只换 model、
+// 可选修 tools），不会坏图片；真正可能弄丢图片的是**上游补丁**——它往 assistant
+// 的 content[] 里插 thinking 块（见 AppendLastArrayItemArray）。这一条证明那个插入
+// 只在指定的 assistant 消息上动手，用户消息里的图片一个字节都不碰。
+func TestImagesSurviveTheDeepSeekPatch(t *testing.T) {
+	seedCache("t1", "上一轮真实想过的内容")
+	const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNgYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+	imageBlock := `{"type":"image","source":{"type":"base64","media_type":"image/png","data":"` + png + `"}}`
+	body := []byte(`{"model":"deepseek-chat","thinking":{"type":"enabled","budget_tokens":1024},` +
+		`"messages":[` +
+		`{"role":"user","content":[{"type":"text","text":"看图"},` + imageBlock + `]},` +
+		`{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Read","input":{"n":1}}]},` +
+		`{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}` +
+		`]}`)
+
+	out, notes, err := reasoning{}.Apply(body, claudeReq("deepseek-chat"))
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if len(notes) == 0 {
+		t.Fatal("改了东西却没回报 notes")
+	}
+	if !bytes.Contains(out, []byte(imageBlock)) {
+		t.Fatalf("图片块没原样到达上游（或被改写了）:\n%s", out)
+	}
+	if bytes.Contains(out, []byte(png)) && !bytes.Contains(out, []byte(`"data":"`+png)) {
+		t.Fatal("base64 内容被动了")
+	}
+
+	// 用户那条消息里的图片必须仍在它原来的地方：补丁只该动 assistant。
+	var got struct {
+		Messages []struct {
+			Role    string            `json:"role"`
+			Content []json.RawMessage `json:"content"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatalf("改完不是合法 JSON: %v", err)
+	}
+	if len(got.Messages[0].Content) != 2 {
+		t.Fatalf("用户消息的 content 块数变了（原来 2，现在 %d）——补丁动了不该动的地方", len(got.Messages[0].Content))
+	}
+	if !strings.Contains(string(got.Messages[0].Content[1]), png) {
+		t.Fatal("用户消息里那张图片变了")
+	}
 }
