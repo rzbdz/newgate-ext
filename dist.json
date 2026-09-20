@@ -4,6 +4,12 @@
     "repo": "https://github.com/rzbdz/newgate.git",
     "revision": "da96cf49b3160b626f5e09b75a0fb39db56aad73"
   },
-  "modules": ["hello"],
+  "modules": [
+    "hello",
+    "deepseek",
+    "glm",
+    "claudecode_deepseek",
+    "claudecode_glm"
+  ],
   "disable": []
 }

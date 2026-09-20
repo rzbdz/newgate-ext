@@ -4,6 +4,15 @@
     "repo": "https://github.com/rzbdz/newgate.git",
     "revision": ""
   },
-  "modules": ["hello", "simple-cli"],
-  "disable": ["cli"]
+  "modules": [
+    "hello",
+    "simple-cli",
+    "deepseek",
+    "glm",
+    "claudecode_deepseek",
+    "claudecode_glm"
+  ],
+  "disable": [
+    "cli"
+  ]
 }
