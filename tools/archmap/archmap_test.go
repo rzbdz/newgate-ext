@@ -3,6 +3,7 @@ package archmap_test
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -165,5 +166,82 @@ func repoRoot(t *testing.T) string {
 			t.Fatal("找不到仓库根（该有一份 dist.json）")
 		}
 		dir = parent
+	}
+}
+
+// legendKeyLine 抓图例表里的一条：`infra:{c:"#5b8def",t:"…"}` 的键。
+//
+// 不锚行首：那张表是**一行摆两项**排的（省地方、也好看），锚了行首就只认每行第一个，
+// 于是「表里明明有 gateway」而测试说没有（2026-09-20 实测）。
+var legendKeyLine = regexp.MustCompile(`([a-z][a-z0-9]*)\s*:\s*\{c:"`)
+
+// legendKeys 从渲染器里把图例那张表（GROUPS）的键解析出来。
+//
+// 为什么读源码而不是把表导成 Go 变量：那张表是**渲染**的事（颜色与 JS 的其余部分
+// 一起活着），搬进 Go 只为了让测试看得见，会给渲染器加一层没必要的间接。文本层面
+// 读一次，与前端那几条看门测试（字典对齐、Kind 覆盖、产物新鲜度）同一套取舍。
+func legendKeys(t *testing.T) map[string]bool {
+	t.Helper()
+	raw, err := os.ReadFile("render.go")
+	if err != nil {
+		t.Fatalf("读不到 render.go（%v）——路径变了就把这条测试一起改", err)
+	}
+	src := string(raw)
+	start := strings.Index(src, "const GROUPS = {")
+	if start < 0 {
+		t.Fatal("render.go 里找不到 GROUPS——改名了就把这条测试一起改")
+	}
+	body := src[start:]
+	if end := strings.Index(body, "\n};"); end >= 0 {
+		body = body[:end]
+	}
+	keys := map[string]bool{}
+	for _, m := range legendKeyLine.FindAllStringSubmatch(body, -1) {
+		keys[m[1]] = true
+	}
+	if len(keys) == 0 {
+		t.Fatal("GROUPS 一个键都没解析出来——正则与文件对不上了")
+	}
+	return keys
+}
+
+// TestEveryModuleTypeHasALegendColour 是「图例不许把两种东西画成一样」那条棘轮。
+//
+// 分组名就是**模块自己声明的 Type**（见 component.Type），而图例表住在渲染器里：
+// 两边靠一张表对齐，而新加一个模块族时没人会想起它。忘了加的症状是**静默**的
+// ——那几个模块被画成同一个灰色（见 groupOf 的回落），图看着正常、图例少几行。
+// 2026-09-20 实测：client / model / bridge / others / builtin 五个族被并成了一行
+// 「other modules」，是**看图**看出来的，没有任何测试会红。
+func TestEveryModuleTypeHasALegendColour(t *testing.T) {
+	keys := legendKeys(t)
+
+	types := map[string]bool{}
+	for name, sel := range manifest.Specs() {
+		comps, err := sel.Load()
+		if err != nil {
+			t.Fatalf("%s 的装配选择读不出来: %v", name, err)
+		}
+		for _, c := range comps {
+			if c.Type != "" {
+				types[string(c.Type)] = true
+			}
+		}
+	}
+	if len(types) == 0 {
+		t.Fatal("一个模块 Type 都没读到——这条断言等于没跑")
+	}
+
+	for typ := range types {
+		if !keys[typ] {
+			t.Errorf("模块声明的 Type %q 在图例表（render.go 的 GROUPS）里没有条目——"+
+				"它会被画成灰色并顶着自己的名字，与别的没表项的族混在一起", typ)
+		}
+	}
+	// 合成分组：虚线那个「这个发行版没装它」，以及 import 图按仓库上色的两个。
+	// 它们不是模块 Type，但渲染器要用。
+	for _, k := range []string{"missing", "core", "ext", "module"} {
+		if !keys[k] {
+			t.Errorf("图例表缺合成分组 %q（不是模块 Type，但渲染器要用）", k)
+		}
 	}
 }

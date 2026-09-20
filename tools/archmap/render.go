@@ -137,15 +137,36 @@ main{flex:1;display:flex;min-height:0}
 const DATA = {{.Data}};
 const NS = "http://www.w3.org/2000/svg";
 
+// GROUPS is keyed by the **module type the module itself declares** (Component.Type,
+// see component.Type - "core provides the table, the product fills it"). So this table
+// has to cover whatever the product declares today, and a test checks that it does:
+// unmatched keys used to fall through to a single grey "other modules", which merged
+// five different families into one legend entry and one colour (2026-09-20).
+//
+// (No backticks in here: this whole template is a Go raw string, and one would end it.)
 const GROUPS = {
   // assembly graph: coloured by module type
   infra:{c:"#5b8def",t:"infra (mechanism)"}, gateway:{c:"#4ea87a",t:"gateway (data plane)"},
-  cli:{c:"#e0a34a",t:"cli / ui (interface)"}, config:{c:"#9b7bd4",t:"config"},
-  runtime:{c:"#d96a6a",t:"runtime (takeover)"}, module:{c:"#6b7280",t:"other modules"},
+  cli:{c:"#e0a34a",t:"cli / ui (interface)"}, client:{c:"#9b7bd4",t:"client (agents)"},
+  model:{c:"#4fb0c6",t:"model (upstream families)"}, bridge:{c:"#e08a5a",t:"bridge (client x model)"},
+  builtin:{c:"#b8a05a",t:"builtin (cannot be removed)"}, example:{c:"#d47ab0",t:"example (skeleton)"},
+  test:{c:"#6b7280",t:"test stub"},
+  // "others" (declared by a module) and "module" (no Type declared) mean the same
+  // thing to a reader, so they share a colour and a label - the legend collapses
+  // entries it cannot tell apart.
+  others:{c:"#6b7280",t:"other modules"}, module:{c:"#6b7280",t:"other modules"},
   missing:{c:"#6b7280",t:"not installed here"},
   // import graph: coloured by repo
   core:{c:"#5b8def",t:"core (kernel)"}, ext:{c:"#e0a34a",t:"ext (distribution)"},
 };
+
+// groupOf looks up a node's group. An unknown group keeps **its own name** rather
+// than being dressed up as "other modules": the legend's job is saying which colour
+// is which, and two different things sharing a label is the legend lying. Add the
+// entry instead - the test will remind you.
+function groupOf(k){
+  return GROUPS[k] || {c:"#6b7280", t:k};
+}
 const EDGE_STYLE = {
   solid:{stroke:"#7d8899",dash:""},          // need (or a plain import)
   dashed:{stroke:"#7d8899",dash:"5 4"},      // optional
@@ -237,7 +258,7 @@ function draw(){
 
   g.nodes.forEach(n => {
     const grp = el("g", {class:"node", transform:"translate(" + n.x + "," + n.y + ")"});
-    const color = (GROUPS[n.group] || GROUPS.module).c;
+    const color = groupOf(n.group).c;
     grp.appendChild(el("rect", {width:n.w, height:n.h, x:0, y:0,
       fill: n.missing ? "transparent" : "color-mix(in srgb, " + color + " 16%, transparent)",
       stroke: color, "stroke-dasharray": n.missing ? "4 3" : ""}));
@@ -388,13 +409,19 @@ function legend(){
   return boxLegend() + edgeLegend();
 }
 
+// boxLegend lists the groups that actually occur in THIS graph, collapsed to what a
+// reader can tell apart: two groups drawn the same way get one entry. "others" and
+// "module" are the same thing to a reader, so they appear once. Sorting by the label
+// (rather than by the internal key) is what keeps the order the same across tabs.
 function boxLegend(){
-  const seen = {};
-  state.graph.nodes.forEach(n => seen[n.group] = true);
+  const byLabel = {};
+  state.graph.nodes.forEach(n => {
+    const g = groupOf(n.group);
+    byLabel[g.t] = g.c;
+  });
   return '<h2 style="margin:16px 0 6px">boxes</h2><div class="legend">' +
-    Object.keys(seen).sort().map(k =>
-      '<span><i class="dot" style="background:' + (GROUPS[k]||GROUPS.module).c + '"></i>' +
-      (GROUPS[k]||GROUPS.module).t + '</span>').join("") + '</div>';
+    Object.keys(byLabel).sort().map(t =>
+      '<span><i class="dot" style="background:' + byLabel[t] + '"></i>' + t + '</span>').join("") + '</div>';
 }
 
 // edgeLegend lists only the styles that actually occur in THIS graph. Explaining a
