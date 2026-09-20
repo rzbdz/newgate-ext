@@ -40,6 +40,12 @@ build/build.sh                        # → dist/newgate-<发行版>-<平台>-<�
 **构建编的是已提交的状态**（Pin 钉提交号），未提交的改动不在二进制里：改完先 commit。
 要回退就先打个 WIP commit，别用裸 `git stash`。
 
+## 一个必然的副作用
+
+装配清单（`core/go/app/modules_gen.go`）跟着发行版走：编一次本发行版，内核那份
+清单就被重写。`git -C core status` 会显示它被改过，**这是正常的**——别提交回内核，
+`git -C core checkout -- go/app/modules_gen.go` 可还原（拉内核/换分支前先还原）。
+
 ## 推之前
 
 本仓库的包**编进内核的 module**，所以它们的不合格会红在**内核**的 CI 上：

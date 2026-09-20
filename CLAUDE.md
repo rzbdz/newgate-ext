@@ -80,6 +80,17 @@ NEWGATE_DIST=dist-simple-cli.json build/build.sh out/   # 换规格书的变体
   （想做到「改完直接编」得让 `core/go/modules-ext` 变成指回本目录的符号链接；
   代价是 `go test ./...` 不跟进符号链接，测试得显式点名——目前没做。）
 
+### 一个必然的副作用：内核 checkout 会变脏
+
+装配清单（`core/go/app/modules_gen.go`）是**跟着发行版走**的生成物：编一次本发行版，
+内核那份清单就被重写成「内核自带 + 本发行版点名的模块」。于是 `git -C core status`
+会显示它被改过——**这是正常的**，不是你的改动。
+
+- 不要把它提交回内核仓库（那是内核的默认发行版清单，由内核的 Pin 决定）。
+- 要还原：`git -C core checkout -- go/app/modules_gen.go`。
+- 后果要说清楚：只要内核 checkout 脏着，`git -C core pull` / `checkout` 会被
+  工作区挡住。换分支或拉内核之前先还原它。
+
 ## 4. 测
 
 本发行版的 `testing/` 与各模块的 `_test.go` **编在内核的 module 里**，所以测试在
