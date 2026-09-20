@@ -119,6 +119,12 @@
     "Clients": {
       "where": "modules/claudecode/module.go:96"
     },
+    "Codex": {
+      "where": "modules/codex/view.go:41"
+    },
+    "Codex model": {
+      "where": "modules/codex/view.go:80"
+    },
     "DeepSeek thinking mode wants reasoning passed back verbatim, but the client strips it → 400\nso we put it back (the original the client carries → thinkcache; **no original means skip it, never invent one**); only the Claude Code path turns thinking off outright (it strips the blocks, so thinking would be spent for nothing); a foreign unclosed tool loop is first lossily rebuilt from the visible tool results, then DeepSeek takes over": {
       "where": "modules/deepseek/st-reasoning.go:141"
     },
@@ -274,9 +280,6 @@
     "cannot derive the encryption key: {err}": {
       "where": "modules/configshare/proto/seal.go:55"
     },
-    "cannot encode the slot map: {err}": {
-      "where": "modules/claudecode/slots.go:105"
-    },
     "cannot fix the permissions of {path}: {err}": {
       "where": "modules/configshare/proto/materialize.go:244",
       "args": [
@@ -399,9 +402,6 @@
       "args": [
         "err"
       ]
-    },
-    "claude is not installed on this machine — nothing on this card takes effect yet. Install it with `newgate claude -y`.": {
-      "where": "modules/claudecode/slots.go:193"
     },
     "configuration updated (gen {from} → {to}, {n} file){files}": {
       "where": "modules/configshare/proto/poller.go:177",
@@ -764,13 +764,6 @@
     "section actions use POST": {
       "where": "modules/web-dashboard/bff.go:71"
     },
-    "set in the config: {tier} (the default is {def}) — takes effect the next time claude is taken over (newgate on claude)": {
-      "where": "modules/claudecode/slots.go:144",
-      "args": [
-        "def",
-        "tier"
-      ]
-    },
     "short-circuit the Bash classifier: on=60s / forever=permanent / off=disabled": {
       "where": "modules/claudecode/command.go:44"
     },
@@ -869,12 +862,6 @@
       "where": "modules/claudecode/view.go:148",
       "args": [
         "err"
-      ]
-    },
-    "the config says {tier}, which is not a tier — the default is in use": {
-      "where": "modules/claudecode/slots.go:137",
-      "args": [
-        "tier"
       ]
     },
     "the configshare bookkeeping file is corrupt; starting over from the initial state: {err}": {
@@ -1297,14 +1284,6 @@
         "now",
         "slot",
         "suggested"
-      ]
-    },
-    "{slot}: {tier} is not one of the values this slot takes — pick one of {known}": {
-      "where": "modules/claudecode/slots.go:86",
-      "args": [
-        "known",
-        "slot",
-        "tier"
       ]
     },
     "{table} added": {

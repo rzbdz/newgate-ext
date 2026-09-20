@@ -128,6 +128,14 @@
       "text": "客户端",
       "reviewed": true
     },
+    "Codex": {
+      "text": "Codex",
+      "reviewed": true
+    },
+    "Codex model": {
+      "text": "Codex 档位",
+      "reviewed": true
+    },
     "DeepSeek thinking mode wants reasoning passed back verbatim, but the client strips it → 400\nso we put it back (the original the client carries → thinkcache; **no original means skip it, never invent one**); only the Claude Code path turns thinking off outright (it strips the blocks, so thinking would be spent for nothing); a foreign unclosed tool loop is first lossily rebuilt from the visible tool results, then DeepSeek takes over": {
       "text": "DeepSeek 思考模式要求逐字回传推理内容，客户端却会把它剥掉 → 400\n套着就补回去（客户端带回的原文 → thinkcache；**没有原文就跳过，绝不编**）；只有 Claude Code 那条路干脆显式关掉思考（它剥块，想了也白想）；外来未闭合 tool loop 先从可见工具结果有损重建，再由 DeepSeek 接手",
       "reviewed": true
@@ -288,10 +296,6 @@
       "text": "派生加密密钥失败: {err}",
       "reviewed": true
     },
-    "cannot encode the slot map: {err}": {
-      "text": "槽位映射编码失败: {err}",
-      "reviewed": true
-    },
     "cannot fix the permissions of {path}: {err}": {
       "text": "修正 {path} 权限失败: {err}",
       "reviewed": true
@@ -386,10 +390,6 @@
     },
     "classifier_override is not valid: {err}": {
       "text": "classifier_override 无效：{err}",
-      "reviewed": true
-    },
-    "claude is not installed on this machine — nothing on this card takes effect yet. Install it with `newgate claude -y`.": {
-      "text": "这台机器上没有装 claude —— 这张卡上的设置暂时都不会生效。用 `newgate claude -y` 装上它。",
       "reviewed": true
     },
     "configuration updated (gen {from} → {to}, {n} file){files}": {
@@ -732,10 +732,6 @@
       "text": "栏目动作使用 POST",
       "reviewed": true
     },
-    "set in the config: {tier} (the default is {def}) — takes effect the next time claude is taken over (newgate on claude)": {
-      "text": "配置里改过：{tier}（缺省是 {def}）——下次接管 claude 时才生效（newgate on claude）",
-      "reviewed": true
-    },
     "short-circuit the Bash classifier: on=60s / forever=permanent / off=disabled": {
       "text": "短路 Bash 分类器：on=60s / forever=永久 / off=关",
       "reviewed": true
@@ -830,10 +826,6 @@
     },
     "the classifier settings in this request are not readable: {err}": {
       "text": "这个请求里的分类器设置读不出来：{err}",
-      "reviewed": true
-    },
-    "the config says {tier}, which is not a tier — the default is in use": {
-      "text": "配置里写的是 {tier}，不是档位——缺省值仍然有效",
       "reviewed": true
     },
     "the configshare bookkeeping file is corrupt; starting over from the initial state: {err}": {
@@ -1166,10 +1158,6 @@
     },
     "{slot} · now {now} · effective {effective} · suggested {suggested} (differs from now)": {
       "text": "{slot} · 现状 {now} · 生效 {effective} · 建议 {suggested}（与现状不符）",
-      "reviewed": true
-    },
-    "{slot}: {tier} is not one of the values this slot takes — pick one of {known}": {
-      "text": "{slot}: {tier} 不是这个槽位收的取值——从 {known} 里挑一个",
       "reviewed": true
     },
     "{table} added": {

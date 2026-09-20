@@ -7,10 +7,10 @@ package codex
 
 import (
 	"context"
-	i18n "github.com/rzbdz/newgate/lib/i18n"
 
 	modules "github.com/rzbdz/newgate/component"
-
+	i18n "github.com/rzbdz/newgate/lib/i18n"
+	viewapi "github.com/rzbdz/newgate/lib/view"
 	confighookapi "github.com/rzbdz/newgate/modules/confighook"
 )
 
@@ -18,10 +18,15 @@ import (
 func New() modules.Component {
 	var releases []modules.Release
 	return modules.Component{
-		Name:     "codex",
-		Desc:     func() string { return i18n.T("the Codex client", nil) },
-		Type:     "client",
-		Requires: []modules.Requirement{modules.Need(confighookapi.ConfigHooksCapability)},
+		Name: "codex",
+		Desc: func() string { return i18n.T("the Codex client", nil) },
+		Type: "client",
+		Requires: []modules.Requirement{
+			modules.Need(confighookapi.ConfigHooksCapability),
+			// web 界面：在就把「Codex 档位」那张卡挂上去（见 view.go），不在就跳过。
+			// 弱依赖——本模块的功能一个都不少，只是没有浏览器入口。
+			modules.Optional(viewapi.Capability),
+		},
 		Provides: []modules.Provision{
 			modules.Provide(Capability, Client{AgentID: ID}),
 		},
@@ -60,6 +65,15 @@ func New() modules.Component {
 				return err
 			}
 			releases = append(releases, release)
+
+			// web 界面：登记「Codex 档位」那张卡（见 view.go）。
+			if v, ok := modules.Get(ctx, viewapi.Capability); ok {
+				release, err := registerView(v)
+				if err != nil {
+					return err
+				}
+				releases = append(releases, release)
+			}
 			return nil
 		},
 		Stop: func(context.Context) error { return modules.ReleaseAll(releases) },
