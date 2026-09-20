@@ -105,7 +105,7 @@
       "where": "modules/claudecode/st-background.go:137"
     },
     "Claude Code slots": {
-      "where": "modules/claudecode/view.go:256"
+      "where": "modules/claudecode/view.go:258"
     },
     "Claude Code strips third-party DeepSeek thinking blocks; turn DeepSeek thinking off unless it was explicitly asked for, so the next round does not 400 for a block that must be passed back": {
       "where": "modules/claudecode_deepseek/st-thinking.go:31"
@@ -266,7 +266,7 @@
       "where": "modules/configshare/proto/seal.go:55"
     },
     "cannot encode the slot map: {err}": {
-      "where": "modules/claudecode/slots.go:91"
+      "where": "modules/claudecode/slots.go:105"
     },
     "cannot fix the permissions of {path}: {err}": {
       "where": "modules/configshare/proto/materialize.go:244",
@@ -446,7 +446,7 @@
       "where": "modules/claudecode/command.go:105"
     },
     "every subagent / agent team / workflow; set it to inherit to hand that back to per-slot resolution": {
-      "where": "modules/claudecode/agent.go:27"
+      "where": "modules/claudecode/agent.go:30"
     },
     "failed to inject thinking: {err}": {
       "where": "modules/claudecode_deepseek/st-thinking.go:59"
@@ -751,7 +751,7 @@
       "where": "modules/web-dashboard/bff.go:71"
     },
     "set in the config: {tier} (the default is {def}) — takes effect the next time claude is taken over (newgate on claude)": {
-      "where": "modules/claudecode/slots.go:130",
+      "where": "modules/claudecode/slots.go:144",
       "args": [
         "def",
         "tier"
@@ -778,7 +778,7 @@
       "where": "modules/opencode/agent.go:17"
     },
     "state.json — {key} could not be read, the defaults are in use": {
-      "where": "modules/claudecode/view.go:251",
+      "where": "modules/claudecode/view.go:253",
       "args": [
         "key"
       ]
@@ -843,7 +843,7 @@
       ]
     },
     "the config says {tier}, which is not a tier — the default is in use": {
-      "where": "modules/claudecode/slots.go:123",
+      "where": "modules/claudecode/slots.go:137",
       "args": [
         "tier"
       ]
@@ -910,7 +910,7 @@
       "where": "modules/web-dashboard/command.go:75"
     },
     "the model field in settings.json is left untouched; what a tier means is decided by the env": {
-      "where": "modules/claudecode/agent.go:45"
+      "where": "modules/claudecode/agent.go:48"
     },
     "the opus tier (the workhorse); the main loop runs here (Claude Code's default), and so does opusplan in Plan Mode": {
       "where": "modules/claudecode/agent.go:21"
@@ -957,7 +957,7 @@
       ]
     },
     "the slot map in this request is not readable: {err}": {
-      "where": "modules/claudecode/view.go:273",
+      "where": "modules/claudecode/view.go:275",
       "args": [
         "err"
       ]
@@ -1258,8 +1258,8 @@
         "suggested"
       ]
     },
-    "{slot}: {tier} is not a tier — pick one of {known}": {
-      "where": "modules/claudecode/slots.go:72",
+    "{slot}: {tier} is not one of the values this slot takes — pick one of {known}": {
+      "where": "modules/claudecode/slots.go:86",
       "args": [
         "known",
         "slot",

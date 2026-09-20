@@ -1108,8 +1108,8 @@
       "text": "{slot} · 现状 {now} · 生效 {effective} · 建议 {suggested}（与现状不符）",
       "reviewed": true
     },
-    "{slot}: {tier} is not a tier — pick one of {known}": {
-      "text": "{slot}: {tier} 不是档位——从 {known} 里挑一个",
+    "{slot}: {tier} is not one of the values this slot takes — pick one of {known}": {
+      "text": "{slot}: {tier} 不是这个槽位收的取值——从 {known} 里挑一个",
       "reviewed": true
     },
     "{title} is read-only": {

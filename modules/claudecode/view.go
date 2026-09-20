@@ -239,8 +239,10 @@ func slotsConcept() view.Concept {
 		}
 		items = append(items, clToggle{
 			ID: s.Name, Label: s.Name, Kind: "select",
-			Value:   a.TierOf(s),
-			Options: domain.Roles,
+			Value: a.TierOf(s),
+			// 档位 + 这个槽位自己认的例外（`inherit` 那类，见 agentapi.Slot.Also）：
+			// 下拉里没有的取值，用户就没法设——而说明里写着可以。
+			Options: allowedFor(s.Name),
 			Why:     why,
 		})
 	}

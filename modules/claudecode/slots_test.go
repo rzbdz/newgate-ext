@@ -125,3 +125,47 @@ func ReadSlotTiersOK(t *testing.T, slot string) string {
 	ok, _ := ReadSlotTiers()
 	return ok[slot]
 }
+
+// TestAClientSpecificValueSurvives：客户端自己的取值不能被当成打错的档位名滤掉。
+//
+// `subagent` 的说明里写着「set it to inherit to hand that back to per-slot
+// resolution」——那是 **Claude Code 的**语义，newgate 只是原样注入这个字符串。第一版
+// 只拿 domain.Roles 当判据，于是 `inherit` 界面上设不了、手改的还会被静默忽略：
+// 说明里写着可以，而照做之后什么都没发生。
+//
+// 例外由客户端模块自己声明（agentapi.Slot.Also），所以这条同时锁住了那条边界——
+// 内核与配置层不认识 `inherit` 这个词，它们只知道「这个槽位声明了它」。
+func TestAClientSpecificValueSurvives(t *testing.T) {
+	testkit.Sandbox(t)
+	if err := WriteSlotTiers(map[string]string{"subagent": "inherit"}); err != nil {
+		t.Fatalf("客户端自己的取值该收得下: %v", err)
+	}
+	a := Agent()
+	if got := a.TierOf(slotOf(t, "subagent")); got != "inherit" {
+		t.Errorf("该原样走 inherit，实际 %q", got)
+	}
+	if got := a.BuildEnv(8899, "tok")["CLAUDE_CODE_SUBAGENT_MODEL"]; got != "inherit" {
+		t.Errorf("该原样注入，实际 %q", got)
+	}
+	// 这个例外只属于声明了它的那个槽位：别的槽位写 inherit 仍然是打错。
+	if err := WriteSlotTiers(map[string]string{"opus": "inherit"}); err == nil {
+		t.Error("opus 没声明 inherit，该被拒绝")
+	}
+	// 下拉里也要有它——不然用户看得到说明、设不了值。
+	opts := allowedFor("subagent")
+	if !contains(opts, "inherit") || !contains(opts, "mid") {
+		t.Errorf("subagent 的取值该是档位 + inherit，实际 %v", opts)
+	}
+	if contains(allowedFor("opus"), "inherit") {
+		t.Error("opus 的取值里不该有 inherit")
+	}
+}
+
+func contains(list []string, v string) bool {
+	for _, x := range list {
+		if x == v {
+			return true
+		}
+	}
+	return false
+}

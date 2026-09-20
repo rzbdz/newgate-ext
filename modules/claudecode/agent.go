@@ -23,7 +23,10 @@ func Agent() *agentapi.Agent {
 				Desc: i18n.T("the sonnet tier; the Bash classifier and /compact summaries run here", nil)},
 			{Name: "haiku", Tier: "light", EnvVar: "ANTHROPIC_DEFAULT_HAIKU_MODEL",
 				Desc: i18n.T("the haiku tier; background features", nil)},
-			{Name: "subagent", Tier: "mid", EnvVar: "CLAUDE_CODE_SUBAGENT_MODEL",
+			// Also：`inherit` 是 **Claude Code 自己的**取值（跟父会话走），不是我们的
+			// 档位。声明在这里，槽位映射那条可配置的路才不会把它当成打错的档位名滤掉
+			// ——说明里写着可以这么设，界面与配置就必须真的收得下（见 agentapi.Slot.Also）。
+			{Name: "subagent", Tier: "mid", EnvVar: "CLAUDE_CODE_SUBAGENT_MODEL", Also: []string{"inherit"},
 				Desc: i18n.T("every subagent / agent team / workflow; set it to inherit to hand that back to per-slot resolution", nil)},
 		},
 		// 槽位归哪一档**可以由用户改**（见 slots.go）：这里给的是出厂缺省，

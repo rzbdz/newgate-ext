@@ -50,7 +50,7 @@ func ReadSlotTiers() (ok map[string]string, bad map[string]string) {
 	}
 	ok = make(map[string]string, len(all))
 	for slot, tier := range all {
-		if slices.Contains(domain.Roles, tier) {
+		if slices.Contains(allowedFor(slot), tier) {
 			ok[slot] = tier
 			continue
 		}
@@ -62,15 +62,29 @@ func ReadSlotTiers() (ok map[string]string, bad map[string]string) {
 	return ok, bad
 }
 
+// allowedFor 是这个槽位收得下的取值：语义档位 + 这个槽位自己声明的例外
+// （见 agentapi.Slot.Also，比如 Claude Code 的 `inherit`）。
+//
+// 不认识的槽位名只给档位：那种条目本来就该被丢掉（多半是界面手里那份快照旧了），
+// 给它开例外等于替一个不存在的槽位背书。
+func allowedFor(slot string) []string {
+	for _, s := range Agent().Slots {
+		if s.Name == slot {
+			return append(append([]string(nil), domain.Roles...), s.Also...)
+		}
+	}
+	return domain.Roles
+}
+
 // WriteSlotTiers 存槽位映射。空表 = 清掉这个键（回到出厂缺省）。
 //
 // 值必须是已知档位：写进来的东西会被原样注入成模型名，一个打错的档位名在上游那
 // 边是一个不存在的模型——那是最难往回追的一种故障（配置看着像模像样）。
 func WriteSlotTiers(m map[string]string) error {
 	for slot, tier := range m {
-		if !slices.Contains(domain.Roles, tier) {
-			return i18n.E("{slot}: {tier} is not a tier — pick one of {known}",
-				i18n.A{"slot": slot, "tier": tier, "known": domain.Roles})
+		if !slices.Contains(allowedFor(slot), tier) {
+			return i18n.E("{slot}: {tier} is not one of the values this slot takes — pick one of {known}",
+				i18n.A{"slot": slot, "tier": tier, "known": allowedFor(slot)})
 		}
 	}
 	s := store.LoadState()
