@@ -23,6 +23,22 @@ fork 它 → 改 `dist.json` 与 `go/modules/` → 就有了你自己的发行�
 | `build/build.sh` | 唯一的构建入口 |
 | `CLAUDE.md` | 在这里干活的人（和 agent）要先读的那份说明 |
 
+## 下载现成的
+
+Release 页面上有各平台的静态二进制（`linux/amd64` `linux/arm64` `darwin/amd64`
+`darwin/arm64`）与 `SHA256SUMS`：
+
+```bash
+gh release download v0.1.1 -p 'newgate-*-linux-amd64' -p SHA256SUMS
+sha256sum -c SHA256SUMS --ignore-missing
+chmod +x newgate-newgate-default-linux-amd64     # GitHub 不保存权限位，必须自己加
+mv newgate-newgate-default-linux-amd64 ~/.local/bin/newgate   # 多调用型：装成 newgate
+newgate version
+```
+
+最后那步的**改名是必须的**：这个二进制按 argv0 决定入口（`newgate` / `claude` /
+`opencode`…），叫别的名字时它认不出自己是谁。
+
 ## 两条分支
 
 | 分支 | 是什么 |
