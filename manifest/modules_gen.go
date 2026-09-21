@@ -67,6 +67,8 @@ func Specs() map[string]app.Selection {
 				{Dir: "opencode", Component: ext_opencode.New()},
 				{Dir: "opencodeomo", Component: ext_opencodeomo.New()},
 				{Dir: "web-dashboard", Component: ext_web_dashboard.New()},
+				{Dir: "codex", Component: ext_codex.New()},
+				{Dir: "codex_deepseek", Component: ext_codex_deepseek.New()},
 				{Dir: "arch-diagram", Component: ext_arch_diagram.New()},
 			},
 		},

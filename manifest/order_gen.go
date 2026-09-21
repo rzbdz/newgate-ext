@@ -60,6 +60,8 @@ var startOrder = map[string][]string{
 		"claudecode-deepseek",
 		"claudecode-glm",
 		"opencode-omo",
+		"codex",
+		"codex-deepseek",
 		"arch-diagram",
 	},
 	"dist-hello.json": {

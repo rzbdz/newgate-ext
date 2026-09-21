@@ -11,6 +11,8 @@
     "opencode",
     "opencodeomo",
     "web-dashboard",
+    "codex",
+    "codex_deepseek",
     "arch-diagram"
   ],
   "disable": []
