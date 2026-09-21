@@ -11,7 +11,8 @@
     "opencode",
     "opencodeomo",
     "web-dashboard",
-    "codex"
+    "codex",
+    "codex_deepseek"
   ],
   "disable": []
 }

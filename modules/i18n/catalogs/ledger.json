@@ -68,6 +68,7 @@
     "Codex": {},
     "Codex model": {},
     "Codex model names": {},
+    "Codex puts its tool definitions in input[0] (additional_tools) while DeepSeek reads tools from the top level; without the lift the model sees no tools at all and answers in its own text format, so the client never gets a tool_result": {},
     "DeepSeek thinking mode wants reasoning passed back verbatim, but the client strips it → 400\nso we put it back (the original the client carries → thinkcache; **no original means skip it, never invent one**); only the Claude Code path turns thinking off outright (it strips the blocks, so thinking would be spent for nothing); a foreign unclosed tool loop is first lossily rebuilt from the visible tool results, then DeepSeek takes over": {},
     "DeepSeek upstream quirk patches": {},
     "GCM is unusable: {err}": {},
@@ -318,6 +319,12 @@
       ]
     },
     "keeping the tier an older takeover wrote": {},
+    "lift Codex tools to the top level (the only step)": {},
+    "lifted {n} tool declarations from input[0] to the top level (DeepSeek reads tools only there)": {
+      "args": [
+        "n"
+      ]
+    },
     "local changes archived to {dir} (restore from there)": {
       "args": [
         "dir"
@@ -548,6 +555,7 @@
     "the Claude Code × DeepSeek crossing": {},
     "the Claude Code × GLM crossing": {},
     "the Codex client": {},
+    "the Codex × DeepSeek crossing": {},
     "the OpenCode client": {},
     "the classifier settings in this request are not readable: {err}": {
       "args": [
@@ -650,6 +658,7 @@
         "err"
       ]
     },
+    "the tool definitions stay in input[0], where DeepSeek does not read them: the model sees no tools at all, answers in its own text format, and Codex never gets a tool_result back": {},
     "the trailing user turn holds only tool_result and no user instruction — appended a continue instruction (the upstream misreports an instruction-less tail as a missing reasoning_content)": {},
     "the web configuration interface: a BFF and the front-end bundle": {},
     "the whole special_treatment layer is off — none of this counts until it is switched back on": {},

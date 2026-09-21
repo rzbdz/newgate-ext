@@ -144,6 +144,10 @@
       "text": "Codex 模型名",
       "reviewed": true
     },
+    "Codex puts its tool definitions in input[0] (additional_tools) while DeepSeek reads tools from the top level; without the lift the model sees no tools at all and answers in its own text format, so the client never gets a tool_result": {
+      "text": "Codex 把工具定义放在 input[0]（additional_tools）里，而 DeepSeek 只从顶层 tools 读工具；不抬上去模型一个工具都看不见，会用它自己的文本格式作答，客户端因此一个 tool_result 都拿不到",
+      "reviewed": true
+    },
     "DeepSeek thinking mode wants reasoning passed back verbatim, but the client strips it → 400\nso we put it back (the original the client carries → thinkcache; **no original means skip it, never invent one**); only the Claude Code path turns thinking off outright (it strips the blocks, so thinking would be spent for nothing); a foreign unclosed tool loop is first lossily rebuilt from the visible tool results, then DeepSeek takes over": {
       "text": "DeepSeek 思考模式要求逐字回传推理内容，客户端却会把它剥掉 → 400\n套着就补回去（客户端带回的原文 → thinkcache；**没有原文就跳过，绝不编**）；只有 Claude Code 那条路干脆显式关掉思考（它剥块，想了也白想）；外来未闭合 tool loop 先从可见工具结果有损重建，再由 DeepSeek 接手",
       "reviewed": true
@@ -536,6 +540,14 @@
       "text": "沿用老版本接管写下的档位",
       "reviewed": true
     },
+    "lift Codex tools to the top level (the only step)": {
+      "text": "把 Codex 的工具抬到顶层（本模块唯一的一手）",
+      "reviewed": true
+    },
+    "lifted {n} tool declarations from input[0] to the top level (DeepSeek reads tools only there)": {
+      "text": "把 {n} 条工具声明从 input[0] 抬到了顶层（DeepSeek 只在那里读工具）",
+      "reviewed": true
+    },
     "local changes archived to {dir} (restore from there)": {
       "text": "本地改动已归档到 {dir}（要恢复就从那里取）",
       "reviewed": true
@@ -884,6 +896,10 @@
       "text": "Codex 客户端接入",
       "reviewed": true
     },
+    "the Codex × DeepSeek crossing": {
+      "text": "Codex × DeepSeek 的交叉语义",
+      "reviewed": true
+    },
     "the OpenCode client": {
       "text": "OpenCode 客户端接入",
       "reviewed": true
@@ -1026,6 +1042,10 @@
     },
     "the table in this request is not readable: {err}": {
       "text": "这次请求里的那张表读不出来：{err}",
+      "reviewed": true
+    },
+    "the tool definitions stay in input[0], where DeepSeek does not read them: the model sees no tools at all, answers in its own text format, and Codex never gets a tool_result back": {
+      "text": "工具定义留在 input[0] 里，而 DeepSeek 不在那里读：模型一个工具都看不见，会用它自己的文本格式作答，Codex 永远拿不到 tool_result",
       "reviewed": true
     },
     "the trailing user turn holds only tool_result and no user instruction — appended a continue instruction (the upstream misreports an instruction-less tail as a missing reasoning_content)": {

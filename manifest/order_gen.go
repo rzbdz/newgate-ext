@@ -117,5 +117,6 @@ var startOrder = map[string][]string{
 		"claudecode-glm",
 		"opencode-omo",
 		"codex",
+		"codex-deepseek",
 	},
 }
