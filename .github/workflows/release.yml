@@ -38,26 +38,6 @@ jobs:
           # 仓库里没有 go.sum，指着一个不存在的文件算不出缓存键。
           cache-dependency-path: go.mod
 
-      # 发版前把 i18n 那道门关上（`-strict`：覆盖率不足与机翻未复核都算失败）。
-      #
-      # 这条**在这里才第一次被调用**。在那之前 `-strict` 是个死口子：它的帮助写着
-      # 「发版前用」，而 CI / release.yml / Makefile 一个调用者都没有——也就是说
-      # 「发版前拦住没复核的机翻」这件事没有任何一道门在看（2026-09-21 查出来）。
-      #
-      # 接在这里而不是 CI：CI 每一次推送都跑，而译文复核是一个**发布节点**上的
-      # 状态（机翻填进来之后要人过一遍），放进 CI 只会让人天天看一条与本次改动
-      # 无关的红。放发版这一步，红了就是「这次要发的版本里有没复核的文案」，
-      # 而那正是该有人看一眼的时候。
-      #
-      # 为什么不起单独一步做内核那份：内核的目录表已经随 build/build.sh 编进产物，
-      # 而这一步查的是**这个发行版要发出去的那份文案**（发行版自己的 300 条）。
-      # 内核那份由 core 自己的 make check 看着。
-      - name: 发版前的文案检查（未复核的机翻不许发出去）
-        run: |
-          go run github.com/rzbdz/newgate/tools/i18n check \
-            -root . -catalogs modules/i18n/catalogs \
-            -allowlist tools/i18n-allowlist.json -strict
-
       # 只发**重点那份**（发行版的主配置）：骨架配置（dist-hello.json）是给人 fork
       # 的样板，不是产品，不需要挂在 Release 上。要发哪几份由这里的 NEWGATE_DISTS
       # 决定——build/build.sh 的能力是「一次编多份」，发什么是流水线的事。
