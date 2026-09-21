@@ -14,5 +14,22 @@
     "allowJs": true,
     "checkJs": true
   },
-  "include": ["src/**/*.ts", "src/**/*.svelte", "vite.config.ts"]
+  // include 里有 demo/：**站点上那个可点的演示页也是这份工程的一部分**（同一份前端
+  // 的第二个入口，见 vite.demo.config.ts 的说明）。不列进来的话，`pnpm check` 永远
+  // 不会看它一眼——演示页与产品那几个组件之间没有别的守卫（它不进 web/dist，
+  // web_test.go 与 i18n_test.go 都看不见它），于是「真组件改了签名、演示页编译不过」
+  // 要等到站点流水线上才发现。
+  //
+  // 两份 vite 配置**不在**这里，只有产品那份 `vite.config.ts` 是因为它本来就在。
+  // 原因是配置里必然出现 `node:path` / `process`，而这份工程没有 `@types/node`——
+  // 为了类型检查两条构建脚本给整个前端加一份 Node 类型（它还会改写 vite 的 peer
+  // 解析）不值当。配置写错的代价本来也低：`pnpm build` 第一步就是执行它，报错是
+  // 那一行而不是三年后。
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.svelte",
+    "vite.config.ts",
+    "demo/**/*.ts",
+    "demo/**/*.svelte"
+  ]
 }

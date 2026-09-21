@@ -1,0 +1,54 @@
+/* 演示页**自己**的那几条样式。
+ *
+ * 卡片那一族的样式（.card / .row / .pill / .mono …）不在这里——它们是产品的
+ * （`src/app.css` 是全局的），演示页直接 import 那一份，见 main.ts 的说明。
+ * 这个文件只管**产品里不存在**的东西：演示页的报头、它自己的 tab 条、toast。
+ *
+ * 为什么不把这几条塞进 app.css：那一份会进 web/dist、进那个静态二进制。演示页
+ * 的样式进了产品产物，就是给每一个用户多发几百字节、并且在 review 时留下一条
+ * 「.toast 是谁在用」的死代码。 */
+
+.page {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 24px 16px 60px;
+}
+.intro { margin-bottom: 18px; }
+.intro h1 { font-size: 22px; margin: 0 0 10px; }
+.intro p { margin: 8px 0; }
+
+/* 演示页的 tab 条：与产品的 TabStrip 长得像，但**不是同一个东西**——那个要
+   分组、要竖向切换、要按草稿画标记，而这里只有三张卡。共用一个组件的代价是给
+   产品那条路加三个只有演示页会用到的开关。 */
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.tabs .tab {
+  padding: 5px 11px;
+  border-radius: 99px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--dim);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+}
+.tabs .tab.on { color: var(--ink); border-color: var(--accent); }
+.tabs .tab:hover { color: var(--ink); }
+
+.savebar { margin-top: 4px; }
+
+/* toast：一句说清「这是演示」。
+   固定在屏幕下方、几秒后自己消失——它不是一条要用户处理的错误，只是一句话。 */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  max-width: min(560px, calc(100vw - 32px));
+  padding: 9px 14px;
+  border-radius: var(--radius);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 13px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+}
