@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 
 	i18n "github.com/rzbdz/newgate/lib/i18n"
+	"github.com/rzbdz/newgate/modules/config/domain"
 	"github.com/rzbdz/newgate/modules/gateway/rewrite"
 	"github.com/rzbdz/newgate/modules/gateway/special"
+	"github.com/rzbdz/newgate/modules/pluginmanager"
 
 	codexapi "github.com/rzbdz/newgate-ext/modules/codex"
 	deepseekapi "github.com/rzbdz/newgate-ext/modules/deepseek"
@@ -59,19 +61,36 @@ func (t tools) Match(r *special.Request) bool {
 //     （namespace 回显时原样带回，见 2026-09-21 实测），但对未知的 custom 报 400。
 //     所以顺着扫一遍，只把 custom（除 apply_patch 外）降成 function，其余一个
 //     字节不动。
+//
+// 这一手可以被单独关掉（`newgate plugin codex-deepseek.lift-tools off`）——
+// **开关点必须真的被读**，否则 `newgate plugin` 会报「已关闭」而请求照改不误
+// （2026-09-21 实测到：关掉之后 live 上顶层 tools 照样被抬上来）。它的默认值是
+// 开，所以关掉是排查动作，不是常态。
 func (tools) Apply(body []byte, r *special.Request) ([]byte, []string, error) {
+	if pluginmanager.Off(stateOf(r), SwitchLiftTools) {
+		return body, nil, nil
+	}
 	if arr, ok := codexTools(body); ok {
-		lifted, degraded, changed := liftTools(arr)
-		if !changed {
+		lifted, degraded, n := liftTools(arr)
+		if n == 0 {
 			return body, nil, nil
 		}
 		out, err := setTopLevelTools(body, lifted)
 		if err != nil {
 			return body, nil, err
 		}
-		return out, []string{i18n.T(
+		// note 分两条报，因为它们是**两件事**：抬了几条（修根因的那一步），以及
+		// 其中几条被降级了。合成一句会让「一个 custom 都没有」时那句变成
+		// 「抬了 N 条，0 条被降级」——而 0 条降级不是噪音，是「这次没动过任何
+		// 工具的字段」这条信息。见 lift.go 里那段「抬本身才是修根因」的说明。
+		notes := []string{i18n.N(
+			"lifted {n} tool declaration from input[0] to the top level (DeepSeek reads tools only there)",
 			"lifted {n} tool declarations from input[0] to the top level (DeepSeek reads tools only there)",
-			i18n.A{"n": len(degraded)})}, nil
+			n, i18n.A{"n": n})}
+		if len(degraded) > 0 {
+			notes = append(notes, degradeNote(len(degraded)))
+		}
+		return out, notes, nil
 	}
 
 	if toolsRaw, ok := rewrite.TopLevelRaw(body, "tools"); ok {
@@ -83,19 +102,46 @@ func (tools) Apply(body []byte, r *special.Request) ([]byte, []string, error) {
 		if err != nil {
 			return body, nil, err
 		}
-		return out, []string{i18n.T(
-			"degraded {n} custom tools in the top-level array to standard functions (DeepSeek rejects unknown custom tools with 400)",
-			i18n.A{"n": len(degraded)})}, nil
+		return out, []string{degradeNote(len(degraded))}, nil
 	}
 
 	return body, nil, nil
+}
+
+// degradeNote 是「把 custom 降成了 function」那句话。
+//
+// **两条来源共用一句**（input[0] 抬上来的、顶层本来就有的）：对读者来说那是同
+// 一件事——同一个上游拒了同一族的声明——而两句话会让日志里同一个原因有两个
+// 措辞，排查时得先猜是哪一条路动的。
+func degradeNote(n int) string {
+	return i18n.N(
+		"degraded {n} custom tool to a standard function (DeepSeek rejects any custom tool other than apply_patch with 400)",
+		"degraded {n} custom tools to standard functions (DeepSeek rejects any custom tool other than apply_patch with 400)",
+		n, i18n.A{"n": n})
+}
+
+// stateOf 从插件上下文里取配置快照。允许 nil（旧调用面与单测常见）——
+// pluginmanager.Off 对 nil 一律回 false，也就是「没关」。方向不能反：
+// 快照缺席不该把补丁关掉。与 claudecode_deepseek 那份同款。
+func stateOf(r *special.Request) *domain.State {
+	if r == nil {
+		return nil
+	}
+	return r.State
 }
 
 // Egress 认领这一发的响应改写。
 //
 // 判据从**客户端发来的原文**里读（`original`），因为 Apply 之后那几个 custom 已经
 // 变成 function 了，从那份里再也分不出「谁原本是 custom」。见 lift.go 的说明。
+//
+// 开关点与 Apply **同一把尺子**：关掉之后请求侧不改，响应侧也就没有该改的东西
+// ——两边只要有一边读了开关、另一边没读，就会出现「请求没降级、响应却被改成
+// custom_tool_call」这种把客户端弄坏的不对称。
 func (tools) Egress(r *special.Request, original []byte) special.Egress {
+	if pluginmanager.Off(stateOf(r), SwitchLiftTools) {
+		return nil
+	}
 	degraded := degradedNames(original)
 	if len(degraded) == 0 {
 		return nil

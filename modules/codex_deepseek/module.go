@@ -14,8 +14,11 @@
 //	请求侧 1. input[0].additional_tools → 顶层 tools（并原样保留那条 input 项）
 //	       2. 工具树里的 `custom` 声明 → `function`（上游只认 apply_patch 一个
 //	          custom 类型，别的一律 400 Unsupported custom tool）——**两条来源
-//	          都查**：旧版把工具挂在 input[0] 里，新版直接放顶层 tools（里面
-//	          夹着 custom 时同样是 400，2026-09-21 在 live 上复现过）
+//	          都查、namespace 里也查**：旧版把工具挂在 input[0] 里，新版直接放
+//	          顶层 tools（夹着 custom 时同样是 400，2026-09-21 在 live 上复现
+//	          过）；而藏在 namespace 里的 custom 换一句 400
+//	          （`Currently custom tools are not allowed inside a namespace`），
+//	          所以那一层也要递归进去——外壳不动，只换里面那一条。
 //	响应侧 3. 被降级过的工具，其 function_call → custom_tool_call
 //	       4. function_call_arguments.* → custom_tool_call_input.*，并把
 //	          {"input": "…"} 那层壳拆掉（codex 要的是里面那串原文）
@@ -28,6 +31,11 @@
 // 那里每个 custom 工具都还是 `type: "custom"`。从「Apply 之后」的 body 倒推是
 // 猜（降级出来的 function 与原生 function 长得一模一样），从原文读是事实。
 // 见 special.Egressor 的说明。
+//
+// **这一手有一个开关点**（`codex-deepseek.lift-tools`，见 switches.go 与
+// st-tools.go 的 Apply）：它是这个模块唯一的一手，出问题时最需要的动作就是
+// 「关掉它再看看」。开关点是真被读的——2026-09-21 之前不是，`newgate plugin`
+// 报「已关闭」而请求照改不误，那比没有开关更糟。
 package codex_deepseek
 
 import (

@@ -282,10 +282,11 @@
       ]
     },
     "default": {},
-    "degraded {n} custom tools in the top-level array to standard functions (DeepSeek rejects unknown custom tools with 400)": {
+    "degraded {n} custom tool to a standard function (DeepSeek rejects any custom tool other than apply_patch with 400)": {
       "args": [
         "n"
-      ]
+      ],
+      "other": "degraded {n} custom tools to standard functions (DeepSeek rejects any custom tool other than apply_patch with 400)"
     },
     "diagnostics": {},
     "dump material": {},
@@ -325,10 +326,11 @@
     },
     "keeping the tier an older takeover wrote": {},
     "lift Codex tools to the top level (the only step)": {},
-    "lifted {n} tool declarations from input[0] to the top level (DeepSeek reads tools only there)": {
+    "lifted {n} tool declaration from input[0] to the top level (DeepSeek reads tools only there)": {
       "args": [
         "n"
-      ]
+      ],
+      "other": "lifted {n} tool declarations from input[0] to the top level (DeepSeek reads tools only there)"
     },
     "local changes archived to {dir} (restore from there)": {
       "args": [

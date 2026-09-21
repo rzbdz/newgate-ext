@@ -5,7 +5,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rzbdz/newgate/modules/config/domain"
 	"github.com/rzbdz/newgate/modules/gateway/special"
+	"github.com/rzbdz/newgate/modules/pluginmanager"
 
 	"github.com/rzbdz/newgate-ext/modules/codex"
 	codexapi "github.com/rzbdz/newgate-ext/modules/codex"
@@ -18,6 +20,21 @@ func testPlugin() tools {
 		client: codexapi.Client{AgentID: codex.ID},
 		model:  deepseekapi.Model{MatchTarget: deepseek.MatchTarget},
 	}
+}
+
+// reqWithOff 造一个上下文，并把给定的开关点关掉。与 deepseek 那份同款。
+func reqWithOff(t *testing.T, off ...string) *special.Request {
+	t.Helper()
+	cfg := pluginmanager.Config{Off: map[string]pluginmanager.Entry{}}
+	for _, path := range off {
+		cfg.Off[path] = pluginmanager.Entry{}
+	}
+	raw, err := cfg.Marshal()
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	return &special.Request{State: &domain.State{
+		ModuleConfig: map[string][]byte{pluginmanager.StateKey: raw}}}
 }
 
 // codexRequest 是一份**照抄真实现场**的最小请求：工具树挂在 input[0] 的
@@ -81,8 +98,33 @@ func TestApplyLiftsToolsAndDegradesCustom(t *testing.T) {
 	if len(doc.Input) != 2 || doc.Input[0]["type"] != Tools {
 		t.Fatalf("the additional_tools item must stay in input: %v", doc.Input)
 	}
-	if len(notes) != 1 || !strings.Contains(notes[0], "lifted 1 tool") {
+	// 两条 note：抬了 2 条（叶子数，不是降级数），其中 1 条被降级。见 Apply 里
+	// 「note 分两条报」那段。
+	if len(notes) != 2 ||
+		!strings.Contains(notes[0], "lifted 2 tool declarations") ||
+		!strings.Contains(notes[1], "degraded 1 custom tool ") {
 		t.Fatalf("the rewrite must be reported (不静默): %v", notes)
+	}
+}
+
+// 一个 custom 都没有（全是原生 function）时**照样要报抬了几条**：抬才是修根因
+// 的那一步，而这时降级数是 0。note 只报降级数会让日志说「抬了 0 条」而请求明明
+// 被改了——这正是「不静默」那条规矩要消掉的那种谎。
+func TestApplyReportsTheLiftEvenWithNothingDegraded(t *testing.T) {
+	body := []byte(`{"model":"normal","input":[{"type":"additional_tools","tools":[` +
+		`{"type":"namespace","name":"functions","tools":[` +
+		`{"type":"function","name":"wait","description":"w","parameters":{"type":"object","properties":{}}},` +
+		`{"type":"function","name":"apply_patch_helpers","description":"h","parameters":{"type":"object","properties":{}}}]}]},` +
+		`{"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}]}]}`)
+	out, notes, err := testPlugin().Apply(body, &special.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(out) == string(body) {
+		t.Fatal("a tree of native functions must still be lifted")
+	}
+	if len(notes) != 1 || !strings.Contains(notes[0], "lifted 2 tool declarations") {
+		t.Fatalf("want exactly the lift note, got %v", notes)
 	}
 }
 
@@ -180,6 +222,46 @@ func TestApplyReplacesExistingToolsKey(t *testing.T) {
 	}
 }
 
+// 开关点必须**真的被读**：关掉之后请求一个字节都不动、响应侧也不认领。
+//
+// 这条是 2026-09-21 补的，因为现场实测到了它的缺席：`newgate plugin
+// codex-deepseek.lift-tools off` 报了「已关闭」，而 live 上顶层 tools 照样被抬
+// 上来——开关点报了名却没人读，那是**比没有开关更糟**的一种谎。
+//
+// 两侧一起验：只读一侧的话，「请求没改、响应却被改成 custom_tool_call」这种
+// 把客户端弄坏的不对称会漏过去。
+func TestSwitchOffStopsBothDirections(t *testing.T) {
+	plugin := testPlugin()
+	off := reqWithOff(t, SwitchLiftTools)
+
+	out, notes, err := plugin.Apply([]byte(codexRequest), off)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(out) != codexRequest || len(notes) != 0 {
+		t.Fatalf("关掉之后请求必须逐字不动：%s notes=%v", out, notes)
+	}
+	if got := plugin.Egress(off, []byte(codexRequest)); got != nil {
+		t.Fatalf("关掉之后响应侧不该认领，got %v", got)
+	}
+
+	// 顶层那条路线也要一起关掉——两条路线是同一手。
+	top := []byte(`{"model":"normal","tools":[{"type":"custom","name":"exec","description":"d"}]}`)
+	out, notes, err = plugin.Apply(top, off)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(out) != string(top) || len(notes) != 0 {
+		t.Fatalf("关掉之后顶层也不该动：%s notes=%v", out, notes)
+	}
+
+	// 反向：开关开着（快照缺席 = 没关）时照常动手，免得上面那条测试变成
+	// 「怎么都不动」也能过。
+	if out, notes, _ := plugin.Apply([]byte(codexRequest), &special.Request{}); string(out) == codexRequest || len(notes) == 0 {
+		t.Fatalf("没关的时候必须照常抬：%s notes=%v", out, notes)
+	}
+}
+
 // apply_patch 是上游原生认的 custom 工具，不许降级。
 func TestApplyKeepsApplyPatchCustom(t *testing.T) {
 	body := []byte(`{"model":"normal","input":[{"type":"additional_tools","tools":[` +
@@ -193,6 +275,68 @@ func TestApplyKeepsApplyPatchCustom(t *testing.T) {
 	}
 	if err := json.Unmarshal(out, &doc); err != nil || doc.Tools[0]["type"] != "custom" {
 		t.Fatalf("apply_patch must stay custom: %v %s", err, out)
+	}
+}
+
+// 顶层 namespace **里面**藏着的 custom 也得降级——这是上游那句 `Currently
+// custom tools are not allowed inside a namespace` 的根因（实测 2026-09-21）。
+//
+// namespace 的外壳不动（DeepSeek 真的把它当分组用，扁平化会破坏它），只把里面
+// 那条 custom 改写成 function。
+func TestApplyDegradesCustomInsideTopLevelNamespace(t *testing.T) {
+	body := []byte(`{"model":"normal","tools":[` +
+		`{"type":"function","name":"exec_command","description":"run","parameters":{"type":"object","properties":{}}},` +
+		`{"type":"namespace","name":"functions","description":"","tools":[` +
+		`{"type":"function","name":"wait","description":"w","parameters":{"type":"object","properties":{}}},` +
+		`{"type":"custom","name":"exec","description":"Run JS"}]}]}`)
+	out, notes, err := testPlugin().Apply(body, &special.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Tools []map[string]any `json:"tools"`
+	}
+	if err := json.Unmarshal(out, &doc); err != nil {
+		t.Fatalf("output is not valid JSON: %v\n%s", err, out)
+	}
+	if len(doc.Tools) != 2 {
+		t.Fatalf("top-level length must survive, got %d: %s", len(doc.Tools), out)
+	}
+	if doc.Tools[1]["type"] != "namespace" {
+		t.Fatalf("the namespace shell must survive, got %v", doc.Tools[1])
+	}
+	inner, _ := doc.Tools[1]["tools"].([]any)
+	if len(inner) != 2 {
+		t.Fatalf("the nested array must keep its length, got %d: %v", len(inner), inner)
+	}
+	if inner[0].(map[string]any)["type"] != "function" {
+		t.Fatalf("a nested function must survive untouched: %v", inner[0])
+	}
+	if inner[1].(map[string]any)["type"] != "function" ||
+		inner[1].(map[string]any)["name"] != "exec" {
+		t.Fatalf("the nested custom was not degraded: %v", inner[1])
+	}
+	if _, has := inner[1].(map[string]any)["parameters"]; !has {
+		t.Fatalf("a degraded nested tool must carry parameters: %v", inner[1])
+	}
+	if len(notes) != 1 || !strings.Contains(notes[0], "degraded 1 custom tool") {
+		t.Fatalf("the rewrite must be reported: %v", notes)
+	}
+}
+
+// namespace 里面**全是** native function / 没有 custom → namespace 整段逐字
+// 不动。**这是字节手术的规矩**：能不动就不动。
+func TestApplyLeavesNamespaceWithFunctionsAlone(t *testing.T) {
+	body := []byte(`{"model":"normal","tools":[` +
+		`{"type":"namespace","name":"multi_agent_v1","tools":[` +
+		`{"type":"function","name":"spawn_agent","description":"s","parameters":{"type":"object","properties":{}}},` +
+		`{"type":"function","name":"get_goal","description":"g","parameters":{"type":"object","properties":{}}}]}]}`)
+	out, notes, err := testPlugin().Apply(body, &special.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(out) != string(body) || len(notes) != 0 {
+		t.Fatalf("a clean namespace must be untouched: %s notes=%v", out, notes)
 	}
 }
 

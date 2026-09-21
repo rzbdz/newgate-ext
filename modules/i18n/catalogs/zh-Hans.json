@@ -460,6 +460,10 @@
       "text": "默认",
       "reviewed": true
     },
+    "degraded {n} custom tool to a standard function (DeepSeek rejects any custom tool other than apply_patch with 400)": {
+      "other": "把 {n} 条 custom 工具降级成了普通 function（DeepSeek 除 apply_patch 外不认任何 custom，一律 400）",
+      "reviewed": true
+    },
     "diagnostics": {
       "text": "诊断",
       "reviewed": true
@@ -544,8 +548,8 @@
       "text": "把 Codex 的工具抬到顶层（本模块唯一的一手）",
       "reviewed": true
     },
-    "lifted {n} tool declarations from input[0] to the top level (DeepSeek reads tools only there)": {
-      "text": "把 {n} 条工具声明从 input[0] 抬到了顶层（DeepSeek 只在那里读工具）",
+    "lifted {n} tool declaration from input[0] to the top level (DeepSeek reads tools only there)": {
+      "other": "把 {n} 条工具声明从 input[0] 抬到了顶层（DeepSeek 只在那里读工具）",
       "reviewed": true
     },
     "local changes archived to {dir} (restore from there)": {
@@ -1298,10 +1302,6 @@
     },
     "↑/↓ or j/k to move · Enter to apply · q to quit": {
       "text": "↑/↓ 或 j/k 移动 · Enter 应用 · q 退出",
-      "reviewed": true
-    },
-    "degraded {n} custom tools in the top-level array to standard functions (DeepSeek rejects unknown custom tools with 400)": {
-      "text": "把顶层 tools 里的 {n} 条 custom 工具降级成了普通 function（DeepSeek 对不认识的 custom 工具直接 400）",
       "reviewed": true
     }
   }

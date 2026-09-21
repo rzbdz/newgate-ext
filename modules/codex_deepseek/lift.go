@@ -43,19 +43,36 @@ var freeformParams = []byte(`{"type":"object","properties":{"input":{"type":"str
 // 之外逐字不动。reasoning 那条规矩在这里同样成立——能不动就不动。
 // degradeTopLevel 处理「工具已经躺在顶层 tools 里」的形状。
 //
-// 两种来源（见 apply 的注释）：Codex 旧版把工具挂在 input[0].additional_tools 里，
+// 两种来源（见 Apply 的注释）：Codex 旧版把工具挂在 input[0].additional_tools 里，
 // 新版直接放在顶层 tools（含 namespace 分组、web_search）。顶层那份是 DeepSeek
 // 已经在读的，**不需要抬**，但仍可能夹着一条 `custom`——而 DeepSeek 只认
-// apply_patch 一个 custom，别的一律 400（实测 2026-09-21）。所以对顶层这份只做
-// 一件事：把非 apply_patch 的 custom 降级成 function。其余字节一个不动。
+// apply_patch 一个 custom，别的一律 400。所以对顶层这份只做一件事：把非
+// apply_patch 的 custom 降级成 function。其余字节一个不动。
+//
+// **namespace 里面也要扫**：`custom` 藏在 namespace 里时上游报的是**另一句** 400
+// ——`Currently custom tools are not allowed inside a namespace. Found custom tool
+// 'exec' in tools[1].tools[0].`（实测 2026-09-21，打真实 deepseek-flash）。只看
+// 顶层的写法会漏掉这一族，而漏掉的后果与顶层那条一模一样：400、沿链换人。
+// 所以判据只有一条「`type: "custom"` 且不是 apply_patch」，与 liftInto 逐字一致
+// ——两处不能各有一套「什么算 custom」。
 //
 // 返回：改写后的数组、被降级的工具名、有没有真的动过。没 custom 时 changed 为
 // false，调用方据此原样转发——「没有要修的就不动手」，与 reasoning 那条规矩同。
 func degradeTopLevel(arr []byte) (out []byte, degraded map[string]bool, changed bool) {
 	degraded = map[string]bool{}
+	out, touched := degradeLevel(arr, degraded)
+	return out, degraded, touched
+}
+
+// degradeLevel 降级一层数组里的 custom，并递归进 namespace。
+//
+// 递归只走 namespace 这一种容器：它是 Codex 唯一用来分组的结构，也是上游那句
+// 「not allowed inside a namespace」点名的位置。别的 type（function /
+// web_search / 以后新加的）一律原样留着——不认识的形状不动，与 liftInto 同。
+func degradeLevel(arr []byte, degraded map[string]bool) (out []byte, changed bool) {
 	items, ok := rewrite.ArrayItems(arr)
 	if !ok {
-		return arr, degraded, false
+		return arr, false
 	}
 	var buf bytes.Buffer
 	buf.WriteByte('[')
@@ -65,33 +82,67 @@ func degradeTopLevel(arr []byte) (out []byte, degraded map[string]bool, changed 
 			buf.WriteByte(',')
 		}
 		kind, _ := rewrite.TopLevelString(item, "type")
-		if kind != "custom" {
+		switch kind {
+		case "namespace":
+			nested, ok := rewrite.TopLevelRaw(item, "tools")
+			if !ok {
+				buf.Write(item)
+				continue
+			}
+			inner, innerChanged := degradeLevel(nested, degraded)
+			if !innerChanged {
+				buf.Write(item) // 里面没东西要改 → 这一条逐字不动
+				continue
+			}
+			rewritten, err := rewrite.ReplaceTopLevelRaw(item, "tools", inner)
+			if err != nil {
+				buf.Write(item) // fail-open：改不动就发原文，让上游去报错
+				continue
+			}
+			touched = true
+			buf.Write(rewritten)
+		case "custom":
+			name, _ := rewrite.TopLevelString(item, "name")
+			if name == "" || name == ApplyPatch {
+				buf.Write(item)
+				continue
+			}
+			conv, err := toFunction(item)
+			if err != nil {
+				buf.Write(item)
+				continue
+			}
+			degraded[name] = true
+			touched = true
+			buf.Write(conv)
+		default:
 			buf.Write(item)
-			continue
 		}
-		name, _ := rewrite.TopLevelString(item, "name")
-		if name == "" || name == ApplyPatch {
-			buf.Write(item)
-			continue
-		}
-		conv, err := toFunction(item)
-		if err != nil {
-			buf.Write(item)
-			continue
-		}
-		degraded[name] = true
-		touched = true
-		buf.Write(conv)
 	}
 	buf.WriteByte(']')
-	return buf.Bytes(), degraded, touched
+	return buf.Bytes(), touched
 }
 
-func liftTools(arr []byte) (out []byte, degraded map[string]bool, lifted bool) {
+// liftTools 把 Codex 的工具树抬成 DeepSeek 认的顶层 tools 数组。
+//
+// 返回 (新数组, 被降级的工具名, 抬出来的叶子数)。
+//
+// **抬本身才是修根因的那一步**，降级只是顺带：哪怕一个 custom 都没有（全是原生
+// function），只要它们挂在 input[0] 里，模型就一个工具也看不见。所以返回值里那个
+// 数是**叶子数**而不是「降级过几条」——调用方用它报一句真话（「抬上来 N 条」），
+// 也用它判断「有没有抬出东西」（0 = 什么都没抬，原样转发）。
+//
+// 抬的是**两层结构**：`namespace`（Codex 用来分组，如 functions / collaboration）
+// 在上游没有对应概念，拍平成同一个数组——工具名本来就是全局唯一的，分组只是给
+// 人看的。拍平之后每个叶子要么原样（原生 function），要么降级（custom → function）。
+//
+// 全程字节手术：叶子元素的字节除了被降级的那几个（改一个字段值、插一个字段）
+// 之外逐字不动。reasoning 那条规矩在这里同样成立——能不动就不动。
+func liftTools(arr []byte) (out []byte, degraded map[string]bool, lifted int) {
 	degraded = map[string]bool{}
 	leaves := liftInto(nil, arr, degraded)
 	if len(leaves) == 0 {
-		return nil, degraded, false
+		return nil, degraded, 0
 	}
 	var buf bytes.Buffer
 	buf.WriteByte('[')
@@ -102,7 +153,7 @@ func liftTools(arr []byte) (out []byte, degraded map[string]bool, lifted bool) {
 		buf.Write(leaf)
 	}
 	buf.WriteByte(']')
-	return buf.Bytes(), degraded, true
+	return buf.Bytes(), degraded, len(leaves)
 }
 
 // liftInto 递归拍平工具树，把每个叶子收进 dst，顺路记下被降级的工具名。
