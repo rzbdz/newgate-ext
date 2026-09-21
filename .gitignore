@@ -2,3 +2,11 @@
 # （core/ 是 submodule，由 git 自己管；manifest/modules_gen.go 是**要提交**的
 # 生成物——它是「这份提交装了什么」的凭据，见 tools/distgen。）
 /dist/
+
+# 公开站的产物：site/build.sh 的输出口（tools/sitegen 的页面 + 演示页）。
+#
+# 与 web/dist **不矛盾**：那一份要提交，是因为 `//go:embed all:web/dist` 得在
+# 离线编译时读它；这一份没有读者需要它在盘上——Pages 的流水线每次从源码重建。
+# 与 dist/architecture.html 是同一条理由：它是「这一刻」的产物，而过期的那张
+# 会让人以为站点就是那样。所以进 .gitignore。
+/site/dist/

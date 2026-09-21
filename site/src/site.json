@@ -1,0 +1,10 @@
+{
+  "name": "newgate-ext",
+  "tagline": "为 vibecoding 而生的最佳网关",
+  "kernel": "https://github.com/rzbdz/newgate",
+  "releases": "https://github.com/rzbdz/newgate-ext/releases",
+  "langs": [
+    { "code": "zh-Hans", "label": "中文", "ready": true },
+    { "code": "en", "label": "English", "ready": false }
+  ]
+}

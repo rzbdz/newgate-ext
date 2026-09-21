@@ -1,0 +1,13 @@
+[
+  { "route": "/", "title": "首页" },
+  { "route": "/docs/", "title": "文档" },
+  { "route": "/docs/quickstart/", "title": "快速开始" },
+  { "route": "/docs/tiers/", "title": "档位与 profile" },
+  { "route": "/docs/clients/", "title": "接管客户端" },
+  { "route": "/docs/codex/", "title": "Codex 模式" },
+  { "route": "/docs/config/", "title": "配置与命令" },
+  { "route": "/docs/troubleshooting/", "title": "排障" },
+  { "route": "/docs/modules/", "title": "写一个模块" },
+  { "route": "/docs/fork/", "title": "fork 一份发行版" },
+  { "route": "/changelog/", "title": "更新日志" }
+]
