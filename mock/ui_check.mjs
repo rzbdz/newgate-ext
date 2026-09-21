@@ -963,24 +963,20 @@ if (!(await openSwitches())) {
   }
 }
 
-// —— 18b. codex 的接管模式 + 那张**能填的映射表** ——
+// —— 18b. codex 的模式开关（那张卡上的一句陈述 + 一个按钮） ——
 //
-// 背景（实测见 mock/e2e_codex_modes.sh 的文件头）：codex 的模型目录编在它自己的
-// 二进制里，不问服务端要。所以「让它列我们的档位」做不到，只能反过来——让它照旧
-// 用自己的模型名，名字进来我们认。**rename 模式**就是这个：config.toml 里写
-// `model = "gpt-5.6-sol"`（codex 认识的模型名），而不是 `model = "normal"`。
+// 背景（为什么要「codex 用自己的模型名」这件事本身）见 mock/e2e_codex_modes.sh
+// 的文件头。这里只验**界面这一半**：那张卡上说清了此刻是哪种模式，按钮按下去
+// 真的换了写法。
 //
-// 这条验的是**界面这一半**，共三件事：
+// # 为什么这么短（2026-09-21 用户定的规矩）
 //
-//   1. 那张卡上说清此刻是哪种模式（看不出来——两种模式写进 TOML 的都只是一行
-//      `model = …`），而那个按钮按下去真的换了写法；
-//   2. **那张映射表画得出来**（出厂五条）；
-//   3. **加一行能落盘**。这条是用户 2026-09-21 的原话逼出来的——「我用了改名模式，
-//      为什么没有映射表让用户填写啊」：第一版只有一个 JSON 文件，用户在 codex 里
-//      换个模型就 404，而他能做的只有去编辑那个文件。所以这里必须真的在界面上
-//      加一行、保存、然后断言**磁盘上那张表多了一条**。
+//	以后 ui 这边，测试主要覆盖 BFF 就行了。e2e 的尽量少动，我们最后我会把关的。
 //
-// 「换完之后 codex 的名字真能认回档位」由 e2e_codex_modes.sh 验（那要假上游）。
+// 所以那张映射表的行为**不在这里**——它压在 modules/codex 的单测里
+// （modelsview_test.go：整表写回、mode 不许被抹、空名字/空档位/重名要被拒、
+// 基线过期不许盖别人的），毫秒级、跑一次不用等浏览器。这里只留「控件在界面上
+// 真的画得出来、点了真的落盘」——那是只有浏览器能回答的问题。
 {
   const sec = page.locator(`nav.side button[title="codex"]`);
   if ((await sec.count()) === 0) {
@@ -990,19 +986,16 @@ if (!(await openSwitches())) {
     await page.waitForTimeout(300);
     // 模式开关与那张表**在同一张卡**上（codex.models）。按概念 id 打开，
     // 不按译文——措辞会变，id 不会（与第 6 条同一个写法）。
-    const open = async (id) => {
-      await page.locator(`button.tab[title="${id}"], nav.v button[title="${id}"]`).first().click();
-      await page.waitForTimeout(300);
-    };
-    await open("codex.models");
+    await page.locator('button.tab[title="codex.models"], nav.v button[title="codex.models"]').first().click();
+    await page.waitForTimeout(300);
     const card = page.locator("section.card").first();
 
     const note = card.locator("[data-note]");
-    const noteTone = () => note.first().getAttribute("data-note").catch(() => null);
-    const noteText = async () => ((await note.first().textContent().catch(() => "")) ?? "").trim();
+    const tone = await note.first().getAttribute("data-note").catch(() => null);
+    const text = ((await note.first().textContent().catch(() => "")) ?? "").trim();
     check("那张卡上说清了此刻是哪种接管模式",
-      (await note.count()) === 1 && (await noteTone()) === "ok" && (await noteText()).length > 0,
-      `note=${await note.count()} tone=${JSON.stringify(await noteTone())}`);
+      (await note.count()) === 1 && tone === "ok" && text.length > 0,
+      `note=${await note.count()} tone=${JSON.stringify(tone)}`);
 
     // 只画「另一个」：当前这一种画成按钮就是一个点了不会改变任何事的按钮。
     const toRename = card.locator('button[data-action="mode-rename"]');
@@ -1012,49 +1005,23 @@ if (!(await openSwitches())) {
       takeoverFirst ? (await toRename.count()) === 1 : (await toTakeover.count()) === 1,
       `rename=${await toRename.count()} takeover=${await toTakeover.count()}`);
 
-    // 出厂那五条要画出来——表是空的（或者根本没渲染）时，这一节就白有了。
-    const rows = card.locator(".rec");
-    check("映射表画出来了（出厂五条）", (await rows.count()) === 5, `行数 ${await rows.count()}`);
-
     const modelsFile = path.join(path.dirname(stateFile), "codex-models.json");
-    const tableOnDisk = () => {
-      try { return JSON.parse(fs.readFileSync(modelsFile, "utf8")); } catch { return {}; }
+    const modeOnDisk = () => {
+      try { return JSON.parse(fs.readFileSync(modelsFile, "utf8")).mode ?? ""; } catch { return ""; }
     };
-
-    const before = await noteText();
     await (takeoverFirst ? toRename : toTakeover).first().click();
     await page.waitForTimeout(900);
-    const after = await noteText();
-    check("按下去之后卡片上那句陈述变了", after !== before && after.length > 0,
-      `按之前 ${JSON.stringify(before)}，按之后 ${JSON.stringify(after)}`);
-    check("模式真的落盘了（不是只改了界面）",
-      (tableOnDisk().mode ?? "") === (takeoverFirst ? "rename" : "takeover"),
-      `文件里的 mode = ${JSON.stringify(tableOnDisk().mode ?? "")}`);
-
-    // **加一行**：这是这张卡存在的理由。新加的那一行是最后一条 .rec。
-    await card.locator("button", { hasText: "+" }).last().click();
-    await page.waitForTimeout(200);
-    const fresh = card.locator(".rec").last();
-    await fresh.locator("input").first().fill("gpt-9-test");
-    await fresh.locator("select").first().selectOption("heavy");
-    await page.waitForTimeout(200);
-    await page.locator("header.top button.primary").click();
-    await page.waitForTimeout(900);
-
-    const saved = (tableOnDisk().models ?? []).find((m) => m.slug === "gpt-9-test");
-    check("在界面上加的那一行真的写进了文件", !!saved && saved.tier === "heavy",
-      JSON.stringify((tableOnDisk().models ?? []).map((m) => m.slug + "→" + m.tier)));
-    check("原来那五条还在（整表写回，不是只发新加的那条）",
-      (tableOnDisk().models ?? []).length === 6,
-      `表里现在 ${(tableOnDisk().models ?? []).length} 条`);
+    const after = ((await note.first().textContent().catch(() => "")) ?? "").trim();
+    check("按下去之后那句陈述变了、而且真的落盘了",
+      after !== text && after.length > 0 &&
+        modeOnDisk() === (takeoverFirst ? "rename" : "takeover"),
+      `陈述 ${JSON.stringify(text)} → ${JSON.stringify(after)}，文件里 mode = ${JSON.stringify(modeOnDisk())}`);
 
     // 切回去，别把状态留给后面的条目（这一份沙箱是共享的）。
     if (takeoverFirst) {
       await page.locator('button[data-action="mode-takeover"]').first().click();
       await page.waitForTimeout(900);
-      check("再按一次切得回来（对称的一个开关）",
-        (tableOnDisk().mode ?? "") === "takeover",
-        `mode = ${JSON.stringify(tableOnDisk().mode ?? "")}`);
+      check("再按一次切得回来", modeOnDisk() === "takeover", `mode = ${JSON.stringify(modeOnDisk())}`);
     }
   }
 }

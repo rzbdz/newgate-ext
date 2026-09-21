@@ -82,7 +82,7 @@
     "Usage: newgate omo explain <slot key>": {},
     "Usage: newgate omo unset <slot key>": {},
     "Usage: newgate omo use <slot key> <@other-key|tier|provider/model>": {},
-    "Which tier a request naming that model resolves to. Empty means the row matches nothing.": {},
+    "Which tier a request naming that model resolves to. Required — a row without one is rejected on save.": {},
     "[naked] forever mode: the classifier request was approved directly, the upstream was not called": {},
     "[naked] the classifier request was approved directly, the upstream was not called (the configuration is no longer valid)": {},
     "[naked] the classifier request was approved directly, the upstream was not called (the window expired right after the interception)": {},
@@ -619,6 +619,11 @@
         "n"
       ]
     },
+    "the row for {slug} has no tier — pick one, or remove the row": {
+      "args": [
+        "slug"
+      ]
+    },
     "the slot bindings in this request are not readable: {err}": {
       "args": [
         "err"
@@ -757,6 +762,11 @@
     "{file} does not parse ({err}); the built-in table is in use": {
       "args": [
         "err",
+        "file"
+      ]
+    },
+    "{file} is not valid JSON": {
+      "args": [
         "file"
       ]
     },

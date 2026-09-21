@@ -2,6 +2,7 @@ package codex
 
 import (
 	"encoding/json"
+	"os"
 	"strings"
 
 	i18n "github.com/rzbdz/newgate/lib/i18n"
@@ -83,7 +84,7 @@ func modelRecord(e modelTier) view.Record {
 			{
 				ID: "tier", Label: i18n.T("tier", nil), Kind: view.FieldSelect, Value: e.Tier,
 				Options: append([]string{""}, domain.Roles...),
-				Why:     i18n.T("Which tier a request naming that model resolves to. Empty means the row matches nothing.", nil),
+				Why:     i18n.T("Which tier a request naming that model resolves to. Required — a row without one is rejected on save.", nil),
 			},
 		},
 	}
@@ -113,6 +114,13 @@ func applyModels(edit json.RawMessage, base string) (string, error) {
 		if slug == "" {
 			return "", i18n.E("a row has no model name — nothing would ever match it", nil)
 		}
+		if tier == "" {
+			// 空档位**不许保存**，而不是「存下来但不算数」：effectiveModels 会把
+			// 没有档位的行丢掉（它匹配不上任何东西），于是界面上刚加的那一行会在
+			// 保存之后**自己消失**——用户看到的是「加了、没了、也没报错」。
+			return "", i18n.E("the row for {slug} has no tier — pick one, or remove the row",
+				i18n.A{"slug": slug})
+		}
 		if seen[slug] {
 			return "", i18n.E("two rows are both named \"{slug}\" — only one of them could ever match",
 				i18n.A{"slug": slug})
@@ -121,20 +129,38 @@ func applyModels(edit json.RawMessage, base string) (string, error) {
 		out = append(out, modelTier{Slug: slug, Tier: tier})
 	}
 
-	// 从**盘上那份**起手，只换 models 这一段：`mode` 与将来可能加的键都留着。
-	m, _ := readModels()
-	m.Models = out
-	// `mode` 缺席时补上**这一刻生效的那个**：文件里的 `models` 一旦存在它就是权威，
-	// 而模式若还是空的，读的人（Mode()）会当 takeover——那与用户刚才看到的界面
-	// 不一致。写全是为了「文件说的事 = 界面说的事」。
-	if m.Mode == "" {
-		m.Mode = Mode()
+	// 从**盘上那份的原文**起手，只换 models 这一段。
+	//
+	// 为什么不是「解成 Models 再序列化」：那样会把**不认识的键丢掉**（今天的
+	// `mode`、将来往这份文件里加的任何一个键），而丢掉它们在界面上只表现为
+	// 「保存成功」——2026-09-21 的一条单测就是这么抓到第一版的（`something_else`
+	// 没了）。所以按原文只改一段，与 providers 那条路同一个做法。
+	doc := map[string]json.RawMessage{}
+	if raw, err := os.ReadFile(ModelsFile()); err == nil && len(strings.TrimSpace(string(raw))) > 0 {
+		if err := json.Unmarshal(raw, &doc); err != nil {
+			return "", i18n.Ef(err, "{file} is not valid JSON", i18n.A{"file": "codex-models.json"})
+		}
 	}
-	body, err := json.MarshalIndent(m, "", "  ")
+	body, err := json.Marshal(out)
 	if err != nil {
 		return "", err
 	}
-	next, err := store.WriteIfUnchanged(ModelsFile(), base, append(body, '\n'))
+	doc["models"] = body
+	// `mode` 缺席时补上**这一刻生效的那个**：文件里 `models` 一旦存在它就是权威，
+	// 而模式若还是空的，读的人（Mode()）会当 takeover——那与用户刚才看到的界面
+	// 不一致。写全是为了「文件说的事 = 界面说的事」。
+	if _, ok := doc["mode"]; !ok {
+		b, err := json.Marshal(Mode())
+		if err != nil {
+			return "", err
+		}
+		doc["mode"] = b
+	}
+	text, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	next, err := store.WriteIfUnchanged(ModelsFile(), base, append(text, '\n'))
 	if err != nil {
 		return "", modelsErr(err)
 	}

@@ -200,8 +200,8 @@
       "text": "用法：newgate omo use <槽位键> <@别的键|档位|provider/模型>",
       "reviewed": true
     },
-    "Which tier a request naming that model resolves to. Empty means the row matches nothing.": {
-      "text": "点名这个模型的请求落到哪一档。留空 = 这一行谁也匹配不上",
+    "Which tier a request naming that model resolves to. Required — a row without one is rejected on save.": {
+      "text": "点名这个模型的请求落到哪一档。必填——没有档位的那一行保存会被拒",
       "reviewed": true
     },
     "[naked] forever mode: the classifier request was approved directly, the upstream was not called": {
@@ -1000,6 +1000,10 @@
       "text": "根密钥只有 {n} 字节，至少要 {min}（config trust 给的那串）",
       "reviewed": true
     },
+    "the row for {slug} has no tier — pick one, or remove the row": {
+      "text": "{slug} 那一行没有档位——选一个，或者把那一行删掉",
+      "reviewed": true
+    },
     "the slot bindings in this request are not readable: {err}": {
       "text": "这个请求里的槽位绑定读不出来：{err}",
       "reviewed": true
@@ -1170,6 +1174,10 @@
     },
     "{file} does not parse ({err}); the built-in table is in use": {
       "text": "{file} 解析不了（{err}），出厂那张表正在生效",
+      "reviewed": true
+    },
+    "{file} is not valid JSON": {
+      "text": "{file} 不是合法的 JSON",
       "reviewed": true
     },
     "{head} · the highest priority globally, ahead of any profile": {
