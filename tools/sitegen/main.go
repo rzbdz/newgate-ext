@@ -57,8 +57,20 @@ const (
 // ——两种语言的目录结构不会一样（英文站可能少几页），把它们塞进同一份配置，
 // 加语言的那天就要拆一次。
 type site struct {
-	Name     string `json:"name"`
-	Tagline  string `json:"tagline"`
+	Name    string `json:"name"`
+	Tagline string `json:"tagline"`
+	// Desc 是一句话说明这个站点是什么。**不是** tagline 的复读：tagline 是门面上
+	// 那句大字（首页的 h1 就是它），Desc 是 `<meta name="description">` 与分享卡片
+	// 上那句话——搜索引擎与聊天软件里的那两行正文只认后者。
+	//
+	// 分开的判据很实在：tagline 要短、要响（「为 vibecoding 而生的最佳网关」），
+	// 而 description 要**说清楚是什么**（谁、站在哪两者之间、解决什么），否则链接
+	// 分享出去只有一句口号，读的人得点进去才知道这玩意儿干什么。
+	Desc string `json:"desc"`
+	// URL 是站点发布出去的那个地址。canonical 与 og:url 按它 + 这一页的路由拼
+	// ——所以它必须是**对外**的那个（今天的项目站带 `/newgate-ext/` 那一层），
+	// 不是本地预览用的地址。
+	URL      string `json:"url"`
 	Kernel   string `json:"kernel"`
 	Releases string `json:"releases"`
 	Langs    []lang `json:"langs"`
@@ -279,6 +291,20 @@ func readSite(src string) (site, error) {
 	}
 	if cfg.Name == "" {
 		return cfg, fmt.Errorf("%s 里没有 name", path.Join(srcDir, "site.json"))
+	}
+	if cfg.Desc == "" {
+		// 缺了它页面照样出得来，只有分享出去的那张卡片是空的——所以在这里说，
+		// 而不是等谁点开链接才发现（同 checkNav 那条的判据：静默的漏项要在这里嚷）。
+		return cfg, fmt.Errorf("%s 里没有 desc（<meta name=\"description\"> 与分享卡片都用它，不该拿 tagline 顶）", path.Join(srcDir, "site.json"))
+	}
+	if cfg.URL == "" {
+		return cfg, fmt.Errorf("%s 里没有 url（canonical 与分享卡片按它拼绝对地址）", path.Join(srcDir, "site.json"))
+	}
+	if !strings.HasSuffix(cfg.URL, "/") {
+		// 绝对地址是**拼**出来的，所以它要么以 / 结尾、要么每一处拼的时候都记得补一个。
+		// 前者让后者不存在：今天 og:url 就少一个斜杠地与 canonical 不一致，而两张卡片
+		// 摆在一起才看得出来。
+		cfg.URL += "/"
 	}
 	return cfg, nil
 }

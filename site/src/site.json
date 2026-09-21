@@ -1,6 +1,8 @@
 {
   "name": "newgate-ext",
   "tagline": "为 vibecoding 而生的最佳网关",
+  "desc": "一个本地网关，站在 Claude Code / Codex / OpenCode 和你选定的模型之间：换上游是一条命令，坏一家不等于你坏，上游的怪癖是可插拔的模块。",
+  "url": "https://rzbdz.github.io/newgate-ext/",
   "kernel": "https://github.com/rzbdz/newgate",
   "releases": "https://github.com/rzbdz/newgate-ext/releases",
   "langs": [

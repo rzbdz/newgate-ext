@@ -210,6 +210,106 @@ func TestCheckNavCatchesBothDirections(t *testing.T) {
 	}
 }
 
+// TestEyebrowHeadings 测首页那一排带编号的特性标题（`## <small>01</small> …`）。
+//
+// 它不只是「认不认」：眉题开的那一节要在**下一个标题**处关上。忘了关的话页尾会
+// 多一个 </section> 或者上一节一路吃到页尾——两种在浏览器里都只是「看起来有点怪」，
+// 谁也不会报 bug，所以只能在这里锁住。
+func TestEyebrowHeadings(t *testing.T) {
+	body, _ := render(t, "# T\n\n## <small>01</small> 第一节\n\n正文一。\n\n## Fork 下来\n\n正文二。\n")
+	if !strings.Contains(body, `<section class="feat"><h2><small>01</small> 第一节</h2>`) {
+		t.Errorf("眉题没开成一节：%s", body)
+	}
+	// 第二节（没有眉题的普通标题）**不该**被吃进第一节里。
+	i := strings.Index(body, "</section>")
+	j := strings.Index(body, "<h2>Fork 下来</h2>")
+	if i < 0 || j < i {
+		t.Errorf("第一节没有在下一个标题处关上：\n%s", body)
+	}
+	if strings.Count(body, "</section>") != 1 {
+		t.Errorf("section 的配对不止一处：%s", body)
+	}
+}
+
+// TestEyebrowOnlyWhereWeSaid：眉题是**一个闭合的小构造**，写歪了要报错。
+//
+// 每一条都是「作者以为写对了、页面上只是怪一点」的形状——尤其第一条：他写的是
+// 我们支持的写法，只是写错一半，报「正文里不写 HTML」会让他完全摸不着头脑。
+func TestEyebrowOnlyWhereWeSaid(t *testing.T) {
+	cases := map[string]string{
+		"没有闭合":   "# T\n\n## <small>01 标题\n",
+		"后面没标题":  "# T\n\n## <small>01</small>\n",
+		"眉题里带标记": "# T\n\n## <small><b>01</b></small> 标题\n",
+		"别的小标签":  "# T\n\n## <span>01</span> 标题\n",
+	}
+	for name, src := range cases {
+		t.Run(name, func(t *testing.T) {
+			if _, _, err := renderMarkdown(src); err == nil {
+				t.Error("这种写法该报错（它会静默地画错，而作者以为渲染器认了）")
+			}
+		})
+	}
+}
+
+// TestPageDescComesFromThePage：文档页那句说明取的是**这一页自己的第一段**。
+//
+// 取错了不会红，只会让十来张分享卡片写着同一句整站 tagline——而那种事只有在有人
+// 真把链接贴出去之后才看得出来。
+func TestPageDescComesFromThePage(t *testing.T) {
+	body, _, err := renderMarkdown("# 排障\n\n先跑 `newgate doctor`。\n\n## 一\n\n后话\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := pageDesc(page{Route: "/docs/troubleshooting/", Body: body}, "整站那句")
+	if got != "先跑 newgate doctor。" {
+		t.Errorf("描述没取第一段：%q", got)
+	}
+	// 一页开篇就是一张表（没有段落）时退回整站那句：有话说比说得最准重要。
+	if got := pageDesc(page{Route: "/x/", Body: "<table><tr><td>x</td></tr></table>"}, "整站那句"); got != "整站那句" {
+		t.Errorf("没有段落时该退回整站那句：%q", got)
+	}
+}
+
+// TestPageTitleDiffersByPage：<title> 与 og:title 是**同一个**值，且两种页两种写法。
+//
+// 首页用整站那句（别人转的是「newgate-ext 是什么」），文档页把页面自己的标题摆在
+// 前面（标签页一多，能分辨出哪一张是排障就靠它）。
+func TestPageTitleDiffersByPage(t *testing.T) {
+	cfg := site{Name: "newgate-ext", Tagline: "为 vibecoding 而生的最佳网关"}
+	if got := pageTitle(cfg, page{Route: "/"}); got != "newgate-ext — 为 vibecoding 而生的最佳网关" {
+		t.Errorf("首页标题：%q", got)
+	}
+	if got := pageTitle(cfg, page{Route: "/docs/troubleshooting/", Title: "排障"}); got != "排障 · newgate-ext" {
+		t.Errorf("文档页标题：%q", got)
+	}
+}
+
+// TestSiteConfigMustCarryDescAndURL：这两格缺了站点照样出得来，只有分享出去的那张
+// 卡片是空的——所以只能在生成时报错（同 checkNav 那条判据）。
+func TestSiteConfigMustCarryDescAndURL(t *testing.T) {
+	dir := t.TempDir()
+	write := func(body string) string {
+		if err := os.WriteFile(filepath.Join(dir, "site.json"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return dir
+	}
+	if _, err := readSite(write(`{"name":"x","desc":"d","url":"https://e/"}`)); err != nil {
+		t.Errorf("该通过却报错：%v", err)
+	}
+	if _, err := readSite(write(`{"name":"x","url":"https://e/"}`)); err == nil {
+		t.Error("没有 desc 时该报错")
+	}
+	if _, err := readSite(write(`{"name":"x","desc":"d"}`)); err == nil {
+		t.Error("没有 url 时该报错")
+	}
+	// url 缺尾斜杠是**补上**而不是报错：绝对地址是拼出来的，补在这里就只有一处要管。
+	cfg, err := readSite(write(`{"name":"x","desc":"d","url":"https://e/abc"}`))
+	if err != nil || cfg.URL != "https://e/abc/" {
+		t.Errorf("尾斜杠没补上：%q %v", cfg.URL, err)
+	}
+}
+
 // TestEmitWipesTheOutput 锁住「整份重来」。
 //
 // 覆盖写的症状很隐蔽：删掉一篇文档之后，它渲染出来的 index.html 还留在盘上，

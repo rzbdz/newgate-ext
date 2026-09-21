@@ -54,7 +54,6 @@ header.top {
   border-bottom: 1px solid var(--line);
 }
 header.top .brand { color: var(--ink); text-decoration: none; font-family: var(--mono); }
-header.top .tag { color: var(--dim); font-size: 13px; }
 header.top .spacer { flex: 1; }
 header.top .langs { display: flex; gap: 8px; font-size: 13px; }
 header.top .langs a { color: var(--dim); text-decoration: none; padding: 2px 8px; border-radius: 999px; }
@@ -145,6 +144,9 @@ body { background: var(--bg); }
   font-family: var(--mono); font-size: 13px; color: var(--accent);
   letter-spacing: 2px; text-transform: uppercase;
 }
+/* lead 里那个分隔符：名字与一句话之间要停一下，但**不能**让两个字重一起变蓝
+   （整行同色时那两半读起来像一句话，而它们是「叫什么」与「是什么」）。 */
+.hero .lead .sep { color: var(--line); margin: 0 10px; }
 .hero h1 {
   font-size: clamp(34px, 6vw, 58px); line-height: 1.15; margin: 0 auto 16px;
   max-width: 16em;
@@ -194,18 +196,66 @@ body { background: var(--bg); }
   display: block; width: 100%; height: 640px;
   border: 0; background: var(--bg);
 }
+/* 演示页下面那句说明。它不是正文的引言（正文里第一节讲的是同一件事）——它是
+   **对上面那个窗口的图注**，所以贴着窗口、小一号、并且被一条竖线拉到窗口的左沿。 */
+.hero .demo-note {
+  margin: 14px auto 0; max-width: var(--wrap);
+  text-align: left; padding-left: 14px;
+  border-left: 2px solid var(--line);
+  font-size: 13px; color: var(--dim);
+}
+.hero .demo-note strong { color: var(--ink); }
 
-/* 首页正文：卡片感，不再是一排裸段落。 */
+/* 一排「它是什么」的小标签：二进制、零依赖、MIT…。
+   刻意不是徽章图（README 那位是图片，站点上没必要多几个外部请求）、也不是按钮
+   ——它们是**陈述**，所以画成一行灰字加分隔点。 */
+.hero .chips {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 18px;
+  list-style: none; margin: 22px 0 0; padding: 0;
+  font-family: var(--mono); font-size: 12px; color: var(--dim);
+}
+.hero .chips li { display: flex; align-items: center; gap: 8px; }
+.hero .chips li::before {
+  content: ""; width: 5px; height: 5px; border-radius: 50%;
+  background: var(--line);
+}
+
+/* 首页正文。分两半：
+ *
+ *   .feat   带编号的那一节（01…08）——**一行一个、左对齐**，是这一页的主干；
+ *   其余    普通的 `## 一段`（Fork / 安装），照文档页的排法。
+ *
+ * 为什么主干不做成网格卡片：卡片格子每张只有巴掌宽，而这里每一段都要放得下一
+ * 一段话和（常常）一条命令；挤成三列就得把命令折行，那比一列长页面难读得多。
+ * 「一列 + 编号 + 一条竖线」是这个信息量下最经得起看的那一种。
+ */
 main.landing {
-  max-width: var(--wrap); margin: 0 auto;
+  max-width: 780px; margin: 0 auto;
   padding: 8px 20px 40px;
 }
 main.landing h2 {
   font-size: 22px; margin: 40px 0 8px;
-  display: flex; align-items: center; gap: 10px;
 }
 main.landing p { margin: 12px 0; color: var(--ink); }
 main.landing p strong { color: var(--ink); }
+
+/* 一节：左边一条竖线，把「编号 + 标题 + 正文 + 命令」圈成一个整体。 */
+main.landing .feat {
+  border-left: 2px solid var(--line);
+  padding: 4px 0 4px 22px;
+  margin: 36px 0;
+}
+main.landing .feat h2 { margin: 0 0 10px; font-size: 21px; }
+/* 编号：小、等宽、灰蓝。它**不加重**标题的语气（标题自己的字重已经够了），
+   只提供一个「这是第几步」的刻度。 */
+main.landing .feat h2 small {
+  font-family: var(--mono); font-size: 12px; font-weight: 500;
+  color: var(--accent); letter-spacing: 1px;
+  margin-right: 6px;
+}
+main.landing .feat > :last-child { margin-bottom: 0; }
+/* 一节里第一条命令跟在一句「引子」后面时，别再多一层空。 */
+main.landing .feat pre { margin: 10px 0; }
 
 @media (max-width: 820px) {
   .shell { grid-template-columns: 1fr; gap: 18px; }
@@ -213,4 +263,6 @@ main.landing p strong { color: var(--ink); }
   nav.side ul { display: flex; flex-wrap: wrap; gap: 4px; }
   .browser iframe { height: 480px; }
   main.landing h2 { font-size: 19px; }
+  main.landing .feat { padding-left: 14px; margin: 28px 0; }
+  main.landing .feat h2 { font-size: 18px; }
 }

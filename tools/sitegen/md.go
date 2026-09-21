@@ -47,6 +47,15 @@ func renderMarkdown(src string) (body string, title string, err error) {
 
 	var out strings.Builder
 	var para []string // 攒着的段落行
+	// featOpen：眉题（`## <small>01</small> …`）开了一个 `<section class="feat">`，
+	// 还没关。见下面 closeFeat。
+	featOpen := false
+	closeFeat := func() {
+		if featOpen {
+			out.WriteString("</section>\n")
+			featOpen = false
+		}
+	}
 	flushPara := func() error {
 		if len(para) == 0 {
 			return nil
@@ -127,6 +136,21 @@ func renderMarkdown(src string) (body string, title string, err error) {
 				title = strings.TrimSpace(text)
 				continue
 			}
+			if n == 2 {
+				// 眉题：`## <small>01</small> 接管你的 CLI`。它是**一节的开头**，
+				// 所以先把上一节关上（连着两个眉题 = 两节）。
+				if eb, rest, ok, err := eyebrow(text); err != nil {
+					return "", "", fmt.Errorf("第 %d 行: %w", ln, err)
+				} else if ok {
+					closeFeat()
+					out.WriteString(`<section class="feat"><h2><small>` + esc(eb) + "</small> " + rest + "</h2>\n")
+					featOpen = true
+					continue
+				}
+			}
+			// 别的标题（`## Fork 下来…`、`### …`）都**不属于上一节**：眉题开的那一节
+			// 到下一个标题为止。没有这一句的话，那一节会一路吃到页尾。
+			closeFeat()
 			out.WriteString(fmt.Sprintf("<h%d>%s</h%d>\n", n, h, n))
 
 		case strings.HasPrefix(trimmed, "|"):
@@ -238,10 +262,55 @@ func renderMarkdown(src string) (body string, title string, err error) {
 	if err := flushPara(); err != nil {
 		return "", "", err
 	}
+	closeFeat()
 	if title == "" {
 		return "", "", fmt.Errorf("这份文件没有一级标题（第一行该是 `# 标题`）")
 	}
 	return out.String(), title, nil
+}
+
+// eyebrow 认「眉题」这种二级标题：`## <small>01</small> 接管你的 CLI`。
+//
+// # 为什么为它开一个语法口子
+//
+// 首页那一排特性是**有编号的**（01…08），而编号该画成一个小眉题、不该和标题一样重。
+// 不开口子的话只有两条路，两条都比它糟：把编号直接写进标题文字（`## 01 接管…`，
+// 于是编号和正文一样黑一样大，看起来像标题的一部分而不是一个刻度），或者让正文
+// 手写 `<span>`——而正文里的 HTML 是被**明文禁止**的（下面那条 < 开头的检查）。
+//
+// 它是一个**闭合**的小构造：只认行首那一个 `<small>…</small>`，后面的活照样走
+// 行内渲染（`**加粗**`、`code` 都还有效）。写了一整个 HTML 小片段、或者把标签
+// 写在中间，仍然落到「正文里不写 HTML」那条报错上——那样写的人八成在按 HTML
+// 想事情，而这一页的正文是 markdown。
+//
+// 返回第三个值 = 这一行是不是眉题（不是的话后面两个值无意义）。
+func eyebrow(text string) (tag, rest string, ok bool, err error) {
+	if !strings.HasPrefix(text, "<small>") {
+		if strings.HasPrefix(text, "<") {
+			// 行首以 < 开头却不是 <small>：与其回去撞「不写 HTML」那条（报错的话
+			// 是「正文里不写 HTML」，而作者明明写的是我们支持的眉题语法，只是写错
+			// 了一点），不如在这里把唯一的那个写法说清楚。
+			return "", "", false, fmt.Errorf("行首的 < 只有一种合法写法：`## <small>01</small> 标题`")
+		}
+		return "", "", false, nil
+	}
+	end := strings.Index(text, "</small>")
+	if end < 0 {
+		return "", "", false, fmt.Errorf("<small> 没有闭合（眉题的写法是 `## <small>01</small> 标题`）")
+	}
+	tag = text[len("<small>"):end]
+	rest = strings.TrimSpace(text[end+len("</small>"):])
+	if rest == "" {
+		return "", "", false, fmt.Errorf("眉题后面没有标题（`## <small>01</small> 接管你的 CLI`）")
+	}
+	if strings.ContainsAny(tag, "<>&\"") {
+		return "", "", false, fmt.Errorf("眉题里不写标记：%q", tag)
+	}
+	h, err := inline(rest)
+	if err != nil {
+		return "", "", false, err
+	}
+	return tag, h, true, nil
 }
 
 // isSetext 认「文字 + 下一行全是 = 或 -」这种老式标题。
