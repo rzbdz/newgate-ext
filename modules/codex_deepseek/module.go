@@ -13,7 +13,9 @@
 //
 //	请求侧 1. input[0].additional_tools → 顶层 tools（并原样保留那条 input 项）
 //	       2. 工具树里的 `custom` 声明 → `function`（上游只认 apply_patch 一个
-//	          custom 类型，别的一律 400 Unsupported custom tool）
+//	          custom 类型，别的一律 400 Unsupported custom tool）——**两条来源
+//	          都查**：旧版把工具挂在 input[0] 里，新版直接放顶层 tools（里面
+//	          夹着 custom 时同样是 400，2026-09-21 在 live 上复现过）
 //	响应侧 3. 被降级过的工具，其 function_call → custom_tool_call
 //	       4. function_call_arguments.* → custom_tool_call_input.*，并把
 //	          {"input": "…"} 那层壳拆掉（codex 要的是里面那串原文）

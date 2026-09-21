@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 
 	i18n "github.com/rzbdz/newgate/lib/i18n"
+	"github.com/rzbdz/newgate/modules/gateway/rewrite"
 	"github.com/rzbdz/newgate/modules/gateway/special"
 
 	codexapi "github.com/rzbdz/newgate-ext/modules/codex"
@@ -46,22 +47,48 @@ func (t tools) Match(r *special.Request) bool {
 		t.model.MatchTarget(r.Model, r.Provider, r.BaseURL)
 }
 
+// Apply 改写请求：把工具提上来，或者只对顶层做降级。
+//
+// 两种路线（互相排斥）：
+//
+//  1. 读出 input[0].additional_tools（旧版格式）：把这棵树拍平、custom 降成
+//     function、写进顶层 tools（覆盖原有的），原来的 input[0] 原样保留。
+//     DeepSeek 会从这棵新造的树里读工具。
+//  2. 没有 additional_tools，但顶层有 tools（新版格式）：里面可能是
+//     namespace/function/web_search/custom 混着。DeepSeek 对前三种都能消化
+//     （namespace 回显时原样带回，见 2026-09-21 实测），但对未知的 custom 报 400。
+//     所以顺着扫一遍，只把 custom（除 apply_patch 外）降成 function，其余一个
+//     字节不动。
 func (tools) Apply(body []byte, r *special.Request) ([]byte, []string, error) {
-	arr, ok := codexTools(body)
-	if !ok {
-		return body, nil, nil // 不是 Codex 的形状，不归我管
+	if arr, ok := codexTools(body); ok {
+		lifted, degraded, changed := liftTools(arr)
+		if !changed {
+			return body, nil, nil
+		}
+		out, err := setTopLevelTools(body, lifted)
+		if err != nil {
+			return body, nil, err
+		}
+		return out, []string{i18n.T(
+			"lifted {n} tool declarations from input[0] to the top level (DeepSeek reads tools only there)",
+			i18n.A{"n": len(degraded)})}, nil
 	}
-	lifted, degraded, changed := liftTools(arr)
-	if !changed {
-		return body, nil, nil
+
+	if toolsRaw, ok := rewrite.TopLevelRaw(body, "tools"); ok {
+		degradedArr, degraded, changed := degradeTopLevel(toolsRaw)
+		if !changed {
+			return body, nil, nil
+		}
+		out, err := rewrite.ReplaceTopLevelRaw(body, "tools", degradedArr)
+		if err != nil {
+			return body, nil, err
+		}
+		return out, []string{i18n.T(
+			"degraded {n} custom tools in the top-level array to standard functions (DeepSeek rejects unknown custom tools with 400)",
+			i18n.A{"n": len(degraded)})}, nil
 	}
-	out, err := setTopLevelTools(body, lifted)
-	if err != nil {
-		return body, nil, err
-	}
-	return out, []string{i18n.T(
-		"lifted {n} tool declarations from input[0] to the top level (DeepSeek reads tools only there)",
-		i18n.A{"n": len(degraded)})}, nil
+
+	return body, nil, nil
 }
 
 // Egress 认领这一发的响应改写。
@@ -78,15 +105,27 @@ func (tools) Egress(r *special.Request, original []byte) special.Egress {
 
 // degradedNames 从客户端原文里读出「会被降级」的工具名。
 //
-// 判据与 liftTools 逐字一致（`type: "custom"` 且不是 apply_patch）——两处必须
+// 判据与 Apply 逐字一致（`type: "custom"` 且不是 apply_patch）——两处必须
 // 用同一条尺子，否则会出现「请求侧没改、响应侧却去改」这种对不上的情况。
-// 所以判断也走 liftTools 那条路，不另写一份扫描。
+// 所以对两种来源（input[0].additional_tools 与顶层 tools）各走一遍对应的
+// 降级扫描，不另写一份判断。
 func degradedNames(original []byte) map[string]bool {
-	arr, ok := codexTools(original)
-	if !ok {
+	degraded := map[string]bool{}
+	if arr, ok := codexTools(original); ok {
+		_, d, _ := liftTools(arr)
+		for k := range d {
+			degraded[k] = true
+		}
+	}
+	if toolsRaw, ok := rewrite.TopLevelRaw(original, "tools"); ok {
+		_, d, _ := degradeTopLevel(toolsRaw)
+		for k := range d {
+			degraded[k] = true
+		}
+	}
+	if len(degraded) == 0 {
 		return nil
 	}
-	_, degraded, _ := liftTools(arr)
 	return degraded
 }
 

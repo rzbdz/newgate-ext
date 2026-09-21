@@ -1299,6 +1299,10 @@
     "↑/↓ or j/k to move · Enter to apply · q to quit": {
       "text": "↑/↓ 或 j/k 移动 · Enter 应用 · q 退出",
       "reviewed": true
+    },
+    "degraded {n} custom tools in the top-level array to standard functions (DeepSeek rejects unknown custom tools with 400)": {
+      "text": "把顶层 tools 里的 {n} 条 custom 工具降级成了普通 function（DeepSeek 对不认识的 custom 工具直接 400）",
+      "reviewed": true
     }
   }
 }

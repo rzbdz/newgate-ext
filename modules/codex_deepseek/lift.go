@@ -41,6 +41,52 @@ var freeformParams = []byte(`{"type":"object","properties":{"input":{"type":"str
 //
 // 全程字节手术：叶子元素的字节除了被降级的那几个（改一个字段值、插一个字段）
 // 之外逐字不动。reasoning 那条规矩在这里同样成立——能不动就不动。
+// degradeTopLevel 处理「工具已经躺在顶层 tools 里」的形状。
+//
+// 两种来源（见 apply 的注释）：Codex 旧版把工具挂在 input[0].additional_tools 里，
+// 新版直接放在顶层 tools（含 namespace 分组、web_search）。顶层那份是 DeepSeek
+// 已经在读的，**不需要抬**，但仍可能夹着一条 `custom`——而 DeepSeek 只认
+// apply_patch 一个 custom，别的一律 400（实测 2026-09-21）。所以对顶层这份只做
+// 一件事：把非 apply_patch 的 custom 降级成 function。其余字节一个不动。
+//
+// 返回：改写后的数组、被降级的工具名、有没有真的动过。没 custom 时 changed 为
+// false，调用方据此原样转发——「没有要修的就不动手」，与 reasoning 那条规矩同。
+func degradeTopLevel(arr []byte) (out []byte, degraded map[string]bool, changed bool) {
+	degraded = map[string]bool{}
+	items, ok := rewrite.ArrayItems(arr)
+	if !ok {
+		return arr, degraded, false
+	}
+	var buf bytes.Buffer
+	buf.WriteByte('[')
+	touched := false
+	for i, item := range items {
+		if i > 0 {
+			buf.WriteByte(',')
+		}
+		kind, _ := rewrite.TopLevelString(item, "type")
+		if kind != "custom" {
+			buf.Write(item)
+			continue
+		}
+		name, _ := rewrite.TopLevelString(item, "name")
+		if name == "" || name == ApplyPatch {
+			buf.Write(item)
+			continue
+		}
+		conv, err := toFunction(item)
+		if err != nil {
+			buf.Write(item)
+			continue
+		}
+		degraded[name] = true
+		touched = true
+		buf.Write(conv)
+	}
+	buf.WriteByte(']')
+	return buf.Bytes(), degraded, touched
+}
+
 func liftTools(arr []byte) (out []byte, degraded map[string]bool, lifted bool) {
 	degraded = map[string]bool{}
 	leaves := liftInto(nil, arr, degraded)

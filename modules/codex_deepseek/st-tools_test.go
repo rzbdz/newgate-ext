@@ -99,6 +99,68 @@ func TestApplyLeavesForeignRequestsAlone(t *testing.T) {
 	}
 }
 
+// 新版 Codex 把工具直接放在顶层 tools 里（含 namespace 分组与 web_search），
+// 此时没有 input[0] 可抬——但里面那条 custom 仍会被 DeepSeek 以
+// `400 Unsupported custom tool` 拒掉（实测 2026-09-21）。所以顶层那份也要降级：
+// custom → function，别的一个字节不动。
+func TestApplyDegradesCustomInTopLevelTools(t *testing.T) {
+	body := []byte(`{"model":"normal","stream":true,"tools":[` +
+		`{"type":"function","name":"exec_command","description":"run","parameters":{"type":"object","properties":{}}},` +
+		`{"type":"namespace","name":"multi_agent_v1","description":"","tools":[` +
+		`{"type":"function","name":"spawn_agent","description":"spawn","parameters":{"type":"object","properties":{}}}]},` +
+		`{"type":"web_search","external_web_access":false},` +
+		`{"type":"custom","name":"exec","description":"Run JS"}` +
+		`],"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}]}]}`)
+	out, notes, err := testPlugin().Apply(body, &special.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Tools []map[string]any `json:"tools"`
+	}
+	if err := json.Unmarshal(out, &doc); err != nil {
+		t.Fatalf("output is not valid JSON: %v\n%s", err, out)
+	}
+	if len(doc.Tools) != 4 {
+		t.Fatalf("the array must keep its length, got %d", len(doc.Tools))
+	}
+	if doc.Tools[0]["type"] != "function" || doc.Tools[0]["name"] != "exec_command" {
+		t.Fatalf("a native function must survive untouched: %v", doc.Tools[0])
+	}
+	if doc.Tools[1]["type"] != "namespace" {
+		t.Fatalf("a namespace must survive untouched: %v", doc.Tools[1])
+	}
+	if doc.Tools[2]["type"] != "web_search" {
+		t.Fatalf("web_search must survive untouched: %v", doc.Tools[2])
+	}
+	if doc.Tools[3]["type"] != "function" || doc.Tools[3]["name"] != "exec" {
+		t.Fatalf("the custom tool was not degraded: %v", doc.Tools[3])
+	}
+	if _, ok := doc.Tools[3]["parameters"].(map[string]any); !ok {
+		t.Fatalf("a degraded tool must carry parameters: %v", doc.Tools[3])
+	}
+	if len(notes) != 1 || !strings.Contains(notes[0], "degraded 1 custom tool") {
+		t.Fatalf("the rewrite must be reported (不静默): %v", notes)
+	}
+}
+
+// 顶层一个 custom 都没有（Codex 0.155.1 在默认沙箱下就是这种：全是 function +
+// 一个 namespace + web_search）→ 一个字节都不动，也不报 note。
+func TestApplyLeavesCleanTopLevelToolsAlone(t *testing.T) {
+	body := []byte(`{"model":"normal","tools":[` +
+		`{"type":"function","name":"exec_command","description":"run","parameters":{"type":"object","properties":{}}},` +
+		`{"type":"namespace","name":"multi_agent_v1","tools":[` +
+		`{"type":"function","name":"spawn_agent","description":"spawn","parameters":{"type":"object","properties":{}}}]},` +
+		`{"type":"web_search","external_web_access":false}]}`)
+	out, notes, err := testPlugin().Apply(body, &special.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(out) != string(body) || len(notes) != 0 {
+		t.Fatalf("body must be untouched: %s notes=%v", out, notes)
+	}
+}
+
 // 顶层已经有 tools 时走替换，不是插入（Codex 两份形状都发过：缺席与 null）。
 func TestApplyReplacesExistingToolsKey(t *testing.T) {
 	body := []byte(`{"model":"normal","tools":null,"input":[{"type":"additional_tools","tools":[` +
@@ -143,6 +205,23 @@ func TestEgressClaimsOnlyWhenSomethingWasDegraded(t *testing.T) {
 		`{"type":"custom","name":"apply_patch","description":"d"}]}]}`)
 	if got := plugin.Egress(nil, plain); got != nil {
 		t.Fatal("a request with nothing degraded must not be claimed")
+	}
+}
+
+// 顶层那份被降级的 custom 同样要在响应侧被改回 custom_tool_call——两条来源
+// （input[0] 抬上来的、顶层本来就有的）对响应侧是同一件事，判据必须都认。
+func TestEgressClaimsForTopLevelDegradedTools(t *testing.T) {
+	plugin := testPlugin()
+	body := []byte(`{"model":"normal","tools":[` +
+		`{"type":"function","name":"exec_command","description":"run","parameters":{"type":"object","properties":{}}},` +
+		`{"type":"custom","name":"exec","description":"Run JS"}]}`)
+	if got := plugin.Egress(nil, body); got == nil {
+		t.Fatal("a top-level degraded custom tool must be claimed")
+	}
+	clean := []byte(`{"model":"normal","tools":[` +
+		`{"type":"function","name":"exec_command","description":"run","parameters":{"type":"object","properties":{}}}]}`)
+	if got := plugin.Egress(nil, clean); got != nil {
+		t.Fatal("a top-level array with nothing degraded must not be claimed")
 	}
 }
 

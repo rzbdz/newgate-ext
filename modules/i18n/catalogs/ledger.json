@@ -282,6 +282,11 @@
       ]
     },
     "default": {},
+    "degraded {n} custom tools in the top-level array to standard functions (DeepSeek rejects unknown custom tools with 400)": {
+      "args": [
+        "n"
+      ]
+    },
     "diagnostics": {},
     "dump material": {},
     "e.g. gpt-5.6-luna": {},
