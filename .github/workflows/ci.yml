@@ -164,6 +164,13 @@ jobs:
       - name: codex 的两种接管模式（假上游）
         run: bash mock/e2e_codex_modes.sh
 
+      # Codex × DeepSeek 的**工具交叉**：旧版把工具挂在 input[0]（DeepSeek 不读那里）、
+      # 新版放顶层但可能夹着 custom（上游只认 apply_patch），以及响应侧要把降级过的
+      # 调用改回 custom_tool_call。锁的是**不报错**的那一类故障——不抬的话模型看不见
+      # 工具，请求照样 200、正文看着也像模像样，只有一个 tool_result 都拿不到。
+      - name: Codex × DeepSeek 的工具交叉（假上游）
+        run: bash mock/e2e_codex_tools.sh
+
       # 多配置多 bin 的回归守卫：骨架配置（框架 + hello）装出来的 `newgate`
       # 就该是 hello world。它同时是「内核那条入口申报链在发行版这一侧真的通」
       # 的证据——这条链断了的话，骨架发行版跑起来只会报一句「没人认领」并退出。
