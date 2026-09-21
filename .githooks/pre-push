@@ -65,5 +65,7 @@ bash mock/e2e_dashboard.sh
 # 尤其值——它判的是**这台机器上没有那个工具**时才走得到的代码，而开发机上通常
 # 装着 codex，随手一跑反而验不到（沙箱靠密闭 PATH 把它挡在外面）。
 bash mock/e2e_install.sh
+# 消费侧：`newgate ask` 一句话进、正文出。也要假上游，但很快。
+bash mock/e2e_ask.sh
 
 printf '\n✓ pre-push 全绿（core-test / dist-test / gitlink / 端到端）\n'

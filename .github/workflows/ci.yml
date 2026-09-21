@@ -150,6 +150,12 @@ jobs:
       - name: 没装客户端时的安装路径（假 npm）
         run: bash mock/e2e_install.sh
 
+      # 消费侧那条路：`newgate ask`。锁三件会静默错掉的事——正文与思维链分得开、
+      # 真正发出去的问题就是那句话（选项的值不算问题）、--profile 是单次覆盖。
+      # 假上游会记下收到的请求，所以第二条能验死。
+      - name: 直接问一句（newgate ask，假上游）
+        run: bash mock/e2e_ask.sh
+
       # 多配置多 bin 的回归守卫：骨架配置（框架 + hello）装出来的 `newgate`
       # 就该是 hello world。它同时是「内核那条入口申报链在发行版这一侧真的通」
       # 的证据——这条链断了的话，骨架发行版跑起来只会报一句「没人认领」并退出。
