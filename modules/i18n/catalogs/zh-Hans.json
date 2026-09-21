@@ -40,6 +40,10 @@
       "text": "* 有覆盖（newgate omo use 写入），优先级最高",
       "reviewed": true
     },
+    "+ model": {
+      "text": "+ 模型",
+      "reviewed": true
+    },
     ", ": {
       "text": "、",
       "reviewed": true
@@ -136,6 +140,10 @@
       "text": "Codex 档位",
       "reviewed": true
     },
+    "Codex model names": {
+      "text": "Codex 模型名",
+      "reviewed": true
+    },
     "DeepSeek thinking mode wants reasoning passed back verbatim, but the client strips it → 400\nso we put it back (the original the client carries → thinkcache; **no original means skip it, never invent one**); only the Claude Code path turns thinking off outright (it strips the blocks, so thinking would be spent for nothing); a foreign unclosed tool loop is first lossily rebuilt from the visible tool results, then DeepSeek takes over": {
       "text": "DeepSeek 思考模式要求逐字回传推理内容，客户端却会把它剥掉 → 400\n套着就补回去（客户端带回的原文 → thinkcache；**没有原文就跳过，绝不编**）；只有 Claude Code 那条路干脆显式关掉思考（它剥块，想了也白想）；外来未闭合 tool loop 先从可见工具结果有损重建，再由 DeepSeek 接手",
       "reviewed": true
@@ -172,6 +180,10 @@
       "text": "修尾部形状（第 4 手）",
       "reviewed": true
     },
+    "The model name codex itself sends — copy it out of `codex debug models` (the slug).": {
+      "text": "codex 自己发出来的那个模型名——从 `codex debug models` 里抄（抄 slug 那一栏）",
+      "reviewed": true
+    },
     "Usage: newgate omo [ls | use <key> <binding> | unset <key> | mode current|suggested | explain <key>]": {
       "text": "用法：newgate omo [ls | use <键> <归属> | unset <键> | mode current|suggested | explain <键>]",
       "reviewed": true
@@ -186,6 +198,10 @@
     },
     "Usage: newgate omo use <slot key> <@other-key|tier|provider/model>": {
       "text": "用法：newgate omo use <槽位键> <@别的键|档位|provider/模型>",
+      "reviewed": true
+    },
+    "Which tier a request naming that model resolves to. Empty means the row matches nothing.": {
+      "text": "点名这个模型的请求落到哪一档。留空 = 这一行谁也匹配不上",
       "reviewed": true
     },
     "[naked] forever mode: the classifier request was approved directly, the upstream was not called": {
@@ -218,6 +234,10 @@
     },
     "a reference is written as @key (e.g. @normal), got {value}": {
       "text": "引用写成 @键名（如 @normal），得到 {value}",
+      "reviewed": true
+    },
+    "a row has no model name — nothing would ever match it": {
+      "text": "有一行没写模型名——那一行谁也匹配不上",
       "reviewed": true
     },
     "a status provider cannot be nil": {
@@ -368,6 +388,10 @@
       "text": "写槽位注册表失败: {err}",
       "reviewed": true
     },
+    "cannot write {file}: {err}": {
+      "text": "写不进 {file}：{err}",
+      "reviewed": true
+    },
     "cannot write {path}: {err}": {
       "text": "写 {path} 失败: {err}",
       "reviewed": true
@@ -390,6 +414,10 @@
     },
     "classifier_override is not valid: {err}": {
       "text": "classifier_override 无效：{err}",
+      "reviewed": true
+    },
+    "codex model": {
+      "text": "codex 模型名",
       "reviewed": true
     },
     "concept actions need Content-Type: application/json (got {ct})": {
@@ -434,6 +462,10 @@
     },
     "dump material": {
       "text": "诊断素材",
+      "reviewed": true
+    },
+    "e.g. gpt-5.6-luna": {
+      "text": "例如 gpt-5.6-luna",
       "reviewed": true
     },
     "each key follows the recommendation, derived from model build and variant strength": {
@@ -988,6 +1020,10 @@
       "text": "sonnet 档；Bash 分类器与 /compact 总结在这跑",
       "reviewed": true
     },
+    "the table in this request is not readable: {err}": {
+      "text": "这次请求里的那张表读不出来：{err}",
+      "reviewed": true
+    },
     "the trailing user turn holds only tool_result and no user instruction — appended a continue instruction (the upstream misreports an instruction-less tail as a missing reasoning_content)": {
       "text": "末尾的 user 轮只有 tool_result 没有用户指令——追加一条继续指令（上游对空指令尾部误报 reasoning_content 缺失）",
       "reviewed": true
@@ -1056,8 +1092,16 @@
       "text": "这个终端不支持 TUI（{err}）。用 `newgate --set-profile <name>` 代替",
       "reviewed": true
     },
+    "tier": {
+      "text": "档位",
+      "reviewed": true
+    },
     "turn it off: newgate naked off": {
       "text": "关闭：newgate naked off",
+      "reviewed": true
+    },
+    "two rows are both named \"{slug}\" — only one of them could ever match": {
+      "text": "有两行都叫「{slug}」——只会有一行真的匹配得上",
       "reviewed": true
     },
     "unknown command \"{cmd}\" (see the list with newgate status)": {
@@ -1118,6 +1162,10 @@
     },
     "{err} (nonce length {got}, expected {want})": {
       "text": "{err}（nonce 长度 {got}，应为 {want}）",
+      "reviewed": true
+    },
+    "{file} changed on disk since this page loaded it — reload and apply again ({err})": {
+      "text": "{file} 在页面加载之后被别的东西改过——刷新页面再应用一次（{err}）",
       "reviewed": true
     },
     "{file} does not parse ({err}); the built-in table is in use": {

@@ -54,7 +54,7 @@ func registerView(v view.Service) (modules.Release, error) {
 }
 
 func concepts() ([]view.Concept, error) {
-	return []view.Concept{modelConcept()}, nil
+	return []view.Concept{modelConcept(), modelsConcept()}, nil
 }
 
 func modelConcept() view.Concept {
@@ -97,12 +97,11 @@ func modelConcept() view.Concept {
 		// 归属」，不是「此刻变没变」，所以排在会变的东西后面。
 		Order: 20,
 		Apply: applyModel,
-		// 此刻是哪种接管模式（见 models.go）。它决定「在 codex 里换模型会不会换
-		// 档位」，而这一点从 config.toml 里**看不出来**——两种模式写出来的都只是
-		// 一行 `model = …`。所以它必须被说出来，而不是让用户猜。
-		Note: modeNote(),
-		// 切换模式的那个按钮（只有一个：另一个就是当前这一种）。
-		Actions: modeActions(),
+		// 模式那一句与切换的按钮**不在这张卡上**：它们搬去了「Codex 模型名」那张
+		// （见 modelsview.go）。理由：模式的全部意义就是「codex 的模型名算哪一档」，
+		// 而那张表只在改名模式下真的生效——分开放的话，用户看着一张表却不知道它
+		// 此刻算不算数。2026-09-21 用户的原话是「我用了改名模式，为什么没有映射表
+		// 让用户填写啊」，那次反馈同时说明了两件事：表要有，而且它和模式是一件事。
 		// 没装 codex 的机器上这张卡整张锁灰：改档位写得再对，接管也不会发生——
 		// 那份 config.toml 根本不存在（判据见 confighook.NotInstalled）。
 		Locked: agentapi.NotInstalled(a),

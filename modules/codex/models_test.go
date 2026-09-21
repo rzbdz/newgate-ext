@@ -44,28 +44,31 @@ func TestModeDefaultsToTakeoverAndRoundTrips(t *testing.T) {
 	}
 }
 
-// TestTheTableIsLayeredNotReplaced 锁的是「加一行就生效」这条承诺。
+// TestTheTableComesFromTheFileOnceItHasOne 锁的是「界面上那张表所见即所得」。
 //
-// 出厂那五条不必抄进文件里——用户想加一个新模型时只写那一条，**其余四条照旧在**。
-// 如果哪天改成「文件存在就整份替换」，症状是用户加了一行、另外四个模型当场失效，
-// 而配置文件里看起来一切正常。
-func TestTheTableIsLayeredNotReplaced(t *testing.T) {
-	seedModels(t, `{"models":[{"slug":"gpt-7-nova","tier":"heavy"},{"slug":"gpt-5.5","tier":"mid"}]}`)
+// 语义 2026-09-21 改过一次：原来是「出厂值叠加文件」（手写很舒服，加一行就是加一行），
+// 但做成界面上的表之后它是错的——用户在卡上删掉一行、保存，读的时候出厂值又把它顶
+// 回来了：界面显示删除成功，实际什么也没发生。
+//
+// 所以现在是：文件里**有** models 这一段，它就是全部；没有才用出厂那五条。
+// 这同时意味着「出厂那几条不会因为文件里没抄一遍就消失」只在**没有那一段**时成立。
+func TestTheTableComesFromTheFileOnceItHasOne(t *testing.T) {
+	// 没有那一段（只写了 mode）→ 出厂五条照旧。
+	seedModels(t, `{"mode":"rename"}`)
+	if got := len(effectiveModels()); got != len(defaultModels) {
+		t.Errorf("文件里没有 models 那一段时应当用出厂表（%d 条），得到 %d 条", len(defaultModels), got)
+	}
 
-	got := map[string]string{}
-	for _, e := range effectiveModels() {
-		got[e.Slug] = e.Tier
+	// 有了那一段 → 它就是全部，出厂值不再参与。
+	seedModels(t, `{"models":[{"slug":"gpt-7-nova","tier":"heavy"}]}`)
+	got := effectiveModels()
+	if len(got) != 1 || got[0].Slug != "gpt-7-nova" {
+		t.Fatalf("文件里有 models 时应当以它为准，得到 %+v", got)
 	}
-	if got["gpt-7-nova"] != "heavy" {
-		t.Errorf("新加的模型没生效：%v", got)
-	}
-	if got["gpt-5.5"] != "mid" {
-		t.Errorf("文件里的值没有盖住出厂值：gpt-5.5 = %q，应当是 mid", got["gpt-5.5"])
-	}
-	for _, slug := range []string{"gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"} {
-		if _, ok := got[slug]; !ok {
-			t.Errorf("出厂的那条 %s 因为文件里没抄一遍就没了：%v", slug, got)
-		}
+	// 空数组也是「有」：那是用户把表清空了，不是「还没配」。
+	seedModels(t, `{"models":[]}`)
+	if got := len(effectiveModels()); got != 0 {
+		t.Errorf("空数组是明确的「没有映射」，出厂值不该顶回来，得到 %d 条", got)
 	}
 }
 
@@ -73,7 +76,8 @@ func TestTheTableIsLayeredNotReplaced(t *testing.T) {
 //
 // 一张被改窄的表不该让接管写不出东西——那只是「这一档没有对应的 codex 模型」。
 func TestModelForFallsBackInsteadOfFailing(t *testing.T) {
-	seedModels(t, `{"models":[]}`)
+	// 文件里**没有** models 那一段 → 出厂表生效。
+	seedModels(t, `{"mode":"rename"}`)
 	if got := modelFor("heavy"); got != "gpt-6-astra" {
 		t.Errorf("heavy 反查成 %q，应当是 gpt-6-astra（出厂表）", got)
 	}
@@ -133,23 +137,31 @@ func TestRolesAreContributedOnlyInRenameMode(t *testing.T) {
 // 模型名，于是它的选择器里每一项都认得，而每一项进来时被认回档位。
 func TestRenameModeWritesCodexModelNames(t *testing.T) {
 	testkit.Sandbox(t)
-	seedModels(t, `{"mode":"rename","models":[{"slug":"gpt-7-nova","tier":"heavy"}]}`)
+	seedModels(t, `{"mode":"rename","models":[{"slug":"gpt-7-nova","tier":"heavy"},
+	                                        {"slug":"gpt-5.6-luna","tier":"normal"}]}`)
 
 	// 槽位表没写过 → 两个槽位都用登记时的缺省档位（都是 normal，见 agent.go）。
 	got := slotValue("model")
 	if got == "normal" {
 		t.Fatal("rename 模式下写出去的还是档位名——那次切换等于没发生")
 	}
-	if got != "gpt-5.6-sol" {
-		t.Errorf("normal 档对应的 codex 模型是 %q，应当是 gpt-5.6-sol（表里第一条 normal）", got)
+	if got != "gpt-5.6-luna" {
+		t.Errorf("normal 档对应的 codex 模型是 %q，应当是表里那条 gpt-5.6-luna", got)
 	}
-	// 表里新加的那一条要**排在出厂值前面**：用户加一行新模型，想要的就是用它，
-	// 而反查取第一条——出厂值排前面的话，那一行认得出来、却永远写不进文件。
+	// 表里**没有**的档位：回落成档位名（不报错、也不是空串）。
+	// 这是「所见即所得」的代价，也是它该有的样子——界面上那张表里没有 light，
+	// 那就没有哪个 codex 模型名能代表 light。
+	if got := modelFor("light"); got != "" {
+		t.Errorf("light 不在表里，反查应当是空串，得到 %q", got)
+	}
+	// 文件里那条也反查得到（它是此刻唯一的一条 heavy）。
 	if got := modelFor("heavy"); got != "gpt-7-nova" {
-		t.Errorf("heavy 反查成 %q，应当是文件里新加的 gpt-7-nova（文件优先）", got)
+		t.Errorf("heavy 反查成 %q，应当是 gpt-7-nova", got)
 	}
-	// 没有被文件覆盖的档位照旧走出厂值。
-	if got := modelFor("light"); got != "gpt-5.5" {
-		t.Errorf("light 反查成 %q，应当是出厂值 gpt-5.5", got)
+	// 而表里没有的档位回空串（调用方回落成档位名）。文件里只写了一条，
+	// 所以 light 此刻**没有**对应的 codex 模型——这是「所见即所得」的代价，
+	// 也是它该有的样子：界面上那张表只有一行。
+	if got := modelFor("light"); got != "" {
+		t.Errorf("light 不在表里，反查应当是空串，得到 %q", got)
 	}
 }

@@ -24,6 +24,7 @@
       ]
     },
     "* has an override (written by newgate omo use), highest priority": {},
+    "+ model": {},
     ", ": {},
     ", {n} had no original text to backfill and were **left untouched**{detail} — those rounds the model cannot see its own reasoning": {
       "args": [
@@ -66,6 +67,7 @@
     "Clients": {},
     "Codex": {},
     "Codex model": {},
+    "Codex model names": {},
     "DeepSeek thinking mode wants reasoning passed back verbatim, but the client strips it → 400\nso we put it back (the original the client carries → thinkcache; **no original means skip it, never invent one**); only the Claude Code path turns thinking off outright (it strips the blocks, so thinking would be spent for nothing); a foreign unclosed tool loop is first lossily rebuilt from the visible tool results, then DeepSeek takes over": {},
     "DeepSeek upstream quirk patches": {},
     "GCM is unusable: {err}": {},
@@ -75,10 +77,12 @@
     "Interface": {},
     "Naked": {},
     "Repair the tail shape (hand 4)": {},
+    "The model name codex itself sends — copy it out of `codex debug models` (the slug).": {},
     "Usage: newgate omo [ls | use <key> <binding> | unset <key> | mode current|suggested | explain <key>]": {},
     "Usage: newgate omo explain <slot key>": {},
     "Usage: newgate omo unset <slot key>": {},
     "Usage: newgate omo use <slot key> <@other-key|tier|provider/model>": {},
+    "Which tier a request naming that model resolves to. Empty means the row matches nothing.": {},
     "[naked] forever mode: the classifier request was approved directly, the upstream was not called": {},
     "[naked] the classifier request was approved directly, the upstream was not called (the configuration is no longer valid)": {},
     "[naked] the classifier request was approved directly, the upstream was not called (the window expired right after the interception)": {},
@@ -95,6 +99,7 @@
         "value"
       ]
     },
+    "a row has no model name — nothing would ever match it": {},
     "a status provider cannot be nil": {},
     "accepted but not rendered": {},
     "adopt them all": {},
@@ -216,6 +221,11 @@
     },
     "cannot write the registry: {err}": {},
     "cannot write the slot registry: {err}": {},
+    "cannot write {file}: {err}": {
+      "args": [
+        "file"
+      ]
+    },
     "cannot write {path}: {err}": {
       "args": [
         "path"
@@ -242,6 +252,7 @@
         "err"
       ]
     },
+    "codex model": {},
     "concept actions need Content-Type: application/json (got {ct})": {
       "args": [
         "ct"
@@ -272,6 +283,7 @@
     "default": {},
     "diagnostics": {},
     "dump material": {},
+    "e.g. gpt-5.6-luna": {},
     "each key follows the recommendation, derived from model build and variant strength": {},
     "each key keeps the status it had at takeover (the default; behaviour unchanged)": {},
     "effective": {},
@@ -628,6 +640,11 @@
       ]
     },
     "the sonnet tier; the Bash classifier and /compact summaries run here": {},
+    "the table in this request is not readable: {err}": {
+      "args": [
+        "err"
+      ]
+    },
     "the trailing user turn holds only tool_result and no user instruction — appended a continue instruction (the upstream misreports an instruction-less tail as a missing reasoning_content)": {},
     "the web configuration interface: a BFF and the front-end bundle": {},
     "the whole special_treatment layer is off — none of this counts until it is switched back on": {},
@@ -675,7 +692,13 @@
       ]
     },
     "this terminal does not support the TUI ({err}); use `newgate --set-profile <name>` instead": {},
+    "tier": {},
     "turn it off: newgate naked off": {},
+    "two rows are both named \"{slug}\" — only one of them could ever match": {
+      "args": [
+        "slug"
+      ]
+    },
     "unknown command \"{cmd}\" (see the list with newgate status)": {
       "args": [
         "cmd"
@@ -723,6 +746,12 @@
       "args": [
         "got",
         "want"
+      ]
+    },
+    "{file} changed on disk since this page loaded it — reload and apply again ({err})": {
+      "args": [
+        "err",
+        "file"
       ]
     },
     "{file} does not parse ({err}); the built-in table is in use": {

@@ -138,46 +138,35 @@ func writeModels(m Models) error {
 	return ioutil.WriteFile(ModelsFile(), append(b, '\n'), 0o660)
 }
 
-// effectiveModels 是出厂表叠加文件之后的那张表。
+// effectiveModels 是这一刻生效的那张表。
 //
-// # 顺序是有意义的：**文件里写的排在前面**
+// # 语义（2026-09-21 改过一次，理由是被界面逼出来的）
 //
-// 反查（modelFor：rename 模式该把哪一个模型名写进 config.toml）取的是**第一条**
-// 同档位的记录。出厂值排前面的话，「新加一个模型」这件事只做对了一半——它认得出
-// （角色登记了）却**永远写不到**（写进文件的还是出厂那一条）。而这张表的用法本来
-// 就是「上游出了新模型，我加一行」。
+//	文件里**没有** `models` 这一段  → 出厂那五条（fresh 装机、或者用户只写了 mode）
+//	文件里**有** `models`（哪怕是空数组）→ **它就是全部**，出厂值不再参与
 //
-// 所以用户写的那几条优先：他刚刚加的那个模型就是他想用的那个。要换回来也简单
-// ——把出厂那条改成别的档位，或者把新加的那条删掉。
+// 曾经是「叠加」：文件里的盖住同名的、多出来的算新增，出厂值永远兜底。那个语义在
+// 手写文件时很舒服（加一行就是加一行），但**做成界面上的表之后它是错的**：用户在
+// 卡上删掉一行，保存写回文件，而读的时候出厂值又把它顶回来了——界面上显示删除
+// 成功、实际什么也没发生。表的界面只有「所见即所得」才成立。
 //
-// 稳定性：同一份文件两次装配得到同一张表（map 只用来查重，顺序由两个切片决定），
-// 所以界面与接管两次问出来的答案一致。
+// 代价是「加一行」现在要把整张表写全（界面正是这么做的），而手写文件时得自己
+// 抄一遍出厂值。这个取舍是明确的：**界面那一份是主要入口**（见 modelsview.go 的
+// 文件头），手写是次要路径。
+//
+// 稳定性：同一份文件两次装配得到同一张表（顺序由文件或出厂切片决定，不来自 map
+// 遍历），所以界面与接管两次问出来的答案一致。
 func effectiveModels() []modelTier {
 	m, _ := readModels()
-	bySlug := map[string]string{}
-	order := make([]string, 0, len(defaultModels)+len(m.Models))
-	add := func(slug, tier string) {
-		if slug == "" || tier == "" {
-			return
-		}
-		// **先来的赢**：文件在前、出厂在后，所以已经记过就跳过——否则出厂值会把
-		// 用户刚写的那一条盖回去，而「叠加」这件事在两边都像是对的（值都在表里，
-		// 只是赢的不是写它的那个人）。
-		if _, seen := bySlug[slug]; seen {
-			return
-		}
-		order = append(order, slug)
-		bySlug[slug] = tier
+	if m.Models == nil {
+		return append([]modelTier(nil), defaultModels...)
 	}
+	out := make([]modelTier, 0, len(m.Models))
 	for _, e := range m.Models {
-		add(e.Slug, e.Tier)
-	}
-	for _, d := range defaultModels {
-		add(d.Slug, d.Tier)
-	}
-	out := make([]modelTier, 0, len(order))
-	for _, slug := range order {
-		out = append(out, modelTier{Slug: slug, Tier: bySlug[slug]})
+		if e.Slug == "" || e.Tier == "" {
+			continue // 半截的行：界面上加了一半就保存，不该产出一个匹配不上的角色
+		}
+		out = append(out, e)
 	}
 	return out
 }
