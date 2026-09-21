@@ -12,6 +12,7 @@ package manifest
 // startOrder 是规格书名 → 按启动顺序排好的组件名。
 var startOrder = map[string][]string{
 	"dist-dashboard.json": {
+		"ask",
 		"config-hook",
 		"entry",
 		"porthub",
@@ -36,6 +37,7 @@ var startOrder = map[string][]string{
 	},
 	"dist-dev.json": {
 		"cli",
+		"ask",
 		"config-hook",
 		"entry",
 		"porthub",
@@ -70,6 +72,7 @@ var startOrder = map[string][]string{
 		"porthub",
 		"serving",
 		"simple-cli",
+		"ask",
 		"config",
 		"config-hook",
 		"gateway",
@@ -90,6 +93,7 @@ var startOrder = map[string][]string{
 	},
 	"dist.json": {
 		"cli",
+		"ask",
 		"config-hook",
 		"entry",
 		"porthub",
