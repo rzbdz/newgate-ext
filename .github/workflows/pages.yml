@@ -1,0 +1,99 @@
+name: pages
+
+# 公开站的发布：源码 → site/dist → `gh-pages` 分支 → GitHub Pages。
+#
+# # 为什么是「推一个分支」而不是 actions/deploy-pages
+#
+# 官方那条路（upload-pages-artifact + deploy-pages）要在**仓库设置里**把 Pages 的
+# source 改成 "GitHub Actions"——那一步只能人工点一次，而且它一旦被谁改回去，
+# 症状是「流水线一直绿、站点不动」。`gh-pages` 分支这条路没有 API 之外的隐含状态：
+# 建站 → push → Pages 自己就去读了。与 release.yml 同一条取舍（gh CLI + 分支，
+# 不依赖平台上某个开关摆在哪）。
+#
+# # 触发条件里为什么有 paths
+#
+# 站点是**从源码重建**的，所以凡是能改变站点的东西都算触发条件：文档与样式
+# （site/**）、渲染器（tools/sitegen/**）、演示页与它 import 的那些组件
+# （modules/web-dashboard/web/**——演示页 import 的是 `../src/...`，改一个 kind
+# 的样式也会改到它）、以及这份文件自己。
+#
+# 不加 paths 的代价是每一次推代码都白建一遍站点并推一次 gh-pages；加了 paths 的
+# 代价是「我改了 X 却没触发」——所以上面那份清单宁可放宽（整个 web/ 都算数），
+# 反正最坏也只是多跑一次。
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "tools/sitegen/**"
+      - "modules/web-dashboard/web/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+# 推 gh-pages 要写权限。（默认那个 token 是只读的，这条路走不通。）
+permissions:
+  contents: write
+
+# 同时推两次 gh-pages 会有一个非快进的失败，而这个失败**不表示站点坏了**——
+# 它只是两趟构建撞在一起。串行化比让人去分辨那种红要便宜。
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: 建站并发布到 gh-pages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # sitegen 本身不 import 内核，但它是**这个 module 里的一个包**：`go run`
+          # 要先算出构建列表，而 go.mod 那条 replace 指着 ./core——目录不在，
+          # Go 连加载都过不去。所以 submodule 是必需项，不是顺手带的。
+          submodules: recursive
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          # 指 go.mod 而不是 go.sum：这个 module 没有第三方依赖（见 go.mod）。
+          cache-dependency-path: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # pnpm 是演示页那一半要的（vite + svelte + codemirror）。**钉一个版本**，
+      # 不跟着最新走：`pnpm-lock.yaml` 是某一份 pnpm 写出来的，用另一个大版本去
+      # 读它，pnpm 可能一边重写 lockfile 一边装出不一样的树——而那件事在本地产物
+      # 里看不出来（本地跑的是本地那份 pnpm）。
+      #
+      # 装完就交给 site/build.sh：它自己会在 node_modules 不在时跑 pnpm install，
+      # 于是**本地与 CI 走的是同一条路**（那条路是这个仓库唯一的构建入口）。
+      - name: 装 pnpm
+        run: npm install -g pnpm@10
+
+      - name: 建站（文档 + 演示页）
+        run: bash site/build.sh
+
+      # 空目录里 `git init` + 一条提交：gh-pages 是**产物分支**，它没有历史可言
+      # （站点由源码决定，上一版的 gh-pages 唯一的价值是「Pages 读到旧的一版」）。
+      # 所以每次 force push 一整份，而不是往上叠提交——叠起来的话，哪天要清一次
+      # 历史就得另想办法。
+      - name: 发布到 gh-pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cd site/dist
+          # Jekyll 会把下划线开头的文件与目录吃掉。sitegen 已经写了一份 .nojekyll，
+          # 这里只是把「这个文件必须在」写成流水线上看得见的一步。
+          touch .nojekyll
+          git init -q
+          git checkout -q -b gh-pages
+          git add -A
+          git -c user.name="github-actions[bot]" \
+              -c user.email="github-actions[bot]@users.noreply.github.com" \
+              commit -q -m "site: rebuild from ${GITHUB_SHA:0:7}"
+          git push -q --force \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
+          echo "已推到 gh-pages（${GITHUB_SHA:0:7}）"
