@@ -156,6 +156,14 @@ jobs:
       - name: 直接问一句（newgate ask，假上游）
         run: bash mock/e2e_ask.sh
 
+      # codex 的两种接管模式：takeover 写档位名、rename 写 codex 自己的模型名，
+      # 而后者靠一张动态角色表在请求进来时认回档位。锁四件事——模式真的改变了
+      # 写进 config.toml 的值、那些名字真的解析得到（断言的是**上游收到的模型名**，
+      # 不是 HTTP 200）、加一行新模型不用重启、以及切回 takeover 之后那些名字
+      # 不再被认成角色（不让路的人不受影响）。
+      - name: codex 的两种接管模式（假上游）
+        run: bash mock/e2e_codex_modes.sh
+
       # 多配置多 bin 的回归守卫：骨架配置（框架 + hello）装出来的 `newgate`
       # 就该是 hello world。它同时是「内核那条入口申报链在发行版这一侧真的通」
       # 的证据——这条链断了的话，骨架发行版跑起来只会报一句「没人认领」并退出。

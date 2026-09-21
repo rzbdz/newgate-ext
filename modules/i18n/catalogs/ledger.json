@@ -449,6 +449,8 @@
       ]
     },
     "provider/model, or @key to follow another tier. Empty = the Bash classifier rides the light tier.": {},
+    "rename mode": {},
+    "rename mode: codex's own model names map to tiers": {},
     "restore finished, but the slot table was not cleared (the next takeover will reuse the old assignment): {err}": {},
     "restoring {file} failed: {err}": {
       "args": [
@@ -519,6 +521,8 @@
         "err"
       ]
     },
+    "takeover mode": {},
+    "takeover mode: one tier is written into config.toml": {},
     "takes effect on the next request": {},
     "takes effect within 1 second; if the profile spells out this key, the profile wins": {},
     "taking over another upstream's unclosed reasoning/tool state needs a lossy rebuild first": {},
@@ -719,6 +723,12 @@
       "args": [
         "got",
         "want"
+      ]
+    },
+    "{file} does not parse ({err}); the built-in table is in use": {
+      "args": [
+        "err",
+        "file"
       ]
     },
     "{head} · the highest priority globally, ahead of any profile": {

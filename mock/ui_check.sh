@@ -33,8 +33,18 @@ export NEWGATE_HOME="$SANDBOX/ng"
 # ui_check.mjs 里那个 bug 的由来），而它在源语言下整条被跳过——用 en 跑等于
 # 自己把那条关掉。zh-Hans 两份目录里都有，不必联网。
 export NEWGATE_LANG=zh-Hans
+# codex 也要沙箱（2026-09-21 加）：那张卡上现在有一个**切换接管模式**的按钮，
+# 按下去会真的去接管 codex 的 config.toml。不指 CODEX_HOME 的话，一次浏览器验收
+# 就会去改**这台机器上真正那份** ~/.codex/config.toml——而那是用户手写的配置，
+# 有注释、有 [projects.*]。所有 e2e 的第一条规矩就是「不碰真实配置」。
+export CODEX_HOME="$SANDBOX/codex"
 unset LC_ALL LC_MESSAGES LANG LANGUAGE 2>/dev/null || true
-mkdir -p "$NEWGATE_HOME/mappings" "$(dirname "$BIN")"
+mkdir -p "$NEWGATE_HOME/mappings" "$(dirname "$BIN")" "$CODEX_HOME"
+# 一份**还没被接管过**的 codex 配置：切模式那个按钮会当场接管它，所以它得在。
+cat > "$CODEX_HOME/config.toml" <<'TOML'
+# 沙箱里的 codex 配置，别当真
+model = "gpt-5.6-terra"
+TOML
 
 cleanup() {
   [ -n "${SRV_PID:-}" ] && kill "$SRV_PID" 2>/dev/null

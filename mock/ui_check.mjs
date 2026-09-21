@@ -23,6 +23,7 @@
 // 而改一句译文就让检查红——那种红没有任何信息量。
 
 import fs from "node:fs";
+import path from "node:path";
 
 const url = process.argv[2];
 const stateFile = process.argv[3];
@@ -959,6 +960,67 @@ if (!(await openSwitches())) {
     await page.waitForTimeout(600);
     const st2 = JSON.parse(fs.readFileSync(stateFile, "utf8"));
     check("改回缺省之后那个键消失", st2.codex_slots === undefined, JSON.stringify(st2.codex_slots));
+  }
+}
+
+// —— 18b. codex 的接管模式：那对按钮真的把 config.toml 换了写法 ——
+//
+// 背景（实测见 mock/e2e_codex_modes.sh 的文件头）：codex 的模型目录编在它自己的
+// 二进制里，不问服务端要。所以「让它列我们的档位」做不到，只能反过来——让它照旧
+// 用自己的模型名，名字进来我们认。**rename 模式**就是这个：config.toml 里写
+// `model = "gpt-5.6-sol"`（codex 认识的模型名），而不是 `model = "normal"`（它只认
+// 一个档位、切不动）。takeover 模式是今天的行为。
+//
+// 这条在浏览器里验的是**界面这一半**：那张卡上要说清此刻是哪种模式（看不出来——
+// 两种模式写进 TOML 的都只是一行 `model = …`），而那个按钮按下去真的换了写法。
+// 「换完之后 codex 的名字真能认回档位」由 e2e_codex_modes.sh 验（那要假上游）。
+{
+  const sec = page.locator(`nav.side button[title="codex"]`);
+  if ((await sec.count()) === 0) {
+    skip("这份装配里没有 codex 那一节，跳过第 18b 条");
+  } else {
+    await sec.click();
+    await page.waitForTimeout(300);
+    const card = page.locator(".card").first();
+    const note = card.locator("[data-note]");
+    const noteTone = () => note.first().getAttribute("data-note").catch(() => null);
+    const noteText = async () => ((await note.first().textContent().catch(() => "")) ?? "").trim();
+
+    check("codex 卡上说清了此刻是哪种接管模式",
+      (await note.count()) === 1 && (await noteTone()) === "ok" && (await noteText()).length > 0,
+      `note=${await note.count()} tone=${JSON.stringify(await noteTone())}`);
+
+    // 只画「另一个」：当前这一种画成按钮就是一个点了不会改变任何事的按钮。
+    const toRename = card.locator('button[data-action="mode-rename"]');
+    const toTakeover = card.locator('button[data-action="mode-takeover"]');
+    const takeoverFirst = (await toTakeover.count()) === 0;
+    check("只画了「另一个」模式的那个按钮",
+      takeoverFirst ? (await toRename.count()) === 1 : (await toTakeover.count()) === 1,
+      `rename=${await toRename.count()} takeover=${await toTakeover.count()}`);
+
+    const modelsFile = path.join(path.dirname(stateFile), "codex-models.json");
+    const modeOnDisk = () => {
+      try { return JSON.parse(fs.readFileSync(modelsFile, "utf8")).mode ?? ""; } catch { return ""; }
+    };
+    const before = await noteText();
+    // 按「另一个」那个按钮，走一遍真实的切换。
+    await (takeoverFirst ? toRename : toTakeover).first().click();
+    await page.waitForTimeout(900);
+
+    const after = await noteText();
+    check("按下去之后卡片上那句陈述变了", after !== before && after.length > 0,
+      `按之前 ${JSON.stringify(before)}，按之后 ${JSON.stringify(after)}`);
+    check("模式真的落盘了（不是只改了界面）",
+      takeoverFirst ? modeOnDisk() === "rename" : modeOnDisk() === "takeover",
+      `codex-models.json 里的 mode = ${JSON.stringify(modeOnDisk())}`);
+
+    // 切回去，别把状态留给后面的条目（这一份沙箱是共享的）。
+    if (takeoverFirst) {
+      await page.locator('button[data-action="mode-takeover"]').first().click();
+      await page.waitForTimeout(900);
+      check("再按一次切得回来（对称的一个开关）", modeOnDisk() === "takeover",
+        `mode = ${JSON.stringify(modeOnDisk())}`);
+    }
   }
 }
 

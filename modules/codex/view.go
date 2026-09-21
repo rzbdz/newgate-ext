@@ -6,6 +6,8 @@ import (
 	modules "github.com/rzbdz/newgate/component"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 	"github.com/rzbdz/newgate/lib/view"
+	"github.com/rzbdz/newgate/modules/config/domain"
+	"github.com/rzbdz/newgate/modules/config/store"
 	agentapi "github.com/rzbdz/newgate/modules/confighook"
 )
 
@@ -95,6 +97,12 @@ func modelConcept() view.Concept {
 		// 归属」，不是「此刻变没变」，所以排在会变的东西后面。
 		Order: 20,
 		Apply: applyModel,
+		// 此刻是哪种接管模式（见 models.go）。它决定「在 codex 里换模型会不会换
+		// 档位」，而这一点从 config.toml 里**看不出来**——两种模式写出来的都只是
+		// 一行 `model = …`。所以它必须被说出来，而不是让用户猜。
+		Note: modeNote(),
+		// 切换模式的那个按钮（只有一个：另一个就是当前这一种）。
+		Actions: modeActions(),
 		// 没装 codex 的机器上这张卡整张锁灰：改档位写得再对，接管也不会发生——
 		// 那份 config.toml 根本不存在（判据见 confighook.NotInstalled）。
 		Locked: agentapi.NotInstalled(a),
@@ -142,4 +150,74 @@ func applyModel(edit json.RawMessage, _ string) (string, error) {
 		return "", err
 	}
 	return "", nil
+}
+
+// modeNote 说这一刻用的是哪种接管模式（见 models.go 的三个常量）。
+//
+// 语气是 ok 而不是 warn：两种模式都是**正当的选择**，没有哪一种「有问题」——
+// warn 会让人以为配置出事了，然后去找一个并不存在的故障。它是陈述，不是告警。
+func modeNote() *view.Note {
+	text := i18n.T("takeover mode: one tier is written into config.toml", nil)
+	if Mode() == ModeRename {
+		text = i18n.T("rename mode: codex's own model names map to tiers", nil)
+	}
+	return &view.Note{Text: text, Tone: view.ToneOK}
+}
+
+// modeActions 是切模式的那个按钮——**只画「另一个」**。
+//
+// 与档位卡上那对 apply 同一条取舍（见 config/view.go 的 profileActions）：把当前
+// 已经在生效的那一种也画成按钮，就是一个点了不会改变任何事的按钮，而它站在旁边
+// 会把真会做事的那个淹掉。差别只有一处：那边是「做/不做」，这边是**两个对称的
+// 选项**，所以按钮的字直接写模式的**名字**（`rename mode`），不写「切换到…」——
+// 一台只有两个档的开关，标名字比标动作短，而且读的人不用在脑子里做一次取反。
+func modeActions() []view.Action {
+	if Mode() == ModeRename {
+		return []view.Action{{
+			ID:    "mode-takeover",
+			Label: func() string { return i18n.T("takeover mode", nil) },
+			Run:   func() (string, error) { return switchMode(ModeTakeover) },
+		}}
+	}
+	return []view.Action{{
+		ID:    "mode-rename",
+		Label: func() string { return i18n.T("rename mode", nil) },
+		Run:   func() (string, error) { return switchMode(ModeRename) },
+	}}
+}
+
+// switchMode 换模式，并**当场按新模式重新接管一次**。
+//
+// # 为什么不能只记下模式、等下一次 `newgate on codex`
+//
+// 模式的全部意义就是**config.toml 里写什么**。只写状态不接管，等于什么都没发生，
+// 而卡片上那句 Note 已经变了——用户会以为自己切过去了，然后在 codex 里换模型、
+// 发现没用。这与档位卡上那个 apply 是同一条规矩：按下去就得当场生效。
+//
+// # 三次结局都要有说法
+//
+//   - 写状态失败 → 整个动作失败（界面把原因显示出来）；
+//   - codex 没装 / 那份 config.toml 不在 → **模式照记，接管跳过**。这不是错：
+//     用户可能先在界面上选好，之后再装 codex——`Apply` 给的 Skipped 就是这句话；
+//   - 接管失败（文件写不进去）→ 报错。**但那时的状态已经写下了**，所以界面显示的
+//     模式与文件里的不一致——这是刻意的：状态说的是「你选的是哪种」，而失败的是
+//     这一次写入。重按一次按钮（或 `newgate on codex`）就补上了。
+func switchMode(mode string) (string, error) {
+	if err := SetMode(mode); err != nil {
+		return "", err
+	}
+	if _, err := (Takeover{}).Apply(proxyPort()); err != nil {
+		return "", err
+	}
+	return "", nil
+}
+
+// proxyPort 是接管要写进 base_url 的那个端口。与命令行走**同一个来源**
+// （state.json 的 port，读不到退回缺省），否则界面切的模式与终端 `newgate on codex`
+// 写出来的会指向两个不同的端口。
+func proxyPort() int {
+	if st := store.LoadState(); st != nil && st.Port != 0 {
+		return st.Port
+	}
+	return domain.ProxyPort
 }

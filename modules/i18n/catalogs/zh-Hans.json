@@ -712,6 +712,14 @@
       "text": "provider/model，或 @键名 跟别的档位走。留空 = Bash 分类器走 light 档。",
       "reviewed": true
     },
+    "rename mode": {
+      "text": "改名模式",
+      "reviewed": true
+    },
+    "rename mode: codex's own model names map to tiers": {
+      "text": "改名模式：codex 用它自己的模型名，进来映射到档位",
+      "reviewed": true
+    },
     "restore finished, but the slot table was not cleared (the next takeover will reuse the old assignment): {err}": {
       "text": "还原完成，但槽位表没清掉（下次接管会沿用旧分配）: {err}",
       "reviewed": true
@@ -798,6 +806,14 @@
     },
     "tail shape left untouched ({err})": {
       "text": "尾部形状未改动（{err}）",
+      "reviewed": true
+    },
+    "takeover mode": {
+      "text": "接管模式",
+      "reviewed": true
+    },
+    "takeover mode: one tier is written into config.toml": {
+      "text": "接管模式：把档位名写进 config.toml",
       "reviewed": true
     },
     "takes effect on the next request": {
@@ -1102,6 +1118,10 @@
     },
     "{err} (nonce length {got}, expected {want})": {
       "text": "{err}（nonce 长度 {got}，应为 {want}）",
+      "reviewed": true
+    },
+    "{file} does not parse ({err}); the built-in table is in use": {
+      "text": "{file} 解析不了（{err}），出厂那张表正在生效",
       "reviewed": true
     },
     "{head} · the highest priority globally, ahead of any profile": {

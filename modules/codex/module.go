@@ -11,6 +11,7 @@ import (
 	modules "github.com/rzbdz/newgate/component"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 	viewapi "github.com/rzbdz/newgate/lib/view"
+	configapi "github.com/rzbdz/newgate/modules/config"
 	confighookapi "github.com/rzbdz/newgate/modules/confighook"
 )
 
@@ -23,6 +24,10 @@ func New() modules.Component {
 		Type: "client",
 		Requires: []modules.Requirement{
 			modules.Need(confighookapi.ConfigHooksCapability),
+			// 动态角色（codex 的模型名 → 档位，见 models.go）。**强依赖**而不是
+			// 弱依赖：那张表登记不上时的症状是「在 codex 里换了个模型就 404」，
+			// 而那正是本模块现在要解决的事——静默降级在这里是不能接受的。
+			modules.Need(configapi.Capability),
 			// web 界面：在就把「Codex 档位」那张卡挂上去（见 view.go），不在就跳过。
 			// 弱依赖——本模块的功能一个都不少，只是没有浏览器入口。
 			modules.Optional(viewapi.Capability),
@@ -58,6 +63,16 @@ func New() modules.Component {
 			// 都在 **Apply 那一刻**现算——槽位映射与活动 profile 都是用户随时能改
 			// 的，注册期读一次就会冻在那里。
 			release, err = hooks.BindTakeover(ID, Takeover{})
+			if err != nil {
+				return err
+			}
+			releases = append(releases, release)
+
+			// codex 的模型名 ↔ 档位（见 models.go）。这份贡献**跟着接管模式走**：
+			// 只有 rename 模式下才真的登记出角色来，理由写在 rolesProvider 上
+			// ——无条件登记会短路掉「具体模型名反解回档位」那条路，而那会改掉
+			// **没让路的人**的行为。
+			release, err = modules.MustGet(ctx, configapi.Capability).RegisterRoleProvider(rolesProvider{})
 			if err != nil {
 				return err
 			}

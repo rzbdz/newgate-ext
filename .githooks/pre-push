@@ -67,5 +67,8 @@ bash mock/e2e_dashboard.sh
 bash mock/e2e_install.sh
 # 消费侧：`newgate ask` 一句话进、正文出。也要假上游，但很快。
 bash mock/e2e_ask.sh
+# codex 的两种接管模式，以及「codex 自己的模型名认回档位」那条链（含「加一行
+# 新模型不用重启就生效」）。也要假上游。
+bash mock/e2e_codex_modes.sh
 
 printf '\n✓ pre-push 全绿（core-test / dist-test / gitlink / 端到端）\n'

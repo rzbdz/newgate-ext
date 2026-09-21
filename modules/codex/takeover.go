@@ -174,14 +174,34 @@ func (w want) order() []string {
 
 // wanted 问出这一刻该写的全部值。
 //
-// 每一格都在**这一刻**现算：槽位映射与活动 profile 都是用户随时能改的。
+// 每一格都在**这一刻**现算：槽位映射、活动 profile、以及接管模式都是用户随时能改的。
 func wanted() want {
 	return want{
-		Model:         tierFor("model"),
-		ReviewModel:   tierFor("review_model"),
+		Model:         slotValue("model"),
+		ReviewModel:   slotValue("review_model"),
 		ContextWindow: contextWindow(),
 		AutoCompact:   autoCompactWindow(),
 	}
+}
+
+// slotValue 是这次接管要写进 `<slot>` 的那个值。取值取决于**接管模式**（见 models.go）：
+//
+//	takeover（缺省）  档位名，`model = "normal"`——2026-09-21 之前唯一的行为。
+//	rename            codex 自己的模型名，`model = "gpt-5.6-luna"`，由那张表按档位
+//	                  反查。于是 codex 的选择器里列的是它认识的模型，而每一个名字
+//	                  在请求进来时被认回档位：**在 codex 里换模型 = 换档位**。
+//
+// 反查不到（表被改窄了、某一档没有对应的 codex 模型）就**回落成档位名**：接管不该
+// 因为一张表配窄了而写不出东西，那只是这一档没有对应名字而已，行为与 takeover 模式
+// 一致——而那是它本来就有的行为。
+func slotValue(slot string) string {
+	tier := tierFor(slot)
+	if Mode() == ModeRename {
+		if slug := modelFor(tier); slug != "" {
+			return slug
+		}
+	}
+	return tier
 }
 
 // rewrite 是**纯函数**：给一份 TOML 原文，还一份改过的 + 一份「改了哪几处」的
