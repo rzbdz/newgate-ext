@@ -4,9 +4,17 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strconv"
 	"testing"
 )
+
+// siteDefaultLang 是公开站里**排在根路径上**的那一种语言（详见 tools/sitegen 的
+// defaultLang）。写在这里而不是 import 过来：那一位住在 `package main` 里，
+// 而这条测试要读的是**盘上那个目录名**——两处都写一次，改语言时这里会读不到文件
+// 而报错（那正是想要的：静默地跳过检查才是坏的）。
+const siteDefaultLang = "zh-Hans"
 
 // 这一条锁的是**规格书之间**的一处关系：dev 那一份必须恰好是旗舰那一份**加上**
 // arch-diagram。
@@ -72,6 +80,53 @@ func TestDevSpecIsTheDefaultPlusTheMap(t *testing.T) {
 		t.Errorf("dist-dev.json 多了 %v——它只该比默认那份多一个 %s；多出来的那些会让 /arch "+
 			"画出一个**产品里并不存在**的装配，而那比少画更糟（它看起来是对的）",
 			extra, archDiagram)
+	}
+}
+
+// siteModuleCountRe 抓站点上那句「N 个模块」。
+//
+// 用正则而不是整句比对：这句是**给人读的话**，措辞随时可以改（改句子不该让一条
+// 判据变红）；这条判据管的是**里面那个数**。
+var siteModuleCountRe = regexp.MustCompile(`(\d+) 个模块`)
+
+// TestTheSiteStatesTheDefaultSpecsModuleCount：公开站上那句「N 个模块」必须等于
+// `dist.json` 装了几个。
+//
+// # 为什么会漂（实测漂过一次）
+//
+// `d5555a4` 写这一页时 `dist.json` 是 11 个，第二天 `969ae33` 把 codex_deepseek
+// 加进默认规格，那句话就变成了**假的**——而站点照样生成、CI 照样绿。它与
+// TestDevSpecIsTheDefaultPlusTheMap 是**同一类**漂移：一句从某份规格书抄来的事实，
+// 抄的时候是对的，源变了没人提醒。
+//
+// # 为什么不去掉那个数
+//
+// 它是这一页的开场：「这个站讲的是哪一份装配」需要一个具体的量。含糊过去
+// （「装了一整排模块」）等于把那句话的用处删掉——**补上那个数**比删掉它好，
+// 前提是它不会再烂掉。
+//
+// 站点是 markdown、数是代码，两者之间没有构建期的接缝（站点产物不进版本控制
+// ——见 tools/sitegen/main.go 的文件头），所以钉住它的唯一地方就是这里。
+func TestTheSiteStatesTheDefaultSpecsModuleCount(t *testing.T) {
+	root := repoRoot(t)
+	mods := readSpecModules(t, filepath.Join(root, "dist.json"))
+
+	// 这一页是「文档」的落点页：它明说自己在讲 dist.json 那一份，所以数得对得上。
+	// 别的页不写这个数，真写了也不归这条管——那是另一个决定（要不要到处都断言）。
+	path := filepath.Join(root, "site", "src", siteDefaultLang, "docs", "index.md")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("读不到站点那一页（%s）: %v", path, err)
+	}
+	m := siteModuleCountRe.FindStringSubmatch(string(b))
+	if m == nil {
+		t.Fatalf("%s 里找不到「N 个模块」那句——"+
+			"这一页的开场就是在说「本站讲的是哪一份装配」，那句没了这条判据就空转了", path)
+	}
+	if m[1] != strconv.Itoa(len(mods)) {
+		t.Errorf("站点上写着 %s 个模块，而 dist.json 装了 %d 个——"+
+			"这是一句从规格书抄来的事实，改规格书的人不会记得去改文档（实测漂过一次："+
+			"11 → 12）。改 %s", m[1], len(mods), path)
 	}
 }
 
