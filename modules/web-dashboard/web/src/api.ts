@@ -88,6 +88,11 @@ export interface Section {
       不同：那边是内核从名字推出来的族（一个人一族的标题是噪音），这边是模块自己
       说的「我属于哪一类」，说了就该看得见。 */
   group?: string;
+  /** 「没有位置时落在这里」——首屏落在这一栏上（见 lib/view 的 Section.Default）。
+      **由贡献者声明**：这一栏是产品取舍（「先让用户看见一屏全能」），前端不认识任何
+      模块，也就无从判断谁该在那儿。最多一栏带它（多个声明时后端按 Source 取最小的
+      那个），所以这里按 `true` 找就行，不用管先后。 */
+  default?: boolean;
 }
 
 export interface Snapshot {

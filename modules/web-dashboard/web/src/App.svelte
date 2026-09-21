@@ -230,10 +230,25 @@
       : d.toLocaleString(tag || undefined);
   }
 
-  /** 默认位置：第一个**有卡片**的节（空节点进去只会看到一句「这里什么都没有」）。 */
+  /**
+   * 默认位置：**声明了落点的那一节**（见 lib/view 的 Section.Default）。
+   *
+   * 在这之前它是「第一个有卡片的那一节」，而节的顺序按 Source 字母序——于是首屏
+   * 落在哪一栏纯粹取决于谁的名字排前面（今天是 `breaker`）。想让「一屏全能」那一节
+   * 先出现，唯一的办法是把 source 起成 `aaa-home` 之类来插队。
+   *
+   * 两条回落，都是真会发生的：
+   *   - 没有哪一节声明落点（没装那个模块的装配，以及内核自己的测试图）——回到老
+   *     规矩，第一个有卡片的。**逐字节与改动前一样**，那是这次改动的安全绳；
+   *   - 声明了落点、但那一节此刻一张卡都没有（比如它唯一的卡是某个客户端没装才
+   *     出现的）——空节进去只会看到一句「这里什么都没有」，所以让给第一个有卡片的。
+   *     「落点」是偏好，不是强制：宁可落在别处，也别把用户扔进一张空页。
+   */
   function defaultRoute(): Route {
     const withCards = sections.filter((s) => concepts.some((c) => c.source === s.source));
-    const src = (withCards[0] ?? sections[0])?.source ?? "";
+    const src =
+      (withCards.find((s) => s.default) ?? withCards[0] ?? sections.find((s) => s.default) ?? sections[0])
+        ?.source ?? "";
     return { section: src, card: "", split: route.split };
   }
 

@@ -248,6 +248,10 @@ type sectionDoc struct {
 	// Actions 是这一栏上的按钮（见 view.Section.Actions）。BFF 只搬 ID 与标签，
 	// 「点了会发生什么」住在贡献者那边——它的 Run 是个函数，端不出去。
 	Actions []view.ActionInfo `json:"actions,omitempty"`
+	// Default 是「没有位置时落在这里」（见 view.Section.Default）。**由贡献者声明**：
+	// 首屏落在哪一栏是产品取舍（「先让用户看见一屏全能」），而 BFF/前端都不认识
+	// 任何模块，也就无从判断谁该在那儿。它们只搬这一格。
+	Default bool `json:"default,omitempty"`
 }
 
 // snapshot 问一遍贡献者要这一刻的样子。
@@ -269,7 +273,8 @@ func (h *Handler) snapshot(sources ...string) (snapshotDoc, error) {
 	// 不在」正是那几秒一次的刷新最该跟上的东西。
 	for _, s := range h.views.Sections() {
 		doc.Sections = append(doc.Sections, sectionDoc{
-			Source: s.Source, Title: s.Title, Group: s.Group, Actions: s.Actions,
+			Source: s.Source, Title: s.Title, Group: s.Group,
+			Actions: s.Actions, Default: s.Default,
 		})
 	}
 	if doc.Sections == nil {

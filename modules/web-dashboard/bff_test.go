@@ -122,6 +122,42 @@ func TestSectionsSurviveTheWire(t *testing.T) {
 	}
 }
 
+// TestLandingSurvivesTheWire：首屏落在哪一栏是**贡献者声明**的，而界面的默认位置
+// 是最后一跳才用上的东西（见核心 lib/view 的 Section.Default）。
+//
+// 这一跳断了**不会报错**：字段全丢 → 前端拿不到任何 default → 它回落到老规矩
+// （第一个有卡片的那一栏），于是首屏安静地落到字母序最前的那一栏上，看起来只是
+// 「排版不合我意」，不像一条 bug。所以它值得一条断言。
+func TestLandingSurvivesTheWire(t *testing.T) {
+	h := newHandler()
+	if _, err := h.views.Register("home", view.Title(func() string { return "Home" }).Landing(),
+		func() ([]view.Concept, error) {
+			return []view.Concept{{ID: "home.chains", Kind: view.KindTable, Title: "Chains"}}, nil
+		}); err != nil {
+		t.Fatal(err)
+	}
+	contribute(t, h, "breaker", view.Concept{ID: "breaker.health", Kind: view.KindTable, Title: "Health"})
+
+	rec := get(t, h, "/api/snapshot")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("snapshot 该 200，实际 %d", rec.Code)
+	}
+	var doc snapshotDoc
+	if err := json.Unmarshal(rec.Body.Bytes(), &doc); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, s := range doc.Sections {
+		got[s.Source] = s.Default
+	}
+	if !got["home"] {
+		t.Errorf("声明了 Landing 的那一栏该把 default 端到前端: %+v", doc.Sections)
+	}
+	if got["breaker"] {
+		t.Errorf("没声明的那一栏不该带 default: %+v", doc.Sections)
+	}
+}
+
 // TestFilteredSnapshotStillCarriesEverySection：按来源过滤的那次快照（界面每几秒
 // 刷一次）必须**照旧带上完整的栏目表**。
 //
