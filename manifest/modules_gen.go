@@ -118,6 +118,19 @@ func SpecNames() []string {
 // 就说清楚，而不是让用户自己去比对二进制。
 type Loader struct{ Spec string }
 
+// PrecomputedOrder 交出发行版在构建期算好的启动顺序。
+//
+// 有它，运行期就不必建端口表、建依赖边、拓扑排序、查环——那些事在构建期
+// 做过一遍了（tools/distgen 跑真的 Resolve 算出来，见 order_gen.go）。
+// 清单与集合对不上时框架会当场报错，不会闷着。
+func (l Loader) PrecomputedOrder() []string {
+	name := l.Spec
+	if name == "" {
+		name = DefaultSpec
+	}
+	return startOrder[name]
+}
+
 func (l Loader) Load() ([]modules.Component, error) {
 	name := l.Spec
 	if name == "" {
