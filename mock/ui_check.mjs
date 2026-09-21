@@ -1205,6 +1205,13 @@ if (!(await openSwitches())) {
       check("非默认的档位卡上有「应用」与「应用到全部」两个按钮",
         (await applyOne.count()) === 1 && (await applyAll.count()) === 1,
         `apply=${await applyOne.count()} applyAll=${await applyAll.count()}`);
+      // 这句话**此刻**不该在——判据是「这一张是不是当前配置」，而这一刻它不是。
+      // 必须在这里问，不能留到后面：`card` 是活定位器（每次查询按当前页面重新解析），
+      // 切到默认那张之后它会指到默认卡上去，问出来的就不是同一张卡了（第一版就是
+      // 这么写错的，被这条自己抓住：`非默认卡上 note=1`）。
+      check("非默认的那张卡上没有这句话（它是一句判词，写在不生效的卡上就是骗人）",
+        (await card.locator("[data-note]").count()) === 0,
+        `非默认卡上 note=${await card.locator("[data-note]").count()}`);
 
       // 默认那一张卡上不该有——先跳过去确认（这一步同时验了「两边都画得出来」）。
       await open(`config.profile.${def}`);
@@ -1223,9 +1230,6 @@ if (!(await openSwitches())) {
       check("已经是默认的那张卡上有一句绿色的「当前配置」",
         (await defNote.count()) === 1 && defNoteTone === "ok" && defNoteText.length > 0,
         `note=${await defNote.count()} tone=${JSON.stringify(defNoteTone)} text=${JSON.stringify(defNoteText)}`);
-      check("非默认的那张卡上**没有**这句话（它是一句判词，写在不生效的卡上就是骗人）",
-        (await card.locator("[data-note]").count()) === 0,
-        `非默认卡上 note=${await card.locator("[data-note]").count()}`);
 
       // 回到目标那张卡，点「应用到全部」。
       await open(target.id);

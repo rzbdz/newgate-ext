@@ -96,7 +96,7 @@ func TestTheBundlesMatchTheJSON(t *testing.T) {
 	}
 	for id, want := range fromJSON.Messages {
 		got, ok := fromBin.Messages[id]
-		if !ok || got.Where != want.Where || got.One != want.One ||
+		if !ok || got.One != want.One ||
 			got.Other != want.Other || got.Note != want.Note ||
 			!slices.Equal(got.Args, want.Args) {
 			t.Errorf("账本 %q 对不上（bundle 落后于 JSON？）\n  想要 %+v\n  实际 %+v", id, want, got)

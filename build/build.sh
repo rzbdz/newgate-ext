@@ -113,6 +113,12 @@ go run ./tools/distgen
 # 本发行版自己的目录表也要编成运行期直接读的那一份（见内核 lib/i18n/bundle.go）：
 # go:embed 要的是 .bin，所以这一步必须在编译之前。内核那一份由内核的 `make generate`
 # 管（build.sh 前面已经跑过 make），这里管的是发行版自己带的那几张表。
+#
+# 先 extract 再 bundle（2026-09-21）：账本是**纯静态扫描**的产物，与清单同一类东西，
+# 却曾经是唯一一个要人记得手动生成的——忘了就是构建红，而红的那句话（「账本已过期」）
+# 与手上的改动毫无关系。现在构建自己重建它，人不必记得。`check-i18n` 里那条
+# `extract -check` 照旧拦「重建了但没提交」。
+go run github.com/rzbdz/newgate/tools/i18n extract -root . -catalogs modules/i18n/catalogs
 go run github.com/rzbdz/newgate/tools/i18n bundle -root . -catalogs modules/i18n/catalogs
 
 mkdir -p "$out"
