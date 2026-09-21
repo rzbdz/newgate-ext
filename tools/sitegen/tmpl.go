@@ -49,6 +49,106 @@ var pageTmpl = template.Must(template.New("page").Parse(`<!doctype html>
 </html>
 `))
 
+// landingTmpl 是首页那一页的外壳。与文档页共用头部/页脚的**语言切换**，但不共用
+// 侧栏文档壳——首页是产品门面，不是一篇文档。
+//
+// 演示怎么嵌进首页：包一行 `<iframe src="{base}demo/">`，外面套一个仿浏览器窗口的
+// 壳（.browser）。这不是截图，是**真的**界面在跑——演示页是同一个前端的第二个入口
+// （见 modules/web-dashboard/web/vite.demo.config.ts），它喂的是假数据、没有后端。
+var landingTmpl = template.Must(template.New("landing").Parse(`<!doctype html>
+<html lang="{{.HTMLang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.DocTitle}}</title>
+{{if .Desc}}<meta name="description" content="{{.Desc}}">
+{{end}}<link rel="icon" type="image/svg+xml" href="{{.Base}}favicon.svg">
+<link rel="stylesheet" href="{{.Base}}site.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="{{.Base}}"><strong>{{.Site.Name}}</strong></a>
+  <span class="tag">{{.Site.Tagline}}</span>
+  <span class="spacer"></span>
+  <nav class="langs">{{range .Langs}}{{if .Ready}}<a href="{{.Href}}" {{if .Current}}class="on"{{end}}>{{.Label}}</a>{{else}}<span class="soon" title="not written yet">{{.Label}}</span>{{end}}{{end}}</nav>
+</header>
+
+<div class="hero">
+  <p class="lead">{{.Site.Name}}</p>
+  <h1>{{.Page.Title}}</h1>
+  <p class="sub">{{.Site.Tagline}}</p>
+  <p class="cta">
+    <a class="button primary" href="{{.Base}}docs/quickstart/">快速开始</a>
+    <a class="button ghost" href="{{.Site.Kernel}}">GitHub</a>
+  </p>
+
+  <div class="browser" aria-label="newgate 的真实界面演示（可点）">
+    <div class="browser-bar">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="addr">newgate web · 档位绑定 · 就地编辑</span>
+    </div>
+    <iframe src="{{.Base}}demo/" title="newgate 控制台演示 — 真组件，假数据，没有后端" loading="eager"></iframe>
+  </div>
+</div>
+
+<main class="landing">{{.Page.Body}}</main>
+
+<footer>
+  <p>这一页讲的是发行版 <strong>{{.Site.Name}}</strong> 的装配。内核机制的权威原文在
+     <a href="{{.Site.Kernel}}">rzbdz/newgate</a>。</p>
+  <p><a href="{{.Site.Kernel}}">内核</a> · <a href="{{.Site.Releases}}">版本发布</a></p>
+</footer>
+</body>
+</html>
+`))
+
+// renderLanding 渲染首页（路由 "/"）。
+//
+// 首页的正文也是 markdown（`site/src/zh-Hans/index.md`），body 与文档页走同一个
+// 渲染器——差别只在壳。这样就保住「内容在 markdown、样式在 CSS」这两条，首页要的
+// 「门面感」由壳 + CSS 出，不在正文里堆 div。
+func renderLanding(cfg site, l lang, p page) (string, error) {
+	base := basePath()
+	lvs := make([]langView, 0, len(cfg.Langs))
+	for _, other := range cfg.Langs {
+		lvs = append(lvs, langView{
+			Label: other.Label,
+			Href:  base + hrefOf(other.Code, "/"),
+			Ready: other.Ready, Current: other.Code == l.Code,
+		})
+	}
+	var b strings.Builder
+	err := landingTmpl.Execute(&b, struct {
+		Site     site
+		Base     string
+		HTMLang  string
+		DocTitle string
+		Desc     string
+		Page     struct {
+			Route string
+			Title string
+			Body  template.HTML
+			Lang  string
+		}
+		Langs []langView
+	}{
+		Site: cfg, Base: base, HTMLang: l.Code,
+		DocTitle: cfg.Name + " — " + cfg.Tagline,
+		Desc:     cfg.Tagline,
+		Page: struct {
+			Route string
+			Title string
+			Body  template.HTML
+			Lang  string
+		}{Route: p.Route, Title: p.Title, Body: template.HTML(p.Body), Lang: p.Lang},
+		Langs: lvs,
+	})
+	if err != nil {
+		return "", fmt.Errorf("套首页模板失败: %w", err)
+	}
+	return b.String(), nil
+}
+
 // navView / langView 是模板吃的那两种行（比配置多几个算好的字段）。
 //
 // 算好再交给模板（而不是在模板里比字符串）的理由：**链接怎么拼**只有一处实现
@@ -72,6 +172,16 @@ type langView struct {
 
 // renderPage 把一页套进外壳。
 func renderPage(cfg site, l lang, nav []navItem, p page) (string, error) {
+	if p.Route == "/" && strings.TrimPrefix(p.Route, "/") == "" {
+		// Landing 页（路由 "/"）：不用文档那套侧栏外壳，用专门的一页。
+		// 判据写在函数里而不是 config：网站的设计只有一个首页，这不是「每条路由
+		// 都可以各挑一套壳」的产品决策。
+		return renderLanding(cfg, l, p)
+	}
+	return renderDocs(cfg, l, nav, p)
+}
+
+func renderDocs(cfg site, l lang, nav []navItem, p page) (string, error) {
 	base := basePath()
 
 	cur := map[string]bool{}
