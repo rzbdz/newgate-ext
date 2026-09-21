@@ -74,6 +74,12 @@ type site struct {
 	Kernel   string `json:"kernel"`
 	Releases string `json:"releases"`
 	Langs    []lang `json:"langs"`
+
+	// Theme 是浏览器自己那块界面该染的颜色（手机上的地址栏、状态栏）。
+	//
+	// **不从 site.json 读**，是 run 读 site.css 之后填进来的：它的唯一正确取值就是
+	// `--bg`，写在两个地方就会漂移（见 theme.go 的 themeColors）。
+	Theme theme `json:"-"`
 }
 
 type lang struct {
@@ -132,6 +138,15 @@ func run(root string) error {
 	if err != nil {
 		return err
 	}
+	// 样式在这里读一次（模板也要用它算 theme-color），下面落盘时用的是同一份字节：
+	// 读两次的话，两处看到的是同一时刻的同一份文件这件事就得靠运气。
+	css, err := os.ReadFile(filepath.Join(src, "site.css"))
+	if err != nil {
+		return fmt.Errorf("读不到站点样式（%s）: %w", path.Join(srcDir, "site.css"), err)
+	}
+	if cfg.Theme, err = themeColors(string(css)); err != nil {
+		return fmt.Errorf("%s: %w", path.Join(srcDir, "site.css"), err)
+	}
 	if len(cfg.Langs) == 0 {
 		return fmt.Errorf("%s 里一种语言都没声明（langs 是空）", path.Join(srcDir, "site.json"))
 	}
@@ -176,10 +191,6 @@ func run(root string) error {
 		}
 	}
 
-	css, err := os.ReadFile(filepath.Join(src, "site.css"))
-	if err != nil {
-		return fmt.Errorf("读不到站点样式（%s）: %w", path.Join(srcDir, "site.css"), err)
-	}
 	files = append(files, outFile{rel: "site.css", bytes: css})
 
 	// 站点图标：从产品那一份**抄过来**（见 faviconSrc 的注释）。拷一份而不是让页面

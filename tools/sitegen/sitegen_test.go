@@ -335,3 +335,78 @@ func TestEmitWipesTheOutput(t *testing.T) {
 		t.Errorf("新那份没写对：%q %v", b, err)
 	}
 }
+
+// TestThemeColorComesFromTheCSS：`theme-color` 取的是样式里那两条 `--bg`。
+//
+// 这一对判据护的是同一件事的两面：
+//
+//	一、取出来的是**样式里的值**（不是配置里另写一份——那份会漂移，而症状只在手机上
+//	    看得见一条颜色不对的地址栏）；
+//	二、取不出来时**报错**（错值比没有值更糟：它看起来是对的）。
+func TestThemeColorComesFromTheCSS(t *testing.T) {
+	th, err := themeColors(":root { --bg: #0f1115; }\n@media (prefers-color-scheme: light) { :root { --bg: #f6f7f9; } }\n")
+	if err != nil {
+		t.Fatalf("该取出来却报错：%v", err)
+	}
+	if th.Dark != "#0f1115" || th.Light != "#f6f7f9" {
+		t.Errorf("取错了：%+v", th)
+	}
+	// 顺序即含义：第一条（默认那条）是暗色。反过来的话亮色主题的用户会看到地址栏
+	// 先被染成暗色再跳亮——而两行摆在一起没人看得出哪一行该在前面。
+	if got := string(themeMeta(th)); !strings.Contains(got, `content="#0f1115"`) ||
+		strings.Index(got, "#0f1115") > strings.Index(got, "#f6f7f9") {
+		t.Errorf("暗色那条没排在前面：%s", got)
+	}
+
+	for _, c := range []struct{ name, css string }{
+		{"一条 --bg 都没有", ":root { --ink: #fff; }"},
+		{"只有一条", ":root { --bg: #0f1115; }"},
+		{"三条", ":root{--bg:#a;} :root{--bg:#b;} :root{--bg:#c;}"},
+		{"不是纯色", ":root { --bg: linear-gradient(#a, #b); } :root { --bg: #fff; }"},
+		{"是 var()", ":root { --bg: var(--other); } :root { --bg: #fff; }"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			if _, err := themeColors(c.css); err == nil {
+				t.Error("这种 CSS 该报错（猜一个颜色比不写 theme-color 更糟）")
+			}
+		})
+	}
+
+	// 名字的一部分不算：`--bg-soft` / `--bgfoo` 都不是 `--bg`。
+	// 写歪这一处的话，样式里多加一条 `--bg-soft` 就会让 theme-color 报「三条」。
+	th, err = themeColors(":root { --bg: #0f1115; --bg-soft: #161a21; }\n" +
+		"@media (prefers-color-scheme: light) { :root { --bg: #f6f7f9; } }\n")
+	if err != nil || th.Dark != "#0f1115" {
+		t.Errorf("`--bg-soft` 被当成了 `--bg`：%+v %v", th, err)
+	}
+
+	// 注释里提到的 `--bg` 不算一条（这份样式的注释写得多，里面顺口提一句很正常）。
+	th, err = themeColors(":root { /* --bg: #000; 上面那条才是真的 */ --bg: #0f1115; }\n" +
+		"@media (prefers-color-scheme: light) { :root { --bg: #f6f7f9; } }\n")
+	if err != nil || th.Dark != "#0f1115" {
+		t.Errorf("注释里的 --bg 被算进去了：%+v %v", th, err)
+	}
+}
+
+// TestTheRealStylesheetHasATableTheme 是这条判据的**活体**那一半：真的 site.css
+// 里那两条 `--bg` 必须取得到、取出来必须是纯色。
+//
+// 上面那条测的是函数，喂的是我自己写的 CSS——那种测试在「函数对、而仓库里那份样式
+// 换了写法」时是绿的。这一条读的是**要发布的那一份**。
+func TestTheRealStylesheetHasATableTheme(t *testing.T) {
+	root, err := repoRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(root, srcDir, "site.css"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	th, err := themeColors(string(b))
+	if err != nil {
+		t.Fatalf("站点样式里取不出 theme-color：%v", err)
+	}
+	if !strings.HasPrefix(th.Dark, "#") || !strings.HasPrefix(th.Light, "#") {
+		t.Errorf("取出来的不是纯色：%+v", th)
+	}
+}

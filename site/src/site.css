@@ -22,6 +22,21 @@
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --radius: 10px;
   --wrap: 1100px;
+
+  /* 这张页面支持哪几种主题。**不是**给 CSS 用的（下面的 `@media` 才是），是给
+     浏览器自己那块界面用的：页面滚动条、`<pre>` 的横向滚动条、表单控件。
+     不写这一条的默认值是 `normal`，它等于「一律按浅色画」——于是深色页面右侧挂着
+     一条白色滚动条，而那**恰恰是整页最显眼的一条浏览器自带装饰**。
+
+     顺序即初始底色：第一个是深色，与下面 `--bg` 的默认值对齐（`dark light` 而不是
+     `light dark`）。写反了的话，深色用户在第一帧会看到一圈浅色——渲染阻塞的样式表
+     让它只闪一瞬，但那正是「白闪」这个毛病本身。
+
+     只写在 CSS 里、不发 `<meta name="color-scheme">`：那两处说的是同一件事，而这份
+     样式表是渲染阻塞的（head 里的 <link>，没有 media），所以它**一定**在第一帧之前
+     生效——meta 能多给的只有「样式表加载失败时也知道主题」，为那一种情况留第二份
+     真相不划算。 */
+  color-scheme: dark light;
 }
 @media (prefers-color-scheme: light) {
   :root {

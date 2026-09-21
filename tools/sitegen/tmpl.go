@@ -18,9 +18,10 @@ var pageTmpl = template.Must(template.New("page").Parse(`<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="canonical" href="{{.Canon}}">
+{{.ThemeMeta}}
 <title>{{.DocTitle}}</title>
 <meta name="description" content="{{.Desc}}">
-<link rel="canonical" href="{{.Canon}}">
 {{.Meta}}
 <link rel="icon" type="image/svg+xml" href="{{.Base}}favicon.svg">
 <link rel="stylesheet" href="{{.Base}}site.css">
@@ -62,9 +63,10 @@ var landingTmpl = template.Must(template.New("landing").Parse(`<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="canonical" href="{{.Canon}}">
+{{.ThemeMeta}}
 <title>{{.DocTitle}}</title>
 <meta name="description" content="{{.Desc}}">
-<link rel="canonical" href="{{.Canon}}">
 {{.Meta}}
 <link rel="icon" type="image/svg+xml" href="{{.Base}}favicon.svg">
 <link rel="stylesheet" href="{{.Base}}site.css">
@@ -132,14 +134,15 @@ func renderLanding(cfg site, l lang, p page) (string, error) {
 	}
 	var b strings.Builder
 	err := landingTmpl.Execute(&b, struct {
-		Site     site
-		Base     string
-		HTMLang  string
-		DocTitle string
-		Desc     string
-		Canon    string
-		Meta     template.HTML
-		Page     struct {
+		Site      site
+		Base      string
+		HTMLang   string
+		DocTitle  string
+		Desc      string
+		Canon     string
+		ThemeMeta template.HTML
+		Meta      template.HTML
+		Page      struct {
 			Route string
 			Title string
 			Body  template.HTML
@@ -148,10 +151,11 @@ func renderLanding(cfg site, l lang, p page) (string, error) {
 		Langs []langView
 	}{
 		Site: cfg, Base: base, HTMLang: l.Code,
-		DocTitle: cfg.Name + " — " + cfg.Tagline,
-		Desc:     cfg.Desc,
-		Canon:    cfg.URL,
-		Meta:     socialMeta(cfg, cfg.Name+" — "+cfg.Tagline, cfg.Desc, cfg.URL),
+		DocTitle:  cfg.Name + " — " + cfg.Tagline,
+		Desc:      cfg.Desc,
+		Canon:     cfg.URL,
+		ThemeMeta: themeMeta(cfg.Theme),
+		Meta:      socialMeta(cfg, cfg.Name+" — "+cfg.Tagline, cfg.Desc, cfg.URL),
 		Page: struct {
 			Route string
 			Title string
@@ -229,14 +233,15 @@ func renderDocs(cfg site, l lang, nav []navItem, p page) (string, error) {
 	// 分享出去都该说自己那一句（「排障」那一页的卡片写整站的 tagline，等于没有）。
 	canon := cfg.URL + strings.TrimPrefix(hrefOf(l.Code, p.Route), "/")
 	err := pageTmpl.Execute(&b, struct {
-		Site     site
-		Base     string
-		HTMLang  string
-		DocTitle string
-		Desc     string
-		Canon    string
-		Meta     template.HTML
-		Page     struct {
+		Site      site
+		Base      string
+		HTMLang   string
+		DocTitle  string
+		Desc      string
+		Canon     string
+		ThemeMeta template.HTML
+		Meta      template.HTML
+		Page      struct {
 			Route string
 			Title string
 			Body  template.HTML
@@ -245,13 +250,14 @@ func renderDocs(cfg site, l lang, nav []navItem, p page) (string, error) {
 		Nav   []navView
 		Langs []langView
 	}{
-		Site:     cfg,
-		Base:     base,
-		HTMLang:  l.Code,
-		DocTitle: pageTitle(cfg, p),
-		Desc:     pageDesc(p, cfg.Desc),
-		Canon:    canon,
-		Meta:     socialMeta(cfg, pageTitle(cfg, p), pageDesc(p, cfg.Desc), canon),
+		Site:      cfg,
+		Base:      base,
+		HTMLang:   l.Code,
+		DocTitle:  pageTitle(cfg, p),
+		Desc:      pageDesc(p, cfg.Desc),
+		Canon:     canon,
+		ThemeMeta: themeMeta(cfg.Theme),
+		Meta:      socialMeta(cfg, pageTitle(cfg, p), pageDesc(p, cfg.Desc), canon),
 		Page: struct {
 			Route string
 			Title string
