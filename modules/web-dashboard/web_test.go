@@ -1,6 +1,9 @@
 package webdashboard
 
 import (
+	"bytes"
+	"encoding/xml"
+	"io"
 	"io/fs"
 	"regexp"
 	"strings"
@@ -44,5 +47,62 @@ func TestEmbeddedFrontendIsSelfConsistent(t *testing.T) {
 			t.Errorf("index.html 引用了 %s，但产物里没有它——"+
 				"改完前端要重新 pnpm build 再提交（文件名带内容哈希，对不上就是过期）", name)
 		}
+	}
+}
+
+// TestEmbeddedSVGsParse 断言产物里每一份 SVG 都是**合法的 XML**。
+//
+// # 为什么需要这一条（2026-09-21 实测）
+//
+// favicon 从加上那天起就没在浏览器里出现过，而它「看起来」处处正常：文件在、
+// `index.html` 引着它、服务器回 200、Content-Type 是 image/svg+xml、字节数与仓库里
+// 那份一模一样。curl 验完全绿——**它就是画不出来**。
+//
+// 根因在一个字面上看不出问题的地方：注释正文里写了 CSS 变量名 `--bg`，而 XML 注释
+// **不许出现连续两个连字符**。Chromium 拿到它直接解析失败（`parsererror`，
+// 根元素退化成 html），表现是标签页上**什么都不画**——没有报错、没有占位符。
+//
+// 这正是这一层看门人该拦的那类错：不是「产物是不是最新的」（那要跑 node），也不是
+// 「文件在不在」（上一条查了），而是**「嵌进来的这份字节，浏览器画得出来吗」**。
+// 用 Go 自带的 encoding/xml 判，离线、零依赖，而且判据与浏览器**同一条规矩**
+// ——上面那个 `--` 就是它先报出来的。
+//
+// 只查 SVG：`.js`/`.css` 不是 XML，`.html` 会被 Svelte 的模板语法绊倒（那是另一套
+// 解析器的事，浏览器对它有容错，拿 XML 的标准去量它只会得到假警）。
+func TestEmbeddedSVGsParse(t *testing.T) {
+	sub, err := fs.Sub(assets, AssetDir)
+	if err != nil {
+		t.Fatalf("嵌入的前端目录读不出来（%s 不存在？）: %v", AssetDir, err)
+	}
+	checked := 0
+	err = fs.WalkDir(sub, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".svg") {
+			return err
+		}
+		b, err := fs.ReadFile(sub, path)
+		if err != nil {
+			return err
+		}
+		checked++
+		dec := xml.NewDecoder(bytes.NewReader(b))
+		for {
+			if _, err := dec.Token(); err == io.EOF {
+				return nil
+			} else if err != nil {
+				t.Errorf("产物里的 %s 不是合法的 XML：%v\n"+
+					"  浏览器拿到这种文件的表现是**什么都不画**（没有报错、没有占位符），"+
+					"所以只能在这一层拦。常见坑：注释正文里出现连续两个连字符（XML 禁止），"+
+					"比如 CSS 变量名 `--bg` 直接写进注释。", path, err)
+				return nil
+			}
+		}
+	})
+	if err != nil {
+		t.Fatalf("遍历嵌入产物失败: %v", err)
+	}
+	// 一条会让上面那个循环空转成绿的空集守卫：favicon 就住在这里，一份 SVG 都没有
+	// 说明产物变了或扫描坏了。
+	if checked == 0 {
+		t.Fatal("嵌入产物里一份 SVG 都没扫到——favicon 呢？（循环是空转的，这条测试没在查任何东西）")
 	}
 }
