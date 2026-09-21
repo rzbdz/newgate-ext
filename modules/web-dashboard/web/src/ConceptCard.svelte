@@ -87,6 +87,24 @@
     <h3>{concept.title}</h3>
     <span class="meta">{concept.id}</span>
     <span class="spacer"></span>
+    <!-- 一句状态说明（见 lib/view 的 Concept.Note）。**它不是按钮**：没有 onclick，
+         也不该长得像按钮——点了没有任何事发生，而一个点了没反应的按钮比没有按钮
+         更让人困惑。
+         它补的是一个信息缺口：档位卡上「已经在生效的那一份」不挂那对 apply 按钮
+         （挂了是噪音），于是十六张卡里十五张有两个按钮、一张什么都没有，两张卡
+         长得几乎一样，用户看不出哪一份在生效——而那恰恰是他打开这一节最想知道的
+         事。「不画那个按钮」与「什么都不说」是两件事。 -->
+    {#if concept.note}
+      <span
+        class="pill note"
+        class:note-ok={concept.note.tone === "ok"}
+        class:note-warn={concept.note.tone === "warn"}
+        class:note-bad={concept.note.tone === "bad"}
+        data-note={concept.note.tone ?? ""}
+      >
+        {concept.note.text}
+      </span>
+    {/if}
     <!-- 这张卡上的动作（「把这一份设为默认」这类）。**由贡献者注入**，界面只画
          按钮、把点击转回去——它不知道那个按钮会改什么，也不需要知道。
          锁死或读不出来时不画：那些动作多半也做不成，而一个点了没反应的按钮比
@@ -172,4 +190,10 @@
     overflow: auto;
     margin: 0;
   }
+  /* 状态说明的语气（见 Concept.Note）：**只换颜色，不换形状**——它是陈述，不是
+     按钮，也不该长得像警告条。`ok` 是「一切正常，这就是现在生效的那一份」，与健康
+     表里那一格是同一个绿。边框跟着淡一点，免得这一格比卡片上真能点的东西还显眼。 */
+  .note-ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
+  .note-warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+  .note-bad { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
 </style>

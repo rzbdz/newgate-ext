@@ -204,6 +204,13 @@ type conceptDoc struct {
 	// Actions 是**这张卡上**的按钮（见 view.Concept.Actions）。与 sectionDoc.Actions
 	// 同一个形状、同一条规矩：BFF 只搬 ID 与标签，「点了会发生什么」住在贡献者那边。
 	Actions []view.ActionInfo `json:"actions,omitempty"`
+	// Note 是**一句状态说明**（见 view.Concept.Note）：「这一份就是当前配置」这类。
+	// 与 Actions 一样整份透传（`view.Note` 自己带 json 标签），BFF 不解释它的语气
+	// 色彩——`ok`/`warn`/`bad` 这套词在表格的格子上（`view.Cell.Tone`）早就是同一份
+	// 词汇表，前端只认这三个词，其余一律当着色没给。
+	//
+	// 它不是按钮：界面上点了没有任何事发生（对比 Actions，那些的 Run 会跑）。
+	Note *view.Note `json:"note,omitempty"`
 	// Error 非空 = 这个概念**此刻读不出来**（文件被删了、JSON 坏了）。卡片照
 	// 常出现、写着原因，而不是从列表里消失——消失了用户会以为它不存在。
 	Error string `json:"error,omitempty"`
@@ -277,7 +284,7 @@ func (h *Handler) snapshot(sources ...string) (snapshotDoc, error) {
 			ID: c.ID, Kind: c.Kind, Title: c.Title, Source: c.Source,
 			Writable: c.Apply != nil, Locked: c.Locked, Live: c.Live, Group: c.Group,
 			Previewable: c.Preview != nil, Order: c.Order, Data: c.Data, Error: c.Broken,
-			Actions: actionInfos(c.Actions),
+			Actions: actionInfos(c.Actions), Note: c.Note,
 		})
 	}
 	if doc.Concepts == nil {

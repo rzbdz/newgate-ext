@@ -45,9 +45,20 @@ export interface Concept {
       界面只把它们画出来、把点击转回去。挂在这一张卡上的理由是这件事说的是
       「**这一张**」——「把这一份设为默认」里的「这一份」只有它自己知道。 */
   actions?: ConceptAction[];
+  /** 一句**状态说明**（见 lib/view 的 Concept.Note），不是按钮：画成一个静态标记，
+      点了没有任何事发生。今天唯一的用处是档位卡上的「当前配置」。
+      与 Table 的格子共用一套语气词（`ok`/`warn`/`bad`，其余当没给）——
+      它是**陈述**，所以界面不该把它画成警告或错误的样子。 */
+  note?: Note;
   data: any;
   /** 非空 = 这个概念此刻读不出来（文件删了、JSON 坏了）。卡片照常显示，写原因。 */
   error?: string;
+}
+
+/** 卡片上的一句状态说明（见 lib/view 的 Note）。`tone` 空 = 不着色。 */
+export interface Note {
+  text: string;
+  tone?: "ok" | "warn" | "bad";
 }
 
 /**

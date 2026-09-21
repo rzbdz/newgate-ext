@@ -404,7 +404,7 @@
       ]
     },
     "concept actions need Content-Type: application/json (got {ct})": {
-      "where": "modules/web-dashboard/bff.go:446",
+      "where": "modules/web-dashboard/bff.go:453",
       "args": [
         "ct"
       ]
@@ -634,7 +634,7 @@
       ]
     },
     "no such concept: {id} — the page is probably stale, reload it": {
-      "where": "modules/web-dashboard/bff.go:342",
+      "where": "modules/web-dashboard/bff.go:349",
       "args": [
         "id"
       ]
@@ -694,7 +694,7 @@
       "where": "modules/opencodeomo/module.go:88"
     },
     "previewing needs Content-Type: application/json (got {ct})": {
-      "where": "modules/web-dashboard/bff.go:524",
+      "where": "modules/web-dashboard/bff.go:531",
       "args": [
         "ct"
       ]
@@ -750,7 +750,7 @@
       ]
     },
     "row actions need Content-Type: application/json (got {ct})": {
-      "where": "modules/web-dashboard/bff.go:482",
+      "where": "modules/web-dashboard/bff.go:489",
       "args": [
         "ct"
       ]
@@ -759,7 +759,7 @@
       "where": "modules/web-dashboard/bff.go:85"
     },
     "saving needs Content-Type: application/json (got {ct})": {
-      "where": "modules/web-dashboard/bff.go:329",
+      "where": "modules/web-dashboard/bff.go:336",
       "args": [
         "ct"
       ]
@@ -774,7 +774,7 @@
       ]
     },
     "section actions need Content-Type: application/json (got {ct})": {
-      "where": "modules/web-dashboard/bff.go:391",
+      "where": "modules/web-dashboard/bff.go:398",
       "args": [
         "ct"
       ]
@@ -975,7 +975,7 @@
       "where": "modules/opencodeomo/diagnostics.go:30"
     },
     "the request body is not valid JSON: {err}": {
-      "where": "modules/web-dashboard/bff.go:334",
+      "where": "modules/web-dashboard/bff.go:341",
       "args": [
         "err"
       ]
@@ -1320,7 +1320,7 @@
       ]
     },
     "{title} is read-only": {
-      "where": "modules/web-dashboard/bff.go:351",
+      "where": "modules/web-dashboard/bff.go:358",
       "args": [
         "title"
       ]

@@ -1160,11 +1160,22 @@ if (!(await openSwitches())) {
 // 是**他描述需求时的口语**，不是界面上的词。所以这里按 `data-action` 找按钮，
 // 一个字都不碰：措辞是产品决定，会变；机器标记不会。
 //
-// 三条一起验：
+// 四条一起验：
 //   1. 非默认的那张卡上**两个**按钮都在；
 //   2. 点「应用到全部」→ 它成为全局默认，且每个客户端的链头都被清掉；
 //   3. 成了默认之后那张卡上**不再有按钮**——「一个提议去做已经成立的事的按钮，
-//      站在一排真会做事的按钮旁边就是噪音」（见 config/view.go 的 profileActions）。
+//      站在一排真会做事的按钮旁边就是噪音」（见 config/view.go 的 profileActions）；
+//   4. 而那一张卡上**有一句绿色的「当前配置」**（见下）。
+//
+// # 第 4 条是后来补的（2026-09-21 用户）
+//
+// 原来只有第 3 条，于是那一张卡上**什么都没有**。用户的原话：
+//
+//	你应该注入的是一个 info only 的绿色：当前配置 / Active profile 的效果啊！
+//
+// 他说得对：两张卡少了那两个按钮之后长得几乎一样，用户看不出哪一份在生效——
+// 而那恰恰是他打开这一节最想知道的事。**「不画那个按钮」与「什么都不说」是两件事**，
+// 第 3 条只钉住了前一件，所以这个缺口当初能整个溜过去。现在两条一起钉。
 {
   const sec = page.locator(`nav.side button[title="config"]`);
   if ((await sec.count()) === 0) {
@@ -1203,6 +1214,19 @@ if (!(await openSwitches())) {
           (await defCard.locator('button[data-action="set-default-all"]').count()) === 0,
         "给一个「去做已经成立的事」的按钮，会把旁边真会做事的按钮淹掉");
 
+      // 而它上面**要说出来**：一句绿色的「当前配置」。按 `data-note`（机器标记）找，
+      // 不按译文——措辞会变，标记不会（与本节开头按 data-action 找按钮同一个理由）。
+      // 语气也一起验：它是**陈述**，画成警告或错误的样子就等于在说「出事了」。
+      const defNote = defCard.locator("[data-note]");
+      const defNoteTone = await defNote.first().getAttribute("data-note").catch(() => null);
+      const defNoteText = ((await defNote.first().textContent().catch(() => "")) ?? "").trim();
+      check("已经是默认的那张卡上有一句绿色的「当前配置」",
+        (await defNote.count()) === 1 && defNoteTone === "ok" && defNoteText.length > 0,
+        `note=${await defNote.count()} tone=${JSON.stringify(defNoteTone)} text=${JSON.stringify(defNoteText)}`);
+      check("非默认的那张卡上**没有**这句话（它是一句判词，写在不生效的卡上就是骗人）",
+        (await card.locator("[data-note]").count()) === 0,
+        `非默认卡上 note=${await card.locator("[data-note]").count()}`);
+
       // 回到目标那张卡，点「应用到全部」。
       await open(target.id);
       await card.locator('button[data-action="set-default-all"]').first().click();
@@ -1214,11 +1238,15 @@ if (!(await openSwitches())) {
       check("每个客户端的链头都被清掉了（不留 `{\"claude\": \"\"}` 这种记录）",
         Object.keys(st.active ?? {}).length === 0, JSON.stringify(st.active ?? {}));
 
-      // 重读之后那张卡已经成了默认——按钮该自己消失（界面重读快照，不是自己猜）。
+      // 重读之后那张卡已经成了默认——按钮该自己消失、那句话该自己出现。两件一起
+      // 验：只验按钮消失的话，「这一卡现在什么都不说」照样算过，而那正是原来的 bug。
       const after = page.locator("section.card").first();
       check("成了默认之后那张卡上的按钮自己消失了",
         (await after.locator('button[data-action="set-default-all"]').count()) === 0,
         "快照重读之后按钮还在，说明它读的是旧的那份");
+      check("成了默认之后那句话自己出现了（按钮换成陈述，不是两个都没有）",
+        (await after.locator("[data-note]").count()) === 1,
+        `成了默认的那张卡上 note=${await after.locator("[data-note]").count()}`);
     }
   }
 }
