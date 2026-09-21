@@ -22,6 +22,10 @@
 //	---  水平线
 //	行内：`代码`、**加粗**、[文字](链接)
 //
+// 链接的写法见 siteHref：**站内地址写成网站根下的路径**（`/docs/tiers/`），挂载
+// 前缀由渲染器补。作者不该看得见「这个站挂在 /newgate-ext/ 下」这件事——那是部署
+// 的细节，而这个站要能从任意一层子路径服务（本地预览就是从根）。
+//
 // # 不认哪些（都报错，不静默）
 //
 //	#### 及更深   嵌套列表   缩进代码块   ![图](…)  源文件里的 HTML 标签
@@ -569,7 +573,11 @@ func inline(s string) (string, error) {
 			if err != nil {
 				return "", err
 			}
-			b.WriteString(`<a href="` + esc(href) + `">` + inner + `</a>`)
+			link, err := siteHref(href)
+			if err != nil {
+				return "", err
+			}
+			b.WriteString(`<a href="` + esc(link) + `">` + inner + `</a>`)
 			i += j + 2 + k + 1
 
 		default:
@@ -584,6 +592,45 @@ func inline(s string) (string, error) {
 		}
 	}
 	return b.String(), nil
+}
+
+// siteHref 把作者写的一个链接变成真正发出去的地址。
+//
+// # 为什么这件事必须在这里做
+//
+// 站内地址在源文件里写成**网站根下的路径**（`/docs/tiers/`）——作者不该在每一处
+// 手写部署前缀。而 GitHub Pages 的项目站挂在 `/<repo>/` 下面，于是同一个
+// `/docs/tiers/` 在源文件里是对的、原样发出去就是 **404**。
+//
+// 这个错实测发生过，而且是**静默**的：站点的每一页都出得来、导航（它走模板、拼的
+// 是带了前缀的地址）全绿，只有**正文里的链接**全是 404。本地的 `--local` 预览恰恰
+// 从根服务，所以本地看是对的——只有线上点一下才发现（2026-09-21 实测：16 条，
+// 分布在 7 页上）。
+//
+// # 认哪些、不认哪些
+//
+// 认：外部地址（http/https/mailto，原样）、站内绝对路径（补前缀）、页内锚点
+// （原样，它指的就是本页）。不认：`a.md` 这类相对路径与 `//host` 这类协议相对
+// 地址——前者在这里没有意义（源文件树不是发布出去的树，`docs/tiers.md` 对应的是
+// `/docs/tiers/`，靠拼是拼不出来的），后者少见且极易写错。两种都报错退出，比发一个
+// 404 强。
+func siteHref(href string) (string, error) {
+	switch {
+	case strings.HasPrefix(href, "//"):
+		return "", fmt.Errorf("链接 %q 是协议相对地址：写成完整的 https://…（本站用不到协议相对）", href)
+	case strings.HasPrefix(href, "/"):
+		return basePath() + strings.TrimPrefix(href, "/"), nil
+	case strings.HasPrefix(href, "#"):
+		return href, nil
+	}
+	for _, p := range []string{"http://", "https://", "mailto:"} {
+		if strings.HasPrefix(href, p) {
+			return href, nil
+		}
+	}
+	return "", fmt.Errorf("链接 %q 认不出来：站内地址写成网站根下的路径（`/docs/tiers/`），"+
+		"站外写成完整的 https://…——**不要写相对路径**，源文件树与发布出去的树不是一回事，"+
+		"拼出来的那个地址在线上是 404（2026-09-21 就是这么漏了 16 条）", href)
 }
 
 // esc 转义 HTML 里那五个字符。**这里是唯一的出口**：所有会进正文的文字都过它，

@@ -52,6 +52,39 @@ func TestParagraphsAndInline(t *testing.T) {
 	}
 }
 
+// TestSiteInternalLinksGetTheMountPrefix：正文里的站内链接要带上站点挂载前缀。
+//
+// # 这条判据是**实测漏出来的**（2026-09-21）
+//
+// 源文件里写的是网站根下的路径（`/docs/tiers/`），而发出去的地址必须带
+// `/newgate-ext/` 那一层。原样发是 404，而这个错**每一处都是静默的**：页面出得来、
+// 导航（走模板、拼的是带前缀的地址）全绿、`--local` 预览（从根服务）也是对的——
+// 只有线上点一下才发现。实测 16 条、分布在 7 页上。
+//
+// 所以这里不只测「补前缀」这一个动作，还测**三种写法各归各的**：外部地址原样、
+// 页内锚点原样、站内路径补前缀。搞混任何两种，症状都是页面上某一条链接指向别处。
+func TestSiteInternalLinksGetTheMountPrefix(t *testing.T) {
+	body, _ := render(t, "# T\n\n看 [档位](/docs/tiers/)、[外链](https://x/y)、[本页](#h)。\n")
+	for _, want := range []string{
+		`<a href="/newgate-ext/docs/tiers/">档位</a>`,
+		`<a href="https://x/y">外链</a>`,
+		`<a href="#h">本页</a>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("少了 %s\n实际：%s", want, body)
+		}
+	}
+
+	// 认不出来的写法**报错**，不发一个 404 出去。相对路径尤其要拦：源文件树与
+	// 发布出去的树不是一回事（`docs/tiers.md` 对应 `/docs/tiers/`，靠拼拼不出来），
+	// 而写的人多半以为它跟 GitHub 上看到的一样。
+	for _, bad := range []string{"docs/tiers/", "./x/", "//host/x", "x.md"} {
+		if _, _, err := renderMarkdown("# T\n\n看 [这个](" + bad + ")。\n"); err == nil {
+			t.Errorf("链接写成 %q 时该报错（它在线上是 404，而作者以为对）", bad)
+		}
+	}
+}
+
 // TestASoftWrappedBoldInsideAListIsOneItem 这条是**中文正文的真实形状**。
 //
 // 一句话写满一行就换行，于是 `**加粗**` 会被劈成两行——第一版把每一行当一个列表项
