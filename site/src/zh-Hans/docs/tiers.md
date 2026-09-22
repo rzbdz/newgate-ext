@@ -52,16 +52,19 @@ newgate tier normal
 
 ## 改一份 profile
 
-三种改法，效果一样：
+> 先说明：**`profile` 命令今天没有 `edit` / `new`**——它只管只读的
+> `kv | history | restore`（`kv` 把一份摊成 KV 文本、`history` 列它的备份、
+> `restore` 回到某份）。「命令行里打开 $EDITOR 改 profile」这个产品决定还没做，
+> 本文档先不替它圆谎。想让改动落盘，走这三条真实路径：
 
 ```bash
-newgate profile edit ark     # 用 $EDITOR 打开那一份
-newgate profile new mine     # 造一份新的（从空模板起）
-newgate web                  # 在网页面板上点着改
+newgate web                    # 在网页面板上点着改（保存走命令行同一条写入路径）
+newgate profile kv ark         # 把 ark 摊成 KV 文本——管看、管核对
+newgate profile kv ark --write # 上面那份改成你要的，再写回盘上
+$EDITOR ~/.config/newgate/mappings/ark.json   # 或者直接改文件，watch 会捡起来，不用重启
 ```
 
-文件本身住在 `~/.config/newgate/mappings/`，`.kv` 与 `.json` 两种后缀都认。想手写
-就直接改——watch 会把它捡起来，不用重启。
+文件本身住在 `~/.config/newgate/mappings/`，`.kv` 与 `.json` 两种后缀都认。
 
 > 网页面板上的每一次保存都走**命令行用的那条写入路径**，并带上你加载时的那份修订。
 > 所以命令行刚改过的文件，在页面上会摆成一个冲突让你决定，而不是被悄悄盖掉。

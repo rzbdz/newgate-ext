@@ -45,8 +45,9 @@ normal = ark/deepseek-v3, backup/gpt-5.6
 light  = fast/glm-air
 ```
 
-没写出来的档位向上承接（`normal` 缺席由 `mid` 接）。`.json` 后缀也认，形状见
-`newgate profile edit` 打开的那一份。
+没写出来的档位向上承接（`normal` 缺席由 `mid` 接）。`.json` 后缀也认，形状
+`newgate profile kv ark` 摊出来的那份就是（想要什么样的 JSON，从那个形状推），
+或直接读 `~/.config/newgate/mappings/` 里的文件。
 
 ## 命令速查
 
