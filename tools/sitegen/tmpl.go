@@ -88,15 +88,13 @@ var landingTmpl = template.Must(template.New("landing").Parse(`<!doctype html>
     <a class="button ghost" href="{{.Base}}docs/">文档</a>
   </p>
 
-  <div class="browser" aria-label="newgate 的真实界面演示（可点）">
+  <div class="browser" aria-label="newgate 控制台">
     <div class="browser-bar">
       <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-      <span class="addr">newgate web · 档位绑定 · 就地编辑</span>
+      <span class="addr">newgate web</span>
     </div>
-    <iframe src="{{.Base}}demo/" title="newgate 控制台演示 — 真组件，假数据，没有后端" loading="eager"></iframe>
+    <iframe src="{{.Base}}demo/" title="newgate 控制台"></iframe>
   </div>
-  <p class="demo-note">上面不是截图，是<strong>真界面</strong>：真组件、假数据，点得动、改得了、
-     切得了模式。只有最后那一下「应用」不落盘——这里没有后端。</p>
   <ul class="chips">
     <li>一个静态二进制</li>
     <li>PATH shim 接管，配置就地改写</li>

@@ -97,19 +97,6 @@
 </script>
 
 <div class="page">
-  <div class="intro">
-    <h1>可点的界面演示</h1>
-    <p>
-      下面这几张卡是<strong>真的组件</strong>——与 <code>newgate web</code> 打开的那个
-      界面同一份代码、同一份样式。数据是假的，后端也是假的：编辑、切模式、加删一行
-      都在页面上真生效，只有最后那一下「保存」什么都不写。
-    </p>
-    <p class="dim">
-      这一段是 2026-09-21 的真实快照裁下来的形状，所以它不会随时间漂成「演示与产品
-      长得不一样」。
-    </p>
-  </div>
-
   <nav class="tabs">
     {#each cards as c (c.id)}
       <button class="tab" class:on={c.id === active} title={c.id} onclick={() => pick(c.id)}>

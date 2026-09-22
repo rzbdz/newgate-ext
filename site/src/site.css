@@ -211,15 +211,6 @@ body { background: var(--bg); }
   display: block; width: 100%; height: 640px;
   border: 0; background: var(--bg);
 }
-/* 演示页下面那句说明。它不是正文的引言（正文里第一节讲的是同一件事）——它是
-   **对上面那个窗口的图注**，所以贴着窗口、小一号、并且被一条竖线拉到窗口的左沿。 */
-.hero .demo-note {
-  margin: 14px auto 0; max-width: var(--wrap);
-  text-align: left; padding-left: 14px;
-  border-left: 2px solid var(--line);
-  font-size: 13px; color: var(--dim);
-}
-.hero .demo-note strong { color: var(--ink); }
 
 /* 一排「它是什么」的小标签：二进制、零依赖、MIT…。
    刻意不是徽章图（README 那位是图片，站点上没必要多几个外部请求）、也不是按钮

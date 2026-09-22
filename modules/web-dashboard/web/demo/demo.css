@@ -13,9 +13,6 @@
   margin: 0 auto;
   padding: 24px 16px 60px;
 }
-.intro { margin-bottom: 18px; }
-.intro h1 { font-size: 22px; margin: 0 0 10px; }
-.intro p { margin: 8px 0; }
 
 /* 演示页的 tab 条：与产品的 TabStrip 长得像，但**不是同一个东西**——那个要
    分组、要竖向切换、要按草稿画标记，而这里只有三张卡。共用一个组件的代价是给
