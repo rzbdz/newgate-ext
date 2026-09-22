@@ -11,7 +11,8 @@ export type Kind =
   | "records"
   | "series"
   | "table"
-  | "log";
+  | "log"
+  | "chains";
 
 export interface Concept {
   id: string;

@@ -13,6 +13,7 @@
   import Series from "./kinds/Series.svelte";
   import LogView from "./kinds/LogView.svelte";
   import Table from "./kinds/Table.svelte";
+  import Chains from "./kinds/Chains.svelte";
 
   let {
     concept,
@@ -166,6 +167,11 @@
       <Records data={shown} {draft} readonly={!concept.writable || !!concept.locked} onEdit={changed} />
     {:else if concept.kind === "table"}
       <Table data={shown} onAction={(row, a) => onRowAction?.(row, a)} />
+    {:else if concept.kind === "chains"}
+      <!-- 行上的按钮走 `onRowAction`（与 table 同一条），不是卡上的 `onAction`：
+           它改的是**这张卡里的一行**，跑完卡还在，重读快照就对；而卡上的动作是给
+           「把这一份设为默认」那种改完要换卡的事情用的。理由写在 Chains.svelte 里。 -->
+      <Chains data={shown} onAction={(row, a) => onRowAction?.(row, a)} />
     {:else if concept.kind === "series"}
       <Series data={shown} />
     {:else if concept.kind === "log"}

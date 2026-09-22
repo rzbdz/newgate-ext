@@ -21,7 +21,19 @@
   --danger: #d96a6a;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --radius: 10px;
+  /* 两条宽度，全站只有这两条：
+   *
+   *   --wrap   版心。页眉、页脚、hero、演示窗口都占满它——媒体占满版心是这张
+   *            页面唯一「大」的东西，缩窄它就只是个小窗口。
+   *   --prose  正文列。文字比媒体窄，因为它要的是每行 30~45 个汉字；占满版心
+   *            的话一行七八十个字，眼睛换行时会跳行。
+   *
+   * 关键不在两个数，在**它们共用同一条左轴**：`main.landing` 与页脚都是
+   * `--wrap` 的居中盒，正文列从盒子的左内边距起、演示窗口也从同一个位置起。
+   * 正文自己居中（或另起一列）而窗口占满版心的话，页面上会同时出现三条约不齐
+   * 的竖边——那读起来就是「没做完」，而不是风格。 */
   --wrap: 1100px;
+  --prose: 720px;
 
   /* 这张页面支持哪几种主题。**不是**给 CSS 用的（下面的 `@media` 才是），是给
      浏览器自己那块界面用的：页面滚动条、`<pre>` 的横向滚动条、表单控件。
@@ -207,8 +219,20 @@ body { background: var(--bg); }
 .browser-bar .dot:nth-child(2) { background: #d9a441; }
 .browser-bar .dot:nth-child(3) { background: #4ea87a; }
 .browser-bar .addr { margin-left: 8px; flex: 1; }
+/* 4:3，而且是**比例**不是高度。
+ *
+ * 原来写的是 `height: 640px`（窄屏 480px），那是「按桌面宽度调出来的一个数」：
+ * 版心一变、窗口一窄，里头的界面就跟着被裁——它是个 1100×640 的取景框，而取景框
+ * 里的东西是活的。比例交给窗口自己算，界面就永远整个在里面。
+ *
+ * 为什么是 4:3 而不是 16:9：里面的界面是**竖向**的（左边栏 + 一列卡片），16:9 的
+ * 框子会把下半张卡裁掉，那正好是最该让人看见的部分。
+ *
+ * `max-height` 是给**很宽的**窗口兜底的：4:3 在 1100px 宽上是 825px 高，那比很多
+ * 笔记本的可视区还高，首屏就只剩这张窗口了。封到 600px 之后比例由宽度说了算
+ * ——窄屏上仍旧是严格的 4:3（那里宽高都远没到上限）。 */
 .browser iframe {
-  display: block; width: 100%; height: 640px;
+  display: block; width: 100%; aspect-ratio: 4 / 3; max-height: 600px;
   border: 0; background: var(--bg);
 }
 
@@ -236,9 +260,12 @@ body { background: var(--bg); }
  * 「一列 + 编号 + 一条竖线」是这个信息量下最经得起看的那一种。
  */
 main.landing {
-  max-width: 780px; margin: 0 auto;
+  max-width: var(--wrap); margin: 0 auto;
   padding: 8px 20px 40px;
 }
+/* 正文列比版心窄，但**贴着版心的左内边距**——见 `--prose` 那段：它要和上面的
+   演示窗口共用同一条左轴。把这一列居中就是第三条竖边。 */
+main.landing > * { max-width: var(--prose); }
 main.landing h2 {
   font-size: 22px; margin: 40px 0 8px;
 }
@@ -267,7 +294,10 @@ main.landing .feat pre { margin: 10px 0; }
   .shell { grid-template-columns: 1fr; gap: 18px; }
   nav.side { position: static; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
   nav.side ul { display: flex; flex-wrap: wrap; gap: 4px; }
-  .browser iframe { height: 480px; }
+  /* 这里原来重设 `height: 480px`——它把上面那条 4:3 悄悄废掉了：`height` 与
+     `aspect-ratio` 同时给的时候，高度说了算，比例不再参与计算。窄屏正是最该守住
+     比例的地方（框子小、里头的界面最容易整个被裁掉），所以这一条现在什么都不做
+     ——框子的高度由宽度乘出来。 */
   main.landing h2 { font-size: 19px; }
   main.landing .feat { padding-left: 14px; margin: 28px 0; }
   main.landing .feat h2 { font-size: 18px; }

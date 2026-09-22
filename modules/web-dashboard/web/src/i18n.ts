@@ -79,6 +79,8 @@ const en: Record<string, string> = {
   "no counters yet — nothing has gone through the gateway since it started.":
     "no counters yet — nothing has gone through the gateway since it started.",
   "no rows": "no rows",
+  "no steps": "no candidates",
+  "no profiles": "no profiles yet",
   tail: "tail",
   "only the tail is shown": "only the tail is shown",
   follow: "follow",
@@ -155,6 +157,8 @@ const zhHans: Record<string, string> = {
   "no counters yet — nothing has gone through the gateway since it started.":
     "还没有计数器 —— 网关起来之后没有请求经过。",
   "no rows": "没有数据",
+  "no steps": "没有候选",
+  "no profiles": "还没有任何档位文件",
   tail: "尾部",
   "only the tail is shown": "只显示最后一段",
   follow: "跟随",
