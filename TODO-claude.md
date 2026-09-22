@@ -89,10 +89,12 @@ view.go     // Concept{ID:"home.chains", Kind: view.KindChains, Order:…}
   `Chains.svelte` 的 props 注释里：行上的动作改的是**这张卡里的一行**，跑完卡还在
   而这一屏上的链都变了，重读快照就对；卡上的动作（`RunConceptAction`）是给
   「把这一份设为默认」那种改完**要换一张卡**的事情用的。
-  前端已经把行 ID 拼成 `` `${profile}\u0000${tier}` ``（`\u0000` 在档位名里不出现，
-  所以它是一道分不开的分隔符）——**后端在 `RunRowAction(conceptID, rowID, actionID)`
-  里按 `\u0000` 拆**。这条契约目前只有 `Chains.svelte` 的注释写着，两边实现时
-  **要一起写、一起测**。
+  前端已经把行 ID 拼成 `` `${profile}/${tier}` ``（`Chains.svelte` 的 `rowID`）。
+  **2026-09-22 修正**：这条契约的真相在内核——`ChainRow.ID` 由贡献者拼、`rowActions`
+  按它全卡扫一遍对号（`core/lib/view/view.go:1056`），单测钉的是 `"alt/heavy"`
+  （`core/lib/view/view_test.go` 的 `TestRunRowActionWorksOnChainCards`）。前端原先
+  拼的 `\u0000` 是**写错的那一半**，已改成 `/`。所以 `modules/home` 拼 `ChainRow.ID`
+  时照 `profile + "/" + tier` 写，前端不用改。
 
 **写路径**（还没做，落笔时按这个来）：`configapi` **没有**暴露「改某一档的绑定」
 这个方法，所以要么

@@ -2,6 +2,7 @@
   "distribution": "dashboard",
   "modules": [
     "i18n",
+    "home",
     "deepseek",
     "glm",
     "claudecode_deepseek",

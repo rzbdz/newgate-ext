@@ -54,6 +54,7 @@
     "Backfill the thinking block (hand 3)": {},
     "Bash classifier: the whole chain is rerouted to light": {},
     "Binding mode": {},
+    "Chains": {},
     "Classifier config": {},
     "Classifier override": {},
     "Classifier rerouting": {},
@@ -75,8 +76,10 @@
     "GLM models treat a missing thinking field as thinking on (Anthropic semantics say off) → requests that never asked to think get dragged into ten-plus seconds\non the Claude Code path an explicit disabled is filled in when it is absent (present is left alone); OpenAI-dialect clients (opencode) have no such field to write, so they are not touched": {},
     "GLM upstream quirk patches": {},
     "Generated automatically when oh-my-openagent is taken over. default is the binding this key falls back to when the profile does not spell it out; to move a slot to another tier, edit overrides (it accepts \"@other-key\" / \"tier name\" / \"provider/model\"), or write this key directly in the profile.": {},
+    "Home": {},
     "Interface": {},
     "Naked": {},
+    "Overview": {},
     "Repair the tail shape (hand 4)": {},
     "The model name codex itself sends — copy it out of `codex debug models` (the slug).": {},
     "Usage: newgate omo [ls | use <key> <binding> | unset <key> | mode current|suggested | explain <key>]": {},
@@ -100,10 +103,12 @@
         "value"
       ]
     },
+    "a reference loop": {},
     "a row has no model name — nothing would ever match it": {},
     "a status provider cannot be nil": {},
     "accepted but not rendered": {},
     "adopt them all": {},
+    "already on the chain": {},
     "another sync round is already running; this round was skipped": {},
     "api_key missing": {},
     "arch": {},
@@ -289,6 +294,7 @@
       "other": "degraded {n} custom tools to standard functions (DeepSeek rejects any custom tool other than apply_patch with 400)"
     },
     "diagnostics": {},
+    "disabled": {},
     "dump material": {},
     "e.g. gpt-5.6-luna": {},
     "each key follows the recommendation, derived from model build and variant strength": {},
@@ -389,6 +395,7 @@
       ]
     },
     "newgate (simple-cli) — a minimal UI. Available: status": {},
+    "no api_key": {},
     "no available candidate": {},
     "no omo slot registry; run newgate on opencode first": {},
     "no profiles yet; run `newgate init` first": {},
@@ -420,6 +427,7 @@
       ]
     },
     "not bound": {},
+    "not defined": {},
     "note: {msg}": {
       "args": [
         "msg"
@@ -443,6 +451,8 @@
     },
     "opencode": {},
     "opencode is not installed on this machine — nothing on this card takes effect yet. Install it with `newgate opencode -y`.": {},
+    "other": {},
+    "past max attempts": {},
     "previewing needs Content-Type: application/json (got {ct})": {
       "args": [
         "ct"
@@ -604,6 +614,7 @@
       ]
     },
     "the interface is on loopback only; nothing listens on other interfaces": {},
+    "the landing screen: every chain this machine resolves right now, in one view": {},
     "the model `codex review` runs on; separate from the main one": {},
     "the model and provider live in ~/.codex/config.toml": {},
     "the model codex runs on; written into config.toml by takeover": {},
@@ -720,6 +731,7 @@
         "slug"
       ]
     },
+    "unavailable": {},
     "unknown command \"{cmd}\" (see the list with newgate status)": {
       "args": [
         "cmd"
@@ -828,6 +840,12 @@
         "note",
         "why"
       ]
+    },
+    "{n} candidate did not make it: {reasons}": {
+      "args": [
+        "reasons"
+      ],
+      "other": "{n} candidates did not make it: {reasons}"
     },
     "{n} command": {
       "args": [

@@ -2,36 +2,21 @@
  *
  * 卡片那一族的样式（.card / .row / .pill / .mono …）不在这里——它们是产品的
  * （`src/app.css` 是全局的），演示页直接 import 那一份，见 main.ts 的说明。
- * 这个文件只管**产品里不存在**的东西：演示页的报头、它自己的 tab 条、toast。
+ * 这个文件只管**产品里不存在**的东西：演示页自己的 toast。
+ *
+ * 那份壳的版面（侧栏 / 顶栏 / 网格）住在 DemoShell.svelte 的 `<style>` 里，与产品
+ * 那边把 `.shell` 放在 app.css 里是同一个理由的反面：产品的网格必须全局，因为它
+ * 要管子组件的**根元素**（Sidebar / TabStrip 都是组件）；演示页的壳整块都在自己
+ * 那一个文件里，不需要谁来给它定位置。
  *
  * 为什么不把这几条塞进 app.css：那一份会进 web/dist、进那个静态二进制。演示页
  * 的样式进了产品产物，就是给每一个用户多发几百字节、并且在 review 时留下一条
  * 「.toast 是谁在用」的死代码。 */
 
-.page {
-  max-width: 860px;
-  margin: 0 auto;
-  padding: 24px 16px 60px;
-}
-
-/* 演示页的 tab 条：与产品的 TabStrip 长得像，但**不是同一个东西**——那个要
-   分组、要竖向切换、要按草稿画标记，而这里只有三张卡。共用一个组件的代价是给
-   产品那条路加三个只有演示页会用到的开关。 */
-.tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
-.tabs .tab {
-  padding: 5px 11px;
-  border-radius: 99px;
-  border: 1px solid var(--line);
-  background: var(--panel);
-  color: var(--dim);
-  cursor: pointer;
-  font: inherit;
-  font-size: 13px;
-}
-.tabs .tab.on { color: var(--ink); border-color: var(--accent); }
-.tabs .tab:hover { color: var(--ink); }
-
-.savebar { margin-top: 4px; }
+/* 演示页的 .shell 是 `height: 100%` 的网格，它的父级得有确定高度——产品那边靠
+   app.css 那句 `html, body, #app { height: 100% }`，这里再写一遍是**故意的冗余**
+   （见 main.ts：演示页共用产品那份 CSS，但它不 import App.svelte，壳是自己写的）。 */
+#app { height: 100%; }
 
 /* toast：一句说清「这是演示」。
    固定在屏幕下方、几秒后自己消失——它不是一条要用户处理的错误，只是一句话。 */

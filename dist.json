@@ -2,6 +2,7 @@
   "distribution": "default",
   "modules": [
     "i18n",
+    "home",
     "tui",
     "deepseek",
     "glm",

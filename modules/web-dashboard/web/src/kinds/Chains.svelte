@@ -44,8 +44,8 @@
      * **同一张卡里的一行**，卡还在。两条路都丢掉了「跑一下」这个动作本身，只是回头
      * 看的对象不同——这正是它们该分开的地方。
      *
-     * 行 ID 用 `profile + "\u0000" + tier`：见下面 rowID 那段（`\u0000` 在档位名里
-     * 不出现，所以它是一道分不开的分隔符）。
+     * 行 ID 由下面 rowID 给出（`profile + "/" + tier`，与内核 ChainRow.ID 的构造
+     * 一致——那边也这么拼，`RunRowAction` 拿到的就是这个串）。
      */
     onAction?: (row: string, a: RowAction) => void;
   } = $props();
@@ -58,9 +58,13 @@
    * 两边都要，因为「把 heavy 换成 zhipu/glm-4」这件事在 `demo.kv` 与 `alt.kv` 里
    * 是两件不同的事——只带档位名的话，后端没法知道该动哪一份文件（它只能去猜
    * 「当前生效的那一份」，而这一屏上明明每份都列着）。
+   *
+   * 拼法**与后端一模一样**（`profile + "/" + tier`，见内核 ChainRow.ID 那段：
+   * 行 ID 是机器标记，两边各拼一次就必须拼成同一个串）。这里不自己另立一种分隔符
+   * ——后端拿这个串去 `RunRowAction` 里对号，对不上的症状是「按钮点了没反应」。
    */
   function rowID(card: Card, role: Role): string {
-    return `${card.profile}\u0000${role.tier}`;
+    return `${card.profile}/${role.tier}`;
   }
 
   /** 这一站来自哪一份 profile——**与卡片同名时不重复写**（那是绝大多数情况）。 */

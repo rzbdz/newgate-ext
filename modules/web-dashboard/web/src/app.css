@@ -1,27 +1,51 @@
 /* 设计系统的全部：一层底色、一层卡片、一条分隔线、一个强调色。不引 UI 框架——
-   这个界面是给工程师看的，密度和稳定比动效重要（同一份配置看两次，位置要一样）。 */
+   这个界面是给工程师看的，密度和稳定比动效重要（同一份配置看两次，位置要一样）。
+
+   # 色板：一整套暖色，深色为默认（2026-09-22 换）
+
+   换之前是「冷灰 + 蓝强调」，那是随手挑的（`#0f1115` / `#5b8def`）——不难看，但
+   它没有任何东西在背后撑着：换一件同类的工具，配色不会让你觉得「这也是它」。
+
+   现在这一套抄自 cc-switch 的参考界面（`/tmp/ccs/css.css` 里那些 HSL 三元组，
+   不是肉眼看图估的）：**底色是暖米/暖棕，强调是暖橙**。判据是它把「暖」这件
+   事贯彻到底了——边框、静默底、次要文字全都带同一条橙黄色相（H≈30–38），
+   而不是「灰底上盖一个彩色按钮」。本界面里唯一的冷色是 `--ok` 那个绿（语义色
+   不该为了统一色相而变味）。
+
+   深浅两套的关系是**对调过的**：那边把暖米色当浅色主题、深色是另一套覆盖；这里
+   深色是默认（工程师大多在深色终端旁边看它），浅色走 `prefers-color-scheme`。
+   两套的 `--accent` 不是同一个亮度——同一支橙压在浅底上要更深、压在深底上要更亮，
+   照抄一个值会让其中一边的对比度掉到读不清。 */
 :root {
-  --bg: #0f1115;
-  --panel: #161a21;
-  --panel-2: #1b2028;
-  --line: #242a34;
-  --ink: #e6e9ef;
-  --dim: #8b93a3;
-  --accent: #5b8def;
-  --ok: #4ea87a;
-  --warn: #d9a441;
-  --danger: #d96a6a;
+  --bg: hsl(30 12% 11%);
+  --panel: hsl(30 11% 14%);
+  --panel-2: hsl(30 10% 18%);
+  --line: hsl(30 9% 24%);
+  --ink: hsl(35 20% 92%);
+  --dim: hsl(33 10% 62%);
+  --accent: hsl(15 65% 56%);
+  --ok: hsl(142 45% 55%);
+  --warn: hsl(38 82% 58%);
+  --danger: hsl(0 62% 62%);
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  --radius: 10px;
+  /* 两级圆角（cc-switch 同款）：卡片 12px、小件 8px。只有一套的话，要么卡片
+     太方（8px 在大块面上几乎看不出圆），要么按钮太圆（12px 在 26px 高的按钮上
+     会像个胶囊）。 */
+  --radius: 12px;
+  --radius-sm: 8px;
 }
 @media (prefers-color-scheme: light) {
   :root {
-    --bg: #f6f7f9;
-    --panel: #fff;
-    --panel-2: #f2f4f7;
-    --line: #e3e6ec;
-    --ink: #1b1f27;
-    --dim: #6b7280;
+    --bg: hsl(38 28% 91%);
+    --panel: hsl(35 25% 89%);
+    --panel-2: hsl(35 20% 85%);
+    --line: hsl(35 18% 78%);
+    --ink: hsl(30 15% 15%);
+    --dim: hsl(30 12% 40%);
+    --accent: hsl(15 65% 48%);
+    --ok: hsl(142 55% 32%);
+    --warn: hsl(32 75% 40%);
+    --danger: hsl(0 62% 45%);
   }
 }
 
@@ -39,7 +63,7 @@ button {
   color: var(--ink);
   background: var(--panel-2);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 5px 11px;
   cursor: pointer;
 }
@@ -54,7 +78,7 @@ input, select, textarea {
   color: var(--ink);
   background: var(--bg);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 4px 8px;
   outline: none;
 }

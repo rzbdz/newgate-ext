@@ -88,6 +88,10 @@
       "text": "绑定方式",
       "reviewed": true
     },
+    "Chains": {
+      "text": "候选链",
+      "reviewed": true
+    },
     "Classifier config": {
       "text": "分类器配置",
       "reviewed": true
@@ -172,12 +176,20 @@
       "text": "接管 oh-my-openagent 时自动生成。default 是这个键在 profile 里没写时的缺省归属；想让某个槽位换档位，改 overrides（支持 \"@别的键\" / \"档位名\" / \"provider/模型\"），或在 profile 里直接写这个键。",
       "reviewed": true
     },
+    "Home": {
+      "text": "主页",
+      "reviewed": true
+    },
     "Interface": {
       "text": "界面",
       "reviewed": true
     },
     "Naked": {
       "text": "裸奔",
+      "reviewed": true
+    },
+    "Overview": {
+      "text": "总览",
       "reviewed": true
     },
     "Repair the tail shape (hand 4)": {
@@ -240,6 +252,10 @@
       "text": "引用写成 @键名（如 @normal），得到 {value}",
       "reviewed": true
     },
+    "a reference loop": {
+      "text": "引用成了环",
+      "reviewed": true
+    },
     "a row has no model name — nothing would ever match it": {
       "text": "有一行没写模型名——那一行谁也匹配不上",
       "reviewed": true
@@ -254,6 +270,10 @@
     },
     "adopt them all": {
       "text": "全部采纳",
+      "reviewed": true
+    },
+    "already on the chain": {
+      "text": "已经在链上",
       "reviewed": true
     },
     "another sync round is already running; this round was skipped": {
@@ -468,6 +488,10 @@
       "text": "诊断",
       "reviewed": true
     },
+    "disabled": {
+      "text": "已关闭",
+      "reviewed": true
+    },
     "dump material": {
       "text": "诊断素材",
       "reviewed": true
@@ -632,6 +656,10 @@
       "text": "newgate（simple-cli）——极简界面。可用：status",
       "reviewed": true
     },
+    "no api_key": {
+      "text": "没有 api_key",
+      "reviewed": true
+    },
     "no available candidate": {
       "text": "无可用候选",
       "reviewed": true
@@ -676,6 +704,10 @@
       "text": "未绑定",
       "reviewed": true
     },
+    "not defined": {
+      "text": "没有定义",
+      "reviewed": true
+    },
     "note: {msg}": {
       "text": "注意: {msg}",
       "reviewed": true
@@ -718,6 +750,14 @@
     },
     "opencode is not installed on this machine — nothing on this card takes effect yet. Install it with `newgate opencode -y`.": {
       "text": "这台机器上没有装 opencode —— 这张卡上的设置暂时都不会生效。用 `newgate opencode -y` 装上它。",
+      "reviewed": true
+    },
+    "other": {
+      "text": "其他",
+      "reviewed": true
+    },
+    "past max attempts": {
+      "text": "超出尝试上限",
       "reviewed": true
     },
     "previewing needs Content-Type: application/json (got {ct})": {
@@ -972,6 +1012,10 @@
       "text": "界面只监听 loopback，其他网卡上没有监听",
       "reviewed": true
     },
+    "the landing screen: every chain this machine resolves right now, in one view": {
+      "text": "首屏：这台机器此刻解析出来的每一条链，一屏看完",
+      "reviewed": true
+    },
     "the model `codex review` runs on; separate from the main one": {
       "text": "`codex review` 跑的模型；与主模型分开",
       "reviewed": true
@@ -1132,6 +1176,10 @@
       "text": "有两行都叫「{slug}」——只会有一行真的匹配得上",
       "reviewed": true
     },
+    "unavailable": {
+      "text": "不可用",
+      "reviewed": true
+    },
     "unknown command \"{cmd}\" (see the list with newgate status)": {
       "text": "不认识 \"{cmd}\"（newgate status 看清单）",
       "reviewed": true
@@ -1234,6 +1282,10 @@
     },
     "{note}; {why}": {
       "text": "{note}；{why}",
+      "reviewed": true
+    },
+    "{n} candidate did not make it: {reasons}": {
+      "other": "{n} 个候选没进链：{reasons}",
       "reviewed": true
     },
     "{n} command": {
