@@ -180,6 +180,16 @@ jobs:
       - name: DeepSeek 尾部形状的出身判据（假上游）
         run: bash mock/e2e_deepseek_tail_origin.sh
 
+      # Responses 方言与 messages 方言拿到**同一份**适配（用户 2026-09-23 的要求：
+      # 「make sure code adaption is good as claude one」）。锁四件事——思考强度
+      # 不受支持时改写（含**流式**那条「HTTP 200 + 事件流里一条 response.failed」，
+      # 只看状态码的判据在它上面全绿）、重启后第一发靠落盘缓存救回来（流式的失败
+      # 走不到 learnQuirks，所以缓存是唯一那条路）、跨上游接手未闭合 tool loop 时
+      # 往 input[] 末尾有损重建、以及三种「不该动就不动」（上游收下的强度、形状
+      # 认不出的 reasoning、出身不明的 call_id）。
+      - name: Responses 方言的适配（思考强度 / 重启缓存 / 跨上游迁移）
+        run: bash mock/e2e_codex_responses.sh
+
       # 多配置多 bin 的回归守卫：骨架配置（框架 + hello）装出来的 `newgate`
       # 就该是 hello world。它同时是「内核那条入口申报链在发行版这一侧真的通」
       # 的证据——这条链断了的话，骨架发行版跑起来只会报一句「没人认领」并退出。
@@ -196,7 +206,7 @@ jobs:
       - name: 失败时导出日志
         if: failure()
         run: |
-          for d in /tmp/newgate-dist-e2e.* /tmp/newgate-claude-e2e.* /tmp/newgate-tailorigin.*; do
+          for d in /tmp/newgate-dist-e2e.* /tmp/newgate-claude-e2e.* /tmp/newgate-tailorigin.* /tmp/newgate-codexresp.*; do
             [ -d "$d" ] || continue
             echo "=== $d ==="
             find "$d" -name '*.log' -exec sh -c 'echo "--- {}"; tail -80 "{}"' \;
