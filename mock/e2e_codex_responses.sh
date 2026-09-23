@@ -145,6 +145,34 @@ stop_handed_over() {
   local pid
   pid=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["pid"])' "$NEWGATE_HOME/.newgate.pid" 2>/dev/null) || return 0
   [ -n "$pid" ] && kill "$pid" 2>/dev/null
+  HANDED_OVER=""
+}
+
+# wait_serve_down 把自己起的那个 __serve 停干净。
+#
+# 为什么不能只写 `kill` + `wait`：`__serve` 收到信号之后要先**排空在途请求**再退出，
+# 而立刻起一个新进程会撞上还没放开的端口——新进程 bind 失败直接死，留下的症状是
+# 「后面每一节都莫名其妙」（2026-09-23 实测：删掉缓存之后第一发仍然被学到的东西
+# 救掉，看着像机制没生效，其实是新进程根本没起来、老进程还活着）。
+#
+# 这里等到端口真的**连不上**为止，再交给调用方去起下一个。SIGKILL 是兜底：排空
+# 卡住时不能让整条 e2e 挂在那里。
+wait_serve_down() {
+  [ -n "${SERVE_PID:-}" ] && kill "$SERVE_PID" 2>/dev/null
+  # 交接（graceful_handover）之后端口归**另一个**进程，它不在 SERVE_PID 里也不在
+  # 这个脚本的进程组里。不收它的话，下面 start_serve 起的新进程 bind 失败直接死，
+  # 而后面每一发请求都还在跟那个老进程说话——它内存里带着上一节学到的东西，于是
+  # 「删掉缓存之后第一发」看着像机制没生效（2026-09-23 实测踩过这个坑）。
+  stop_handed_over
+  for _ in $(seq 1 60); do
+    if ! curl -sf -o /dev/null "http://127.0.0.1:$PORT/__newgate/status"; then
+      wait "$SERVE_PID" 2>/dev/null
+      return 0
+    fi
+    sleep 0.1
+  done
+  kill -9 "$SERVE_PID" 2>/dev/null
+  wait "$SERVE_PID" 2>/dev/null
 }
 
 start_serve() {
@@ -245,11 +273,10 @@ echo "== 5. 换版/重启后的第一发（流式）：只有落盘缓存能救�
 # 而流式的失败是「HTTP 200 + 事件流里一条 response.failed」，`learnQuirks` 只看
 # status>=400，永远学不到。于是「重启后第一发必 400、过一会儿自己好」。
 #
-# 换成真进程重启（kill + 起），再手工写一份 probe-capabilities.json——那正是
+# 换成真进程重启（停干净 + 起），再手工写一份 probe-capabilities.json——那正是
 # `newgate probe` 探过一次会留下的东西，也是 `probe.LoadCachedCapabilities` 读回的
 # 那份（见 core/modules/thinking/st-always.go 的 matchTarget）。
-kill "$SERVE_PID" 2>/dev/null
-wait "$SERVE_PID" 2>/dev/null
+wait_serve_down
 cat > "$NEWGATE_HOME/probe-capabilities.json" <<'JSON'
 {"targets":{"up/mock-normal":{"supports":0,"known":0,"quirks":1,"checked_at":"2026-09-23T00:00:00Z"}}}
 JSON
@@ -277,8 +304,7 @@ echo "== 5b. 学到的东西活过**换版**：交接之后的新进程，第一
 #
 # 从干净的家目录开始，这样「盘上有东西」只可能是我们自己写下去的。
 rm -f "$NEWGATE_HOME/probe-capabilities.json"
-kill "$SERVE_PID" 2>/dev/null
-wait "$SERVE_PID" 2>/dev/null
+wait_serve_down
 start_serve 5 || exit 1
 check "全新进程的第一发（表是空的）：原样发出去，上游 400" \
   "$(POST "$SANDBOX/req-medium.json" "$SANDBOX/out-cold.json")" "400"
@@ -294,6 +320,50 @@ check "换版之后盘上确实有一笔我们自己学的（手写的那份已�
 RESET
 check "**换版后的第一发就 200**（这里以前必 400：内存表空了，而落盘只发生在探活里）" \
   "$(POST "$SANDBOX/req-medium.json" "$SANDBOX/out-after-upgrade.json")" "200"
+
+echo
+echo "== 5c. **只从流里**学：上游把拒绝塞在 200 里，状态码那条路够不着 =="
+# 5 与 5b 用的都是非流式请求，于是那个 400 走的是 HTTP 状态码，`learnQuirks` 学得到。
+# 而用户报的现场**只有流式**：Codex 永远发 `stream:true`，上游先 200 开流、再把拒绝
+# 塞进事件流（`response.failed`）。按状态码写的判据在这条路上一次都不触发——表永远
+# 是空的，补丁永远不生效，用户看到的就是那句「stream disconnected before completion」。
+#
+# 这一节是它的逐字复现：从干净的家目录起，**第一发就是流式**，而且不许有人手写缓存。
+# 顺序是**先停、再删**，反过来测不到东西：停机那一步自己会把路上学到的毛病写回
+# 盘上（那正是 5b 验的机制），于是删了又立刻长回来——第一发会被上一节学到的东西
+# 救掉，这一节就变成了一条永远绿的假测试。
+wait_serve_down
+rm -f "$NEWGATE_HOME/probe-capabilities.json"
+start_serve 6 || exit 1
+write_req "$SANDBOX/req-stream-medium.json" \
+  '{"model":"normal","stream":true,"reasoning":{"effort":"medium"},"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}]}]}'
+RESET
+check "冷启动的流式第一发：HTTP **200**（状态码在这一路上什么也不说明）" \
+  "$(POST "$SANDBOX/req-stream-medium.json" "$SANDBOX/out-stream-cold.sse")" "200"
+has "而流里是那条失败（客户端看到的就是它）" 'response.failed' "$SANDBOX/out-stream-cold.sse"
+check "上游收到的 effort 仍是 medium（没学过就不许猜）" \
+  "$(UPSAW 'body["reasoning"]["effort"]')" "medium"
+settle
+has "日志里留下了一句「上游在流里报了失败」（不静默：用户得能事后查到）" \
+  'reported a failure inside the event stream' "$LOG"
+has "也记下了从这一发学到的东西" "learned up/mock-normal" "$LOG"
+
+RESET
+check "紧接着的流式第二发：200" \
+  "$(POST "$SANDBOX/req-stream-medium.json" "$SANDBOX/out-stream-warm.sse")" "200"
+hasnt "第二发的流里没有那条失败（学到的补丁真的用上了）" \
+  'response.failed' "$SANDBOX/out-stream-warm.sse"
+has "第二发正常收尾" 'response.completed' "$SANDBOX/out-stream-warm.sse"
+check "上游收到的 effort 已改成 low" \
+  "$(UPSAW 'body["reasoning"]["effort"]')" "low"
+
+# 学到的东西必须活过换版——**这条路**上尤其要，因为它连「撞 400」这个学习机会都
+# 只在第一次出现：第二发起上游就收下了。
+graceful_handover 6 || exit 1
+RESET
+check "换版后的第一发就是 200（这里以前必现「stream disconnected before completion」）" \
+  "$(POST "$SANDBOX/req-stream-medium.json" "$SANDBOX/out-stream-after.sse")" "200"
+hasnt "换版后的流里也没有 response.failed" 'response.failed' "$SANDBOX/out-stream-after.sse"
 
 echo
 echo "== 6. 跨上游迁移：同一轮 tool loop 换到 DeepSeek 接手 =="
@@ -351,8 +421,7 @@ echo "== 7. 出身不明就不动：没见过那个 call_id 时迁移一个字�
 # 在它眼里正是外来，于是它照样会补一条。两条相加的结果是「补了两条」，而这一节
 # 要问的是「迁移那一手在没有出身时会不会瞎动手」。关掉第 5 手之后，唯一能往
 # input[] 里加东西的只剩迁移，数出来的条数才有意义。
-kill "$SERVE_PID" 2>/dev/null
-wait "$SERVE_PID" 2>/dev/null
+wait_serve_down
 start_serve 3 || exit 1
 "$BIN" plugin deepseek.tail-shape-responses off 5m >"$SANDBOX/off-tail5.log" 2>&1
 sleep 1.5   # 等一次配置重载（开关与 providers.json 走同一条路）
