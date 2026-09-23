@@ -104,7 +104,10 @@ func modelConcept() view.Concept {
 		// 让用户填写啊」，那次反馈同时说明了两件事：表要有，而且它和模式是一件事。
 		// 没装 codex 的机器上这张卡整张锁灰：改档位写得再对，接管也不会发生——
 		// 那份 config.toml 根本不存在（判据见 confighook.NotInstalled）。
-		Locked: agentapi.NotInstalled(a),
+		// facts{} 必须传：本模块的 Installed 比通用 PATH 查找多认 nvm 的版本
+		// bin 目录（见 facts.go：daemon 的 PATH 里没有它），漏传就退化成
+		// 「daemon 的 PATH 上没有 codex」= 卡片对这台机器说谎。
+		Locked: agentapi.NotInstalled(a, facts{}),
 	}
 }
 

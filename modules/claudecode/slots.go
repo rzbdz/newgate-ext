@@ -87,4 +87,8 @@ func (facts) SlotTier(s agentapi.Slot) string { return slotsOf().Tier(s) }
 func slotNote(name, def string) string { return slotsOf().Note(name, def) }
 
 // lockReason 说这两张卡此刻有没有意义；有意义返回空串（见 confighook.NotInstalled）。
-func lockReason() string { return agentapi.NotInstalled(Agent()) }
+//
+// facts{} 要走同一份判据：本客户端目前没有额外的知识（Installed 就是 OnPath），
+// 但把它传进去，将来真加了探测（比如 claude 装在别处）时这张卡会跟着变——
+// 漏传的症状是「卡锁着、可它明明装了」，而那种不一致在界面上看不出来源。
+func lockReason() string { return agentapi.NotInstalled(Agent(), facts{}) }
