@@ -72,6 +72,13 @@ mkdir -p "$NEWGATE_HOME/mappings" "$(dirname "$BIN")"
 cleanup() {
   [ -n "${UP_PID:-}" ] && kill "$UP_PID" 2>/dev/null
   [ -n "${SERVE_PID:-}" ] && kill "$SERVE_PID" 2>/dev/null
+  # 优雅交接之后端口归一个新进程（pid/lock 也跟着改到它名下），它不在这个脚本的
+  # 进程组里，上面那两个 kill 碰不到——不收的话这个沙箱的端口会一直占着，下一次
+  # 跑这条 e2e 就变成「新进程永远起不来」，而症状是**满屏无关的失败**（日志里
+  # 「端口被占」那行之外看不出任何线索，2026-09-23 实测踩过）。
+  if [ -n "${HANDED_OVER:-}" ]; then
+    stop_handed_over
+  fi
   if [ -n "${NEWGATE_E2E_KEEP:-}" ]; then
     echo "沙箱保留（NEWGATE_E2E_KEEP）: $SANDBOX"
   else
@@ -111,6 +118,34 @@ cat > "$NEWGATE_HOME/mappings/ds.json" <<'JSON'
  "roles":{"normal":[{"provider":"up","model":"mock-normal"}]}}
 JSON
 printf '{"default_profile":"ds","port":%s}' "$PORT" > "$NEWGATE_HOME/state.json"
+
+# graceful_handover：走**换版那条路**把 socket 交给一个新进程（daemon.SpawnHandoff）。
+#
+# 为什么这条 e2e 非有它不可：用户报的那次故障发生在**换版之后的第一发**，而换版
+# 走的是交接（新进程起来、老进程排空），不是「杀掉再起」。两条路对落盘的时机要求
+# 完全一样、代码却完全不重叠——只测其中一条，另一条上的顺序错误（比如「先交棒再
+# 落盘」）是测不出来的。2026-09-23 实测踩过：那种顺序下新进程读到的仍是旧缓存，
+# 换版后的第一发照样 400。
+graceful_handover() {
+  HANDED_OVER=1
+  local tok
+  tok=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["control_token"])' "$NEWGATE_HOME/state.json")
+  curl -s -X POST -H "Authorization: Bearer $tok" "http://127.0.0.1:$PORT/__newgate/upgrade" >"$SANDBOX/upgrade$1.json"
+  # 新进程接上要一会儿；SERVE_PID 此刻已经死了（老进程 os.Exit(0)，它**不是**
+  # 我们的子进程了——交接会把 pid/lock 改到新进程名下）。
+  for _ in $(seq 1 80); do
+    curl -sf -o /dev/null "http://127.0.0.1:$PORT/__newgate/status" && return 0
+    sleep 0.15
+  done
+  echo "交接之后端口没接上，见 $SANDBOX/upgrade$1.json"; return 1
+}
+
+# 交接之后端口归新进程，cleanup 里那个 kill 够不着它——按 pidfile 收。
+stop_handed_over() {
+  local pid
+  pid=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["pid"])' "$NEWGATE_HOME/.newgate.pid" 2>/dev/null) || return 0
+  [ -n "$pid" ] && kill "$pid" 2>/dev/null
+}
 
 start_serve() {
   "$BIN" __serve --port "$PORT" >"$SANDBOX/serve$1.log" 2>&1 &
@@ -230,6 +265,35 @@ hasnt "流里没有 response.failed（用户看到的「stream disconnected befo
   'response.failed' "$SANDBOX/out-stream.sse"
 check "上游收到的 effort 已被改成 low（缓存那一路真的接上了）" \
   "$(UPSAW 'body["reasoning"]["effort"]')" "low"
+
+echo
+echo "== 5b. 学到的东西活过**换版**：交接之后的新进程，第一发就不许再撞 =="
+# 5 那一节验的是「盘上有一份时新进程能读回来」，可那一份是测试**手写**的。这一节
+# 验的是另一件事，也是用户实际踩的那一次：**学到的东西自己写下去**。
+#
+# 两手都要落盘（换版路径 flush 在交棒之前、普通停机在排空之后），少一处的症状都是
+# 「换了版之后第一发又 400」——必现，而且没有任何表面原因（用户 2026-09-22 报的
+# 就是这一句：`stream disconnected before completion`）。
+#
+# 从干净的家目录开始，这样「盘上有东西」只可能是我们自己写下去的。
+rm -f "$NEWGATE_HOME/probe-capabilities.json"
+kill "$SERVE_PID" 2>/dev/null
+wait "$SERVE_PID" 2>/dev/null
+start_serve 5 || exit 1
+check "全新进程的第一发（表是空的）：原样发出去，上游 400" \
+  "$(POST "$SANDBOX/req-medium.json" "$SANDBOX/out-cold.json")" "400"
+RESET
+check "第二发 200（这一发之前那一条 400 已经被学到）" \
+  "$(POST "$SANDBOX/req-medium.json" "$SANDBOX/out-warm.json")" "200"
+check "第二发上游收到的是 low（学到的东西真的用上了）" \
+  "$(UPSAW 'body["reasoning"]["effort"]')" "low"
+
+graceful_handover 5 || exit 1
+check "换版之后盘上确实有一笔我们自己学的（手写的那份已经被删掉了）" \
+  "$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(d["targets"]["up/mock-normal"]["quirks"])' "$NEWGATE_HOME/probe-capabilities.json")" "1"
+RESET
+check "**换版后的第一发就 200**（这里以前必 400：内存表空了，而落盘只发生在探活里）" \
+  "$(POST "$SANDBOX/req-medium.json" "$SANDBOX/out-after-upgrade.json")" "200"
 
 echo
 echo "== 6. 跨上游迁移：同一轮 tool loop 换到 DeepSeek 接手 =="

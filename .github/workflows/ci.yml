@@ -206,8 +206,12 @@ jobs:
       - name: 失败时导出日志
         if: failure()
         run: |
-          for d in /tmp/newgate-dist-e2e.* /tmp/newgate-claude-e2e.* /tmp/newgate-tailorigin.* /tmp/newgate-codexresp.*; do
+          for d in /tmp/newgate-dist-e2e.* /tmp/newgate-claude-e2e.* /tmp/newgate-tailorigin.* /tmp/newgate-codexresp.* /tmp/newgate-codextools.*; do
             [ -d "$d" ] || continue
             echo "=== $d ==="
             find "$d" -name '*.log' -exec sh -c 'echo "--- {}"; tail -80 "{}"' \;
           done
+          # 端口被上一轮泄漏的进程占着时，失败长得**与端口无关**（新进程干脆起不来，
+          # 满屏都是「没连上」）。把占用者找出来比读十条超时有用得多。
+          echo "=== listeners on the e2e ports ==="
+          (ss -lntp 2>/dev/null || netstat -lntp 2>/dev/null) | grep -E ':(1809[0-9]|1810[0-9])' || echo "(none)"
