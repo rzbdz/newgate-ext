@@ -68,11 +68,14 @@
     "Claude Code's requests fall into DeepSeek thinking mode by default, but it does not carry third-party thinking blocks into the next round — so every call hits the 400 that says thinking must be passed back": {},
     "Clients": {},
     "Codex": {},
+    "Codex 0.155 puts tool definitions in `input[0]` (type=additional_tools) and every upstream we ship reads tools from the top level only: with the lift off the model sees no tools at all, answers in its own text format, and Codex never gets a tool_result back": {},
+    "Codex 0.155 puts tool definitions in `input[0]` (type=additional_tools) while every upstream we ship (Ark, DeepSeek, Claude, Gemini, GPT, Kimi, MiniMax, ...) reads tools from the top level only; without the lift the model sees no tools, answers in text, and the client never gets a tool_result. Switch off and every Codex call loses its tools.": {},
     "Codex model": {},
     "Codex model names": {},
     "Codex puts its tool definitions in input[0] (additional_tools) while DeepSeek reads tools from the top level; without the lift the model sees no tools at all and answers in its own text format, so the client never gets a tool_result": {},
     "DeepSeek thinking mode wants reasoning passed back verbatim, but the client strips it → 400\nso we put it back (the original the client carries → thinkcache; **no original means skip it, never invent one**); only the Claude Code path turns thinking off outright (it strips the blocks, so thinking would be spent for nothing); a foreign unclosed tool loop is first lossily rebuilt from the visible tool results, then DeepSeek takes over": {},
     "DeepSeek upstream quirk patches": {},
+    "DeepSeek's /responses accepts `custom` tools only for apply_patch and answers 400 for every other one (the message inside a namespace is a different one); with the degrade off a Codex request carrying any other custom tool is rejected outright": {},
     "GCM is unusable: {err}": {},
     "GLM models treat a missing thinking field as thinking on (Anthropic semantics say off) → requests that never asked to think get dragged into ten-plus seconds\non the Claude Code path an explicit disabled is filled in when it is absent (present is left alone); OpenAI-dialect clients (opencode) have no such field to write, so they are not touched": {},
     "GLM upstream quirk patches": {},
@@ -294,6 +297,7 @@
       ]
     },
     "default": {},
+    "degrade Codex custom tools for DeepSeek": {},
     "degraded {n} custom tool to a standard function (DeepSeek rejects any custom tool other than apply_patch with 400)": {
       "args": [
         "n"
@@ -338,12 +342,18 @@
       ]
     },
     "keeping the tier an older takeover wrote": {},
-    "lift Codex tools to the top level (the only step)": {},
+    "lift Codex tools from input[0] to the top level": {},
     "lifted {n} tool declaration from input[0] to the top level (DeepSeek reads tools only there)": {
       "args": [
         "n"
       ],
       "other": "lifted {n} tool declarations from input[0] to the top level (DeepSeek reads tools only there)"
+    },
+    "lifted {n} tool declaration from input[0] to the top level (most upstreams read tools only there)": {
+      "args": [
+        "n"
+      ],
+      "other": "lifted {n} tool declarations from input[0] to the top level (most upstreams read tools only there)"
     },
     "local changes archived to {dir} (restore from there)": {
       "args": [
@@ -684,7 +694,6 @@
         "err"
       ]
     },
-    "the tool definitions stay in input[0], where DeepSeek does not read them: the model sees no tools at all, answers in its own text format, and Codex never gets a tool_result back": {},
     "the trailing user turn holds only tool_result and no user instruction — appended a continue instruction (the upstream misreports an instruction-less tail as a missing reasoning_content)": {},
     "the web configuration interface: a BFF and the front-end bundle": {},
     "the whole special_treatment layer is off — none of this counts until it is switched back on": {},

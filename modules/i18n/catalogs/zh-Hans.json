@@ -8,6 +8,10 @@
       "text": " 等 {n} 个",
       "reviewed": true
     },
+    "\"the Responses input[] ends on a function_call_output whose call_id is not ours\" is no longer repaired (no \"continue\" appended), and the upstream misreports such an instruction-less tail as a missing reasoning_text and answers 400": {
+      "text": "「Responses 的 input[] 以别家产的 call_id 的 function_call_output 收尾」不再被修（不再追加「continue」），上游会把这种空指令尾部误报成 reasoning_text 缺失而 400",
+      "reviewed": true
+    },
     "\"the last user message holds only tool_result\" is no longer repaired (no \"continue\" appended), and the upstream misreports such an instruction-less tail as a missing reasoning_content and answers 400": {
       "text": "「最后一条 user 消息只有 tool_result」不再被修（不再追加「继续」），上游会把这种空指令尾部误报成 reasoning_content 缺失而 400",
       "reviewed": true
@@ -140,6 +144,10 @@
       "text": "Codex",
       "reviewed": true
     },
+    "Codex 0.155 puts tool definitions in `input[0]` (type=additional_tools) while every upstream we ship (Ark, DeepSeek, Claude, Gemini, GPT, Kimi, MiniMax, ...) reads tools from the top level only; without the lift the model sees no tools, answers in text, and the client never gets a tool_result. Switch off and every Codex call loses its tools.": {
+      "text": "Codex 0.155 把工具定义放在 `input[0]` 里（type=additional_tools），而我们装的每一家上游（Ark、DeepSeek、Claude、Gemini、GPT、Kimi、MiniMax …）都只从顶层 `tools` 读。不抬上去，模型一个工具都看不见，只能拿正文去「调工具」，客户端永远收不到 tool_result。关掉它 = 每一次 Codex 调用都没有工具。",
+      "reviewed": true
+    },
     "Codex model": {
       "text": "Codex 档位",
       "reviewed": true
@@ -192,12 +200,16 @@
       "text": "总览",
       "reviewed": true
     },
+    "Repair the Responses tail shape (hand 5)": {
+      "text": "修 Responses 尾部形状（第 5 手）",
+      "reviewed": true
+    },
     "Repair the tail shape (hand 4)": {
       "text": "修尾部形状（第 4 手）",
       "reviewed": true
     },
-    "Repair the Responses tail shape (hand 5)": {
-      "text": "修 Responses 尾部形状（第 5 手）",
+    "Responses input left untouched ({err})": {
+      "text": "Responses input 未改动（{err}）",
       "reviewed": true
     },
     "The model name codex itself sends — copy it out of `codex debug models` (the slug).": {
@@ -572,12 +584,12 @@
       "text": "沿用老版本接管写下的档位",
       "reviewed": true
     },
-    "lift Codex tools to the top level (the only step)": {
-      "text": "把 Codex 的工具抬到顶层（本模块唯一的一手）",
-      "reviewed": true
-    },
     "lifted {n} tool declaration from input[0] to the top level (DeepSeek reads tools only there)": {
       "other": "把 {n} 条工具声明从 input[0] 抬到了顶层（DeepSeek 只在那里读工具）",
+      "reviewed": true
+    },
+    "lifted {n} tool declaration from input[0] to the top level (most upstreams read tools only there)": {
+      "text": "把 {n} 条工具声明从 input[0] 抬到了顶层（多数上游只在那里读工具）",
       "reviewed": true
     },
     "local changes archived to {dir} (restore from there)": {
@@ -900,10 +912,6 @@
       "text": "尾部形状未改动（{err}）",
       "reviewed": true
     },
-    "Responses input left untouched ({err})": {
-      "text": "Responses input 未改动（{err}）",
-      "reviewed": true
-    },
     "takeover mode": {
       "text": "接管模式",
       "reviewed": true
@@ -954,6 +962,10 @@
     },
     "the OpenCode client": {
       "text": "OpenCode 客户端接入",
+      "reviewed": true
+    },
+    "the Responses input[] ends on a function_call_output that is not ours and holds no user instruction — appended a continue instruction (the upstream misreports an instruction-less tail as a missing reasoning_text)": {
+      "text": "Responses 的 input[] 以别家产的 function_call_output 收尾、没有用户指令——追加一条 continue 指令（上游对空指令尾部误报 reasoning_text 缺失）",
       "reviewed": true
     },
     "the classifier settings in this request are not readable: {err}": {
@@ -1036,14 +1048,6 @@
       "text": "codex 跑的模型；由接管写进 config.toml",
       "reviewed": true
     },
-    "the Responses input[] ends on a function_call_output that is not ours and holds no user instruction — appended a continue instruction (the upstream misreports an instruction-less tail as a missing reasoning_text)": {
-      "text": "Responses 的 input[] 以别家产的 function_call_output 收尾、没有用户指令——追加一条 continue 指令（上游对空指令尾部误报 reasoning_text 缺失）",
-      "reviewed": true
-    },
-    "\"the Responses input[] ends on a function_call_output whose call_id is not ours\" is no longer repaired (no \"continue\" appended), and the upstream misreports such an instruction-less tail as a missing reasoning_text and answers 400": {
-      "text": "「Responses 的 input[] 以别家产的 call_id 的 function_call_output 收尾」不再被修（不再追加「continue」），上游会把这种空指令尾部误报成 reasoning_text 缺失而 400",
-      "reviewed": true
-    },
     "the model field in settings.json is left untouched; what a tier means is decided by the env": {
       "text": "settings.json 的 model 字段不动；档位含义由 env 决定",
       "reviewed": true
@@ -1106,10 +1110,6 @@
     },
     "the table in this request is not readable: {err}": {
       "text": "这次请求里的那张表读不出来：{err}",
-      "reviewed": true
-    },
-    "the tool definitions stay in input[0], where DeepSeek does not read them: the model sees no tools at all, answers in its own text format, and Codex never gets a tool_result back": {
-      "text": "工具定义留在 input[0] 里，而 DeepSeek 不在那里读：模型一个工具都看不见，会用它自己的文本格式作答，Codex 永远拿不到 tool_result",
       "reviewed": true
     },
     "the trailing user turn holds only tool_result and no user instruction — appended a continue instruction (the upstream misreports an instruction-less tail as a missing reasoning_content)": {
@@ -1370,6 +1370,22 @@
     },
     "↑/↓ or j/k to move · Enter to apply · q to quit": {
       "text": "↑/↓ 或 j/k 移动 · Enter 应用 · q 退出",
+      "reviewed": true
+    },
+    "lift Codex tools from input[0] to the top level": {
+      "text": "把 Codex 的工具从 input[0] 抬到顶层",
+      "reviewed": true
+    },
+    "Codex 0.155 puts tool definitions in `input[0]` (type=additional_tools) and every upstream we ship reads tools from the top level only: with the lift off the model sees no tools at all, answers in its own text format, and Codex never gets a tool_result back": {
+      "text": "Codex 0.155 把工具定义放在 `input[0]`（type=additional_tools）里，而我们装的每一个上游都只从顶层读工具：关掉这一手，模型一个工具都看不见，退回自己的文本格式去「调工具」，于是客户端永远拿不到 tool_result",
+      "reviewed": true
+    },
+    "degrade Codex custom tools for DeepSeek": {
+      "text": "把 Codex 的 custom 工具降级给 DeepSeek 用",
+      "reviewed": true
+    },
+    "DeepSeek's /responses accepts `custom` tools only for apply_patch and answers 400 for every other one (the message inside a namespace is a different one); with the degrade off a Codex request carrying any other custom tool is rejected outright": {
+      "text": "DeepSeek 的 /responses 只认 apply_patch 一个 custom 工具，其余一律 400（藏在 namespace 里时换一句）；关掉降级，任何带别的 custom 工具的 Codex 请求都会被直接拒掉",
       "reviewed": true
     }
   }

@@ -27,9 +27,15 @@
 #      一段它认不出的形状去 eval；
 #   4  **没有 custom 时一个字节都不动**。「没有要修的就不动手」是这条路上最容易
 #      被顺手破坏的规矩，而破坏了看不出来（请求照样 200）；
-#   5  **开关点真的被读**。`newgate plugin codex-deepseek.lift-tools off` 报了
-#      「已关闭」而请求照改不误——2026-09-21 在 live 上实测到这个，它比没有开关
-#      更糟。关掉之后请求侧与响应侧都必须停手（只停一边会把客户端弄坏）。
+#   5  **两个开关点真的被读**，而且是**两件事**。抬工具（把 additional_tools 搬到
+#      顶层）与降级（把上游不收的 custom 改成 function）2026-09-23 之前挤在同一个
+#      开关底下，叫 `codex-deepseek.lift-tools`——于是「Codex 配 Ark」那条路上根本
+#      没有开关可关，而同一个行为在同一份二进制里有两个名字。现在它们分开了：
+#      `codex.lift-tools`（客户端方言，modules/codex）与
+#      `codex-deepseek.degrade-tools`（上游怪癖，modules/codex_deepseek）。
+#      两侧都必须真的被读——2026-09-21 实测到「报了『已关闭』而请求照改不误」，
+#      那比没有开关更糟；而两个开关里只要有一个不被读，关掉它就会变成空操作，
+#      或者变成「请求没降级、响应却被改成 custom_tool_call」这种把客户端弄坏的不对称。
 #
 # 假上游按路径复用内核的 `core/mock/fake_upstream.py`（不复制：它是逐字节复刻真实
 # 上游行为的产物，复制必然漂移，而漂移出来的是「绿的假测试」）。它对 `/responses`
@@ -231,18 +237,48 @@ check "上游收到的那份与客户端发的一模一样" \
 hasnt "干净的流里没有 custom_tool_call（响应侧没被认领）" "custom_tool_call" "$SANDBOX/out-clean.json"
 
 echo
-echo "== 6. 开关点：关掉之后请求侧与响应侧都停手 =="
-"$BIN" plugin codex-deepseek.lift-tools off 5m >"$SANDBOX/off.log" 2>&1
+echo "== 6. 降级的开关点：关掉之后 custom 原样发出去，上游按真实判据拦 =="
+# 这一关只停**下游**那一半：抬照抬（那是客户端的事，见第 7 节），但抬上来的 custom
+# 不再被降成 function——于是上游照它真实的判据 400。这就是「关掉降级的症状」，
+# 写得出来才说明这个开关真的被读。
+"$BIN" plugin codex-deepseek.degrade-tools off 5m >"$SANDBOX/off-degrade.log" 2>&1
 sleep 1.5   # 等一次配置重载（开关与 providers.json 走同一条路）
 RESET
-check "关掉之后照常 200" "$(POST "$SANDBOX/req-old.json" "$SANDBOX/out-off.sse")" "200"
-check "上游**没有**收到顶层 tools（抬这一手真的停了）" \
-  "$(UPSAW 'json.dumps(body.get("tools"))')" "null"
-hasnt "响应也没被改写（只停一边会把客户端弄坏）" "custom_tool_call" "$SANDBOX/out-off.sse"
-"$BIN" plugin codex-deepseek.lift-tools on >"$SANDBOX/on.log" 2>&1
+check "关掉降级之后上游 400（那条 custom 原样发出去了）" \
+  "$(POST "$SANDBOX/req-old.json" "$SANDBOX/out-off-degrade.json")" "400"
+has "400 的正文是上游那句 Unsupported custom tool（不是我们自己编的话）" \
+  "Unsupported custom tool" "$SANDBOX/out-off-degrade.json"
+check "抬没停：上游仍然收到了顶层 tools，只是里面还躺着那条 custom" \
+  "$(UPSAW "$SHAPE")" '[["custom", "exec"], ["function", "wait"]]'
+hasnt "响应侧没有认领（请求没降级、响应却被改成 custom_tool_call 是把客户端弄坏的不对称）" \
+  "custom_tool_call" "$SANDBOX/out-off-degrade.json"
+"$BIN" plugin codex-deepseek.degrade-tools on >"$SANDBOX/on-degrade.log" 2>&1
 sleep 1.5
 RESET
-check "打开之后照常抬上来" "$(POST "$SANDBOX/req-old.json" "$SANDBOX/out-on.sse")" "200"
+check "打开之后又是 200" "$(POST "$SANDBOX/req-old.json" "$SANDBOX/out-on-degrade.sse")" "200"
+check "两条都是 function 了" \
+  "$(UPSAW "$SHAPE")" '[["function", "exec"], ["function", "wait"]]'
+
+echo
+echo "== 7. 抬的开关点：关掉之后工具根本不上去，两侧都停手 =="
+# 与第 6 节正交：这一关停的是「从 input[0] 抬到顶层」这件事本身（与上游无关，
+# 所以在 modules/codex 手里）。关掉之后 DeepSeek 的兜底那一支也必须跟着停——
+# 否则「关掉 codex.lift-tools」在这条路上是空操作，而开关报了名却没人读比没有
+# 开关更糟（2026-09-21 在 live 上实测过同一族的事）。
+"$BIN" plugin codex.lift-tools off 5m >"$SANDBOX/off-lift.log" 2>&1
+sleep 1.5
+BEFORE=$(command grep -c 'lifted ' "$LOG" 2>/dev/null || echo 0)
+RESET
+check "关掉之后照常 200" "$(POST "$SANDBOX/req-old.json" "$SANDBOX/out-off-lift.sse")" "200"
+check "上游**没有**收到顶层 tools（抬这一手真的停了）" \
+  "$(UPSAW 'json.dumps(body.get("tools"))')" "null"
+hasnt "响应也没被改写（只停一边会把客户端弄坏）" "custom_tool_call" "$SANDBOX/out-off-lift.sse"
+AFTER=$(command grep -c 'lifted ' "$LOG" 2>/dev/null || echo 0)
+check "这一发一条「抬」的日志都没有" "$AFTER" "$BEFORE"
+"$BIN" plugin codex.lift-tools on >"$SANDBOX/on-lift.log" 2>&1
+sleep 1.5
+RESET
+check "打开之后照常抬上来" "$(POST "$SANDBOX/req-old.json" "$SANDBOX/out-on-lift.sse")" "200"
 check "又看见了顶层 tools" \
   "$(UPSAW "$SHAPE")" '[["function", "exec"], ["function", "wait"]]'
 

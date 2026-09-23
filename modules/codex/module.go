@@ -13,6 +13,8 @@ import (
 	viewapi "github.com/rzbdz/newgate/lib/view"
 	configapi "github.com/rzbdz/newgate/modules/config"
 	confighookapi "github.com/rzbdz/newgate/modules/confighook"
+	gatewayapi "github.com/rzbdz/newgate/modules/gateway"
+	pluginmanagerapi "github.com/rzbdz/newgate/modules/pluginmanager"
 )
 
 // New 声明 Codex 客户端组件。
@@ -31,6 +33,15 @@ func New() modules.Component {
 			// web 界面：在就把「Codex 档位」那张卡挂上去（见 view.go），不在就跳过。
 			// 弱依赖——本模块的功能一个都不少，只是没有浏览器入口。
 			modules.Optional(viewapi.Capability),
+			// 网关：装配这一手（client → 通用上游的 tool lift）需要一个能 Register
+			// request hook 的端口。**弱依赖**：骨架发行版（dist-hello）关掉了
+			// gateway，那时 hook 不挂、客户端没有转发——但客户端本身的描述符/事实
+			// 不受影响，强行 Need 会让 hello 跑不起来。
+			modules.Optional(gatewayapi.Capability),
+			// plugin-manager：抬工具那一手的**运行期开关点**（`codex.lift-tools`）。
+			// 弱依赖——它不在时抬工具照常跑，只是没有开关可关（见 st-tools.go 的
+			// registerToolsLift）。
+			modules.Optional(pluginmanagerapi.Capability),
 		},
 		Provides: []modules.Provision{
 			modules.Provide(Capability, Client{AgentID: ID}),
@@ -77,6 +88,18 @@ func New() modules.Component {
 				return err
 			}
 			releases = append(releases, release)
+
+			// 工具方言归一化（lift，见 st-tools.go）。没有网关上就跳过——
+			// 见 Optional 的注释。开关点报给 plugin-manager（它不在时那一手照
+			// 常跑，只是没有运行期开关——见 registerToolsLift）。
+			if gw, ok := modules.Get(ctx, gatewayapi.Capability); ok {
+				pm, _ := modules.Get(ctx, pluginmanagerapi.Capability)
+				hookReleases, err := registerToolsLift(gw, pm)
+				if err != nil {
+					return err
+				}
+				releases = append(releases, hookReleases...)
+			}
 
 			// web 界面：登记「Codex 档位」那张卡（见 view.go）。
 			if v, ok := modules.Get(ctx, viewapi.Capability); ok {

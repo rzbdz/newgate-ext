@@ -232,7 +232,7 @@ func TestApplyReplacesExistingToolsKey(t *testing.T) {
 // 把客户端弄坏的不对称会漏过去。
 func TestSwitchOffStopsBothDirections(t *testing.T) {
 	plugin := testPlugin()
-	off := reqWithOff(t, SwitchLiftTools)
+	off := reqWithOff(t, SwitchDegradeTools)
 
 	out, notes, err := plugin.Apply([]byte(codexRequest), off)
 	if err != nil {

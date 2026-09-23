@@ -62,35 +62,55 @@ func (t tools) Match(r *special.Request) bool {
 //     所以顺着扫一遍，只把 custom（除 apply_patch 外）降成 function，其余一个
 //     字节不动。
 //
-// 这一手可以被单独关掉（`newgate plugin codex-deepseek.lift-tools off`）——
+// **路线 1 那一半 2026-09-23 搬去了 `modules/codex`**（`codex.lift-tools`）：把工具
+// 从 input[0] 抬到顶层与上游是谁无关（Codex 配 Ark / Claude / Kimi 同样需要），
+// 判据就不该住在一个叫 codex-deepseek 的模块里。搬走之后本模块**仍然读那个开关**
+// （见 liftEnabled），否则「关掉 codex.lift-tools」在 DeepSeek 这条路上会变成空操作
+// ——开关报了名却没人读，那是比没有开关更糟的一种谎（2026-09-21 在 live 上实测过
+// 同一族的事）。
+//
+// 留着路线 1 这一支的理由是**它现在只在对的位置才跑**：判据是「顶层还没有可用的
+// tools」（`HasUsableTopLevelTools`），而 codex-tools 排在本插件前面——所以正常的
+// 装配里走的一律是路线 2（抬已经在前面做完了，这里只降级）。它剩下的用武之地是
+// 客户端那一手没挂上时（本模块的单测、以及任何没有 codex 客户端 hook 的装配），
+// 那时这一支仍能把请求修对，而不是把 custom 直接发给一个会 400 的上游。
+//
+// 这一手可以被单独关掉（`newgate plugin codex-deepseek.degrade-tools off`）——
 // **开关点必须真的被读**，否则 `newgate plugin` 会报「已关闭」而请求照改不误
 // （2026-09-21 实测到：关掉之后 live 上顶层 tools 照样被抬上来）。它的默认值是
 // 开，所以关掉是排查动作，不是常态。
 func (tools) Apply(body []byte, r *special.Request) ([]byte, []string, error) {
-	if pluginmanager.Off(stateOf(r), SwitchLiftTools) {
+	if pluginmanager.Off(stateOf(r), SwitchDegradeTools) {
 		return body, nil, nil
 	}
-	if arr, ok := codexTools(body); ok {
-		lifted, degraded, n := liftTools(arr)
-		if n == 0 {
-			return body, nil, nil
+	if liftEnabled(r) && !codexapi.HasUsableTopLevelTools(body) {
+		if arr, ok := codexTools(body); ok {
+			lifted, degraded, n := liftTools(arr)
+			if n == 0 {
+				return body, nil, nil
+			}
+			out, err := setTopLevelTools(body, lifted)
+			if err != nil {
+				return body, nil, err
+			}
+			// note 分两条报，因为它们是**两件事**：抬了几条（修根因的那一步），以及
+			// 其中几条被降级了。合成一句会让「一个 custom 都没有」时那句变成
+			// 「抬了 N 条，0 条被降级」——而 0 条降级不是噪音，是「这次没动过任何
+			// 工具的字段」这条信息。见 lift.go 里那段「抬本身才是修根因」的说明。
+			//
+			// 抬的这一句与 modules/codex 的 codex-tools 说的是同一件事、同一句
+			// 措辞——两条路走到这里对读者是一件事（工具被抬上去了），分两个措辞
+			// 只会让排查的人先猜是哪一条路动的。正常情况下这里一次都不会命中：
+			// codex-tools 排在本插件前面（见 ToolsLift.Before）。
+			notes := []string{i18n.N(
+				"lifted {n} tool declaration from input[0] to the top level (DeepSeek reads tools only there)",
+				"lifted {n} tool declarations from input[0] to the top level (DeepSeek reads tools only there)",
+				n, i18n.A{"n": n})}
+			if len(degraded) > 0 {
+				notes = append(notes, degradeNote(len(degraded)))
+			}
+			return out, notes, nil
 		}
-		out, err := setTopLevelTools(body, lifted)
-		if err != nil {
-			return body, nil, err
-		}
-		// note 分两条报，因为它们是**两件事**：抬了几条（修根因的那一步），以及
-		// 其中几条被降级了。合成一句会让「一个 custom 都没有」时那句变成
-		// 「抬了 N 条，0 条被降级」——而 0 条降级不是噪音，是「这次没动过任何
-		// 工具的字段」这条信息。见 lift.go 里那段「抬本身才是修根因」的说明。
-		notes := []string{i18n.N(
-			"lifted {n} tool declaration from input[0] to the top level (DeepSeek reads tools only there)",
-			"lifted {n} tool declarations from input[0] to the top level (DeepSeek reads tools only there)",
-			n, i18n.A{"n": n})}
-		if len(degraded) > 0 {
-			notes = append(notes, degradeNote(len(degraded)))
-		}
-		return out, notes, nil
 	}
 
 	if toolsRaw, ok := rewrite.TopLevelRaw(body, "tools"); ok {
@@ -139,14 +159,30 @@ func stateOf(r *special.Request) *domain.State {
 // ——两边只要有一边读了开关、另一边没读，就会出现「请求没降级、响应却被改成
 // custom_tool_call」这种把客户端弄坏的不对称。
 func (tools) Egress(r *special.Request, original []byte) special.Egress {
-	if pluginmanager.Off(stateOf(r), SwitchLiftTools) {
+	if pluginmanager.Off(stateOf(r), SwitchDegradeTools) {
 		return nil
 	}
-	degraded := degradedNames(original)
+	degraded := degradedNames(r, original)
 	if len(degraded) == 0 {
 		return nil
 	}
 	return &egressTools{degraded: degraded}
+}
+
+// liftEnabled 读**客户端那一手**的开关（`codex.lift-tools`，住在 modules/codex）。
+//
+// 本模块只是它的读者，不是它的拥有者：抬工具是客户端方言的事，与上游无关
+// （见 switches.go 里那段为什么）。读它的原因有两个，都是「两条尺子必须一致」：
+//
+//   - Apply：抬的那一手关着时，本模块的兜底那一支**不能**自己抬。否则「关掉
+//     codex.lift-tools」在 DeepSeek 这条路上会变成空操作——开关报了名却没人读，
+//     那是比没有开关更糟的一种谎（2026-09-21 在 live 上实测过同一族的事）。
+//   - degradedNames：抬都不抬，就没有「被降级过的名字」可言，响应侧也就不该去
+//     认领。两条路线上任何一个不对称都会把客户端弄坏。
+//
+// 快照缺席 = 没关（pluginmanager.Off 对 nil 回 false），方向不能反。
+func liftEnabled(r *special.Request) bool {
+	return !pluginmanager.Off(stateOf(r), codexapi.SwitchLiftTools)
 }
 
 // degradedNames 从客户端原文里读出「会被降级」的工具名。
@@ -154,13 +190,16 @@ func (tools) Egress(r *special.Request, original []byte) special.Egress {
 // 判据与 Apply 逐字一致（`type: "custom"` 且不是 apply_patch）——两处必须
 // 用同一条尺子，否则会出现「请求侧没改、响应侧却去改」这种对不上的情况。
 // 所以对两种来源（input[0].additional_tools 与顶层 tools）各走一遍对应的
-// 降级扫描，不另写一份判断。
-func degradedNames(original []byte) map[string]bool {
+// 降级扫描，不另写一份判断；而 input[0] 那一支**跟着客户端的抬开关走**，
+// 理由见 liftEnabled。
+func degradedNames(r *special.Request, original []byte) map[string]bool {
 	degraded := map[string]bool{}
-	if arr, ok := codexTools(original); ok {
-		_, d, _ := liftTools(arr)
-		for k := range d {
-			degraded[k] = true
+	if liftEnabled(r) {
+		if arr, ok := codexTools(original); ok {
+			_, d, _ := liftTools(arr)
+			for k := range d {
+				degraded[k] = true
+			}
 		}
 	}
 	if toolsRaw, ok := rewrite.TopLevelRaw(original, "tools"); ok {
