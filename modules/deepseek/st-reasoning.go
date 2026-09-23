@@ -228,8 +228,44 @@ const toolLoopRebasePrompt = "continue"
 // RebaseToolLoop 把 tool_result 变成同时带普通用户指令的新回合。旧 reasoning、
 // tool_use、tool_result 全部保留作可见上下文，只追加这一段；实测 Ark →
 // DeepSeek 原请求稳定 400，追加后 5/5 200。
+//
+// **两个方言各一支**（2026-09-23 补上 Responses 那支）。跨上游迁移这条路上，
+// 「未闭合的 tool loop」在两种方言里的形状完全不同：
+//
+//	messages（Anthropic / OpenAI）：尾部那条 user 消息的 content[] 里只有
+//	    tool_result → 往**那个 content[] 里**追加一个 text 块；
+//	Responses（Codex）：顶层 input[] 末尾是 function_call_output → 往 **input[]
+//	    末尾**追加一条普通 user 消息项。
+//
+// 只写 messages 那支的后果不是「少修一发」，而是**一条都修不了**：Codex 的请求
+// 顶层根本没有 messages，AppendLastArrayItemArray 会返回 changed=false，于是
+// 跨上游迁移静默 no-op——而这正是 RebaseToolLoop 存在的唯一理由（DeepSeek
+// 接手别家未闭合的 reasoning/tool 状态 :3/3 400，见上）。同一条判据在
+// ContinuationOrigin 里也补了 Responses 分支，两处缺一不可：那边不认，这里
+// 根本不会被调用。
 func (reasoning) RebaseToolLoop(body []byte, _ *special.Request) ([]byte, string, error) {
 	q, _ := json.Marshal(toolLoopRebasePrompt)
+
+	// Responses 方言：没有 messages 时才走这一支。判据用「顶层有没有 input」，
+	// 不用 r.Path——AppendLastArrayItemArray 那边本来就会因为找不到 messages
+	// 而 no-op，这里只是把那件事说清楚。
+	if _, hasMessages := rewrite.TopLevelRaw(body, "messages"); !hasMessages {
+		if _, hasInput := rewrite.TopLevelRaw(body, "input"); hasInput {
+			block := []byte(`{"type":"message","role":"user","content":[{"type":"input_text","text":` +
+				string(q) + `}]}`)
+			out, changed, err := rewrite.AppendTopLevelArrayItem(body, "input", block)
+			if err != nil {
+				return nil, "", err
+			}
+			if !changed {
+				return body, "", nil
+			}
+			return out, i18n.T("lossily rebuilt a foreign tool loop: kept the tool results and "+
+				"appended a plain user instruction to continue", nil), nil
+		}
+		return body, "", nil
+	}
+
 	block := []byte(`{"type":"text","text":` + string(q) + `}`)
 	out, changed, err := rewrite.AppendLastArrayItemArray(body, "messages", "content",
 		block, func(item []byte) bool {

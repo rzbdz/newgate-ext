@@ -818,3 +818,78 @@ func TestImagesSurviveTheDeepSeekPatch(t *testing.T) {
 		t.Fatal("用户消息里那张图片变了")
 	}
 }
+
+// TestRebaseToolLoopResponsesDialect：跨上游迁移那一手在 responses 方言里也得成立。
+//
+// 现场（2026-09-23）：Codex 把对话挂在顶层 input[]、**没有 messages**，于是这条
+// 迁移路径上的 AppendLastArrayItemArray 找不到 messages、返回 changed=false——
+// 跨上游迁移静默 no-op。而它 no-op 的正是 RebaseToolLoop 存在的唯一理由（迁移到
+// DeepSeek 的未闭合 tool loop 是要 400 的，见本文件里那份 A/B）。补的那一支往
+// input[] 末尾追加一条普通 user 消息项。
+//
+// 锁两件事，一件都不能少：
+//   - responses 形状真的被改了（不是 no-op），且追加项是**逐字**的方言形状
+//     （type/role/content[].type 三处都是 responses 的名字，写成 text 块就是坏请求）；
+//   - 没有 input 的形状（如 /v1/models）一个字节都不动，也不报 note。
+func TestRebaseToolLoopResponsesDialect(t *testing.T) {
+	responsesReq := func() *special.Request {
+		return &special.Request{
+			InModel: "normal", Tier: "normal", Model: "deepseek-chat",
+			Provider: "ds", BaseURL: "https://api.deepseek.com", Protocol: "openai",
+			Path: "/responses", Agent: "codex"}
+	}
+
+	body := `{"model":"normal","stream":false,"input":[` +
+		`{"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}]},` +
+		`{"type":"function_call","call_id":"call_00_abc","name":"exec","arguments":"{}"},` +
+		`{"type":"function_call_output","call_id":"call_00_abc","output":"done"}]}`
+	out, note, err := reasoning{}.RebaseToolLoop([]byte(body), responsesReq())
+	if err != nil {
+		t.Fatalf("RebaseToolLoop: %v", err)
+	}
+	if note == "" {
+		t.Fatal("改了请求却一个 note 都没有（不静默是硬要求）")
+	}
+	if string(out) == body {
+		t.Fatal("responses 形状下没动过——迁移是静默 no-op，正是这次要修的")
+	}
+	var got struct {
+		Input []struct {
+			Type    string `json:"type"`
+			Role    string `json:"role"`
+			Content []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			} `json:"content"`
+		} `json:"input"`
+	}
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatalf("产物解不开：%v\n%s", err, out)
+	}
+	if len(got.Input) != 4 {
+		t.Fatalf("input 应当多出一项（3 → 4），得到 %d：%s", len(got.Input), out)
+	}
+	last := got.Input[3]
+	if last.Type != "message" || last.Role != "user" {
+		t.Errorf("追加项应当是普通 user 消息，得到 type=%q role=%q", last.Type, last.Role)
+	}
+	if len(last.Content) != 1 || last.Content[0].Type != "input_text" ||
+		last.Content[0].Text != toolLoopRebasePrompt {
+		t.Errorf("追加项的 content 形状不对（responses 要 input_text，不是 text）：%+v", last.Content)
+	}
+	// 老字节一个不许动：前面三项还是原样。
+	if !strings.Contains(string(out), `"call_id":"call_00_abc","output":"done"}`) {
+		t.Errorf("原有的 function_call_output 被动过了：%s", out)
+	}
+
+	// 没有 input 的形状：不碰，也不报。
+	other := `{"model":"normal","input_text":"hi"}`
+	out2, note2, err := reasoning{}.RebaseToolLoop([]byte(other), responsesReq())
+	if err != nil {
+		t.Fatalf("RebaseToolLoop(非 responses): %v", err)
+	}
+	if note2 != "" {
+		t.Errorf("没动手却报了 note：%q", note2)
+	}
+	_ = out2
+}
