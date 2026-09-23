@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="canonical" href="https://rzbdz.github.io/newgate-ext/docs/modules/">
+<meta name="theme-color" content="#0f1115">
+<meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+
+<title>写一个模块 · newgate-ext</title>
+<meta name="description" content="一个模块就是一个目录、一个 module.go、一个导出的 New()：">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="newgate-ext">
+<meta property="og:title" content="写一个模块 · newgate-ext">
+<meta property="og:description" content="一个模块就是一个目录、一个 module.go、一个导出的 New()：">
+<meta property="og:url" content="https://rzbdz.github.io/newgate-ext/docs/modules/">
+<meta property="og:locale" content="zh_CN">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="写一个模块 · newgate-ext">
+<meta name="twitter:description" content="一个模块就是一个目录、一个 module.go、一个导出的 New()：">
+
+<link rel="icon" type="image/svg+xml" href="/newgate-ext/favicon.svg">
+<link rel="stylesheet" href="/newgate-ext/site.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/newgate-ext/"><strong>newgate-ext</strong></a>
+  <span class="spacer"></span>
+  <nav class="langs"><a href="/newgate-ext/docs/modules/" class="on">中文</a><span class="soon" title="not written yet">English</span></nav>
+</header>
+<div class="shell">
+  <nav class="side">
+    <ul>
+    <li><a href="/newgate-ext/">首页</a></li>
+    <li><a href="/newgate-ext/docs/">文档</a></li>
+    <li><a href="/newgate-ext/docs/quickstart/">快速开始</a></li>
+    <li><a href="/newgate-ext/docs/tiers/">档位与 profile</a></li>
+    <li><a href="/newgate-ext/docs/clients/">接管客户端</a></li>
+    <li><a href="/newgate-ext/docs/codex/">Codex 模式</a></li>
+    <li><a href="/newgate-ext/docs/config/">配置与命令</a></li>
+    <li><a href="/newgate-ext/docs/troubleshooting/">排障</a></li>
+    <li class="on"><a href="/newgate-ext/docs/modules/">写一个模块</a></li>
+    <li><a href="/newgate-ext/docs/fork/">fork 一份发行版</a></li>
+    <li><a href="/newgate-ext/changelog/">更新日志</a></li>
+    </ul>
+  </nav>
+  <main>
+    <h1>写一个模块</h1>
+    <p>一个模块就是<strong>一个目录、一个 <code>module.go</code>、一个导出的 <code>New()</code></strong>：</p>
+<pre><code class="lang-go">package mymod
+
+import (
+	&quot;context&quot;
+
+	modules &quot;github.com/rzbdz/newgate/component&quot;
+)
+
+func New() modules.Component {
+	return modules.Component{
+		Name: &quot;my-module&quot;,
+		Desc: &quot;一句话说清它是干什么的&quot;,
+		Requires: []modules.Requirement{
+			modules.Need(configapi.Capability),
+		},
+		Start: func(_ context.Context, ctx modules.Context) error {
+			svc := modules.MustGet(ctx, configapi.Capability)
+			rel, err := svc.RegisterX(...)
+			if err != nil {
+				return err
+			}
+			releases = append(releases, rel)
+			return nil
+		},
+		Stop: func(context.Context) error { return modules.ReleaseAll(releases) },
+	}
+}</code></pre>
+<p><strong>不需要改任何清单</strong>：装配清单由 <code>tools/genmodules</code> 在构建期扫 <code>modules/</code> 生成，目录进来就自动在图上。判据只有一条：根 <code>module.go</code> 导出 <code>func New() modules.Component</code>。</p>
+<h2>目录名不必是 Go 标识符</h2>
+<p><code>simple-cli</code> 这种名字是合法的目录名。生成器会把 import 别名拧成 <code>ext_simple_cli</code> （判据在内核的 <code>tools/genmodules/scan.Ident</code>，两个仓库共用一份实现）。</p>
+<h2>三条最常踩的</h2>
+<p><strong>一、往别人的扩展点插东西，走 <code>Register</code>，不要声明成 <code>Provides</code>。</strong> <code>Provides</code> 只放<strong>自己的</strong> service。要往别人的扩展点插东西，就消费它的 service 并调它的 <code>RegisterX()</code>——那一对方法就是那条缝。注册 API 返回 <code>Release</code>，在 <code>Stop</code> 里逆序释放。</p>
+<p><strong>二、界面是弱依赖：<code>Optional</code>，不是 <code>Need</code>。</strong> <code>modules/cli</code> 是界面，不是依赖。<code>component.Need(cliapi.Capability)</code> 等于宣称「没有界面我就活不了」，会把界面重新拖回依赖图，内核的棘轮当场红。</p>
+<pre><code class="lang-go">component.Optional(cliapi.Capability)   // 对
+component.Need(cliapi.Capability)       // 错，graph_test 会拦下</code></pre>
+<p><strong>三、<code>Register</code> 里不许读盘。</strong> <code>Start</code> 在<strong>每一条</strong> <code>newgate …</code> 命令里都会跑（敲一条命令、进一个 shell、跑一次体检）。注册只管<strong>登记一个产出函数</strong>，真正的产出发生在「有人来问界面的那一刻」。把读盘放进 <code>Start</code>，等于每敲一次 <code>newgate status</code> 就把所有配置文件重读一遍。</p>
+<h2>往界面上挂东西</h2>
+<p>契约在叶子包 <code>lib/view</code>（界面模块提供账本，业务模块 <code>Optional</code> 依赖它）：</p>
+<pre><code class="lang-go">Requires: []modules.Requirement{modules.Optional(viewapi.Capability)},
+
+Start: func(_ context.Context, ctx modules.Context) error {
+	v, ok := modules.Get(ctx, viewapi.Capability)
+	if !ok {
+		return nil // 这次装配没有界面 = 我没那一面，功能一个都不少
+	}
+	rel, err := v.Register(&quot;my-module&quot;,
+		viewapi.Title(func() string { return i18n.T(&quot;My module&quot;, nil) }),
+		myConcepts)
+	…
+}</code></pre>
+<p><strong>栏目名为什么是个闭包</strong>：界面按来源分栏，而「这一栏叫什么」是模块自己的事。但名字 <strong>不能在登记时翻</strong>——登记发生在各模块的 <code>Start</code> 里，那时语言层装好了没有是没有保证的，翻了就会冻在源语言上，而且没有任何东西会因此变红。<code>view.Title</code> 收闭包，求值发生在<strong>快照那一刻</strong>。</p>
+<p><strong>一个概念 = 数据 + 怎么改</strong>：</p>
+<pre><code class="lang-go">view.Concept{
+	ID:    &quot;my-module.thing&quot;,
+	Kind:  view.KindRecords,      // 渲染方式
+	Title: i18n.T(&quot;My thing&quot;, nil),
+	Data:  view.Records{…},
+	Apply: applyThing,            // 这份文件只有你知道怎么写
+}</code></pre>
+<ul>
+<li><code>Kind</code> 是渲染方式，前端<strong>只认那七种</strong>。加一个模块的面不用改前端——除非它带来一种新的<strong>形状</strong>，那时两边都要动（这是诚实的代价）。</li>
+<li><code>Apply(edit, base)</code> 是「拥有那份文件的人才写得出来」的东西：改哪一段、哪些字段必须原样保留。界面自己不写文件。</li>
+<li><code>Broken</code> 是「此刻读不出来」：<strong>照常报一张卡片、写上原因</strong>，不要让它从列表里消失（用户会以为它不存在），也不要让整次快照失败。</li>
+<li><code>Live</code> 是「这一面会自己变，界面每隔几秒重问一次」。判据是<strong>读一次贵不贵</strong>，不是数据变不变。</li>
+</ul>
+<p><strong>写盘一律带基线</strong>（CAS）：<code>store.WriteIfUnchanged(path, base, data)</code>。这样「你在看页面时命令行改过那个文件」会变成一个<strong>摆出来的冲突</strong>，而不是被盖掉。写失败时把 <code>store.StaleError</code> 翻成 <code>view.Conflict</code>。</p>
+<h2>往那个端口上挂东西（porthub）</h2>
+<p>网关监听的那个端口<strong>不只属于数据面</strong>。<code>/</code> 之外的前缀可以挂别的服务：</p>
+<pre><code class="lang-go">Requires: []modules.Requirement{modules.Optional(porthubapi.Capability)},
+Start: func(_ context.Context, ctx modules.Context) error {
+	hub, ok := modules.Get(ctx, porthubapi.Capability)
+	if !ok {
+		return nil // 这次装配没有共享端口 = 我没入口，功能照常
+	}
+	rel, err := hub.Mount(&quot;/myservice&quot;, &quot;my-module&quot;, myHandler)
+	…
+}</code></pre>
+<p>三条规矩：</p>
+<ul>
+<li><strong>保留前缀挂不上去</strong>（<code>/v1</code>、<code>/a</code>、<code>/__newgate</code>）——它们已经归数据面与控制面。挂上去失败的样子很吓人：那些路径落进 catch-all 会被<strong>当数据面转发给上游</strong>。</li>
+<li><strong>挂载是进程内注册</strong>，不起 socket。所以 <code>Start</code> 在每条命令里挂一次是无害的。</li>
+<li><strong>数据面不许知道 porthub 存在</strong>（内核有一条棘轮扫这个）——端口怎么分派是产品决定，数据面只该知道自己是一个 handler。</li>
+</ul>
+<p><strong>要在服务期起监听</strong>（真的开 socket）就挂 <code>lib/serving</code>：<code>Start</code> 在每条命令里都跑，在那里 <code>net.Listen</code> 等于敲一次 <code>newgate status</code> 就开一台服务器。注册一个回调，等拥有端口的模块说「我要开始服务了」才跑：</p>
+<pre><code class="lang-go">Requires: []modules.Requirement{modules.Optional(servingapi.Capability)},
+Start: func(_ context.Context, ctx modules.Context) error {
+	ln, ok := modules.Get(ctx, servingapi.Capability)
+	if !ok {
+		return nil
+	}
+	rel, err := ln.OnServe(&quot;my-module&quot;, func() (func(), error) { return startMyListener() })
+	…
+}</code></pre>
+<p>回调是 fail-open 的：一个起不来不会让服务失败。</p>
+<h2>写成发行版的模块</h2>
+<p>模块之间的 import 是 <code>github.com/rzbdz/newgate-ext/modules/&lt;名字&gt;</code>；对内核的 import 是 <code>github.com/rzbdz/newgate/...</code>——<strong>用它的公开契约</strong>。</p>
+<p>想让它进哪份发行版，写进那份规格书就行，Go 代码一行不用改：</p>
+<pre><code class="lang-jsonc">// dist-mine.json
+{ &quot;distribution&quot;: &quot;mine&quot;, &quot;modules&quot;: [&quot;tui&quot;, &quot;deepseek&quot;, &quot;my-module&quot;], &quot;disable&quot;: [] }</code></pre>
+<p>然后 <code>go run ./tools/distgen</code>（把名字编进装配清单）再 <code>build/build.sh</code>。</p>
+<h2>用户可见的文案</h2>
+<p><strong>源码里不许写中文文案</strong>。用户可见的文本一律走：</p>
+<pre><code class="lang-go">i18n.T(&quot;English {x}&quot;, i18n.A{&quot;x&quot;: …})</code></pre>
+<p>中文活在 <code>modules/i18n/catalogs/zh-Hans.json</code> 里。键<strong>就是那句英文</strong>（gettext 的 msgid 传统），所以没有「键写错」这回事。机器标记留在消息<strong>外面</strong>：<code>[tag]</code>、metrics 计数器名、<code>ok/warn/bad</code>、JSON 字段名、命令名、路径；<strong>上游报错的原文也不能翻</strong> ——那是匹配判据，翻了签名永远匹配不上。</p>
+<pre><code class="lang-bash">go run github.com/rzbdz/newgate/tools/i18n extract -root . -catalogs modules/i18n/catalogs
+go run github.com/rzbdz/newgate/tools/i18n check   -root . -catalogs modules/i18n/catalogs \
+                                                   -allowlist tools/i18n-allowlist.json</code></pre>
+<p>前两条在 CI 里。<strong>账本是构建自己重算的</strong>，不用记得跑它。</p>
+<h2>测试</h2>
+<ul>
+<li><strong>核心逻辑走 TDD</strong>：纯函数、CAS 写入、校验——写在 Go 侧，毫秒级，进 CI。</li>
+<li><strong>浏览器那一层尽量少动</strong>：只有浏览器能回答的问题（画出来了没有、点了界面变没变）才留在那里。</li>
+</ul>
+
+  </main>
+</div>
+<footer>
+  <p>这一页讲的是发行版 <strong>newgate-ext</strong> 的装配。内核机制的权威原文在
+     <a href="https://github.com/rzbdz/newgate">rzbdz/newgate</a>。</p>
+  <p><a href="https://github.com/rzbdz/newgate">内核</a> · <a href="https://github.com/rzbdz/newgate-ext/releases">版本发布</a></p>
+</footer>
+</body>
+</html>

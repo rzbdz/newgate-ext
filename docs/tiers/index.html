@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="canonical" href="https://rzbdz.github.io/newgate-ext/docs/tiers/">
+<meta name="theme-color" content="#0f1115">
+<meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+
+<title>档位与 profile · newgate-ext</title>
+<meta name="description" content="客户端说的永远不是「用 gpt-5.6」，而是「这一发要 heavy」。中间那层语义：">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="newgate-ext">
+<meta property="og:title" content="档位与 profile · newgate-ext">
+<meta property="og:description" content="客户端说的永远不是「用 gpt-5.6」，而是「这一发要 heavy」。中间那层语义：">
+<meta property="og:url" content="https://rzbdz.github.io/newgate-ext/docs/tiers/">
+<meta property="og:locale" content="zh_CN">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="档位与 profile · newgate-ext">
+<meta name="twitter:description" content="客户端说的永远不是「用 gpt-5.6」，而是「这一发要 heavy」。中间那层语义：">
+
+<link rel="icon" type="image/svg+xml" href="/newgate-ext/favicon.svg">
+<link rel="stylesheet" href="/newgate-ext/site.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/newgate-ext/"><strong>newgate-ext</strong></a>
+  <span class="spacer"></span>
+  <nav class="langs"><a href="/newgate-ext/docs/tiers/" class="on">中文</a><span class="soon" title="not written yet">English</span></nav>
+</header>
+<div class="shell">
+  <nav class="side">
+    <ul>
+    <li><a href="/newgate-ext/">首页</a></li>
+    <li><a href="/newgate-ext/docs/">文档</a></li>
+    <li><a href="/newgate-ext/docs/quickstart/">快速开始</a></li>
+    <li class="on"><a href="/newgate-ext/docs/tiers/">档位与 profile</a></li>
+    <li><a href="/newgate-ext/docs/clients/">接管客户端</a></li>
+    <li><a href="/newgate-ext/docs/codex/">Codex 模式</a></li>
+    <li><a href="/newgate-ext/docs/config/">配置与命令</a></li>
+    <li><a href="/newgate-ext/docs/troubleshooting/">排障</a></li>
+    <li><a href="/newgate-ext/docs/modules/">写一个模块</a></li>
+    <li><a href="/newgate-ext/docs/fork/">fork 一份发行版</a></li>
+    <li><a href="/newgate-ext/changelog/">更新日志</a></li>
+    </ul>
+  </nav>
+  <main>
+    <h1>档位与 profile</h1>
+    <h2>档位是意图，不是模型名</h2>
+<p>客户端说的<strong>永远不是</strong>「用 gpt-5.6」，而是「这一发要 heavy」。中间那层语义：</p>
+<pre><code class="lang-text">客户端请求  →  档位  →  profile 的候选链  →  provider/model</code></pre>
+<p>好处是模型换代不需要动客户端：换的是<strong>链</strong>，客户端里那一行从来没变过。</p>
+<p>四档按能力从高到低：</p>
+<pre><code class="lang-text">heavy  &gt;  normal  &gt;  mid  &gt;  light</code></pre>
+<ul>
+<li><code>normal</code> 是主力档，日常都落在这里；</li>
+<li><code>mid</code> 是<strong>兼容层</strong>：一份 profile 没写 <code>normal</code> 时，由它承接（稀疏 profile 不该逼着你把每一档都写全）；</li>
+<li><code>vision</code> 不在这个阶梯里——它说的是「这一发还需要看得见图」，与强弱无关，单独判断；</li>
+<li>认不出来的档位<strong>不猜</strong>，直接报一句可诊断的错。</li>
+</ul>
+<h2>profile 是一条有序的候选链</h2>
+<p>一个 profile 给每一档配<strong>若干</strong>候选，顺序就是 fallback 顺序：</p>
+<pre><code class="lang-text">normal = ark/deepseek-v3, backup/gpt-5.6
+mid    = backup/gpt-5.6
+light  = fast/glm-air</code></pre>
+<p>请求先走链头。<strong>连接失败、上游错误可以转移、首字节超时</strong>这三种情况下才试下一站。每一次跳过都会说明原因——<code>newgate tier</code> 就是把这些原因摊开给你看的那条命令。</p>
+<pre><code class="lang-bash">newgate tier normal</code></pre>
+<h2>谁来定用哪一份 profile</h2>
+<p>优先级从高到低：</p>
+<ol>
+<li><strong>这一次调用显式点名</strong>：<code>newgate claude --profile=kimi</code>；</li>
+<li><strong>这个客户端绑定的</strong>：<code>state.json</code> 里按 agent 记的那一份；</li>
+<li><strong>全局默认</strong>：<code>newgate --set-profile ark</code>。</li>
+</ol>
+<p>第 1 条是<strong>单次覆盖</strong>，不动任何全局状态。它编码在请求路径里，所以两个客户端同时跑着，永远不会拿错对方的选择。</p>
+<h2>改一份 profile</h2>
+<pre><code class="lang-bash">newgate web                    # 在网页面板上点着改
+newgate profile kv ark         # 把 ark 摊成 KV 文本
+newgate profile kv ark --write # 改完写回盘上
+$EDITOR ~/.config/newgate/mappings/ark.json   # 或直接改文件，watch 会捡起来</code></pre>
+<p>文件本身住在 <code>~/.config/newgate/mappings/</code>，<code>.kv</code> 与 <code>.json</code> 两种后缀都认。</p>
+<h2>动态档位</h2>
+<p>除了上面四个，模块还能登记<strong>自己的档位</strong>。今天有两处：</p>
+<ul>
+<li><strong>OpenCode × Oh My OpenAgent 的槽位</strong>（<code>newgate omo</code> 管的那张表）；</li>
+<li><strong>Codex 自己的模型名</strong>（见 <a href="/newgate-ext/docs/codex/">Codex 模式</a>）。</li>
+</ul>
+<p>它们是同一条解析路径上的东西：请求进来时先看「这个名字是不是一个认得的档位」，是就照常建链。所以「客户端点名一个具体模型名」与「客户端说要 heavy」在网关这一层没有区别。</p>
+
+  </main>
+</div>
+<footer>
+  <p>这一页讲的是发行版 <strong>newgate-ext</strong> 的装配。内核机制的权威原文在
+     <a href="https://github.com/rzbdz/newgate">rzbdz/newgate</a>。</p>
+  <p><a href="https://github.com/rzbdz/newgate">内核</a> · <a href="https://github.com/rzbdz/newgate-ext/releases">版本发布</a></p>
+</footer>
+</body>
+</html>

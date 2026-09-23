@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="canonical" href="https://rzbdz.github.io/newgate-ext/docs/clients/">
+<meta name="theme-color" content="#0f1115">
+<meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+
+<title>接管客户端 · newgate-ext</title>
+<meta name="description" content="「接管」是两件事：改客户端自己的配置，以及给它一个 PATH shim。做之前按字节备份，off 做逐字节恢复。">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="newgate-ext">
+<meta property="og:title" content="接管客户端 · newgate-ext">
+<meta property="og:description" content="「接管」是两件事：改客户端自己的配置，以及给它一个 PATH shim。做之前按字节备份，off 做逐字节恢复。">
+<meta property="og:url" content="https://rzbdz.github.io/newgate-ext/docs/clients/">
+<meta property="og:locale" content="zh_CN">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="接管客户端 · newgate-ext">
+<meta name="twitter:description" content="「接管」是两件事：改客户端自己的配置，以及给它一个 PATH shim。做之前按字节备份，off 做逐字节恢复。">
+
+<link rel="icon" type="image/svg+xml" href="/newgate-ext/favicon.svg">
+<link rel="stylesheet" href="/newgate-ext/site.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/newgate-ext/"><strong>newgate-ext</strong></a>
+  <span class="spacer"></span>
+  <nav class="langs"><a href="/newgate-ext/docs/clients/" class="on">中文</a><span class="soon" title="not written yet">English</span></nav>
+</header>
+<div class="shell">
+  <nav class="side">
+    <ul>
+    <li><a href="/newgate-ext/">首页</a></li>
+    <li><a href="/newgate-ext/docs/">文档</a></li>
+    <li><a href="/newgate-ext/docs/quickstart/">快速开始</a></li>
+    <li><a href="/newgate-ext/docs/tiers/">档位与 profile</a></li>
+    <li class="on"><a href="/newgate-ext/docs/clients/">接管客户端</a></li>
+    <li><a href="/newgate-ext/docs/codex/">Codex 模式</a></li>
+    <li><a href="/newgate-ext/docs/config/">配置与命令</a></li>
+    <li><a href="/newgate-ext/docs/troubleshooting/">排障</a></li>
+    <li><a href="/newgate-ext/docs/modules/">写一个模块</a></li>
+    <li><a href="/newgate-ext/docs/fork/">fork 一份发行版</a></li>
+    <li><a href="/newgate-ext/changelog/">更新日志</a></li>
+    </ul>
+  </nav>
+  <main>
+    <h1>接管客户端</h1>
+    <p>「接管」是两件事：<strong>改客户端自己的配置</strong>，以及<strong>给它一个 PATH shim</strong>。做之前按字节备份，<code>off</code> 做逐字节恢复。</p>
+<pre><code class="lang-bash">newgate on claude      # / codex / opencode
+newgate off claude
+newgate status         # 一眼看到每家现在是什么状态</code></pre>
+<p><code>newgate status</code> 那行里每一家是四态之一：</p>
+<table>
+<thead><tr><th>屏幕上</th><th>意思</th></tr></thead>
+<tbody>
+<tr><td>生效</td><td>它现在确实在走网关</td></tr>
+<tr><td>声明了没生效</td><td>配置写着要接管，但这条路没接上（多半是 shell 里有冲突的环境变量）</td></tr>
+<tr><td>关过却没放开</td><td>你关过它，但环境里还留着指向网关的东西</td></tr>
+<tr><td>直连</td><td>它没走这里，走的是自己的上游</td></tr>
+</tbody></table>
+<p><strong>改完要重开 shell</strong>：shim 是 PATH 上的一个入口，已经开着的终端不会重新读 PATH。</p>
+<h2>Claude Code</h2>
+<p>用 PATH shim：在专用目录里放一个同名入口，它找到真正的 <code>claude</code>，把 Gateway URL 与档位槽位注进环境，然后 exec 顶替掉自己。</p>
+<p><strong>动态模式</strong>注进去的是档位名，于是<strong>已经在跑的会话</strong>下一发请求就会读到最新的 profile——换了 profile 不用重开会话。显式 <code>--profile</code> 则把这<strong>一次调用</strong>钉死在某一份上。</p>
+<h2>OpenCode</h2>
+<p>走配置 takeover：注入一个 <code>newgate</code> provider，并改写选中的模型引用。原文件在 backup 里，<code>newgate off opencode</code> 逐字节恢复。</p>
+<p>Oh My OpenAgent（OMO）是一个独立的模块，它消费 OpenCode、Config 这两条公开端口，登记自己的档位、takeover、诊断与命令——所以关掉 OMO 不影响 OpenCode 那一半。</p>
+<h2>Codex</h2>
+<p>Codex 有自己的两套形态，见 <a href="/newgate-ext/docs/codex/">Codex 模式</a>——它的模型目录<strong>编在它自己的二进制里</strong>，所以这里的做法与其他两家不一样。</p>
+<h2>出问题时</h2>
+<p>先跑 <code>newgate doctor</code>，它会检查配置、provider、端口、接管与模块诊断。</p>
+<p>最容易踩的一条：<strong>shell 里已经存在的 <code>ANTHROPIC_BASE_URL</code> 这类变量会盖过配置</strong>。 shim 会在子进程环境里显式设置或删掉这些变量，接管时也会给出可见的警告——看到那行警告就去 <code>~/.zshrc</code> / <code>~/.bashrc</code> 里找。</p>
+
+  </main>
+</div>
+<footer>
+  <p>这一页讲的是发行版 <strong>newgate-ext</strong> 的装配。内核机制的权威原文在
+     <a href="https://github.com/rzbdz/newgate">rzbdz/newgate</a>。</p>
+  <p><a href="https://github.com/rzbdz/newgate">内核</a> · <a href="https://github.com/rzbdz/newgate-ext/releases">版本发布</a></p>
+</footer>
+</body>
+</html>

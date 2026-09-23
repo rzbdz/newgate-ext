@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="canonical" href="https://rzbdz.github.io/newgate-ext/docs/codex/">
+<meta name="theme-color" content="#0f1115">
+<meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+
+<title>Codex 模式 · newgate-ext</title>
+<meta name="description" content="Codex 与另外两家不一样，搞清楚这一点它的两种模式就自洽了：">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="newgate-ext">
+<meta property="og:title" content="Codex 模式 · newgate-ext">
+<meta property="og:description" content="Codex 与另外两家不一样，搞清楚这一点它的两种模式就自洽了：">
+<meta property="og:url" content="https://rzbdz.github.io/newgate-ext/docs/codex/">
+<meta property="og:locale" content="zh_CN">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Codex 模式 · newgate-ext">
+<meta name="twitter:description" content="Codex 与另外两家不一样，搞清楚这一点它的两种模式就自洽了：">
+
+<link rel="icon" type="image/svg+xml" href="/newgate-ext/favicon.svg">
+<link rel="stylesheet" href="/newgate-ext/site.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/newgate-ext/"><strong>newgate-ext</strong></a>
+  <span class="spacer"></span>
+  <nav class="langs"><a href="/newgate-ext/docs/codex/" class="on">中文</a><span class="soon" title="not written yet">English</span></nav>
+</header>
+<div class="shell">
+  <nav class="side">
+    <ul>
+    <li><a href="/newgate-ext/">首页</a></li>
+    <li><a href="/newgate-ext/docs/">文档</a></li>
+    <li><a href="/newgate-ext/docs/quickstart/">快速开始</a></li>
+    <li><a href="/newgate-ext/docs/tiers/">档位与 profile</a></li>
+    <li><a href="/newgate-ext/docs/clients/">接管客户端</a></li>
+    <li class="on"><a href="/newgate-ext/docs/codex/">Codex 模式</a></li>
+    <li><a href="/newgate-ext/docs/config/">配置与命令</a></li>
+    <li><a href="/newgate-ext/docs/troubleshooting/">排障</a></li>
+    <li><a href="/newgate-ext/docs/modules/">写一个模块</a></li>
+    <li><a href="/newgate-ext/docs/fork/">fork 一份发行版</a></li>
+    <li><a href="/newgate-ext/changelog/">更新日志</a></li>
+    </ul>
+  </nav>
+  <main>
+    <h1>Codex 模式</h1>
+    <p>Codex 与另外两家不一样，搞清楚这一点它的两种模式就自洽了：</p>
+<blockquote><p><strong>Codex 的模型目录编在它自己的二进制里。</strong></p></blockquote>
+<p><code>codex debug models</code> 会打出九个模型，而它<strong>从不问服务端要</strong>。实测把它的 provider 指向一个记账的假上游：<code>/v1/models</code> 一次都没被请求过——<code>--enable remote_models</code>、 provider 表里声明 <code>models_endpoint</code>、再配一个 <code>env_key</code>，三条都试了，假上游始终收到 0 条。</p>
+<p>所以「把我们的档位塞进 <code>/v1/models</code>、让它自己的选择器里出现档位」这条路<strong>不存在</strong>。 <code>config.toml</code> 里只能写一个模型名，于是「在 codex 里换模型」这件事一开始是做不到的。</p>
+<h2>两种模式</h2>
+<p><code>newgate on codex</code> 接管时按模式决定往 <code>config.toml</code> 里写什么。网页面板上那张 <strong>Codex 模型名</strong>卡上有那个切换按钮（只画「另一个」，因为当前那个画成按钮等于一个点了不会改变任何事的按钮）。</p>
+<h3>接管模式（缺省）</h3>
+<p>往 <code>config.toml</code> 里写<strong>档位名</strong>：</p>
+<pre><code class="lang-toml">model = &quot;normal&quot;</code></pre>
+<p>codex 只认这一个模型，换也换不动——但每一发都落到你配的那条链上。这是 2026-09-21 之前的唯一行为，所以它也是缺省：不变更任何人的现状。</p>
+<h3>改名模式</h3>
+<p>往 <code>config.toml</code> 里写 <strong>codex 自己的模型名</strong>：</p>
+<pre><code class="lang-toml">model = &quot;gpt-5.6-luna&quot;</code></pre>
+<p>然后在请求进来时，把这个名字认回我们的档位。用户在 codex 里按 <code>/model</code> 选中谁，就落到我们哪一档——<strong>这就是「里面无法切模型」的解法</strong>。</p>
+<h2>那张表：codex 的哪个名字算哪一档</h2>
+<p>它是网页面板上的一张卡（<strong>Codex 模型名</strong>），也是 <code>~/.config/newgate/codex-models.json</code> 这份文件。出厂那五条按 codex 自己的 priority 排：最能干的给 <code>heavy</code>，最便宜的给 <code>light</code>。</p>
+<table>
+<thead><tr><th>codex 的模型名</th><th>落到</th></tr></thead>
+<tbody>
+<tr><td><code>gpt-6-astra</code></td><td>heavy</td></tr>
+<tr><td><code>gpt-5.6-sol</code></td><td>normal</td></tr>
+<tr><td><code>gpt-5.6-terra</code></td><td>normal</td></tr>
+<tr><td><code>gpt-5.6-luna</code></td><td>normal</td></tr>
+<tr><td><code>gpt-5.5</code></td><td>light</td></tr>
+</tbody></table>
+<p>三条规矩，都是「不这么定就会静默出错」的那种：</p>
+<ul>
+<li><strong>所见即所得</strong>：界面上保存的是<strong>整张表</strong>，所以删掉一行就是删掉了（出厂值不会把它顶回来）。文件里 <code>models</code> 一旦存在，它就是全部。</li>
+<li><strong>加一行、删一行都不用重启</strong>：改完下一次请求就按新表认。</li>
+<li><strong>空名字、空档位、两行同名都会被拒</strong>：这三种都能存下去，然后静静地什么都不做（匹配不上、保存后那一行自己消失、后一行永远轮不到）——拒绝比静默强。</li>
+</ul>
+<p>codex 出了新模型时，加一行就行——<strong>不用等我们发版</strong>。哪个新名字该算哪一档，那是你自己的取舍。</p>
+<h2>别的客户端不受影响</h2>
+<p>上面那张表只在<strong>改名模式</strong>下登记成动态档位。理由是一条实测出来的耦合：这些名字一旦登记，<code>IsKnownRole</code> 就为真，于是「具体模型名反解回它所属档位」那条路被短路 ——而那条路正是别的客户端点名 <code>gpt-5.6-terra</code> 时依赖的东西。所以它跟着模式走：改名模式是你明确要过的形态，那时你要的就是「codex 的名字 = 档位」。</p>
+
+  </main>
+</div>
+<footer>
+  <p>这一页讲的是发行版 <strong>newgate-ext</strong> 的装配。内核机制的权威原文在
+     <a href="https://github.com/rzbdz/newgate">rzbdz/newgate</a>。</p>
+  <p><a href="https://github.com/rzbdz/newgate">内核</a> · <a href="https://github.com/rzbdz/newgate-ext/releases">版本发布</a></p>
+</footer>
+</body>
+</html>

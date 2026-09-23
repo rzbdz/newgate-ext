@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="canonical" href="https://rzbdz.github.io/newgate-ext/docs/troubleshooting/">
+<meta name="theme-color" content="#0f1115">
+<meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+
+<title>排障 · newgate-ext</title>
+<meta name="description" content="先跑 newgate doctor。它查配置、provider、端口、接管和模块诊断——「不知道哪儿不对」时它是第一条命令。下面按你看到的现象分。">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="newgate-ext">
+<meta property="og:title" content="排障 · newgate-ext">
+<meta property="og:description" content="先跑 newgate doctor。它查配置、provider、端口、接管和模块诊断——「不知道哪儿不对」时它是第一条命令。下面按你看到的现象分。">
+<meta property="og:url" content="https://rzbdz.github.io/newgate-ext/docs/troubleshooting/">
+<meta property="og:locale" content="zh_CN">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="排障 · newgate-ext">
+<meta name="twitter:description" content="先跑 newgate doctor。它查配置、provider、端口、接管和模块诊断——「不知道哪儿不对」时它是第一条命令。下面按你看到的现象分。">
+
+<link rel="icon" type="image/svg+xml" href="/newgate-ext/favicon.svg">
+<link rel="stylesheet" href="/newgate-ext/site.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/newgate-ext/"><strong>newgate-ext</strong></a>
+  <span class="spacer"></span>
+  <nav class="langs"><a href="/newgate-ext/docs/troubleshooting/" class="on">中文</a><span class="soon" title="not written yet">English</span></nav>
+</header>
+<div class="shell">
+  <nav class="side">
+    <ul>
+    <li><a href="/newgate-ext/">首页</a></li>
+    <li><a href="/newgate-ext/docs/">文档</a></li>
+    <li><a href="/newgate-ext/docs/quickstart/">快速开始</a></li>
+    <li><a href="/newgate-ext/docs/tiers/">档位与 profile</a></li>
+    <li><a href="/newgate-ext/docs/clients/">接管客户端</a></li>
+    <li><a href="/newgate-ext/docs/codex/">Codex 模式</a></li>
+    <li><a href="/newgate-ext/docs/config/">配置与命令</a></li>
+    <li class="on"><a href="/newgate-ext/docs/troubleshooting/">排障</a></li>
+    <li><a href="/newgate-ext/docs/modules/">写一个模块</a></li>
+    <li><a href="/newgate-ext/docs/fork/">fork 一份发行版</a></li>
+    <li><a href="/newgate-ext/changelog/">更新日志</a></li>
+    </ul>
+  </nav>
+  <main>
+    <h1>排障</h1>
+    <p>先跑 <code>newgate doctor</code>。它查配置、provider、端口、接管和模块诊断——「不知道哪儿不对」时它是第一条命令。下面按<strong>你看到的现象</strong>分。</p>
+<h2>1. 上游回 400，正文里有 reasoning_content</h2>
+<p>这是本发行版存在的原因之一，不是新故障。少数上游要求把上一轮的思维链原样带回来（或者反过来，带了就报错），而不同厂商的方言<strong>不一样</strong>：</p>
+<table>
+<thead><tr><th>上游</th><th>它要什么</th></tr></thead>
+<tbody>
+<tr><td>DeepSeek</td><td>把 reasoning 带回来</td></tr>
+<tr><td>GLM</td><td>往回传 thinking</td></tr>
+<tr><td>Kimi 系</td><td>该模型始终思考，必须显式开</td></tr>
+</tbody></table>
+<p>判据是<strong>报错的原文</strong>（不是模型名），所以补丁认得出来是哪一家。三类 400 都<strong>不摘牌</strong> ——它不是上游坏了，是这一发的形状不对。</p>
+<p>如果它持续出现，看这两处：</p>
+<pre><code class="lang-bash">newgate st          # 那几个补丁此刻是开着还是被关掉了
+newgate debug on    # 下一发的完整报文落进 dump/</code></pre>
+<p><code>dump/</code> 里是三联文件：客户端发来的、我们发出去的、上游回的。<strong>它是唯一能定罪的证据</strong>，别的都是猜。</p>
+<h2>2. <code>probe</code> 说通，真实请求却 400 / 404</h2>
+<p>两种成因，都不是 bug：</p>
+<p><strong>a. provider 只配了声明协议入口。</strong> 分别测 anthropic 的 <code>/v1/messages</code> 与 openai 的 <code>/v1/chat/completions</code>，检查 <code>anthropic_url</code> 与通用 base URL 是不是都指对了。</p>
+<p><strong>b. probe 发的是最小请求</strong>（一条消息、<code>max_tokens: 4</code>、没有 tools、没有历史）。它探不到<strong>只在长对话或思考模式下才触发</strong>的上游校验——reasoning 那条就是典型。 probe 验证的是「连通性 + 方言」，不是「这条长对话过得去」。把两者混起来，就会得到「probe 说健康、为什么还被摘」这种错误期待。</p>
+<h2>3. 明明能用，却被摘牌了</h2>
+<pre><code class="lang-bash">newgate breaker      # 两段：被摘的（状态/账本/还要等多久/原因）+ 只计数没摘的
+newgate probe        # 不等冷却，立刻用一次主动探活改结论
+newgate tier normal  # 这个 binding 在链里排第几、是不是被 maxAttempts 截断</code></pre>
+<p>先看<strong>账本</strong>那一列：</p>
+<table>
+<thead><tr><th>账本</th><th>什么情况</th></tr></thead>
+<tbody>
+<tr><td>可用性</td><td>连接超时 / 5xx / 流中断——真的不行</td></tr>
+<tr><td>限流</td><td>429，20 秒起就回来</td></tr>
+<tr><td>配置</td><td>401 / 403 / 404，<strong>一次即摘</strong>，去查 key / base / 模型名</td></tr>
+<tr><td>请求形状</td><td><strong>永不摘牌</strong>，只累加计数（§1 那类 400 出现在第二段里）</td></tr>
+</tbody></table>
+<p>原因是「连续失败到阈值时会先做一次主动探活，探活说还通就不摘」。所以一条 binding 真的被摘了，意思是<strong>被动流量和主动探活都说不通</strong>：</p>
+<ul>
+<li>只写「真实流量连续失败」→ 探活也跑了，但结论也是不通（或者没有探活器）；</li>
+<li>写「诊断探活也不通」→ 双重证据，摘得没冤枉它；</li>
+<li>「半开试探失败」→ 冷却期满后它拿到过一次真实试探名额，那一发也失败了。</li>
+</ul>
+<p><strong>半开</strong>是恢复机制：冷却期满放行<strong>一次</strong>真实请求试探，成功即合闸，失败则回闸并把冷却翻倍（60s → 120s → … → 10 分钟封顶）。所以第二段的「还要等」对不上 60 秒基准是正常的——那是退避之后的实际值。</p>
+<p>第二段的「救回」列是反方向的记录：这条 binding 一共被探活从摘牌边缘拉回来过几次。这个数字在涨而「可用性」账本一直是 0，说明它间歇性抖动但每次都证明还活着——不是故障，是上游在喘。</p>
+<p><code>newgate metrics</code> 里 <code>breaker.skipped.shape_error</code> 是 §1 那类 400 的计数器。</p>
+<h2>4. 接管了，客户端却还在直连</h2>
+<pre><code class="lang-bash">newgate status        # 四态：生效 / 声明了没生效 / 关过却没放开 / 直连
+newgate doctor</code></pre>
+<p>按顺序查：</p>
+<ol>
+<li><strong>PATH 顺序</strong>——shim 那层在不在真的可执行文件前面；</li>
+<li><strong>shell 里的旧变量</strong>——已经存在的 <code>ANTHROPIC_BASE_URL</code> 这类会盖过配置；</li>
+<li><strong>OpenCode 的配置</strong>有没有被另一个工具覆盖；</li>
+<li><strong>重开 shell</strong>——PATH 改动对新开的终端才生效。</li>
+</ol>
+<h2>5. 重启了，行为却没变</h2>
+<p><code>newgate version</code> 显示的是 <strong>CLI 文件</strong>的版本，它<strong>不证明 daemon 换了血</strong>（daemon 是另一个进程）。真正要看的是：</p>
+<pre><code class="lang-bash">md5sum /proc/&lt;pid&gt;/exe /path/to/newgate</code></pre>
+<p>两个摘要不一致，说明升级没接上。另外核一下 <code>newgate plugin</code> 的<strong>模块数</strong>——它跟着规格书走，少了就是装错了那份发行版。</p>
+<h2>6. 权限错误</h2>
+<p>daemon 那个用户要能写 state、pid、lock、log 和 thinkcache。目录建议保留 group 继承位，文件需要 daemon 所在组可写。优雅交接回 500、或者冷层关不掉，通常是同一类问题。</p>
+<h2>7. Fallback 不是你想的那条链</h2>
+<pre><code class="lang-bash">newgate tier normal       # resolver 的输出：链、顺序、谁被跳过、为什么
+newgate metrics           # chain.step_failed 与 chain.failover</code></pre>
+<p>再<strong>从响应头确认最终 route</strong>。不要盯着 profile 的文本猜链——<code>naked</code> 之类的运行期开关、被摘牌的 binding、<code>maxAttempts</code> 截断都会改掉实际走的那条，而那些都不在文件里。</p>
+<h2>8. 请求被改坏了</h2>
+<p>以 <code>dump/</code> 的三联文件为<strong>唯一</strong>报文证据：对比客户端发来的和我们发出去的，找到具体是哪一处拼接；再用日志的 notes 确认它是 schema repair、special treatment 还是 model rewrite 干的。</p>
+<p>三类改写都能在运行期关掉（<code>newgate st</code>），所以定位到之后不用改代码就能先绕过。</p>
+
+  </main>
+</div>
+<footer>
+  <p>这一页讲的是发行版 <strong>newgate-ext</strong> 的装配。内核机制的权威原文在
+     <a href="https://github.com/rzbdz/newgate">rzbdz/newgate</a>。</p>
+  <p><a href="https://github.com/rzbdz/newgate">内核</a> · <a href="https://github.com/rzbdz/newgate-ext/releases">版本发布</a></p>
+</footer>
+</body>
+</html>

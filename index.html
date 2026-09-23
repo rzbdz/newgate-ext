@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="canonical" href="https://rzbdz.github.io/newgate-ext/">
+<meta name="theme-color" content="#0f1115">
+<meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+
+<title>newgate-ext — 为 vibecoding 而生的最佳网关</title>
+<meta name="description" content="一个本地网关，站在 Claude Code / Codex / OpenCode 和你选定的模型之间：换上游是一条命令，坏一家不等于你坏，上游的怪癖是可插拔的模块。">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="newgate-ext">
+<meta property="og:title" content="newgate-ext — 为 vibecoding 而生的最佳网关">
+<meta property="og:description" content="一个本地网关，站在 Claude Code / Codex / OpenCode 和你选定的模型之间：换上游是一条命令，坏一家不等于你坏，上游的怪癖是可插拔的模块。">
+<meta property="og:url" content="https://rzbdz.github.io/newgate-ext/">
+<meta property="og:locale" content="zh_CN">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="newgate-ext — 为 vibecoding 而生的最佳网关">
+<meta name="twitter:description" content="一个本地网关，站在 Claude Code / Codex / OpenCode 和你选定的模型之间：换上游是一条命令，坏一家不等于你坏，上游的怪癖是可插拔的模块。">
+
+<link rel="icon" type="image/svg+xml" href="/newgate-ext/favicon.svg">
+<link rel="stylesheet" href="/newgate-ext/site.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/newgate-ext/"><strong>newgate-ext</strong></a>
+  <span class="spacer"></span>
+  <nav class="langs"><a href="/newgate-ext/" class="on">中文</a><span class="soon" title="not written yet">English</span></nav>
+</header>
+
+<div class="hero">
+  <p class="lead">newgate-ext<span class="sep">/</span>为 vibecoding 而生的最佳网关</p>
+  <h1>为 vibecoding 而生的最佳网关</h1>
+  <p class="sub">一个本地网关，站在 Claude Code / Codex / OpenCode 和你选定的模型之间：换上游是一条命令，坏一家不等于你坏，上游的怪癖是可插拔的模块。</p>
+  <p class="cta">
+    <a class="button primary" href="/newgate-ext/docs/quickstart/">快速开始</a>
+    <a class="button ghost" href="https://github.com/rzbdz/newgate">GitHub</a>
+    <a class="button ghost" href="/newgate-ext/docs/">文档</a>
+  </p>
+
+  <div class="browser" aria-label="newgate 控制台">
+    <div class="browser-bar">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="addr">newgate web</span>
+    </div>
+    <iframe src="/newgate-ext/demo/" title="newgate 控制台"></iframe>
+  </div>
+  <ul class="chips">
+    <li>一个静态二进制</li>
+    <li>PATH shim 接管，配置就地改写</li>
+    <li>零第三方依赖</li>
+    <li>换版本不打断在途的会话</li>
+    <li>MIT · 可 fork</li>
+  </ul>
+</div>
+
+<main class="landing"><section class="feat"><h2><small>01</small> 接管你的 CLI，而 CLI 毫无察觉</h2>
+<p>一个 PATH shim，加上客户端自己的配置被就地改写——环境变量静默注入，改之前先按字节备份。装一次，此后不用再手改配置，也不用重开会话。</p>
+</section>
+<section class="feat"><h2><small>02</small> 换哪个 API 应答是一条命令</h2>
+<p>不是一次迁移。下一发请求就走新链，客户端继续跑着，它的配置没被动过，旧上游离你一条命令：</p>
+<pre><code class="lang-bash">newgate --set-profile ark</code></pre>
+</section>
+<section class="feat"><h2><small>03</small> 该全局就全局，小活可以临时来</h2>
+<p>档位配一次，所有客户端跟着走。某个小任务想换个模型，就在那一次调用上换：</p>
+<pre><code class="lang-bash">newgate claude --profile=kimi</code></pre>
+<p>什么都不改全局的。这个选择走在<strong>请求路径</strong>里，所以同时跑着的两个客户端永远不会拿错对方的选择。</p>
+</section>
+<section class="feat"><h2><small>04</small> 单个上游挂掉，不等于你挂掉</h2>
+<p>每个档位都是一条<strong>有序的候选链</strong>：你的规则优先，然后是预测的首字节时间。每一次跳过都有解释，每一次改道都记账。</p>
+</section>
+<section class="feat"><h2><small>05</small> 出了什么事，看得见</h2>
+<pre><code class="lang-bash">newgate metrics     # 按上下文大小分的延迟、改道次数、首字节超时、字节改写，每个计数器都带一句话
+newgate logs -f     # 跟着看代理日志
+newgate debug on    # 把每一发请求都倒出来
+newgate doctor      # 出问题时先跑它</code></pre>
+</section>
+<section class="feat"><h2><small>06</small> 同一份画面，浏览器里也有一份</h2>
+<p><code>newgate web</code> 打出地址——就挂在网关已经在听的那个端口上。档位绑定就地编辑、运行期开关直接拨、计数器、日志尾巴、绑定健康、此刻谁在走网关，都在那儿。每一次改动都走 <strong>命令行用的那条写入路径</strong>，并带上你加载时的那份修订：你在看页面时命令行改过的文件，会摆成一个冲突让你决定，而不是被盖掉。</p>
+</section>
+<section class="feat"><h2><small>07</small> 升级不会打断你</h2>
+<p><code>newgate restart</code> 把监听 socket 交给新二进制，并把在途的请求排干——流式的也算，所以在一个很长的 agent 会话中间换版本是安全的，哪怕那个会话正走在这条被替换掉的网关上。</p>
+</section>
+<section class="feat"><h2><small>08</small> 上游的怪癖是模块，不是 <code>if</code></h2>
+<p>DeepSeek 的 reasoning 回传与尾部形状、GLM 的思维链回传、Claude Code 的后台分类器调用——每个都写了它存在是为了防住哪个故障，可以在运行期开关。客户端 × 模型的桥也是模块（Claude Code × DeepSeek、Codex × DeepSeek、OpenCode 里 Oh My OpenAgent 的槽位）。读一个，换掉它，或者给一个我们从没听说过的上游写补丁。</p>
+</section>
+<h2>Fork 下来，改成你自己的</h2>
+<p>一个模块就是一个目录、里面一个 <code>New()</code>。把我们的路由策略换成你的、扔掉你不在乎的怪癖、留下网关和熔断：</p>
+<pre><code class="lang-jsonc">// dist-mine.json  →  build/build.sh  →  每个平台一个静态二进制
+{ &quot;distribution&quot;: &quot;mine&quot;,
+  &quot;modules&quot;: [&quot;tui&quot;, &quot;deepseek&quot;, &quot;glm&quot;, &quot;claudecode&quot;, &quot;opencode&quot;],
+  &quot;disable&quot;: [] }</code></pre>
+<p>网关、档位解析、熔断、界面、入口——全都是模块，所以换一个策略 = 换一个模块，而不是给内核打补丁。<code>newgate restart</code> 会把 socket 交出去，所以你发自己的版本不会打断任何人，包括正在会话里的你自己。想从几乎什么都没有开始，就从 <code>dist-hello.json</code> 起步（框架 + 一个 <code>hello</code>）。</p>
+<h2>安装</h2>
+<pre><code class="lang-bash">gh release download --repo rzbdz/newgate-ext -p &#39;*linux-amd64&#39;
+mv newgate-default-linux-amd64 ~/.local/bin/newgate &amp;&amp; chmod +x ~/.local/bin/newgate
+newgate init &amp;&amp; newgate on claude     # 还有：newgate on codex / newgate on opencode</code></pre>
+<p>一个静态二进制，没有运行期依赖。<code>newgate init</code> 铺下一份带占位符的配置；把 key 放进 <code>providers.json</code>（或者放进 <code>NEWGATE_KEY_*</code> 环境变量），重开一次 shell 就能干活了。</p>
+</main>
+
+<footer>
+  <p>这一页讲的是发行版 <strong>newgate-ext</strong> 的装配。内核机制的权威原文在
+     <a href="https://github.com/rzbdz/newgate">rzbdz/newgate</a>。</p>
+  <p><a href="https://github.com/rzbdz/newgate">内核</a> · <a href="https://github.com/rzbdz/newgate-ext/releases">版本发布</a></p>
+</footer>
+</body>
+</html>

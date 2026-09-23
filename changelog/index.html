@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="canonical" href="https://rzbdz.github.io/newgate-ext/changelog/">
+<meta name="theme-color" content="#0f1115">
+<meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+
+<title>更新日志 · newgate-ext</title>
+<meta name="description" content="这个站的更新日志就是 GitHub Releases ——那里是唯一一份真的：每一条都对应一个 tag、一份编好的二进制、一串校验和。">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="newgate-ext">
+<meta property="og:title" content="更新日志 · newgate-ext">
+<meta property="og:description" content="这个站的更新日志就是 GitHub Releases ——那里是唯一一份真的：每一条都对应一个 tag、一份编好的二进制、一串校验和。">
+<meta property="og:url" content="https://rzbdz.github.io/newgate-ext/changelog/">
+<meta property="og:locale" content="zh_CN">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="更新日志 · newgate-ext">
+<meta name="twitter:description" content="这个站的更新日志就是 GitHub Releases ——那里是唯一一份真的：每一条都对应一个 tag、一份编好的二进制、一串校验和。">
+
+<link rel="icon" type="image/svg+xml" href="/newgate-ext/favicon.svg">
+<link rel="stylesheet" href="/newgate-ext/site.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/newgate-ext/"><strong>newgate-ext</strong></a>
+  <span class="spacer"></span>
+  <nav class="langs"><a href="/newgate-ext/changelog/" class="on">中文</a><span class="soon" title="not written yet">English</span></nav>
+</header>
+<div class="shell">
+  <nav class="side">
+    <ul>
+    <li><a href="/newgate-ext/">首页</a></li>
+    <li><a href="/newgate-ext/docs/">文档</a></li>
+    <li><a href="/newgate-ext/docs/quickstart/">快速开始</a></li>
+    <li><a href="/newgate-ext/docs/tiers/">档位与 profile</a></li>
+    <li><a href="/newgate-ext/docs/clients/">接管客户端</a></li>
+    <li><a href="/newgate-ext/docs/codex/">Codex 模式</a></li>
+    <li><a href="/newgate-ext/docs/config/">配置与命令</a></li>
+    <li><a href="/newgate-ext/docs/troubleshooting/">排障</a></li>
+    <li><a href="/newgate-ext/docs/modules/">写一个模块</a></li>
+    <li><a href="/newgate-ext/docs/fork/">fork 一份发行版</a></li>
+    <li class="on"><a href="/newgate-ext/changelog/">更新日志</a></li>
+    </ul>
+  </nav>
+  <main>
+    <h1>更新日志</h1>
+    <p>这个站的更新日志就是 <strong><a href="https://github.com/rzbdz/newgate-ext/releases">GitHub Releases</a></strong> ——那里是唯一一份真的：每一条都对应一个 tag、一份编好的二进制、一串校验和。</p>
+<p>这里把最近几版做了些什么写成人话。更早的看 Releases 页面。</p>
+<h2>最近</h2>
+<h3>v0.7.x</h3>
+<ul>
+<li><strong>Codex 的两种接管模式</strong>：接管模式（往 <code>config.toml</code> 写档位名）与<strong>改名模式</strong> （写 codex 自己的模型名，进来时认回档位）。后者解决的正是「在 codex 里切不了模型」——见 <a href="/newgate-ext/docs/codex/">Codex 模式</a>。</li>
+<li><strong>那张映射表变成了能填的界面</strong>：codex 的哪个模型名算哪一档，在网页面板上加一行就行，不用等我们发版，也不用去编辑 JSON。</li>
+<li><strong>i18n 账本的重生成接进了构建</strong>：改一行代码不再让翻译账本过期（它以前记着 <code>文件:行号</code>，任何一次行偏移都会让它失效）。</li>
+</ul>
+<h3>v0.6.x</h3>
+<ul>
+<li><strong><code>newgate ask</code></strong>：一句话进、正文出。思维链走 stderr，所以 <code>answer=$(newgate ask …)</code> 拿到的是干净的正文。</li>
+<li><strong>网页面板上的档位卡</strong>多了一句状态说明：当前生效的那一份画成绿色的「当前配置」，而不是什么都不显示。</li>
+</ul>
+<h2>怎么自己看</h2>
+<pre><code class="lang-bash">newgate version                   # CLI 文件的版本
+newgate alllogs                   # 版本 + 环境 + 状态 + 脱敏配置，一次汇总
+gh release list --repo rzbdz/newgate-ext</code></pre>
+<blockquote><p><code>newgate version</code> 显示的是 <strong>CLI 文件</strong>的版本，它<strong>不证明 daemon 换了血</strong>。升级之后要比 <code>/proc/&lt;pid&gt;/exe</code> 与目标二进制的摘要（见 <a href="/newgate-ext/docs/troubleshooting/">排障</a> §5）。</p></blockquote>
+
+  </main>
+</div>
+<footer>
+  <p>这一页讲的是发行版 <strong>newgate-ext</strong> 的装配。内核机制的权威原文在
+     <a href="https://github.com/rzbdz/newgate">rzbdz/newgate</a>。</p>
+  <p><a href="https://github.com/rzbdz/newgate">内核</a> · <a href="https://github.com/rzbdz/newgate-ext/releases">版本发布</a></p>
+</footer>
+</body>
+</html>

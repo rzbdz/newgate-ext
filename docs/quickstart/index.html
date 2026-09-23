@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="canonical" href="https://rzbdz.github.io/newgate-ext/docs/quickstart/">
+<meta name="theme-color" content="#0f1115">
+<meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+
+<title>快速开始 · newgate-ext</title>
+<meta name="description" content="从零到一个能干活的环境，四步。">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="newgate-ext">
+<meta property="og:title" content="快速开始 · newgate-ext">
+<meta property="og:description" content="从零到一个能干活的环境，四步。">
+<meta property="og:url" content="https://rzbdz.github.io/newgate-ext/docs/quickstart/">
+<meta property="og:locale" content="zh_CN">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="快速开始 · newgate-ext">
+<meta name="twitter:description" content="从零到一个能干活的环境，四步。">
+
+<link rel="icon" type="image/svg+xml" href="/newgate-ext/favicon.svg">
+<link rel="stylesheet" href="/newgate-ext/site.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/newgate-ext/"><strong>newgate-ext</strong></a>
+  <span class="spacer"></span>
+  <nav class="langs"><a href="/newgate-ext/docs/quickstart/" class="on">中文</a><span class="soon" title="not written yet">English</span></nav>
+</header>
+<div class="shell">
+  <nav class="side">
+    <ul>
+    <li><a href="/newgate-ext/">首页</a></li>
+    <li><a href="/newgate-ext/docs/">文档</a></li>
+    <li class="on"><a href="/newgate-ext/docs/quickstart/">快速开始</a></li>
+    <li><a href="/newgate-ext/docs/tiers/">档位与 profile</a></li>
+    <li><a href="/newgate-ext/docs/clients/">接管客户端</a></li>
+    <li><a href="/newgate-ext/docs/codex/">Codex 模式</a></li>
+    <li><a href="/newgate-ext/docs/config/">配置与命令</a></li>
+    <li><a href="/newgate-ext/docs/troubleshooting/">排障</a></li>
+    <li><a href="/newgate-ext/docs/modules/">写一个模块</a></li>
+    <li><a href="/newgate-ext/docs/fork/">fork 一份发行版</a></li>
+    <li><a href="/newgate-ext/changelog/">更新日志</a></li>
+    </ul>
+  </nav>
+  <main>
+    <h1>快速开始</h1>
+    <p>从零到一个能干活的环境，四步。</p>
+<h2>1. 装</h2>
+<pre><code class="lang-bash">gh release download --repo rzbdz/newgate-ext -p &#39;*linux-amd64&#39;
+mv newgate-default-linux-amd64 ~/.local/bin/newgate
+chmod +x ~/.local/bin/newgate</code></pre>
+<p>一个静态二进制，没有运行期依赖。别的平台把文件名里那一段换成 <code>darwin-arm64</code> 这类即可（<code>gh release view</code> 里有全部产物）。</p>
+<h2>2. 铺配置</h2>
+<pre><code class="lang-bash">newgate init</code></pre>
+<p>它在 <code>~/.config/newgate/</code> 下铺一份带占位符的配置：</p>
+<pre><code class="lang-text">providers.json      上游是谁、怎么认证
+mappings/*.kv       每个 profile 的档位绑定
+state.json          当前 profile、接管状态</code></pre>
+<h2>3. 填上游</h2>
+<p>打开 <code>providers.json</code>，把示例里的 <code>base_url</code> 与 key 换成你自己的：</p>
+<pre><code class="lang-jsonc">{
+  &quot;providers&quot;: {
+    &quot;ark&quot;: { &quot;protocol&quot;: &quot;anthropic&quot;, &quot;base_url&quot;: &quot;https://…&quot;, &quot;api_key&quot;: &quot;sk-…&quot; }
+  }
+}</code></pre>
+<p>密钥也可以走环境变量（<code>api_key_env</code>），那样它就不落在文件里。带凭据的 <code>providers.json</code> 在网页面板上<strong>只读</strong>——它本来就不该从浏览器改。</p>
+<h2>4. 让客户端走这条路</h2>
+<pre><code class="lang-bash">newgate on claude        # 还有：newgate on codex / newgate on opencode</code></pre>
+<p>它改的是<strong>客户端自己的配置</strong>（改之前按字节备份），并注入一个 PATH shim。做完之后重开一次 shell，然后像平时一样用你的客户端——它自己不知道中间多了一层。</p>
+<h2>确认它真的在管事</h2>
+<pre><code class="lang-bash">newgate status      # daemon 在跑吗、哪几家客户端被接管了
+newgate tier normal # normal 这一档此刻解析到哪条链、谁被跳过、为什么
+newgate web         # 打出网页面板的地址（挂在网关自己那个端口上）</code></pre>
+<p><code>newgate tier</code> 是最有用的一条：它把「这一次请求实际会打给谁」连同跳过的原因一起打出来。请求没走通时先看它。</p>
+<h2>下一步</h2>
+<ul>
+<li><a href="/newgate-ext/docs/tiers/">档位与 profile</a> —— heavy / normal / light 到底是什么</li>
+<li><a href="/newgate-ext/docs/clients/">接管客户端</a> —— 三个客户端各自做了什么</li>
+<li><a href="/newgate-ext/docs/config/">配置与命令</a> —— 文件形状与命令速查</li>
+</ul>
+
+  </main>
+</div>
+<footer>
+  <p>这一页讲的是发行版 <strong>newgate-ext</strong> 的装配。内核机制的权威原文在
+     <a href="https://github.com/rzbdz/newgate">rzbdz/newgate</a>。</p>
+  <p><a href="https://github.com/rzbdz/newgate">内核</a> · <a href="https://github.com/rzbdz/newgate-ext/releases">版本发布</a></p>
+</footer>
+</body>
+</html>

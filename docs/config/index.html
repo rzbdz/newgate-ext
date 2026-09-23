@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="canonical" href="https://rzbdz.github.io/newgate-ext/docs/config/">
+<meta name="theme-color" content="#0f1115">
+<meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+
+<title>配置与命令 · newgate-ext</title>
+<meta name="description" content="配置根是 ~/.config/newgate，用 NEWGATE_HOME 可以整体换到别处（沙箱、测试、第二实例都靠它）。">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="newgate-ext">
+<meta property="og:title" content="配置与命令 · newgate-ext">
+<meta property="og:description" content="配置根是 ~/.config/newgate，用 NEWGATE_HOME 可以整体换到别处（沙箱、测试、第二实例都靠它）。">
+<meta property="og:url" content="https://rzbdz.github.io/newgate-ext/docs/config/">
+<meta property="og:locale" content="zh_CN">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="配置与命令 · newgate-ext">
+<meta name="twitter:description" content="配置根是 ~/.config/newgate，用 NEWGATE_HOME 可以整体换到别处（沙箱、测试、第二实例都靠它）。">
+
+<link rel="icon" type="image/svg+xml" href="/newgate-ext/favicon.svg">
+<link rel="stylesheet" href="/newgate-ext/site.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/newgate-ext/"><strong>newgate-ext</strong></a>
+  <span class="spacer"></span>
+  <nav class="langs"><a href="/newgate-ext/docs/config/" class="on">中文</a><span class="soon" title="not written yet">English</span></nav>
+</header>
+<div class="shell">
+  <nav class="side">
+    <ul>
+    <li><a href="/newgate-ext/">首页</a></li>
+    <li><a href="/newgate-ext/docs/">文档</a></li>
+    <li><a href="/newgate-ext/docs/quickstart/">快速开始</a></li>
+    <li><a href="/newgate-ext/docs/tiers/">档位与 profile</a></li>
+    <li><a href="/newgate-ext/docs/clients/">接管客户端</a></li>
+    <li><a href="/newgate-ext/docs/codex/">Codex 模式</a></li>
+    <li class="on"><a href="/newgate-ext/docs/config/">配置与命令</a></li>
+    <li><a href="/newgate-ext/docs/troubleshooting/">排障</a></li>
+    <li><a href="/newgate-ext/docs/modules/">写一个模块</a></li>
+    <li><a href="/newgate-ext/docs/fork/">fork 一份发行版</a></li>
+    <li><a href="/newgate-ext/changelog/">更新日志</a></li>
+    </ul>
+  </nav>
+  <main>
+    <h1>配置与命令</h1>
+    <h2>磁盘布局</h2>
+<p>配置根是 <code>~/.config/newgate</code>，用 <code>NEWGATE_HOME</code> 可以整体换到别处（沙箱、测试、第二实例都靠它）。</p>
+<pre><code class="lang-text">providers.json       上游是谁、怎么认证
+mappings/*.kv        profile 的档位绑定（.json 也认）
+state.json           当前 profile、接管状态、控制 token
+newgate.log          daemon 日志
+thinkcache.bin       reasoning cache 的冷层
+dump/                请求级取证（开了 debug 才有）</code></pre>
+<p>写入走<strong>同目录临时文件 + rename</strong>，所以永远读不到半份 JSON。文件一变，watcher 会重新加载整份快照；加载失败时<strong>保留上一份有效快照</strong>并把错误报出来，而不是把自己清空。</p>
+<h2>providers.json</h2>
+<pre><code class="lang-jsonc">{
+  &quot;providers&quot;: {
+    &quot;ark&quot;: {
+      &quot;protocol&quot;: &quot;anthropic&quot;,          // anthropic | openai
+      &quot;base_url&quot;: &quot;https://…&quot;,
+      &quot;api_key&quot;: &quot;sk-…&quot;,                // 或者用下面的 api_key_env
+      &quot;api_key_env&quot;: &quot;NEWGATE_KEY_ARK&quot;  // 密钥不落盘
+    }
+  }
+}</code></pre>
+<p><code>provider/model</code> 合起来叫一个 <strong>binding</strong>，它就是 profile 里写的东西。</p>
+<h2>mappings/*.kv</h2>
+<p>一份 profile 给每一档配若干候选，顺序即 fallback 顺序：</p>
+<pre><code class="lang-text">description = 日常主力
+normal = ark/deepseek-v3, backup/gpt-5.6
+light  = fast/glm-air</code></pre>
+<p>没写出来的档位向上承接（<code>normal</code> 缺席由 <code>mid</code> 接）。<code>.json</code> 后缀也认，形状 <code>newgate profile kv ark</code> 摊出来的那份就是。</p>
+<h2>命令速查</h2>
+<p>生命周期：</p>
+<pre><code class="lang-bash">newgate init          # 铺一份带占位符的配置
+newgate start         # 起 daemon，并接管没显式关掉的客户端
+newgate restart       # 交接 socket，排空在途请求（流式的也算）
+newgate stop
+newgate status</code></pre>
+<p>profile 与路由：</p>
+<pre><code class="lang-bash">newgate profiles           # 有哪些 profile
+newgate tier normal        # 这一档此刻解析到哪条链、谁被跳过、为什么
+newgate --set-profile ark  # 换全局默认
+newgate claude --profile=ds  # 单次覆盖，不动全局
+newgate probe              # 主动验证 provider 连接、方言与已知怪癖</code></pre>
+<p>接管：</p>
+<pre><code class="lang-bash">newgate on claude          # / codex / opencode
+newgate off claude</code></pre>
+<p>观测：</p>
+<pre><code class="lang-bash">newgate metrics    # 延迟（按上下文大小分）、改道、首字节超时、字节改写
+newgate st         # 请求插件表：每个补丁存在是为了防住什么，能当场开关
+newgate logs       # 日志（-f 跟着看）
+newgate alllogs    # 版本 + 环境 + 状态 + 脱敏配置，一次汇总
+newgate doctor     # 出问题时先跑它
+newgate web        # 打出网页面板的地址</code></pre>
+<p><code>doctor</code> 查配置、provider、端口、接管和模块诊断——它是「不知道哪儿不对」时的第一条命令。</p>
+<h2>把 newgate 当后端直接用</h2>
+<pre><code class="lang-bash">newgate ask &quot;把这段话译成英文：……&quot;
+echo &quot;解释一下这段 diff&quot; | newgate ask --tier light
+newgate ask --profile ds --system &quot;只回 JSON&quot; &quot;……&quot;</code></pre>
+<p><code>ask</code> 走<strong>正在跑的那个代理</strong>发一句问题，只把正文打出来。它自己不起代理（一次提问不该变成一次状态改变），也不是第二个客户端——档位链、fallback、熔断、上游怪癖修补在它这条路上照样生效，因为它走的就是那条路。</p>
+<blockquote><p><strong>思维链走 stderr，正文走 stdout</strong>：<code>answer=$(newgate ask …)</code> 拿到的必须是干净的正文，而 reasoning 模型的思维链常常比正文长好几倍。人在终端上照样看得见它。</p></blockquote>
+<p>别的客户端想直接用这个后端，端点在 <code>http://127.0.0.1:8899</code>（<code>--port</code> 可改）：</p>
+<table>
+<thead><tr><th>路径</th><th>方言</th></tr></thead>
+<tbody>
+<tr><td><code>POST /v1/messages</code></td><td>anthropic</td></tr>
+<tr><td><code>POST /v1/chat/completions</code></td><td>openai</td></tr>
+<tr><td><code>POST /p/&lt;profile&gt;/v1/messages</code></td><td>anthropic，单次 profile 覆盖</td></tr>
+</tbody></table>
+<p>两种方言各自成对：报哪个方言的错、说哪个方言的话。</p>
+<h2>运行期开关</h2>
+<p>有些补丁可以当场开关，不用重启、不用改配置：</p>
+<pre><code class="lang-bash">newgate st                     # 先看有哪些、每个是干什么的
+newgate st off classifier-naked   # 摘掉一个</code></pre>
+<p><code>newgate naked</code> 是其中一类的快捷方式——临时压掉 Claude Code 的 Bash 安全分类器：</p>
+<pre><code class="lang-bash">newgate naked on          # 60 秒自限窗口
+newgate naked 2m          # 自定义时长
+newgate naked forever     # 永久（status 会一直警告）
+newgate naked off</code></pre>
+<p>它等价于 Claude Code 自己的 <code>--dangerouslySkipPermissions</code>，只是发生在代理这一层。用在「分类器误判了合法命令、会话卡住」的时候，不是长期配置。默认全程关，必须显式打开；<code>on</code> 的窗口写进 <code>state.json</code> 并<strong>懒过期</strong>——daemon 不持 timer，所以重启不会把它变成永久。</p>
+
+  </main>
+</div>
+<footer>
+  <p>这一页讲的是发行版 <strong>newgate-ext</strong> 的装配。内核机制的权威原文在
+     <a href="https://github.com/rzbdz/newgate">rzbdz/newgate</a>。</p>
+  <p><a href="https://github.com/rzbdz/newgate">内核</a> · <a href="https://github.com/rzbdz/newgate-ext/releases">版本发布</a></p>
+</footer>
+</body>
+</html>
