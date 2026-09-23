@@ -99,7 +99,7 @@
   const leftCard = $derived(current?.kind === "code" && pair ? pair : current);
   const rightCard = $derived(current?.kind === "code" && pair ? current : pair);
 
-  const dirty = Object.keys(drafts).length;
+  const dirty = $derived(Object.keys(drafts).length);
 
   function say(msg: string) {
     toast = msg;
