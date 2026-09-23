@@ -196,6 +196,10 @@
       "text": "修尾部形状（第 4 手）",
       "reviewed": true
     },
+    "Repair the Responses tail shape (hand 5)": {
+      "text": "修 Responses 尾部形状（第 5 手）",
+      "reviewed": true
+    },
     "The model name codex itself sends — copy it out of `codex debug models` (the slug).": {
       "text": "codex 自己发出来的那个模型名——从 `codex debug models` 里抄（抄 slug 那一栏）",
       "reviewed": true
@@ -896,6 +900,10 @@
       "text": "尾部形状未改动（{err}）",
       "reviewed": true
     },
+    "Responses input left untouched ({err})": {
+      "text": "Responses input 未改动（{err}）",
+      "reviewed": true
+    },
     "takeover mode": {
       "text": "接管模式",
       "reviewed": true
@@ -1026,6 +1034,14 @@
     },
     "the model codex runs on; written into config.toml by takeover": {
       "text": "codex 跑的模型；由接管写进 config.toml",
+      "reviewed": true
+    },
+    "the Responses input[] ends on a function_call_output that is not ours and holds no user instruction — appended a continue instruction (the upstream misreports an instruction-less tail as a missing reasoning_text)": {
+      "text": "Responses 的 input[] 以别家产的 function_call_output 收尾、没有用户指令——追加一条 continue 指令（上游对空指令尾部误报 reasoning_text 缺失）",
+      "reviewed": true
+    },
+    "\"the Responses input[] ends on a function_call_output whose call_id is not ours\" is no longer repaired (no \"continue\" appended), and the upstream misreports such an instruction-less tail as a missing reasoning_text and answers 400": {
+      "text": "「Responses 的 input[] 以别家产的 call_id 的 function_call_output 收尾」不再被修（不再追加「continue」），上游会把这种空指令尾部误报成 reasoning_text 缺失而 400",
       "reviewed": true
     },
     "the model field in settings.json is left untouched; what a tier means is decided by the env": {

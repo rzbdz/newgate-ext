@@ -6,6 +6,7 @@
         "n"
       ]
     },
+    "\"the Responses input[] ends on a function_call_output whose call_id is not ours\" is no longer repaired (no \"continue\" appended), and the upstream misreports such an instruction-less tail as a missing reasoning_text and answers 400": {},
     "\"the last user message holds only tool_result\" is no longer repaired (no \"continue\" appended), and the upstream misreports such an instruction-less tail as a missing reasoning_content and answers 400": {},
     "(messages is not an array, cannot audit)\n": {},
     "(no messages field, cannot audit)\n": {},
@@ -80,7 +81,13 @@
     "Interface": {},
     "Naked": {},
     "Overview": {},
+    "Repair the Responses tail shape (hand 5)": {},
     "Repair the tail shape (hand 4)": {},
+    "Responses input left untouched ({err})": {
+      "args": [
+        "err"
+      ]
+    },
     "The model name codex itself sends — copy it out of `codex debug models` (the slug).": {},
     "Usage: newgate omo [ls | use <key> <binding> | unset <key> | mode current|suggested | explain <key>]": {},
     "Usage: newgate omo explain <slot key>": {},
@@ -574,6 +581,7 @@
     "the Codex client": {},
     "the Codex × DeepSeek crossing": {},
     "the OpenCode client": {},
+    "the Responses input[] ends on a function_call_output that is not ours and holds no user instruction — appended a continue instruction (the upstream misreports an instruction-less tail as a missing reasoning_text)": {},
     "the classifier settings in this request are not readable: {err}": {
       "args": [
         "err"

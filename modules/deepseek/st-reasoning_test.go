@@ -472,7 +472,7 @@ func TestTailShapeRepairOnToolResultOnlyTail(t *testing.T) {
 			}
 			s := string(out)
 			if !strings.Contains(s, `"text":`+mustJSON(toolLoopRebasePrompt)) {
-				t.Fatalf("尾部没有补上继续指令:\n%s", s)
+				t.Fatalf("尾部没有补上 continue 指令:\n%s", s)
 			}
 			// 原内容一个字节都不能丢：tool_result 还在，历史消息没被动。
 			if !strings.Contains(s, `"tool_use_id":"t1"`) ||
@@ -484,7 +484,7 @@ func TestTailShapeRepairOnToolResultOnlyTail(t *testing.T) {
 			if i := strings.Index(s, mustJSON(toolLoopRebasePrompt)); i >= 0 {
 				if k := strings.Index(s, "while you were working"); k >= 0 &&
 					strings.Index(s, mustJSON(toolLoopRebasePrompt)) > k {
-					t.Fatalf("继续指令跑到了尾随 system 插话后面（上游不认 system 里的指令）:\n%s", s)
+					t.Fatalf("continue 指令跑到了尾随 system 插话后面（上游不认 system 里的指令）:\n%s", s)
 				}
 			}
 			if !containsNote(notes, "trailing user turn holds only tool_result") {
@@ -516,7 +516,7 @@ func TestTailShapeLeavesNormalTailsAlone(t *testing.T) {
 			`{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBORw0KGgo="}}]}]}`},
 		{"tool_result + text（已经能过）", `{"thinking":{"type":"adaptive"},"messages":[` +
 			`{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"},` +
-			`{"type":"text","text":"继续"}]}]}`},
+			`{"type":"text","text":"continue"}]}]}`},
 		{"tool_result-only 的轮不是最后一条 user 轮", `{"thinking":{"type":"adaptive"},"messages":[` +
 			`{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]},` +
 			`{"role":"assistant","content":[{"type":"text","text":"干完了"}]},` +
@@ -536,7 +536,7 @@ func TestTailShapeLeavesNormalTailsAlone(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Apply 报错: %v", err)
 			}
-			// 数出现次数而不是 Contains：fixture 自己就可能带一句「继续」
+			// 数出现次数而不是 Contains：fixture 自己就可能带一句 "continue"
 			// （那正是「本来就能过的尾部」的样子），Contains 会误报。
 			before := strings.Count(tt.body, mustJSON(toolLoopRebasePrompt))
 			after := strings.Count(string(out), mustJSON(toolLoopRebasePrompt))
@@ -545,6 +545,81 @@ func TestTailShapeLeavesNormalTailsAlone(t *testing.T) {
 			}
 			if containsNote(notes, "trailing user turn holds only tool_result") {
 				t.Fatalf("不该动的尾部却报了尾部 note: %v", notes)
+			}
+		})
+	}
+}
+
+// TestTailShapeInjectionDependsOnToolCallOrigin 锁住修复判据的第三条（出身）。
+//
+// docs/06-reasoning.md §1.1 的实测表（每格 3/3，打真实
+// smt-deepseek/deepseek-flash）：裸尾 + 历史里全是聚合器自产的 `call_NN_…` →
+// 200，不该被改写；混进任何一个别家产的 id（`call_<hex>` / `toolu_…`）→ 400，
+// 必须补。这条是「健康请求也被改写」那个 bug 的回归点——判据曾经只有尾部形状
+// 与锚点，第三维（出身）漏掉了，于是正常链路也被塞了一句话。
+//
+// 自产那一族必须**认两位序号**（00/01/…）：一轮里并行发几个 tool call 时聚合器
+// 就是按 00、01、… 依次编号的（2026-09-22 真实流量：call_00_ 2917、call_01_ 705、
+// call_02_ 16、call_03_ 8、call_04_ 2）。只认 00 会把最常见的双工具轮判成外来，
+// 于是「健康链路也被注入」原样复发——下面带序号的几条就是那个回归点。
+func TestTailShapeInjectionDependsOnToolCallOrigin(t *testing.T) {
+	tests := []struct {
+		name   string
+		body   string
+		inject bool
+	}{
+		{"全部自产 call_00_ + 裸尾 → 不注入", `{"thinking":{"type":"adaptive"},"messages":[` +
+			`{"role":"user","content":[{"type":"text","text":"开始吧"}]},` +
+			`{"role":"assistant","content":[{"type":"tool_use","id":"call_00_abc123","name":"Bash","input":{}}]},` +
+			`{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_00_abc123","content":"ok"}]}]}`, false},
+		{"并行第二轮 call_01_ + 裸尾 → 不注入", `{"thinking":{"type":"adaptive"},"messages":[` +
+			`{"role":"user","content":[{"type":"text","text":"开始吧"}]},` +
+			`{"role":"assistant","content":[` +
+			`{"type":"tool_use","id":"call_00_abc123","name":"Bash","input":{}},` +
+			`{"type":"tool_use","id":"call_01_def456","name":"Read","input":{}}]},` +
+			`{"role":"user","content":[` +
+			`{"type":"tool_result","tool_use_id":"call_00_abc123","content":"ok"},` +
+			`{"type":"tool_result","tool_use_id":"call_01_def456","content":"ok"}]}]}`, false},
+		{"两位以上序号 call_42_ + 裸尾 → 不注入", `{"thinking":{"type":"adaptive"},"messages":[` +
+			`{"role":"user","content":[{"type":"text","text":"开始吧"}]},` +
+			`{"role":"assistant","content":[{"type":"tool_use","id":"call_42_abc123","name":"Bash","input":{}}]},` +
+			`{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_42_abc123","content":"ok"}]}]}`, false},
+		{"序号只有一位 call_0_（不是自产形态）+ 裸尾 → 注入", `{"thinking":{"type":"adaptive"},"messages":[` +
+			`{"role":"user","content":[{"type":"text","text":"开始吧"}]},` +
+			`{"role":"assistant","content":[{"type":"tool_use","id":"call_0_abc123","name":"Bash","input":{}}]},` +
+			`{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_0_abc123","content":"ok"}]}]}`, true},
+		{"外来 call_<hex> + 裸尾 → 注入", `{"thinking":{"type":"adaptive"},"messages":[` +
+			`{"role":"user","content":[{"type":"text","text":"开始吧"}]},` +
+			`{"role":"assistant","content":[{"type":"tool_use","id":"call_faedac561213487ebeea7731","name":"Bash","input":{}}]},` +
+			`{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_faedac561213487ebeea7731","content":"ok"}]}]}`, true},
+		{"外来 toolu_… + 裸尾 → 注入", `{"thinking":{"type":"adaptive"},"messages":[` +
+			`{"role":"user","content":[{"type":"text","text":"开始吧"}]},` +
+			`{"role":"assistant","content":[{"type":"tool_use","id":"toolu_01ABCDEF","name":"Bash","input":{}}]},` +
+			`{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01ABCDEF","content":"ok"}]}]}`, true},
+		{"自产与外来混着 + 裸尾 → 注入", `{"thinking":{"type":"adaptive"},"messages":[` +
+			`{"role":"user","content":[{"type":"text","text":"开始吧"}]},` +
+			`{"role":"assistant","content":[{"type":"tool_use","id":"call_00_abc123","name":"Bash","input":{}}]},` +
+			`{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_00_abc123","content":"ok"}]},` +
+			`{"role":"assistant","content":[{"type":"tool_use","id":"call_faedac561213487ebeea7731","name":"Bash","input":{}}]},` +
+			`{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_faedac561213487ebeea7731","content":"ok"}]}]}`, true},
+		{"本来就带文字的尾部 → 一律不碰（哪怕 id 是外来的）", `{"thinking":{"type":"adaptive"},"messages":[` +
+			`{"role":"assistant","content":[{"type":"tool_use","id":"call_faedac561213487ebeea7731","name":"Bash","input":{}}]},` +
+			`{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_faedac561213487ebeea7731","content":"ok"},` +
+			`{"type":"text","text":"continue"}]}]}`, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out, notes, err := reasoning{}.Apply([]byte(tt.body), claudeReq("deepseek-flash"))
+			if err != nil {
+				t.Fatalf("Apply 报错: %v", err)
+			}
+			before := strings.Count(tt.body, mustJSON(toolLoopRebasePrompt))
+			after := strings.Count(string(out), mustJSON(toolLoopRebasePrompt))
+			if got := after > before; got != tt.inject {
+				t.Fatalf("注入 = %v，想要 %v（前 %d 后 %d）:\n%s", got, tt.inject, before, after, out)
+			}
+			if got := containsNote(notes, "trailing user turn holds only tool_result"); got != tt.inject {
+				t.Fatalf("尾部 note = %v，想要 %v: %v", got, tt.inject, notes)
 			}
 		})
 	}
@@ -587,6 +662,111 @@ func containsNote(notes []string, sub string) bool {
 		}
 	}
 	return false
+}
+
+// TestResponsesTailShapeRepair 锁住第 5 手：Responses 方言（/v1/responses）的
+// input[] 以**别家产**的 function_call_output 收尾时，往末尾追加一条普通 user
+// 指令。
+//
+// 依据是 2026-09-22 实测（独立探针直打真实 smt-deepseek/deepseek-flash，每格
+// 3/3）：自产 `call_NN_…` 的 call_id + [function_call, function_call_output]
+// 收尾 → 200，不该被改写；外来 `call_faedac…` 的 call_id + 同样收尾 → 400
+// `The reasoning_text … must be passed back`，同一个 body 末尾补一条普通 user
+// 消息 → 200。
+func TestResponsesTailShapeRepair(t *testing.T) {
+	newBody := func(callID string) string {
+		return `{"model":"deepseek-flash","input":[` +
+			`{"type":"message","role":"user","content":[{"type":"input_text","text":"go"}]},` +
+			`{"type":"function_call","call_id":"` + callID + `","name":"bash","arguments":"{}"},` +
+			`{"type":"function_call_output","call_id":"` + callID + `","output":"ok"}]}`
+	}
+	// 追加项必须逐字是这一条：type/role/content[].type 都是 Responses 方言的
+	// 协议字段，正文用 json.Marshal(toolLoopRebasePrompt)。
+	injected := `{"type":"message","role":"user","content":[{"type":"input_text","text":` +
+		mustJSON(toolLoopRebasePrompt) + `}]}`
+	responsesReq := func() *special.Request {
+		return &special.Request{Model: "deepseek-flash", Provider: "smt-deepseek",
+			BaseURL: "https://gw.example.com/v1", Protocol: "openai",
+			Path: "/responses", Agent: "codex"}
+	}
+
+	tests := []struct {
+		name   string
+		callID string
+		want   bool
+	}{
+		{"自产 call_00_… → 不注入", "call_00_abc123", false},
+		{"自产 call_01_…（并行第二个）→ 不注入", "call_01_def456", false},
+		{"外来 call_<hex> → 注入", "call_faedac561213487ebeea7731", true},
+		{"外来 toolu_… → 注入", "toolu_01ABCDEF", true},
+		{"序号一位的 call_0_…（认不出）→ 注入", "call_0_abc123", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := newBody(tt.callID)
+			out, notes, err := reasoning{}.Apply([]byte(body), responsesReq())
+			if err != nil {
+				t.Fatalf("Apply 报错: %v", err)
+			}
+			s := string(out)
+			if got := strings.Contains(s, injected); got != tt.want {
+				t.Fatalf("注入 = %v，想要 %v:\n%s", got, tt.want, s)
+			}
+			if !tt.want {
+				if s != body {
+					t.Fatalf("不该动的 body 被动了:\n%s", s)
+				}
+				if len(notes) != 0 {
+					t.Fatalf("没改动却报了 notes: %v", notes)
+				}
+				return
+			}
+			// 必须追加在 input[] 的**末尾**——形状判据看的就是最后一项。
+			if strings.Index(s, injected) < strings.Index(s, `"type":"function_call_output"`) {
+				t.Fatalf("指令没有追加在 input[] 末尾:\n%s", s)
+			}
+			if !json.Valid(out) {
+				t.Fatalf("改完不是合法 JSON:\n%s", out)
+			}
+			if !containsNote(notes, "Responses input[] ends on a function_call_output") {
+				t.Fatalf("改了东西却没回报第 5 手 notes: %v", notes)
+			}
+		})
+	}
+}
+
+// TestResponsesTailShapeLeavesOtherShapesAlone：形状不中就不碰。
+func TestResponsesTailShapeLeavesOtherShapesAlone(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"最后一项不是 function_call_output", `{"model":"deepseek-flash","input":[` +
+			`{"type":"function_call","call_id":"call_faedac561213487ebeea7731","name":"bash","arguments":"{}"}]}`},
+		{"外来 call_id 但尾随还有 assistant 消息", `{"model":"deepseek-flash","input":[` +
+			`{"type":"function_call_output","call_id":"call_faedac561213487ebeea7731","output":"ok"},` +
+			`{"type":"message","role":"assistant","content":[{"type":"output_text","text":"done"}]}]}`},
+		{"没有 input 数组（messages 方言）", `{"model":"deepseek-flash","messages":[` +
+			`{"role":"user","content":[{"type":"text","text":"hi"}]}]}`},
+		{"input 为空数组", `{"model":"deepseek-flash","input":[]}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := &special.Request{Model: "deepseek-flash", Provider: "smt-deepseek",
+				BaseURL: "https://gw.example.com/v1", Protocol: "openai",
+				Path: "/responses", Agent: "codex"}
+			out, notes, err := reasoning{}.Apply([]byte(tt.body), r)
+			if err != nil {
+				t.Fatalf("Apply 报错: %v", err)
+			}
+			if string(out) != tt.body {
+				t.Fatalf("不该动的 body 被动了:\n%s", out)
+			}
+			if containsNote(notes, "Responses input[] ends on a function_call_output") {
+				t.Fatalf("形状不中却报了第 5 手 note: %v", notes)
+			}
+		})
+	}
 }
 
 // TestImagesSurviveTheDeepSeekPatch：一张带图片的请求，走完 DeepSeek 的 reasoning

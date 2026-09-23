@@ -10,6 +10,11 @@ const (
 		` in the thinking mode must be passed back to the API. (request id: 202609170712356080642648268d9d67Gf5hQWS)"}`
 	thinking400 = `{"type":"error","message":"The ` + "`content[].thinking`" +
 		` in the thinking mode must be passed back to the API."}`
+	// Responses 方言（/v1/responses）那句。2026-09-22 独立探针直打真实上游
+	// smt-deepseek/deepseek-flash 逐字抓到（外来 call_id + 尾部
+	// [function_call, function_call_output]，每格 3/3）。
+	reasoningText400 = `{"type":"error","message":"The ` + "`reasoning_text`" +
+		` in the thinking mode must be passed back to the API."}`
 )
 
 // TestReasoningShapeIsThePolicyGate 是请求形状错误 vs 可用性错误的**行权点**
@@ -32,6 +37,7 @@ func TestReasoningShapeIsThePolicyGate(t *testing.T) {
 		// 必须认领（形状错误，永不摘牌，只计数）——
 		{"openai dialect reasoning_content 400", reasoning400, 400, true},
 		{"anthropic dialect content[].thinking 400", thinking400, 400, true},
+		{"responses dialect reasoning_text 400", reasoningText400, 400, true},
 
 		// 必须**不**认领（真可用性问题，要记账）——
 		// 401 凭证：绕过去会以为是上游坏，其实是 key 错
@@ -57,6 +63,10 @@ func TestReasoningShapeIsThePolicyGate(t *testing.T) {
 		// 当成形状错误放过。
 		{"400 reasoning_content mentioned but not 'must be passed'",
 			`{"error":"reasoning_content must be a string"}`, 400, false},
+		{"400 content[].thinking mentioned but not 'must be passed'",
+			`{"error":"content[].thinking must be an array"}`, 400, false},
+		{"400 reasoning_text mentioned but not 'must be passed'",
+			`{"error":"reasoning_text must be a string"}`, 400, false},
 
 		// 边界：空 body、非 400
 		{"empty body", ``, 400, false},

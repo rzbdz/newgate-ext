@@ -8,10 +8,11 @@ import (
 
 // 本模块上报的运行期开关点。
 //
-// 为什么要细到这个程度：这个模块的 Apply 里压着**三手**互不相干的修补（补
-// reasoning_content、补 thinking 块、修尾部形状），而它们在 `newgate st` 那层
-// 只有一个名字 "deepseek"——「要么全要要么全不要」。排查时最常需要的就是
-// 「只关掉第四手看看 400 还在不在」，那正是粒度不够时会卡住的动作。
+// 为什么要细到这个程度：这个模块的 Apply 里压着**四手**互不相干的修补（补
+// reasoning_content、补 thinking 块、修 messages 尾部形状、修 Responses 尾部
+// 形状），而它们在 `newgate st` 那层只有一个名字 "deepseek"——「要么全要要么
+// 全不要」。排查时最常需要的就是「只关掉第 4 手看看 400 还在不在」，那正是
+// 粒度不够时会卡住的动作。
 //
 // 路径前缀必须是模块名，由 pluginmanager 在注册期强制（见它的 validateSwitches）。
 const (
@@ -22,13 +23,17 @@ const (
 	// content[] 开头补 thinking 块。
 	SwitchBackfillThinkingBlock = "deepseek.backfill-thinking-block"
 	// SwitchTailShape 第 4 手：最后一条 user 消息只有 tool_result 时追加一条最简
-	// 指令。这是唯一修**根因**的一手。
+	// 指令（messages 方言）。它和第 5 手是修**根因**的两手。
 	SwitchTailShape = "deepseek.tail-shape"
+	// SwitchTailShapeResponses 第 5 手：Responses 方言（/v1/responses）的
+	// input[] 以别家产的 function_call_output 收尾时，往 input[] 末尾追加一条
+	// 最简指令。与第 4 手是同一件事在另一个方言里的版本，各自可关。
+	SwitchTailShapeResponses = "deepseek.tail-shape-responses"
 )
 
 // Switches 本模块上报的开关点清单，供 module.go 注册。
 //
-// 三条都是 quirk 而不是 footgun：关掉它们**不会**破坏 newgate 自己，只会让
+// 四条都是 quirk 而不是 footgun：关掉它们**不会**破坏 newgate 自己，只会让
 // DeepSeek 那边开始回 400（因为它们是来修上游怪癖的）。所以不设默认时限——
 // 排查时经常需要开着观察一阵。这也是它们与 gateway.passthrough 的区别：
 // 那个是把这一层整个拆掉，所以必须限时。
@@ -65,6 +70,16 @@ func Switches() []pluginmanager.Switch {
 				"repaired (no \"continue\" appended), and the upstream misreports such "+
 				"an instruction-less tail as a missing reasoning_content and answers 400",
 				nil),
+			Danger:  pluginmanager.DangerQuirk,
+			Default: true,
+		},
+		{
+			Path:  SwitchTailShapeResponses,
+			Title: i18n.T("Repair the Responses tail shape (hand 5)", nil),
+			Why: i18n.T("\"the Responses input[] ends on a function_call_output whose "+
+				"call_id is not ours\" is no longer repaired (no \"continue\" appended), "+
+				"and the upstream misreports such an instruction-less tail as a missing "+
+				"reasoning_text and answers 400", nil),
 			Danger:  pluginmanager.DangerQuirk,
 			Default: true,
 		},

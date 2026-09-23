@@ -29,7 +29,7 @@ func reqWithOff(t *testing.T, off ...string) *special.Request {
 //
 //	第 2 手：assistant 没有 reasoning_content，而缓存里有原文 → 补
 //	第 3 手：assistant 的 content[] 没有 thinking 块、思考开着、Anthropic 方言 → 补
-//	第 4 手：最后一条 user 消息只有 tool_result → 追加继续指令
+//	第 4 手：最后一条 user 消息只有 tool_result → 追加 continue 指令
 //
 // 三手都挂在这**同一个 body** 上，正是为了验「关掉一手不影响另外两手」——
 // 分开的 fixture 各有各的形状问题，验不出串扰。
@@ -59,7 +59,7 @@ func TestThreeHandsFireWhenAllSwitchesOn(t *testing.T) {
 		t.Fatalf("第 3 手没补 thinking 块:\n%s", s)
 	}
 	if !strings.Contains(s, `"text":`+mustJSON(toolLoopRebasePrompt)) {
-		t.Fatalf("第 4 手没追加继续指令:\n%s", s)
+		t.Fatalf("第 4 手没追加 continue 指令:\n%s", s)
 	}
 }
 
@@ -74,6 +74,9 @@ func TestSwitchesAreIndividuallyDisableable(t *testing.T) {
 		{SwitchBackfillReasoning, false, true, true},
 		{SwitchBackfillThinkingBlock, true, false, true},
 		{SwitchTailShape, true, true, false},
+		// 第 5 手只管 Responses 方言的 input[]，三手 fixture（messages 方言）
+		// 上关掉它不该有任何影响——这条是「开关清单」跟着扩的那一格。
+		{SwitchTailShapeResponses, true, true, true},
 	}
 	for _, c := range cases {
 		t.Run(c.off, func(t *testing.T) {
@@ -123,5 +126,38 @@ func TestSwitchesOfOtherModulesDoNotLeak(t *testing.T) {
 	if !strings.Contains(s, `"reasoning_content":"`+seededReasoning+`"`) ||
 		!strings.Contains(s, `"text":`+mustJSON(toolLoopRebasePrompt)) {
 		t.Fatalf("关掉别的模块的开关点，不该影响本模块的三手:\n%s", s)
+	}
+}
+
+// TestResponsesTailShapeSwitchDisablesHand5：第 5 手也能**单独**关掉。
+//
+// 它和第 4 手管的是同一个误报的两个方言，但动的是两个数组（messages 的
+// content[] vs input[]），所以各有一个开关点——排查时经常要「只关 Responses
+// 那一手看看 400 还在不在」。
+func TestResponsesTailShapeSwitchDisablesHand5(t *testing.T) {
+	body := []byte(`{"model":"deepseek-flash","input":[` +
+		`{"type":"function_call","call_id":"call_faedac561213487ebeea7731","name":"bash","arguments":"{}"},` +
+		`{"type":"function_call_output","call_id":"call_faedac561213487ebeea7731","output":"ok"}]}`)
+
+	on, notes, err := reasoning{}.Apply(body, reqWithOff(t))
+	if err != nil {
+		t.Fatalf("Apply 报错: %v", err)
+	}
+	if !strings.Contains(string(on), mustJSON(toolLoopRebasePrompt)) {
+		t.Fatalf("第 5 手（开关开着）没追加 continue 指令:\n%s", on)
+	}
+	if !containsNote(notes, "Responses input[] ends on a function_call_output") {
+		t.Fatalf("改了东西却没回报 notes: %v", notes)
+	}
+
+	off, notesOff, err := reasoning{}.Apply(body, reqWithOff(t, SwitchTailShapeResponses))
+	if err != nil {
+		t.Fatalf("Apply 报错: %v", err)
+	}
+	if string(off) != string(body) {
+		t.Fatalf("开关关着还是改了请求:\n%s", off)
+	}
+	if containsNote(notesOff, "Responses input[] ends on a function_call_output") {
+		t.Fatalf("开关关着却报了第 5 手 note: %v", notesOff)
 	}
 }

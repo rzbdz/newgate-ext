@@ -271,7 +271,7 @@ echo; echo "== 9. 缓存未命中（模拟重启后的旧会话）：一个字�
 # 「裸 tool_result 收尾」，上游对那个形状报的正是这条 400。两件事互不冲突，
 # 所以这里同时断言：
 #   assistant 消息：rc 缺席、没有 thinking 块（不编）
-#   尾部 user 轮：多了一条「继续」（修形状）
+#   尾部 user 轮：多了一条 `continue`（修形状）
 curl -sf "http://127.0.0.1:$UP_PORT/__mock/reset" -X POST >/dev/null
 OUT="$(E2E_SCENARIO=think3 "$BIN" claude --profile=ds 2>"$SANDBOX/t3.err")"
 echo "$OUT" | sed 's/^/    /'
@@ -294,7 +294,7 @@ import json,sys
 r=json.load(sys.stdin)
 lastu=[m for m in r[0]["body"]["messages"] if m.get("role")=="user"][-1]["content"]
 print([b.get("text") for b in lastu if isinstance(b,dict) and b.get("type")=="text"][0])')
-check "追加的就是最简那句「继续」" "$GOT" "继续"
+check "追加的就是最简那句「continue」" "$GOT" "continue"
 # 跳过的原因必须分类报出来（这条 tool_use id 从没进过 thinkcache ⇒ nocache）。
 LOGTAIL=$(tail -40 "$NEWGATE_HOME/newgate.log")
 case "$LOGTAIL" in
@@ -308,10 +308,10 @@ echo; echo "== 17. 形状 400：上游 400 原样透传 + 熔断器只计数、�
 #   1. **尾部形状违规、而且插件修不了**。实测判据是「最后一条 role:user 的
 #      content[] 里全是 tool_result 块」（详见第 6 章与 mock/fake_upstream.py），
 #      而 deepseek 插件对其中**修得好**的那一族（那个 user 轮就是数组末尾）
-#      会追加一句「继续」把它修掉、返回 200——那是第 9 章在锁的事。
+#      会追加一句 `continue` 把它修掉、返回 200——那是第 9 章在锁的事。
 #      所以这里用的是**修不好**的那一族：裸 tool_result 之后**还有一条
 #      assistant**。插件故意不碰它（往用户的对话里塞一句模型看不见效果的
-#      噪音比 400 更糟），实测这一族在原样追加「继续」之后 3/3 还是 400。
+#      噪音比 400 更糟），实测这一族在原样追加 `continue` 之后 3/3 还是 400。
 #      于是链上**每一个**候选都 400，链走到头，客户端才拿得到上游原文。
 #   2. **走 glm profile**，让 glm 那一发先吃 400：deepseek 插件的 MatchTarget
 #      看 model/provider/baseURL，glm/glm-4-plus 三处都没有「deepseek」字样，
@@ -390,7 +390,7 @@ echo; echo "== 18. 补丁侧的三个契约：不编、措辞最小、原因分�
 #
 # (b) **尾部修复的措辞最小**。第 4 手往尾部追加的那句话会进上游、也会进用户
 #     下一轮的对话历史，越长越像「有人在替我说话」。用户的原话是「只用最少字，
-#     比如（"继续"）这种」。所以断言的是**逐字**等于「继续」，不是「非空且短」
+#     比如（"继续"）这种」。所以断言的是**逐字**等于 `continue`，不是「非空且短」
 #     ——后者换个长句子照样能过。
 #
 # (c) **原因必须分类报出来**。跳过是**结果**，光报个数没法反查：是「上游本来就
@@ -448,7 +448,7 @@ check "没有原文 ⇒ 已经写着的 reasoning_content 逐字不动" \
   "$(ph_get reasoning_content)" "这一轮本来就有推理，插件不许碰"
 # (b) 尾部形状被修好，而且追加的是**逐字**那句最简指令。
 check "尾部从裸 tool_result 变成 tool_result+text" "$(ph_get tail)" "tool_result,text"
-check "追加的指令逐字是「继续」（最少字）" "$(ph_get tail_text)" "继续"
+check "追加的指令逐字是「continue」（最少字）" "$(ph_get tail_text)" "continue"
 
 # (c) 原因分类。日志里那句必须同时说清「跳过了」和「为什么」（nocache）。
 LOGTAIL=$(tail -60 "$NEWGATE_HOME/newgate.log")
