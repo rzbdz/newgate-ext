@@ -243,8 +243,11 @@ echo; echo "== 2. newgate claude --profile=ds =="
 curl -sf "http://127.0.0.1:$UP_PORT/__mock/reset" -X POST >/dev/null
 OUT="$("$BIN" claude --profile=ds 2>"$SANDBOX/ds.err")"
 echo "$OUT" | sed 's/^/    /'
-check "opus 档注入的是真实模型名" \
-  "$(echo "$OUT" | grep '^OPUS_MODEL=' | cut -d= -f2-)" "deepseek-chat"
+# 真实模型名 + `[1m]`：后缀是 Claude Code 的能力标记，跟模型名一起注入（见
+# modules/claudecode）。下一行断言**上游收到的是剥掉标记的名字**——两件事必须
+# 同时成立，只对一半就是「标记漏了」或「标记漏到上游去了」。
+check "opus 档注入的是真实模型名（带 1M 标记）" \
+  "$(echo "$OUT" | grep '^OPUS_MODEL=' | cut -d= -f2-)" "deepseek-chat[1m]"
 echo "$OUT" | grep '^BASE_URL=' | grep -q "/a/claude/p/ds" \
   && ok "base URL 带上 /a/claude/p/ds" \
   || bad "base URL 应含 /a/claude/p/ds（实际 $(echo "$OUT" | grep '^BASE_URL=')）"
@@ -255,8 +258,8 @@ echo; echo "== 3. newgate claude --profile=glm（切换） =="
 curl -sf "http://127.0.0.1:$UP_PORT/__mock/reset" -X POST >/dev/null
 OUT="$("$BIN" claude --profile=glm 2>"$SANDBOX/glm.err")"
 echo "$OUT" | sed 's/^/    /'
-check "切到 glm 后 opus 档是 glm-4-plus" \
-  "$(echo "$OUT" | grep '^OPUS_MODEL=' | cut -d= -f2-)" "glm-4-plus"
+check "切到 glm 后 opus 档是 glm-4-plus（带 1M 标记）" \
+  "$(echo "$OUT" | grep '^OPUS_MODEL=' | cut -d= -f2-)" "glm-4-plus[1m]"
 GOT=$(curl -s "http://127.0.0.1:$UP_PORT/__mock/requests" | python3 -c 'import json,sys;r=json.load(sys.stdin);print(r[0]["body"]["model"] if r else "NONE")')
 check "上游收到 glm 的 glm-4-plus" "$GOT" "glm-4-plus"
 
@@ -266,8 +269,8 @@ echo; echo "== 4. 不带 profile 用默认（ds）：动态模式，槽位 = 档
 # 对 Claude Code 也是未知模型，MAX_CONTEXT_TOKENS 一样生效）。
 curl -sf "http://127.0.0.1:$UP_PORT/__mock/reset" -X POST >/dev/null
 OUT="$("$BIN" claude 2>"$SANDBOX/default.err")"
-check "默认（动态）：opus 槽 = 主力档 normal" \
-  "$(echo "$OUT" | grep '^OPUS_MODEL=' | cut -d= -f2-)" "normal"
+check "默认（动态）：opus 槽 = 主力档 normal（带 1M 标记）" \
+  "$(echo "$OUT" | grep '^OPUS_MODEL=' | cut -d= -f2-)" "normal[1m]"
 check "默认（动态）：窗口声明照注入（ds 没配 → 空）" \
   "$(echo "$OUT" | grep '^WIN_MAX=' | cut -d= -f2-)" ""
 

@@ -8,6 +8,7 @@ import (
 	"github.com/rzbdz/newgate/lib/view"
 
 	agentapi "github.com/rzbdz/newgate/modules/confighook"
+	"github.com/rzbdz/newgate/modules/gateway/protocol"
 	"github.com/rzbdz/newgate/testing/testkit"
 )
 
@@ -41,15 +42,62 @@ func TestASlotFollowsTheConfig(t *testing.T) {
 		t.Errorf("sonnet 该走 normal（配置里改了），实际 %q", got)
 	}
 	env := a.BuildEnv(8899, "tok", facts{})
-	if got := env["ANTHROPIC_DEFAULT_SONNET_MODEL"]; got != "normal" {
+	// 值带 `[1m]`（见 TestInjectedModelsCarryTheOneMMarker）：断言里写成
+	// 档位名 + 标记的拼法，而不是只比档位名——「档位对了、标记丢了」正是
+	// 这条链上最可能出现的那种半对。
+	if got := env["ANTHROPIC_DEFAULT_SONNET_MODEL"]; got != "normal"+oneM {
 		t.Errorf("注入的该是改过的档位，实际 %q", got)
 	}
 	// 没改过的那些不受影响。
-	if got := env["ANTHROPIC_DEFAULT_OPUS_MODEL"]; got != "normal" {
+	if got := env["ANTHROPIC_DEFAULT_OPUS_MODEL"]; got != "normal"+oneM {
 		t.Errorf("opus 没配过，该是缺省 normal，实际 %q", got)
 	}
-	if got := env["ANTHROPIC_DEFAULT_HAIKU_MODEL"]; got != "light" {
+	if got := env["ANTHROPIC_DEFAULT_HAIKU_MODEL"]; got != "light"+oneM {
 		t.Errorf("haiku 没配过，该是缺省 light，实际 %q", got)
+	}
+}
+
+// TestInjectedModelsCarryTheOneMMarker：每个模型槽位注入出去的值都带 `[1m]`。
+//
+// 为什么这条值得单独锁（2026-09-28）：Claude Code 拿这个后缀判断「这个模型按
+// 100 万上下文对待」，不带它就按 200k 假设、窗口远没到就自己 compact——而用户
+// 配的可能是几百万上下文的模型。症状是「明明买了大窗口，用不上」，看配置一切
+// 正常，所以只能靠这条测试守住。
+//
+// 两件事都要在它身上成立，缺一条就等于没有：
+//
+//  1. **动态模式与钉死模式都带**。动态模式注入档位名（`normal`），钉死模式
+//     （`--profile=xx`）注入真实模型名（`glm-4-plus`）——后者是用户点名要优先
+//     支持的用法，而两条路在代码里是两处拼接（BuildEnv 与 launch 的钉死分支），
+//     这里锁的是 claude 描述符这一侧（另一侧在 launch_test.go）。
+//  2. **窗口声明那两个变量不沾它**。它们是数字（`strconv.Itoa` 出来的），拼上
+//     标记会写进去一个解析不了的值——失败的样子是「窗口声明静默失效、又回到
+//     200k 假设」，看起来像这条注入根本不存在。
+func TestInjectedModelsCarryTheOneMMarker(t *testing.T) {
+	testkit.Sandbox(t)
+	a := Agent()
+	env := a.BuildEnv(8899, "tok", facts{})
+	for _, s := range a.EnvSlots() {
+		got := env[s.EnvVar]
+		// subagent 是唯一声明了 `inherit` 的槽位（见 TestAClientSpecificValueSurvives），
+		// 它的取值不指向一个模型，所以描述符故意不给它标记——那一格由下面那条测。
+		if s.Name == "subagent" {
+			continue
+		}
+		want := agentapi.TierOf(facts{}, s) + oneM
+		if got != want {
+			t.Errorf("槽位 %s 注入的该是 %q，实际 %q", s.Name, want, got)
+		}
+	}
+	// 标记本身只有一份：描述符引用的必须就是数据面剥的那个常量。抄一份的
+	// 症状是「注入没生效」，不是编译不过。
+	if oneM != protocol.OneMMarker {
+		t.Errorf("标记该是数据面那个常量，实际 %q", oneM)
+	}
+	// 窗口声明（那两个数字变量）不归本函数管，归 launch 的注入——那边那条
+	// 测试断言它不带标记。
+	if _, there := env[a.ContextWindowEnv]; there {
+		t.Errorf("窗口声明不该在 BuildEnv 里，实际 %v", env[a.ContextWindowEnv])
 	}
 }
 
