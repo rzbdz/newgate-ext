@@ -439,22 +439,99 @@ print(str(b.get("model","NONE"))+"|"+th)')
   check "$SC 上游收到 $WANT" "$GOT" "$WANT"
 done
 
-echo; echo "== 13b. 分类器改道后，fallback 沿 light 链走（不回 mid） =="
-# 改道是路由决策（建链之前）：分类器整条链都是 light。武装一发 500 打掉
-# light 头（glm-4.5-air），下一站必须是下一个 profile 的 light
-# （ds/deepseek-chat），绝不能掉回 mid 的 glm-4-plus——只换链头、尾巴
-# 还是 mid 的旧实现就是这个错。
+echo; echo "== 13b. 点名 profile 就只走它：链尾被砍掉（不再换人） =="
+# 点名的语义是「这次就用这个 profile」：launch 只在用户点了名时才把 /p/<name>
+# 写进 base URL，代理据此把链**截断到链头**。所以 glm 挂了就如实报 glm 的错，
+# 绝不悄悄换到别人——这条断言原来写的是反的（期望沿链换到 ds 拿 200），
+# 因为那时候的行为就是那样：配置显示 glm、界面显示 glm、实际跑的是 ds。
+#
+# 改道仍是路由决策（建链之前）：这一发撞上分类器（bg_plain → light 档），
+# 所以整条链是 light，被砍掉的尾巴是**下一个 profile 的 light**
+# （ds:ds/deepseek-chat），不是 mid 的 glm-4-plus。
+LOG="$NEWGATE_HOME/newgate.log"
 curl -sf "http://127.0.0.1:$UP_PORT/__mock/reset" -X POST >/dev/null
 curl -sf "http://127.0.0.1:$UP_PORT/__mock/fail?code=500" >/dev/null
 OUT="$(E2E_SCENARIO=bg_plain "$BIN" claude --profile=glm 2>"$SANDBOX/bgfo.err")"
 echo "$OUT" | sed 's/^/    /'
-check "分类器 light 头挂了仍 200（沿链换人）" "$(echo "$OUT" | grep '^HTTP=' | cut -d= -f2)" "200"
+check "点名的 profile 挂了就如实报 500（不换人）" "$(echo "$OUT" | grep '^HTTP=' | cut -d= -f2)" "500"
 GOT=$(curl -s "http://127.0.0.1:$UP_PORT/__mock/requests" | python3 -c '
 import json,sys
 r=json.load(sys.stdin)
 models=[x["body"].get("model") for x in r if x["path"].endswith("/messages")]
-print("|".join(models))')
-check "沿 light 链：glm-4.5-air → deepseek-chat（不回 mid）" "$GOT" "glm-4.5-air|deepseek-chat"
+print("|".join(dict.fromkeys(models)))')
+# 判据是**去过重的**模型序列：熔断器在快到阈值时会先打一发「预闸体检」
+# （[probe] pre-gate diagnosis，计数器 breaker.spared），那一发也走 /messages、
+# 也被假上游记下来。所以同一站被敲两次是正常的，而「换没换人」看的是**出现过
+# 哪些站**——去重之后才不会被体检打进来的重复项污染（2026-09-28 实测踩过：
+# 原始 join 在 13c 那条上给出 deepseek-chat|deepseek-chat，看着像换了人）。
+check "只敲了 glm 的链头：glm-4.5-air" "$GOT" "glm-4.5-air"
+# 砍掉了谁必须说出来（不静默）。怎么渲染前缀是机制、不是承诺（实测那行是
+# `[proxy] #13 profile glm is pinned, …`，reqID 是展开的），所以只锚那句尾巴，
+# 别去匹配前缀。
+for _ in $(seq 20); do
+  command grep -aq 'profile glm is pinned, dropping 1 fallback step: ds:ds/deepseek-chat' "$LOG" 2>/dev/null && break
+  sleep 0.1
+done
+command grep -aq 'profile glm is pinned, dropping 1 fallback step: ds:ds/deepseek-chat' "$LOG" \
+  && ok "日志说明白了砍掉哪一步（profile … is pinned）" \
+  || bad "日志没留下「砍掉了谁」（$LOG）"
+# 4xx 定案分支不写 X-Newgate-Failover，所以这里**不能**拿它当判据（缺席是必然的、
+# 空转的）；上面那两个判据才是：状态码来自链头、上游只被敲了一次。
+
+echo; echo "== 13c. newgate fallback off：全局关掉换人（所有 gateway 路径） =="
+# 13b 是**点名**时的截断，这一节是全局开关。判据在 state.json 的
+# gateway.fallback 上，覆盖所有没点名 profile 的请求（网页、curl、别的 agent
+# 都从这儿过）。两者同一个截断点、同一个结果，区别只在「为什么砍」——日志
+# 措辞不一样，所以两条路能分开验。
+#
+# 形态是「先证链是活的、再关掉、再开回来」，不是只证「没换人」：一条根本没接
+# 上的链也能让「第二站没被敲」成立，那正是 13b 之前那版空转的样子。
+#
+# `newgate fallback` 没有「不带参数自报现状」这种用法（无参数报 usage 并以 64
+# 退出，与 schema-repair 同一条家规），现状从 `newgate status` 看。
+LOG="$NEWGATE_HOME/newgate.log"
+RESETUP() { curl -sf "http://127.0.0.1:$UP_PORT/__mock/reset" -X POST >/dev/null; }
+MODELS() { curl -s "http://127.0.0.1:$UP_PORT/__mock/requests" | python3 -c '
+import json,sys
+r=json.load(sys.stdin)
+print("|".join(dict.fromkeys(x["body"].get("model") for x in r if x["path"].endswith("/messages"))))'; }
+
+# (1) 对照：默认开着，同一发必须沿链换人。没有这一发，「关掉之后只敲了一次」
+#     也可能只是链没接上；顺带它也把 chain.failover 记账（15 章要读）。
+#     MODELS 是去过重的（见 13b 的注释）：这里要的是「去过哪几站」。
+RESETUP; curl -sf "http://127.0.0.1:$UP_PORT/__mock/fail?code=500" >/dev/null
+OUT="$(E2E_SCENARIO=bg_plain "$BIN" claude 2>"$SANDBOX/fbon1.err")"
+check "对照：fallback 开着 ⇒ 链头挂了仍 200（沿 light 链换人）" \
+  "$(echo "$OUT" | grep '^HTTP=' | cut -d= -f2)" "200"
+check "对照：敲了两站（ds 的 light → glm 的 light）" "$(MODELS)" "deepseek-chat|glm-4.5-air"
+
+# (2) 关掉：同一发必须直接撞在链头上，上游原文原样报出来。
+"$BIN" fallback off >/dev/null 2>&1
+RESETUP; curl -sf "http://127.0.0.1:$UP_PORT/__mock/fail?code=500" >/dev/null
+OUT="$(E2E_SCENARIO=bg_plain "$BIN" claude 2>"$SANDBOX/fboff.err")"
+check "fallback 关了 ⇒ 链头的 500 原样报出来" \
+  "$(echo "$OUT" | grep '^HTTP=' | cut -d= -f2)" "500"
+check "fallback 关了 ⇒ 只敲了链头（没换人）" "$(MODELS)" "deepseek-chat"
+for _ in $(seq 20); do
+  command grep -aq 'fallback is off, dropping 1 chain step: glm:glm/glm-4.5-air' "$LOG" 2>/dev/null && break
+  sleep 0.1
+done
+command grep -aq 'fallback is off, dropping 1 chain step: glm:glm/glm-4.5-air' "$LOG" \
+  && ok "日志说明白了砍掉哪一步（fallback is off）" \
+  || bad "日志没留下「砍掉了谁」（$LOG）"
+# 这一行是用户唯一的线索：平时请求照常 200，只有某个上游真的挂了才显形；
+# 忘了自己拨过这个开关，就会把「没有 fallback」误读成「链上没人可换」。
+check "status 报出 fallback=off" \
+  "$("$BIN" status 2>&1 | command grep -c 'fallback=off')" "1"
+
+# (3) 拨回去：开关是对称的，状态行跟着干净。
+"$BIN" fallback on >/dev/null 2>&1
+RESETUP; curl -sf "http://127.0.0.1:$UP_PORT/__mock/fail?code=500" >/dev/null
+OUT="$(E2E_SCENARIO=bg_plain "$BIN" claude 2>"$SANDBOX/fbon2.err")"
+check "fallback 开回来 ⇒ 又沿链换人了" \
+  "$(echo "$OUT" | grep '^HTTP=' | cut -d= -f2)" "200"
+check "fallback 开回来 ⇒ status 不再报 fallback=off" \
+  "$("$BIN" status 2>&1 | command grep -c 'fallback=off')" "0"
 
 echo; echo "== 15. newgate metrics：路径上的操作全记账 =="
 # 计数器在 daemon 内存里（/__newgate/metrics），CLI 经 HTTP 读；第 12 节
@@ -628,10 +705,13 @@ GOT_BG="$(bg_thinking)"
 check "st on（整层）⇒ 插件又跑起来了（开关对称）" "$GOT_BG" "disabled"
 
 # 收尾：不留非出厂态（沙箱虽然会删，但脏状态会让调试时看到的现状骗人）。
+# fallback 也算在里面：13c 把它拨回过 off，漏了这一格的话，一个「忘了拨回来」
+# 的沙箱在 status 上看着和干净的一模一样——而它的症状要等某个上游真挂了才现形。
 "$BIN" schema-repair on >/dev/null 2>&1
 "$BIN" st on >/dev/null 2>&1
+"$BIN" fallback on >/dev/null 2>&1
 check "收尾：开关都回到出厂态" \
-  "$("$BIN" status 2>&1 | command grep -c 'special off:\|schema-repair=off')" "0"
+  "$("$BIN" status 2>&1 | command grep -c 'special off:\|schema-repair=off\|fallback=off')" "0"
 
 
 echo
