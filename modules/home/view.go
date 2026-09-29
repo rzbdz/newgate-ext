@@ -23,17 +23,20 @@ func registerView(v view.Service, cfg configapi.Config, deps overviewDeps) (modu
 	// （见 lib/view 的 Sections），所以它不是一个「抢座位」的动作——多一份声明
 	// 不会让这一屏变成随机的，只会按 Source 分胜负。
 	//
-	// `.In(i18n.T("Overview"))` 而不是不分组：不分组的那几栏**排在最前面**
-	// （见 Sidebar.svelte 的 rows），而首屏本来就要落在这一节上——它自己跑到最上面
-	// 之后，那一栏反而没有位置可站，读的人也就不知道它凭什么在最上面。给它一个
-	// 名字，是让「为什么它在第一位」变成看得见的（与 Section.Group 那条注释同源）。
-	section := view.Title(func() string { return i18n.T("Home", nil) }).
-		Landing().
-		In(func() string { return i18n.T("Overview", nil) })
+	// **不归组**（曾经是 `.In("Overview")`）：侧栏把**声明了落点的那一栏**排在目录
+	// 第一位、且不给它画分组标题（见 Sidebar.svelte 的 rows）。归组的话它会连同
+	// 标题一起被卷到中间去，而「凭什么它最上面」这个问题就答不上来了——它自己在
+	// 第一位时，位置本身就是那句话，与「不归组的那几栏排最前面」是同一条理由。
+	section := view.Title(func() string { return i18n.T("Home", nil) }).Landing()
 	// 右上角那个「全都探一遍」：它要探的是这一屏**所有** profile 的链站，那个集合
 	// 不属于任何一张卡，所以它长在节上（理由见 overview.go 的 probeAllAction）。
 	// 没装网关时**不挂**——一个按下去必然失败的按钮比没有按钮更糟。
 	if a, ok := probeAllAction(cfg, deps.gateway); ok {
+		section = section.Does(a)
+	}
+	// fallback 链总开关，与探活并排挂在右上角（判据同：没装网关就不挂——链都没有，
+	// 关一个不存在的开关没有意义）。
+	if a, ok := fallbackAction(deps.gateway); ok {
 		section = section.Does(a)
 	}
 	return v.Register(Name, section, concepts(cfg, deps))

@@ -73,7 +73,7 @@ func overviewConcept(all []*configapi.Chains, d overviewDeps) view.Concept {
 		}
 		cards = append(cards, overviewCard(one, agents, health, d.gateway))
 	}
-	return view.Concept{
+	c := view.Concept{
 		ID: overviewID, Kind: view.KindOverview,
 		Title: i18n.T("Routes", nil),
 		Data:  view.Overview{Agents: agents, Cards: cards},
@@ -87,6 +87,18 @@ func overviewConcept(all []*configapi.Chains, d overviewDeps) view.Concept {
 		// 是「读一次贵不贵」，不是「数据会不会变」）。探活的结果靠动作跑完之后
 		// 那次重读带回来，不靠轮询。
 	}
+	// fallback 关着时，这一屏画的那些「后面还垫着几站」**一站都不会走**——链还在
+	// 配置里，只是转发侧被一刀切到链头了。不说出来的话，这一屏上每一张卡都在讲一个
+	// 此刻不成立的承诺：用户看着 +7 的角标，以为断了会有人接上。
+	//
+	// 所以它不是一句装饰，是这个屏幕上**最要紧的那个事实**——语气也就给重的那个。
+	if d.gateway != nil && !d.gateway.FallbackOn() {
+		c.Note = &view.Note{
+			Text: i18n.T("the fallback chain is off — every request stops at its chain head", nil),
+			Tone: view.ToneBad,
+		}
+	}
+	return c
 }
 
 // overviewAgents 列出这台机器认识的客户端，外加它们各自的链头。
@@ -109,6 +121,7 @@ func overviewAgents(cat agentapi.AgentCatalog) []view.OverviewAgent {
 		names := cat.Names()
 		sort.Strings(names)
 		for _, id := range names {
+			ap := agentapi.AgentProfile{AgentID: id}
 			out = append(out, view.OverviewAgent{
 				ID:   id,
 				Name: id, // 客户端名是**机器取值**（claude / codex），它本来就是给人看的字。
@@ -116,14 +129,20 @@ func overviewAgents(cat agentapi.AgentCatalog) []view.OverviewAgent {
 				// 「这个客户端的请求落到哪条链上」的真话（confighook.AgentProfile 里
 				// Active 与 Stored 的分工见那里：界面上的**取值**用 Stored，这里说的
 				// 是它此刻实际走谁，用 Active）。
-				Profile: st.ActiveFor(id),
-				Ready:   cat.Installed(id),
+				Profile: ap.Active(),
+				// Own 说的是**这一家自己设过没有**。它与 Profile 是两码事，而界面
+				// 必须能分开：「给 claude 固定选 ds」与「claude 跟着全局、全局恰好是
+				// ds」路由结果一样，但改掉全局之后一个跟着变、一个不变。只说 Profile
+				// 等于把这件事藏起来（判据就是 confighook 的 IsOverride，不另立一套）。
+				Own:   ap.IsOverride(),
+				Ready: cat.Installed(id),
 			})
 		}
 	}
 	// Ready 恒 true：它不是「装了没有」，而是「这一档能不能点」——空这一档永远能点。
+	// Own 恒 true：这一档**就是**全局默认本身，不存在「它跟着谁」。
 	return append(out, view.OverviewAgent{
-		ID: "", Name: i18n.T("all clients", nil), Ready: true,
+		ID: "", Name: i18n.T("all clients", nil), Ready: true, Own: true,
 		Profile: st.ActiveFor(""),
 	})
 }
@@ -224,6 +243,17 @@ const useActionPrefix = "use:"
 // 空串拼出来的 `use::production` 读起来像拼错了。
 const useGlobal = "global"
 
+// useAutoPrefix 是「改回自动」那一族动作 ID 的前缀，整串是 `auto:<agent>`。
+//
+// **为什么另起一族而不是 `use:<agent>:auto`**：`<profile>` 那一段装的是磁盘上的
+// 档位名，而档位名是用户起的——`auto` 是一个完全合法的档位名。挤进同一族的话，
+// 一台真的有一份 `auto.kv` 的机器上，那个「改回自动」的按钮会和一个「固定用 auto
+// 这一份」的按钮**拼成同一个 ID**，而账本按 ID 取的是第一个匹配：用户点「固定用
+// auto」，实际执行的是松开——静默地改错东西，界面上一点异样都没有。
+//
+// 两个前缀也就不共用一套解析：`use:` 后面必须有**两**段，`auto:` 后面只有一段。
+const useAutoPrefix = "auto:"
+
 // cardActions 是长在这张卡头上的按钮：「就用它」+「整张卡探一遍」。
 func cardActions(agents []view.OverviewAgent, profile string, chains []configapi.Chain, g gatewayapi.Gateway) []view.Action {
 	out := useActions(agents, profile)
@@ -239,14 +269,20 @@ func cardActions(agents []view.OverviewAgent, profile string, chains []configapi
 	return out
 }
 
-// useActions 是这张卡上的「用它」按钮。
+// useActions 是这张卡上的「用它」按钮，外加那张**正固定着它的卡**上的「改回自动」。
 //
-// 三条取舍：
+// 四条取舍：
 //
-//   - **已经用着它的那一栏不出现**：把它指给它自己是一件没有意义的事。界面于是只
-//     画一句「正在用它」的陈述（前端拿 agents[i].profile 比一下就知道）。
-//   - **没装的客户端不出现**：这台机器上改了也不会有任何东西经过它。而「哪些装了」
-//     是客户端目录的判据（它自己的事实优先、其次找 PATH），不是这里猜的。
+//   - **固定用它**的判据是「这一家**自己**设过没有」，不是「它此刻解析成哪一份」。
+//     这两件事必须分开：「给 claude 固定选 ds」与「claude 跟着全局、全局恰好是 ds」
+//     是**两个状态**——路由结果此刻一样，但改掉全局之后一个跟着变、一个不变。拿解析
+//     结果去比，前一版的症状正是「用户想固定住，界面却说它已经在用了、不给按钮」，
+//     于是他永远没法把那一步做出来。
+//   - **改回自动**只出现在「这一家固定在这一份上」的那张卡上：那是这件事唯一说得通
+//     的地方（别处没有「你本来固定着，现在想松开」这个意思）。它反着走
+//     `setAgentProfile(id, "")`，落点是 confighook 那句「空串 = 回到跟随全局默认」。
+//   - **没装的客户端不出两种按钮**：这台机器上改了也不会有任何东西经过它。而「哪些
+//     装了」是客户端目录的判据（它自己的事实优先、其次找 PATH），不是这里猜的。
 //   - **全局那一档永远在**：一个客户端都没装时，它是唯一能把链换掉的手段。
 func useActions(agents []view.OverviewAgent, profile string) []view.Action {
 	st := store.LoadState()
@@ -262,17 +298,27 @@ func useActions(agents []view.OverviewAgent, profile string) []view.Action {
 		})
 	}
 	for _, a := range agents {
-		if a.ID == "" || !a.Ready || a.Profile == profile {
+		if a.ID == "" || !a.Ready {
 			continue
 		}
 		id, name := a.ID, a.Name
-		out = append(out, view.Action{
-			ID: useActionID(id, profile),
-			Label: func() string {
-				return i18n.T("use for {client}", i18n.A{"client": name})
-			},
-			Run: func() (string, error) { return "", setAgentProfile(id, profile) },
-		})
+		pinned := a.Own && a.Profile == profile
+		if !pinned {
+			out = append(out, view.Action{
+				ID: useActionID(id, profile),
+				Label: func() string {
+					return i18n.T("use for {client}", i18n.A{"client": name})
+				},
+				Run: func() (string, error) { return "", setAgentProfile(id, profile) },
+			})
+		}
+		if pinned {
+			out = append(out, view.Action{
+				ID:    useAutoPrefix + id,
+				Label: func() string { return i18n.T("follow the default", nil) },
+				Run:   func() (string, error) { return "", setAgentProfile(id, "") },
+			})
+		}
 	}
 	return out
 }
@@ -306,6 +352,41 @@ func setAgentProfile(agent, profile string) error {
 // 节的动作用户登记时构造一次就定了（见 view.Section.Actions），而这里是**今天**
 // 有哪些链——登记那一刻读出来的那份到点击时早就过期了。所以闭包捕获的是 cfg 与
 // 端口，链在 Run 里现取。
+// fallbackAction 是右上角那个 fallback 链总开关。
+//
+// # 它关掉的到底是什么（说清楚，因为界面上那个词有歧义）
+//
+// **整条链**，不分「本 profile 内的」与「从别的 profile 借来的」。转发侧的落地是
+// `steps = steps[:1]`，而 `steps` 是 resolve.BuildChain 展开出来的**一条平表**——
+// 它按 profile 优先级把所有 profile 的候选展开进同一个列表，每一步身上带着来源
+// （就是界面上的 `ds` / `cheap` 那些小药丸）。开关没用那个来源。
+//
+// 所以「只禁跨 profile、保留自己这一份里的 fallback」今天**做不到**：那要先让链在
+// 截断处认得出自己是哪一段来的（改 resolve 与 forward），是另一件事。界面按能做
+// 到的那件事写文案，不按想做到的那件写——写成「只禁跨 profile」就是在骗人。
+//
+// # 为什么按下的那一刻才取状态
+//
+// `on` 是**构造这个闭包时**读到的那一刻的值（快照会重读，所以每次都是新的）。
+// 翻的是它的反面，而不是「设成某个固定值」：按钮上写的是此刻要做的那个动作。
+func fallbackAction(g gatewayapi.Gateway) (view.Action, bool) {
+	if g == nil {
+		return view.Action{}, false
+	}
+	on := g.FallbackOn()
+	return view.Action{
+		ID: "fallback",
+		Label: func() string {
+			if on {
+				return i18n.T("stop at the chain head", nil)
+			}
+			return i18n.T("enable the fallback chain", nil)
+		},
+		Run: func() (string, error) { return "", g.SetFallback(!on) },
+	}, true
+}
+
+// probeAllAction 是右上角那个「全都探一遍」。
 func probeAllAction(cfg configapi.Config, g gatewayapi.Gateway) (view.Action, bool) {
 	if g == nil {
 		return view.Action{}, false

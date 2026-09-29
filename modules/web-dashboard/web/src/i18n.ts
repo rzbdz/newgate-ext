@@ -92,6 +92,11 @@ const en: Record<string, string> = {
   // 根本不报那个动作），它是陈述，所以措辞是陈述句。
   "in use": "in use",
   "in use by {client}": "in use by {client}",
+  // **固定**与**自动**是两句话，不能合成一句：固定选 ds 之后改掉全局默认不会动它，
+  // 跟着默认走的则会一起被改掉——而它此刻恰好也解析成 ds。见 lib/view 的
+  // OverviewAgent.Own。
+  auto: "auto",
+  "auto in use by {client}": "{client} follows the default",
   "+{n} more on the chain": "+{n} more on the chain",
   // 延迟那个单位。它单独一条而不是拼进数字里：中文写「毫秒」也不该改数字那一格
   // 的排版（那一列是拿来竖着比的）。
@@ -177,6 +182,8 @@ const zhHans: Record<string, string> = {
   "not installed": "没装",
   "in use": "正在使用",
   "in use by {client}": "{client} 正在使用",
+  auto: "自动",
+  "auto in use by {client}": "{client} 跟随默认",
   "+{n} more on the chain": "链上还有 {n} 站",
   ms: "毫秒",
 };

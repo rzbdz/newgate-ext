@@ -41,7 +41,23 @@
   type Row = { kind: "head"; name: string } | { kind: "sec"; s: Section };
   const rows = $derived.by<Row[]>(() => {
     const out: Row[] = [];
-    for (const s of sections) if (!s.group) out.push({ kind: "sec", s });
+
+    // 声明了落点的那一栏（首屏）**排在目录第一位**，而且不画分组标题。
+    //
+    // 为什么拿落点当判据、而不是给 Section 加一个 Order：落点本来就是模块自己声明
+    // 的那个「用户第一眼该看哪儿」（见 lib/view 的 Section.Default），而目录的第一
+    // 项说的也正是这件事——同一个问题的两个说法，用同一个事实答。加第二个字段就有
+    // 「落点在一处、排位在另一处，两处不一致」的余地。
+    //
+    // 为什么它不跟着分组走：分组标题说的是「下面这几栏是一类」，把它插进某一组的
+    // 中间（或者把整组提到最前）都会让「凭什么它最上面」这个问题更难答。它自己在
+    // 最上面时**位置本身就是那句话**——与「不归组的那几栏排最前面」是同一条理由。
+    const landing = sections.find((s) => s.default);
+    if (landing) out.push({ kind: "sec", s: landing });
+
+    for (const s of sections) {
+      if (!s.group && s !== landing) out.push({ kind: "sec", s });
+    }
 
     // 每一组**聚在一起**：先按组名第一次出现的次序定组的先后，再把整组成员一次
     // 列完。
@@ -53,7 +69,7 @@
     const order: string[] = [];
     const byGroup = new Map<string, Section[]>();
     for (const s of sections) {
-      if (!s.group) continue;
+      if (!s.group || s === landing) continue;
       const g = byGroup.get(s.group);
       if (g) g.push(s);
       else {

@@ -43,7 +43,7 @@
     roles: Row[];
     actions?: Act[];
   };
-  type Agent = { id: string; name: string; profile?: string; ready?: boolean };
+  type Agent = { id: string; name: string; profile?: string; own?: boolean; ready?: boolean };
   type Data = { agents: Agent[]; cards: Card[] };
 
   import { t } from "../i18n";
@@ -104,6 +104,12 @@
     const out: Act[] = [];
     const who = current?.id ? current.id : "global";
     for (const a of c.actions ?? []) {
+      if (a.id.startsWith("auto:")) {
+        // 「改回自动」（`auto:<agent>`）：后端只把它挂在**这一家正固定着**的那张卡
+        // 上，但切到别家时不该还留着——那是别人家的状态，点下去改的是别人。
+        if (a.id === `auto:${who}`) out.push(a);
+        continue;
+      }
       if (!a.id.startsWith("use:")) {
         out.push(a); // 探活那类：与标签无关，照画。
         continue;
@@ -139,41 +145,48 @@
    * 一次只能看一档，反而要开五次。
    */
   let open = $state<Record<string, boolean>>({});
-  function toggle(profile: string) {
-    open = { ...open, [profile]: !open[profile] };
+
+  /** 系统的「减少动效」偏好。它只影响**滚过去的方式**，不影响滚不滚（见 toggle）。 */
+  function reduceMotion(): boolean {
+    return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
   }
 
   /**
-   * 一张卡收起来时的那几行：**按「链头 + 链长」把档位并起来**。
+   * 摊开/收起一张卡。
    *
-   * # 为什么收起来时不画那几站
+   * # 摊开之后要滚一下
    *
-   * 这一屏的默认视图回答的是「每档从谁起、快不快、后面还垫着几站」，而不是「第 4
-   * 站是谁」。实测这一屏的家底：11 张卡 × 5 档全摊开是 **310 行、整页约 8000px**，
-   * 收起来是 **27 行、约 1700px**。差这么多是因为**一半的档位跟别人共用链头**
-   * （55 个档位里 28 个），而差异要到第 3 站往后才出现——那几站的归属是摊开时读的
-   * 东西（也是 `newgate tier` 与 Chains 那一屏的东西）。
+   * 摊开的那一张会**高好几倍**（实测 5 档全摊开约 900px，收起来约 200px），而且它
+   * 占满整行——于是它自己那一行会往下推、它上方的卡也跟着挪，用户点开的那一条的
+   * 标题很容易就跑到视野外面去。所以摊开之后把它顶到视野里。
    *
-   * 并的判据是**链头 + 链长**两样一起：光看链头会把「同一个头但后面垫得不一样长」
-   * 的两档并成一行，而 `+N` 那个角标正是靠它区分——并错了两档会显示同一个深度。
+   * 为什么要等一帧：这一刻 DOM 还是收起的样子，`scrollIntoView` 量到的是**旧的**
+   * 位置（收起时 200px 高、摊开后 900px，差出好几百像素）。下一帧才量得对。
+   *
+   * 为什么收起时**不滚**：收起是一个「我不看了」的动作，把人从原地挪走正好相反。
    */
-  type Group = { key: string; tiers: string[]; row: Row; depth: number };
-  function groups(roles: Row[]): Group[] {
-    const out: Group[] = [];
-    const at = new Map<string, Group>();
-    for (const r of roles) {
-      const depth = Math.max(0, (r.steps?.length ?? 0) - 1);
-      const key = `${r.head ?? ""}\u0000${depth}`;
-      const hit = at.get(key);
-      if (hit) {
-        hit.tiers.push(r.label ?? r.tier);
-        continue;
-      }
-      const g: Group = { key, tiers: [r.label ?? r.tier], row: r, depth };
-      at.set(key, g);
-      out.push(g);
-    }
-    return out;
+  function toggle(profile: string, ev: MouseEvent) {
+    const next = !open[profile];
+    open = { ...open, [profile]: next };
+    if (!next) return;
+    const card = (ev.currentTarget as HTMLElement | null)?.closest(".pc");
+    if (!card) return;
+    requestAnimationFrame(() =>
+      card.scrollIntoView({
+        block: "start",
+        behavior: reduceMotion() ? "auto" : "smooth",
+      }),
+    );
+  }
+
+  /**
+   * 链头后面还站着几站（收起时那个 `+N`）。
+   *
+   * 收起时给的是**深度**，不是那几站是谁——那几站的归属是摊开才读的东西（也是
+   * `newgate tier` 与 Chains 那一屏的东西）。摊开后 `rest()` / `hidden()` 接手。
+   */
+  function depth(r: Row): number {
+    return Math.max(0, (r.steps?.length ?? 0) - 1);
   }
 
   function toneClass(tone: string | undefined): string {
@@ -215,7 +228,16 @@
         </svg>
         <span class="nm">{a.name}</span>
         {#if a.profile}
-          <span class="cur mono">{a.profile}</span>
+          <!-- 「自动」与「固定」是**两个状态**，不能合成一句话：固定选 ds 之后改掉
+               全局默认不会动它；跟着默认走的则会被一起改掉。所以跟着走时说「自动」，
+               并把解析到的那一份另起一格写出来（那是它此刻实际走谁）；只有固定住的
+               才直接写那一份。 -->
+          {#if a.own}
+            <span class="cur mono">{a.profile}</span>
+          {:else}
+            <span class="auto">{t("auto")}</span>
+            <span class="cur mono dim">{a.profile}</span>
+          {/if}
         {/if}
         {#if a.ready === false}
           <span class="dim off">{t("not installed")}</span>
@@ -234,7 +256,7 @@
              它同时是**摊开/收起**的开关（仿 Clash 的组头）：整行都点得动，比在角落
              放一个 12px 的小三角好按得多，而这一屏上最频繁的动作就是「扫一遍」和
              「摊开看这条」。 -->
-        <button class="tog" aria-expanded={!!open[c.profile]} onclick={() => toggle(c.profile)}>
+        <button class="tog" aria-expanded={!!open[c.profile]} onclick={(ev) => toggle(c.profile, ev)}>
           <svg class="chev" viewBox="0 0 16 16" aria-hidden="true">
             <path d="M6 4l4 4-4 4" />
           </svg>
@@ -249,7 +271,16 @@
                事（所以后端根本不报那个动作）。与 Concept.Note 那条同源——「不画
                那个按钮」与「什么都不说」是两件事。 -->
           <span class="pill ok-pill" data-using="1">
-            {current?.id ? t("in use by {client}", { client: current.name }) : t("in use")}
+            {#if !current?.id}
+              {t("in use")}
+            {:else if current.own}
+              <!-- 固定住的那一份：它不会跟着全局默认动。 -->
+              {t("in use by {client}", { client: current.name })}
+            {:else}
+              <!-- 跟着默认走、而默认恰好是这一份：**不是**同一句话。它与上面那一条
+                   只差一个字，但改掉全局默认之后一个会走、一个不会。 -->
+              {t("auto in use by {client}", { client: current.name })}
+            {/if}
           </span>
         {/if}
         {#each actions(c) as a (a.id)}
@@ -265,37 +296,39 @@
 
       <ul class="roles" class:flat={!open[c.profile]}>
         {#if !open[c.profile]}
-          <!-- 收起来的样子：一行一组（组 = 链头相同、链长也相同的那些档位）。
-               仿 Clash 的组员表——**默认只给「谁、多快、后面还垫着几站」**，站的
-               归属是摊开才读的东西。 -->
-          {#each groups(c.roles) as g (g.key)}
+          <!-- 收起来的样子：**一档一行**，只说这一档从谁起、后面还垫着几站、多快。
+               那几站是谁是摊开才读的东西（也是 `newgate tier` 与 Chains 那一屏的
+               东西）；把它画在默认视图里，一张卡就是三十行，一屏放不下两张卡。
+
+               这里**不把共享链头的档位并成一行**：并起来更短，但每个组占几行是变的，
+               于是卡片高度参差、行也参差——而这一屏是拿来**竖着比**的（同一张卡里
+               哪档快、两张卡之间谁快）。等高、等宽的行比少几行值钱。 -->
+          {#each c.roles as r (r.id ?? r.tier)}
             <li class="grp">
-              <span class="tiers">
-                {#each g.tiers as tn (tn)}<span class="tname">{tn}</span>{/each}
-              </span>
+              <span class="tname" title={r.tier}>{r.label ?? r.tier}</span>
               <span class="headline">
-                {#if g.row.head}
+                {#if r.head}
                   <!-- 窄卡里链头会被截掉（`minimax/MiniMax-M2.7-hig…`），而它是这一行
                        最要紧的那个值——全名走 title，鼠标停上去看得到。 -->
-                  <span class="head mono {toneClass(g.row.tone)}" title={g.row.head}>{g.row.head}</span>
-                  {#if g.depth}
-                    <span class="depth mono" title={t("+{n} more on the chain", { n: g.depth })}>
-                      +{g.depth}
+                  <span class="head mono {toneClass(r.tone)}" title={r.head}>{r.head}</span>
+                  {#if depth(r)}
+                    <span class="depth mono" title={t("+{n} more on the chain", { n: depth(r) })}>
+                      +{depth(r)}
                     </span>
                   {/if}
                 {:else}
                   <!-- 一档都没有候选举不起来：那**为什么**举不起来才是这一行的内容
                        （空档位在界面上不能只显示一个「空」字，那看起来像加载失败）。 -->
                   <span class="dim">{t("no steps")}</span>
-                  {#if g.row.note}<span class="dim note">{g.row.note}</span>{/if}
+                  {#if r.note}<span class="dim note" title={r.note}>{r.note}</span>{/if}
                 {/if}
               </span>
-              {#if g.row.steps?.[0]?.latency_ms}
+              {#if r.steps?.[0]?.latency_ms}
                 <span
-                  class="ms mono {toneClass(g.row.steps[0].latency_tone)}"
-                  title={msTitle(g.row.steps[0])}
+                  class="ms mono {toneClass(r.steps[0].latency_tone)}"
+                  title={msTitle(r.steps[0])}
                 >
-                  {g.row.steps[0].latency_ms}{t("ms")}
+                  {r.steps[0].latency_ms}{t("ms")}
                 </span>
               {/if}
             </li>
@@ -411,6 +444,15 @@
   }
   .nm { font-size: 12px; font-weight: 600; }
   .cur { font-size: 11px; color: var(--dim); }
+  /* 「自动」那一格：它不是一份档位的名字，是一种**状态**，所以给它一个记号（虚边框）
+     而不是等宽字——旁边紧跟着的那一份才是名字。 */
+  .auto {
+    font-size: 10px;
+    padding: 0 5px;
+    border: 1px dashed color-mix(in srgb, currentColor 45%, transparent);
+    border-radius: 999px;
+    opacity: 0.85;
+  }
   .off { font-size: 10px; }
 
   /* ---- 卡片 ---- */
@@ -426,7 +468,10 @@
     background: var(--panel);
     border: 1px solid var(--line);
     border-radius: var(--radius);
-    padding: 10px 12px 12px;
+    padding: 8px 10px 9px;
+    /* 摊开时滚到它这里（见 toggle）：留一点空，别让卡边贴着滚动区上沿——贴住了
+       看起来像被裁掉了一截。 */
+    scroll-margin-top: 8px;
   }
   /* 摊开的那一张**占满整行**。
      为什么：它是网格里的一员，而摊开之后它比邻居高好几倍——留在自己那一列的话，
@@ -473,31 +518,37 @@
   @media (prefers-reduced-motion: reduce) {
     .chev { transition: none; }
   }
-  .pname { font-size: 14px; font-weight: 700; }
-  .meta { font-size: 11px; color: var(--dim); margin: 1px 0 7px; }
+  .pname { font-size: 13.5px; font-weight: 700; }
+  .meta { font-size: 10.5px; color: var(--dim); margin: 0 0 5px; }
 
   .roles { list-style: none; margin: 0; padding: 0; }
   .roles > li + li { margin-top: 8px; }
-  /* 收起来时行与行之间紧挨着：那些行是**拿来竖着扫的**（哪档快、哪档深），行距大
-     了扫起来就断。摊开时留 8px，因为那时每一块是一条链，块与块要分得开。 */
-  .roles.flat > li + li { margin-top: 2px; }
-  /* 收起来的一行：[档位们] [链头 +N] [延迟]，三列。
-     档位那一列是**固定宽**的：并起来的组有几档是变的（1 到 5 档），让它各自撑开
-     的话每行的链头都会错开，而这一列正是拿来竖着对位的。 */
+  /* 收起来的一行：[档位] [链头 +N] [延迟]，三列。
+     档位那一列**固定宽**：它是这一屏竖着对位的那条基准线，跟着名字长短走就散了。 */
   .grp {
     display: grid;
-    grid-template-columns: 92px minmax(0, 1fr) auto;
-    align-items: baseline;
-    gap: 8px;
-    padding: 2px 0;
+    grid-template-columns: 52px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 7px;
+    /* 固定行高，不是 padding：两张卡的同一档要落在同一水平线上，卡的高度也要能算
+       （头部 + 19px × 档位数）。 */
+    height: 19px;
   }
-  .tiers { display: flex; flex-wrap: wrap; gap: 2px 5px; }
-  .tiers .tname { min-width: 0; }
+  /* **每张卡收起来时一样高**：标准档位是五档（heavy/normal/mid/light/vision），
+     而少写几档的 profile（只写 normal+light 那种）本来会矮一截，几张卡摆在一起就
+     参差不齐——而这一屏正是拿来横向比的。按五档留够，少的那几张底下空着。
+     比「每张都刚好贴合内容」值钱：参差的高度会让眼睛每次都要重新找行。 */
+  .roles.flat { min-height: 95px; }
   .headline { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
-  .headline .head { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .headline .head {
+    font-size: 11.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   /* 链头之后还有几站。它是**深度**，不是内容——摊开才知道那几站是谁，所以这里
      只给个数（与摊开时那个 `+N more on the chain` 同一句话）。 */
-  .depth { font-size: 10px; color: var(--dim); opacity: 0.75; flex: none; }
+  .depth { font-size: 10px; color: var(--dim); opacity: 0.7; flex: none; }
   .note { font-size: 10px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* 一行 = [档位 + 链头] [延迟]，两列。
      - 前两样**必须包在一个格子里**（.tierline）：三样平铺进两列时，第三个（延迟）
@@ -515,17 +566,17 @@
   }
   .tierline { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
   /* 档位名占固定宽度：不固定的话每行的链头会参差不齐，同上。 */
-  .tname { color: var(--dim); font-size: 12px; min-width: 58px; white-space: nowrap; }
-  .head { font-size: 12px; white-space: nowrap; }
+  .tname { color: var(--dim); font-size: 11.5px; min-width: 52px; white-space: nowrap; }
+  .head { font-size: 11.5px; white-space: nowrap; }
   /* 延迟那一格：一个**度量**，所以给它一点底色把它从文字里分出来，但只用最小
      的手段（没有边框、没有圆角之外的东西）。数字用等宽 + 表格数字，几行竖着比
      的时候位是对齐的。 */
   .ms {
-    font-size: 11px;
+    font-size: 10.5px;
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
     text-align: right;
-    min-width: 56px;
+    min-width: 50px;
     padding: 0 5px;
     border-radius: 5px;
     background: color-mix(in srgb, currentColor 12%, transparent);
@@ -535,7 +586,7 @@
   .steps {
     list-style: none;
     margin: 3px 0 0;
-    padding: 0 0 0 58px; /* 与上面的链头对齐：缩进量 = tname 的宽度 */
+    padding: 0 0 0 59px; /* 与上面的链头对齐：缩进量 = tname 的宽度 + 那个 gap */
   }
   .steps > li {
     display: flex;
@@ -551,7 +602,7 @@
   .slash { opacity: 0.45; }
   .from { font-size: 10px; padding: 0 5px; }
   .more { font-size: 10px; padding-left: 16px; }
-  .skip { font-size: 11px; margin: 3px 0 0 58px; }
+  .skip { font-size: 11px; margin: 3px 0 0 59px; }
 
   /* 状态说明那套语气（与 ConceptCard 的 note 同一份）：**只换颜色，不换形状**。 */
   .ok-pill { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); }

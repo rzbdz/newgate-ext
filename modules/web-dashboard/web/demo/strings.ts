@@ -22,9 +22,13 @@
  * 产品的词汇，`t()` 已经有了。两处重复写一遍的结果是它们会漂成两种说法。
  */
 
+// 这里只有**点下去之后**才出现的那几句话（toast）。
+//
+// 曾经还有一条「这一页是真界面配假数据 —— 你点的每一下都不会离开浏览器」，画在报头
+// 上常驻。删掉了：它把这一页说成「演示」，而这一页值得存在的地方是**它就是那个
+// 界面**。一句话一直杵在那儿，读的人先看到的是「这是假的」而不是产品本身；而真要
+// 知道的人，点一下任何东西就知道了——这个文件里剩下的四句正是那时说的。
 const zhHans: Record<string, string> = {
-  "this page is the real interface with made-up data — nothing you click leaves the browser":
-    "这一页是真界面配假数据 —— 你点的每一下都不会离开浏览器",
   "this is a demo — “{action}” would go to the real daemon; nothing is written here":
     "这是演示 —— “{action}”真的会去问守护进程，这里什么都没写",
   "this is a demo — “{action}” on “{row}” would talk to the real daemon":

@@ -251,14 +251,31 @@ func TestOverviewAgentsAndUseActions(t *testing.T) {
 		if a.ID == "claude" && a.Profile != "production" {
 			t.Errorf("claude 没单设过，该报全局默认 production，实际 %q", a.Profile)
 		}
+		// Own 与 Profile 是两件事，而这里正是它们分得开的地方：codex 单独设过
+		// （Own=true），claude 只是跟着全局默认走、恰好解析成 production（Own=false）。
+		// 少了这一格，界面只能把这两个状态说成同一句话——而它们的路由行为不同：
+		// 改掉全局默认，claude 会跟着变，codex 不会。
+		if a.ID == "codex" && !a.Own {
+			t.Error("codex 单独设过，Own 该是 true")
+		}
+		if a.ID == "claude" && a.Own {
+			t.Error("claude 没单设过、只是跟着默认，Own 该是 false")
+		}
 	}
 
 	prod := actions(f.card("production"))
 	if !prod[useActionID("codex", "production")] {
 		t.Error("production 那张卡上该有 use:codex（codex 单独设的是 cheap）")
 	}
-	if prod[useActionID("claude", "production")] {
-		t.Error("claude 跟着全局默认、正用着 production，不该再报一个 use:claude")
+	// **这一条是这一整块的重点**：claude 此刻确实走在 production 上（它跟着全局
+	// 默认，而默认就是 production），但它**没有固定**在 production 上——「固定它」
+	// 与「让它跟着」是两个状态，所以「就用它」这个按钮必须还在。前一版按解析结果
+	// 去比，判的是「它已经在用了」，于是用户想固定住的那一步**永远做不出来**。
+	if !prod[useActionID("claude", "production")] {
+		t.Error("claude 跟着默认走在 production 上，但没固定住——该报一个 use:claude 让它固定下来")
+	}
+	if prod[useAutoPrefix+"claude"] {
+		t.Error("claude 没固定在任何一份上，不该报「改回自动」")
 	}
 	if prod[useActionID(useGlobal, "production")] {
 		t.Error("production 就是全局默认，不该报 use:global")
@@ -274,7 +291,16 @@ func TestOverviewAgentsAndUseActions(t *testing.T) {
 		}
 	}
 	if cheap[useActionID("codex", "cheap")] {
-		t.Error("codex 正用着 cheap，不该再报一个 use:codex")
+		t.Error("codex 已经固定在 cheap 上了，不该再报一个 use:codex")
+	}
+	// 而它该报的是**反方向**那一个：松开这个固定、回到跟随全局。两个按钮互相排斥
+	// （固定着就给「改回自动」，没固定就给「固定用它」），因为它们说的是同一个决定的
+	// 两个方向。
+	if !cheap[useAutoPrefix+"codex"] {
+		t.Error("codex 固定在 cheap 上，该报一个「改回自动」")
+	}
+	if cheap[useAutoPrefix+"claude"] {
+		t.Error("claude 没固定，cheap 那张卡上不该有它的「改回自动」")
 	}
 	if cheap[useActionID("opencode", "cheap")] {
 		t.Error("opencode 没装，不该报它的按钮")

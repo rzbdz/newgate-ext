@@ -161,13 +161,14 @@
 
 <div class="shell">
   <header class="top">
-    <b class="brand">newgate</b>
-    <span class="dim">
-      {d("this page is the real interface with made-up data — nothing you click leaves the browser")}
-    </span>
+    <!-- 报头与产品那一份**长得一样**：一个牌子，右边一个保存。
+         这里**不写任何旁白**（原来有一条「这一页是真界面配假数据…」）。旁白是一句
+         每时每刻都杵在屏幕上的话，它把这一页说成「演示」而不是「界面」，而这一页
+         值得存在的地方恰恰是它就是那个界面。要看的人点一下任何东西就会知道
+         （见 say / noBackend 的 toast），不需要先被通知一遍。 -->
+    <strong class="brand">newgate</strong>
     <span class="spacer"></span>
-    <span class="dim">{dirty ? t("unsaved") : t("save")}</span>
-    <button class="primary" onclick={onSave}>
+    <button class="primary" onclick={onSave} disabled={!dirty}>
       {t("save")}{dirty ? ` (${dirty})` : ""}
     </button>
   </header>
