@@ -7,6 +7,7 @@ import (
 
 	modules "github.com/rzbdz/newgate/component"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
+	viewapi "github.com/rzbdz/newgate/lib/view"
 	"github.com/rzbdz/newgate/modules/config/store"
 )
 
@@ -162,4 +163,91 @@ func themeDocOf(r *themeRegistry) themeDoc {
 		})
 	}
 	return doc
+}
+
+// ---------- 那张卡 ----------
+
+// themeConceptID 是那张卡的机器标记（也是它的概念 ID）。
+const themeConceptID = "web-dashboard.theme"
+
+// themeConcept 是「皮肤」那张卡。
+//
+// # 为什么另立一节（而不是塞进「配置」那一节）
+//
+// 侧栏里别处的每一节说的都是这台机器上的配置，而这一节说的是**这块界面自己长什么样**：
+// 「我的请求走哪条链」与「这个网页什么颜色」是两个问题，混在一栏里读的人会以为后者
+// 也是路由的一部分。
+//
+// # 为什么它要有这么一张卡（顶栏已经有一个下拉了）
+//
+// 那个下拉是**快捷方式**，不是配置的住处。这一层有两个判据：
+//
+//   - 一块界面上能改的东西，应当**在配置那一节里找得到**——用户找不到的东西等于
+//     不存在，而「顶栏右边那个下拉」不是一个能找的地方（它长得像视图切换，不像
+//     设置）。它也不在快照里，所以搜索、过滤、"哪些东西能改"这些一律看不见它。
+//   - 「谁的东西谁带」：这一节由本模块注册（与别的模块注册自己的节同一条路），
+//     而不是塞进 config 那一节——那份 state.json 里住着好几个模块各自的段，让
+//     config 替我们报这一格，等于让它替所有模块做决定。
+//
+// 两处写的是同一件东西（`selectedTheme`），所以下拉与这张卡不会各说各话。
+func themeConcept(r *themeRegistry) viewapi.Concept {
+	return viewapi.Concept{
+		ID: themeConceptID, Kind: viewapi.KindToggles,
+		Title: i18n.T("Theme", nil),
+		Data: viewapi.Toggles{Items: []viewapi.ToggleItem{{
+			ID:      "theme",
+			Kind:    viewapi.ToggleSelect,
+			Value:   selectedTheme(),
+			Options: themeOptions(r),
+			// 空串那一档要**点名它是谁**：它是一个合法取值（出厂那套令牌），不是一个
+			// 没得选的空档，而「跟随系统」这四个字得由后端给（语言是后端解析的）。
+			OptionLabels: map[string]string{
+				"": i18n.T("follow the system", nil),
+			},
+			Label: i18n.T("Theme", nil),
+			Why: i18n.T("The colours of this interface. Saved to state.json and applied at "+
+				"once — no reload. Nothing but tokens changes: a theme cannot move anything "+
+				"around.", nil),
+		}},
+		},
+		// **没有 File / Base**：这一格与别处的开关卡不同，它背后没有一份让用户编辑的
+		// 文件（它住在 state.json 的 module_config 里，那是本模块自己的段）。带上
+		// File 的话界面会把它与 state.json 的原文半并排，而那一半是整个文件——在
+		// 那里改一个字就可能把别的模块的段盖掉。
+		Apply: func(edit json.RawMessage, _ string) (string, error) {
+			return applyThemeEdit(r, edit)
+		},
+	}
+}
+
+// themeOptions 是下拉里那几档：空串（跟随系统）打头，后面按 ID 排。
+func themeOptions(r *themeRegistry) []string {
+	out := []string{""}
+	for _, t := range r.snapshot() {
+		out = append(out, t.ID)
+	}
+	return out
+}
+
+// applyThemeEdit 落盘那一格。
+//
+// 不认识的 ID **报错**，不悄悄落回出厂：那多半是那个模块被关掉了，而「点了没反应」
+// 与「这套皮肤没了」是两句话（与 /api/themes 那条同一条规矩）。
+func applyThemeEdit(r *themeRegistry, edit json.RawMessage) (string, error) {
+	var patch struct {
+		Theme *string `json:"theme"`
+	}
+	if err := json.Unmarshal(edit, &patch); err != nil {
+		return "", i18n.Ef(err, "the theme in this request is not readable: {err}", i18n.A{"err": err})
+	}
+	if patch.Theme == nil {
+		return "", i18n.E("the request says nothing about the theme", nil)
+	}
+	if *patch.Theme != "" && !r.has(*patch.Theme) {
+		return "", i18n.E("there is no theme {id} in this build", i18n.A{"id": *patch.Theme})
+	}
+	if err := setSelectedTheme(*patch.Theme); err != nil {
+		return "", err
+	}
+	return "", nil
 }

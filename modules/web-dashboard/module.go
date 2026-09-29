@@ -34,6 +34,12 @@ import (
 //go:embed all:web/dist
 var assets embed.FS
 
+// Name 是这个模块在装配表、概念账本与 `newgate plugin` 里的名字（= 目录名）。
+//
+// 它同时是**概念账本的来源名**（见 Start 里那个 Register）：账本按来源给每一节分栏，
+// 而这一节的来源就是本模块。
+const Name = "web-dashboard"
+
 const (
 	// Prefix 是它在共享端口上的落脚点。改这里要同时改前端的 base 路径。
 	Prefix = "/ui"
@@ -64,7 +70,7 @@ func New() modules.Component {
 	// 让命令按实际挂载结果说话，而不是按「我装了没有」猜。
 	self := &instance{views: views}
 	return modules.Component{
-		Name: "web-dashboard",
+		Name: Name,
 		Desc: func() string { return i18n.T("the web configuration interface: a BFF and the front-end bundle", nil) },
 		Type: "cli", // 「界面壳」这一类的既有取值（tui / simple-cli 也是它）
 		Requires: []modules.Requirement{
@@ -85,6 +91,23 @@ func New() modules.Component {
 		Start: func(_ context.Context, ctx modules.Context) error {
 			sub, err := fs.Sub(assets, AssetDir)
 			if err != nil {
+				return err
+			}
+			// 皮肤那张卡（见 theme.go 的 themeConcept）：注册进**本模块自己提供的那本
+			// 账**——与别的模块注册自己的节是同一条路，只不过这里的贡献者与账本是同一个
+			// 模块。它**无条件注册**，不跟「这次有没有入口」走：这一格说的是本模块的
+			// 一个设置，而没有入口的装配（porthub 与 serving 都不在）是个罕见的退路，
+			// 为它加一条分支只会多一个没人跑的状态。
+			//
+			// 读函数是**惰性**的：快照那一刻才求值，所以皮肤模块（它们排在本模块之后
+			// Start）那时已经登记完了——下拉里才不会少几档。
+			if _, err := views.Register(Name,
+				// 消息必须是**字面量**（i18n 的扫描器只认它——拼接出来的句子没法
+				// 翻译，见那条错误的原文）。所以这里不抽常量。
+				viewapi.Title(func() string { return i18n.T("Interface", nil) }),
+				func() ([]viewapi.Concept, error) {
+					return []viewapi.Concept{themeConcept(themes)}, nil
+				}); err != nil {
 				return err
 			}
 			handler := NewHandler(sub, views, themes)
