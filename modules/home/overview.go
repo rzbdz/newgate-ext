@@ -91,9 +91,17 @@ func overviewConcept(all []*configapi.Chains, d overviewDeps) view.Concept {
 
 // overviewAgents 列出这台机器认识的客户端，外加它们各自的链头。
 //
-// 顺序按 id 排（机器标记）：标签会跳动的页面，用户每次都要重新找一遍。目录没装
-// （或者一份客户端模块都没装）时给一档**空的**「全部客户端」——否则这一屏上一个
-// 动作都没有，而「切链」正是它存在的理由。
+// 顺序按 id 排（机器标记）：标签会跳动的页面，用户每次都要重新找一遍。
+//
+// **末尾那一档空的「全部客户端」是必须的，哪怕目录里列着一堆客户端**：全局默认
+// （`state.default_profile`）是每个没单配过的客户端实际走的那条链，而改它的唯一
+// 手段是 `use:global:<profile>`——那一族动作按契约只在**当前这一档是全局**时画出来
+// （见 web 侧 Overview.svelte 的 actions()：它按当前档的 id 拼 `use:<who>:<profile>`）。
+// 一档空的都没有时，那个 id 永远拼不出来，于是「全局默认」在这一屏上变成只读的
+// ——而它恰恰是「所有客户端一起换链」唯一的那一下。
+//
+// 排在最后而不是最前：具体客户端是这一屏的主体，全局那一档是它们的兜底，摆在
+// 末尾读起来是「还有一个总的」。默认选中的那一档也因此在**装了**的客户端里挑。
 func overviewAgents(cat agentapi.AgentCatalog) []view.OverviewAgent {
 	st := store.LoadState()
 	var out []view.OverviewAgent
@@ -113,13 +121,11 @@ func overviewAgents(cat agentapi.AgentCatalog) []view.OverviewAgent {
 			})
 		}
 	}
-	if len(out) == 0 {
-		return []view.OverviewAgent{{
-			ID: "", Name: i18n.T("all clients", nil), Ready: true,
-			Profile: st.ActiveFor(""),
-		}}
-	}
-	return out
+	// Ready 恒 true：它不是「装了没有」，而是「这一档能不能点」——空这一档永远能点。
+	return append(out, view.OverviewAgent{
+		ID: "", Name: i18n.T("all clients", nil), Ready: true,
+		Profile: st.ActiveFor(""),
+	})
 }
 
 // overviewCard 是一份 profile 在这一屏上的那张卡。

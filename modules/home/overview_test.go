@@ -224,10 +224,23 @@ func TestOverviewAgentsAndUseActions(t *testing.T) {
 	for _, a := range ov.Agents {
 		ids = append(ids, a.ID)
 	}
-	if strings.Join(ids, ",") != "claude,codex,opencode" {
-		t.Fatalf("标签该按 id 排、三个都在，实际 %v", ids)
+	// 末尾那档空的「全部客户端」**必须在**：`use:global:<profile>` 只在当前这一档
+	// 是它的时候画得出来（见 Overview.svelte 的 actions()），少这一档就等于把
+	// 「所有客户端一起换链」从这一屏上删掉——而且是静默的。
+	if strings.Join(ids, ",") != "claude,codex,opencode," {
+		t.Fatalf("标签该按 id 排、三个客户端都在、末尾一档空的，实际 %v", ids)
+	}
+	last := ov.Agents[len(ov.Agents)-1]
+	if last.ID != "" || !last.Ready {
+		t.Errorf("末尾那档该是空的「全部客户端」且能点，实际 %+v", last)
+	}
+	if last.Profile != "production" {
+		t.Errorf("空那一档该报全局默认 production，实际 %q", last.Profile)
 	}
 	for _, a := range ov.Agents {
+		if a.ID == "" {
+			continue
+		}
 		want := a.ID != "opencode"
 		if a.Ready != want {
 			t.Errorf("%s 的 Ready 该是 %v，实际 %v", a.ID, want, a.Ready)

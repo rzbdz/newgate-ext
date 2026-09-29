@@ -44,7 +44,7 @@
       "actions": [
         {
           "id": "probe-all",
-          "label": "⚡ Test everything"
+          "label": "⚡ 全部探一遍"
         }
       ],
       "default": true
@@ -122,7 +122,7 @@
                 "text": "0 次失败"
               },
               "latency": {
-                "text": "1206ms",
+                "text": "1205ms",
                 "tone": "ok"
               },
               "probe": {
@@ -156,7 +156,7 @@
                 "text": "0 次失败"
               },
               "latency": {
-                "text": "705ms",
+                "text": "709ms",
                 "tone": "ok"
               },
               "probe": {
@@ -190,7 +190,7 @@
                 "text": "0 次失败"
               },
               "latency": {
-                "text": "4207ms",
+                "text": "4208ms",
                 "tone": "warn"
               },
               "probe": {
@@ -224,7 +224,7 @@
                 "text": "0 次失败"
               },
               "latency": {
-                "text": "706ms",
+                "text": "707ms",
                 "tone": "ok"
               },
               "probe": {
@@ -258,7 +258,7 @@
                 "text": "0 次失败"
               },
               "latency": {
-                "text": "705ms",
+                "text": "708ms",
                 "tone": "ok"
               },
               "probe": {
@@ -292,7 +292,7 @@
                 "text": "0 次失败"
               },
               "latency": {
-                "text": "1408ms",
+                "text": "706ms",
                 "tone": "ok"
               },
               "probe": {
@@ -361,7 +361,7 @@
                 "tone": "warn"
               },
               "latency": {
-                "text": "12002ms",
+                "text": "12004ms",
                 "tone": "bad"
               },
               "probe": {
@@ -1727,68 +1727,68 @@
       "live": true,
       "order": 0,
       "data": {
-        "path": "/tmp/ng-snap.g9ZJln/ng/newgate.log",
+        "path": "/tmp/ng-snap.4mEsVp/ng/newgate.log",
         "lines": [
-          "2026/09/29 14:38:29 assembly: precomputed plan used — 27 components, no resolution",
-          "2026/09/29 14:38:29 start 1/27 cli done (took 2µs)",
-          "2026/09/29 14:38:29 start 2/27 ask done (took 2µs)",
-          "2026/09/29 14:38:29 start 3/27 config-hook done (took 2µs)",
-          "2026/09/29 14:38:29 start 4/27 entry done (took 1µs)",
-          "2026/09/29 14:38:29 start 5/27 porthub done (took 0s)",
-          "2026/09/29 14:38:29 start 6/27 serving done (took 0s)",
-          "2026/09/29 14:38:29 start 7/27 tui done (took 1µs)",
-          "2026/09/29 14:38:29 start 8/27 glm done (took 0s)",
-          "2026/09/29 14:38:29 start 9/27 opencode done (took 2µs)",
-          "2026/09/29 14:38:29 start 10/27 web-dashboard done (took 5µs)",
-          "2026/09/29 14:38:29 start 11/27 config done (took 10µs)",
-          "2026/09/29 14:38:29 start 12/27 gateway done (took 9µs)",
-          "2026/09/29 14:38:29 start 13/27 breaker done (took 19µs)",
-          "2026/09/29 14:38:29 启动 14/27 locale 完成（用时 805µs）",
-          "2026/09/29 14:38:29 启动 15/27 plugin-manager 完成（用时 8µs）",
-          "2026/09/29 14:38:29 启动 16/27 runtime 完成（用时 13µs）",
-          "2026/09/29 14:38:29 启动 17/27 thinking 完成（用时 9µs）",
-          "2026/09/29 14:38:29 启动 18/27 wrapper 完成（用时 2µs）",
-          "2026/09/29 14:38:29 启动 19/27 i18n 完成（用时 204µs）",
-          "2026/09/29 14:38:29 启动 20/27 home 完成（用时 6µs）",
-          "2026/09/29 14:38:29 启动 21/27 deepseek 完成（用时 8µs）",
-          "2026/09/29 14:38:29 启动 22/27 claudecode 完成（用时 29µs）",
-          "2026/09/29 14:38:29 启动 23/27 claudecode-deepseek 完成（用时 11µs）",
-          "2026/09/29 14:38:29 启动 24/27 claudecode-glm 完成（用时 4µs）",
-          "2026/09/29 14:38:29 启动 25/27 opencode-omo 完成（用时 46µs）",
-          "2026/09/29 14:38:29 启动 26/27 codex 完成（用时 9µs）",
-          "2026/09/29 14:38:29 启动 27/27 codex-deepseek 完成（用时 6µs）",
-          "2026/09/29 14:38:29 装配完成：27 个组件，用时 1ms",
-          "2026/09/29 14:38:29 入口解析：argv0=\"newgate\" → cli（认领者：__serve 未认领 → wrapper 未认领 → cli）",
-          "2026/09/29 14:38:56 停止：按启动逆序释放 27 个组件",
-          "2026/09/29 14:38:56 停止 27/27 codex-deepseek 完成（用时 4µs）",
-          "2026/09/29 14:38:56 停止 26/27 codex 完成（用时 4µs）",
-          "2026/09/29 14:38:56 停止 25/27 opencode-omo 完成（用时 2µs）",
-          "2026/09/29 14:38:56 停止 24/27 claudecode-glm 完成（用时 1µs）",
-          "2026/09/29 14:38:56 停止 23/27 claudecode-deepseek 完成（用时 1µs）",
-          "2026/09/29 14:38:56 停止 22/27 claudecode 完成（用时 2µs）",
-          "2026/09/29 14:38:56 停止 21/27 deepseek 完成（用时 1µs）",
-          "2026/09/29 14:38:56 停止 20/27 home 完成（用时 1µs）",
-          "2026/09/29 14:38:56 停止 19/27 i18n 跳过（没有 Stop）",
-          "2026/09/29 14:38:56 停止 18/27 wrapper 完成（用时 1µs）",
-          "2026/09/29 14:38:56 停止 17/27 thinking 完成（用时 1µs）",
-          "2026/09/29 14:38:56 停止 16/27 runtime 完成（用时 2µs）",
-          "2026/09/29 14:38:56 停止 15/27 plugin-manager 完成（用时 1µs）",
-          "2026/09/29 14:38:56 停止 14/27 locale 完成（用时 1µs）",
-          "2026/09/29 14:38:56 停止 13/27 breaker 完成（用时 1µs）",
-          "2026/09/29 14:38:56 停止 12/27 gateway 完成（用时 1µs）",
-          "2026/09/29 14:38:56 停止 11/27 config 完成（用时 2µs）",
-          "2026/09/29 14:38:56 停止 10/27 web-dashboard 完成（用时 1µs）",
-          "2026/09/29 14:38:56 停止 9/27 opencode 完成（用时 0s）",
-          "2026/09/29 14:38:56 停止 8/27 glm 跳过（没有 Stop）",
-          "2026/09/29 14:38:56 停止 7/27 tui 完成（用时 0s）",
-          "2026/09/29 14:38:56 停止 6/27 serving 完成（用时 0s）",
-          "2026/09/29 14:38:56 停止 5/27 porthub 跳过（没有 Stop）",
-          "2026/09/29 14:38:56 停止 4/27 entry 跳过（没有 Stop）",
-          "2026/09/29 14:38:56 停止 3/27 config-hook 完成（用时 0s）",
-          "2026/09/29 14:38:56 停止 2/27 ask 完成（用时 0s）",
-          "2026/09/29 14:38:56 停止 1/27 cli 完成（用时 0s）",
-          "2026/09/29 14:38:56 停止：完成",
-          "2026/09/29 14:38:56 assembly: fingerprint 0432fb3980f1 — 上面这段完整的装配记录是新的；只有装配变了才会再整段写一次"
+          "2026/09/29 14:52:05 assembly: precomputed plan used — 27 components, no resolution",
+          "2026/09/29 14:52:05 start 1/27 cli done (took 6µs)",
+          "2026/09/29 14:52:05 start 2/27 ask done (took 4µs)",
+          "2026/09/29 14:52:05 start 3/27 config-hook done (took 4µs)",
+          "2026/09/29 14:52:05 start 4/27 entry done (took 0s)",
+          "2026/09/29 14:52:05 start 5/27 porthub done (took 0s)",
+          "2026/09/29 14:52:05 start 6/27 serving done (took 0s)",
+          "2026/09/29 14:52:05 start 7/27 tui done (took 2µs)",
+          "2026/09/29 14:52:05 start 8/27 glm done (took 0s)",
+          "2026/09/29 14:52:05 start 9/27 opencode done (took 3µs)",
+          "2026/09/29 14:52:05 start 10/27 web-dashboard done (took 8µs)",
+          "2026/09/29 14:52:05 start 11/27 config done (took 23µs)",
+          "2026/09/29 14:52:05 start 12/27 gateway done (took 16µs)",
+          "2026/09/29 14:52:05 start 13/27 breaker done (took 29µs)",
+          "2026/09/29 14:52:05 启动 14/27 locale 完成（用时 1.581ms）",
+          "2026/09/29 14:52:05 启动 15/27 plugin-manager 完成（用时 34µs）",
+          "2026/09/29 14:52:05 启动 16/27 runtime 完成（用时 21µs）",
+          "2026/09/29 14:52:05 启动 17/27 thinking 完成（用时 25µs）",
+          "2026/09/29 14:52:05 启动 18/27 wrapper 完成（用时 4µs）",
+          "2026/09/29 14:52:05 启动 19/27 i18n 完成（用时 429µs）",
+          "2026/09/29 14:52:05 启动 20/27 home 完成（用时 16µs）",
+          "2026/09/29 14:52:05 启动 21/27 deepseek 完成（用时 13µs）",
+          "2026/09/29 14:52:05 启动 22/27 claudecode 完成（用时 54µs）",
+          "2026/09/29 14:52:05 启动 23/27 claudecode-deepseek 完成（用时 30µs）",
+          "2026/09/29 14:52:05 启动 24/27 claudecode-glm 完成（用时 9µs）",
+          "2026/09/29 14:52:05 启动 25/27 opencode-omo 完成（用时 81µs）",
+          "2026/09/29 14:52:05 启动 26/27 codex 完成（用时 18µs）",
+          "2026/09/29 14:52:05 启动 27/27 codex-deepseek 完成（用时 12µs）",
+          "2026/09/29 14:52:05 装配完成：27 个组件，用时 3ms",
+          "2026/09/29 14:52:05 入口解析：argv0=\"newgate\" → cli（认领者：__serve 未认领 → wrapper 未认领 → cli）",
+          "2026/09/29 14:52:29 停止：按启动逆序释放 27 个组件",
+          "2026/09/29 14:52:29 停止 27/27 codex-deepseek 完成（用时 4µs）",
+          "2026/09/29 14:52:29 停止 26/27 codex 完成（用时 5µs）",
+          "2026/09/29 14:52:29 停止 25/27 opencode-omo 完成（用时 2µs）",
+          "2026/09/29 14:52:29 停止 24/27 claudecode-glm 完成（用时 1µs）",
+          "2026/09/29 14:52:29 停止 23/27 claudecode-deepseek 完成（用时 1µs）",
+          "2026/09/29 14:52:29 停止 22/27 claudecode 完成（用时 2µs）",
+          "2026/09/29 14:52:29 停止 21/27 deepseek 完成（用时 1µs）",
+          "2026/09/29 14:52:29 停止 20/27 home 完成（用时 1µs）",
+          "2026/09/29 14:52:29 停止 19/27 i18n 跳过（没有 Stop）",
+          "2026/09/29 14:52:29 停止 18/27 wrapper 完成（用时 1µs）",
+          "2026/09/29 14:52:29 停止 17/27 thinking 完成（用时 1µs）",
+          "2026/09/29 14:52:29 停止 16/27 runtime 完成（用时 2µs）",
+          "2026/09/29 14:52:29 停止 15/27 plugin-manager 完成（用时 1µs）",
+          "2026/09/29 14:52:29 停止 14/27 locale 完成（用时 1µs）",
+          "2026/09/29 14:52:29 停止 13/27 breaker 完成（用时 1µs）",
+          "2026/09/29 14:52:29 停止 12/27 gateway 完成（用时 2µs）",
+          "2026/09/29 14:52:29 停止 11/27 config 完成（用时 1µs）",
+          "2026/09/29 14:52:29 停止 10/27 web-dashboard 完成（用时 1µs）",
+          "2026/09/29 14:52:29 停止 9/27 opencode 完成（用时 1µs）",
+          "2026/09/29 14:52:29 停止 8/27 glm 跳过（没有 Stop）",
+          "2026/09/29 14:52:29 停止 7/27 tui 完成（用时 0s）",
+          "2026/09/29 14:52:29 停止 6/27 serving 完成（用时 0s）",
+          "2026/09/29 14:52:29 停止 5/27 porthub 跳过（没有 Stop）",
+          "2026/09/29 14:52:29 停止 4/27 entry 跳过（没有 Stop）",
+          "2026/09/29 14:52:29 停止 3/27 config-hook 完成（用时 0s）",
+          "2026/09/29 14:52:29 停止 2/27 ask 完成（用时 0s）",
+          "2026/09/29 14:52:29 停止 1/27 cli 完成（用时 0s）",
+          "2026/09/29 14:52:29 停止：完成",
+          "2026/09/29 14:52:29 assembly: fingerprint 0432fb3980f1 — 上面这段完整的装配记录是新的；只有装配变了才会再整段写一次"
         ],
         "truncated": true
       }
@@ -1948,7 +1948,7 @@
     {
       "id": "home.overview",
       "kind": "overview",
-      "title": "Routes",
+      "title": "路由",
       "source": "home",
       "writable": false,
       "order": 0,
@@ -1969,7 +1969,14 @@
           {
             "id": "opencode",
             "name": "opencode",
-            "profile": "production"
+            "profile": "production",
+            "ready": false
+          },
+          {
+            "id": "",
+            "name": "全部客户端",
+            "profile": "production",
+            "ready": true
           }
         ],
         "cards": [
@@ -1987,7 +1994,7 @@
                     "provider": "anthropic",
                     "model": "claude-fable-5",
                     "profile": "production",
-                    "latency_ms": 1206,
+                    "latency_ms": 1205,
                     "latency_tone": "ok",
                     "probe": "fluent"
                   },
@@ -2016,7 +2023,7 @@
                     "provider": "anthropic",
                     "model": "claude-opus-5",
                     "profile": "production",
-                    "latency_ms": 4207,
+                    "latency_ms": 4208,
                     "latency_tone": "warn",
                     "probe": "usable"
                   },
@@ -2032,7 +2039,7 @@
                     "provider": "deepseek",
                     "model": "deepseek-chat",
                     "profile": "production",
-                    "latency_ms": 705,
+                    "latency_ms": 708,
                     "latency_tone": "ok",
                     "probe": "fluent"
                   },
@@ -2040,7 +2047,7 @@
                     "provider": "minimax",
                     "model": "MiniMax-M2.7-highspeed",
                     "profile": "balanced",
-                    "latency_ms": 12002,
+                    "latency_ms": 12004,
                     "latency_tone": "bad",
                     "probe": "unavailable"
                   },
@@ -2053,7 +2060,7 @@
                     "provider": "glm",
                     "model": "glm-4.5-air",
                     "profile": "cheap",
-                    "latency_ms": 1408,
+                    "latency_ms": 706,
                     "latency_tone": "ok",
                     "probe": "fluent"
                   }
@@ -2069,7 +2076,7 @@
                     "provider": "anthropic",
                     "model": "claude-sonnet-5",
                     "profile": "production",
-                    "latency_ms": 706,
+                    "latency_ms": 707,
                     "latency_tone": "ok",
                     "probe": "fluent"
                   },
@@ -2077,7 +2084,7 @@
                     "provider": "glm",
                     "model": "glm-4.5-air",
                     "profile": "production",
-                    "latency_ms": 1408,
+                    "latency_ms": 706,
                     "latency_tone": "ok",
                     "probe": "fluent"
                   },
@@ -2085,7 +2092,7 @@
                     "provider": "deepseek",
                     "model": "deepseek-chat",
                     "profile": "cheap",
-                    "latency_ms": 705,
+                    "latency_ms": 708,
                     "latency_tone": "ok",
                     "probe": "fluent"
                   }
@@ -2101,7 +2108,7 @@
                     "provider": "anthropic",
                     "model": "claude-haiku-4-5",
                     "profile": "production",
-                    "latency_ms": 705,
+                    "latency_ms": 709,
                     "latency_tone": "ok",
                     "probe": "fluent"
                   },
@@ -2109,7 +2116,7 @@
                     "provider": "deepseek",
                     "model": "deepseek-chat",
                     "profile": "production",
-                    "latency_ms": 705,
+                    "latency_ms": 708,
                     "latency_tone": "ok",
                     "probe": "fluent"
                   },
@@ -2117,7 +2124,7 @@
                     "provider": "glm",
                     "model": "glm-4.5-air",
                     "profile": "balanced",
-                    "latency_ms": 1408,
+                    "latency_ms": 706,
                     "latency_tone": "ok",
                     "probe": "fluent"
                   }
@@ -2133,7 +2140,7 @@
                     "provider": "anthropic",
                     "model": "claude-opus-5",
                     "profile": "production",
-                    "latency_ms": 4207,
+                    "latency_ms": 4208,
                     "latency_tone": "warn",
                     "probe": "usable"
                   }
@@ -2144,11 +2151,11 @@
             "actions": [
               {
                 "id": "use:codex:production",
-                "label": "use for codex"
+                "label": "给 codex 用"
               },
               {
                 "id": "probe",
-                "label": "⚡ Test this profile"
+                "label": "⚡ 探这一份"
               }
             ]
           },
@@ -2173,7 +2180,7 @@
                     "provider": "anthropic",
                     "model": "claude-fable-5",
                     "profile": "production",
-                    "latency_ms": 1206,
+                    "latency_ms": 1205,
                     "latency_tone": "ok",
                     "probe": "fluent"
                   },
@@ -2202,7 +2209,7 @@
                     "provider": "minimax",
                     "model": "MiniMax-M2.7-highspeed",
                     "profile": "balanced",
-                    "latency_ms": 12002,
+                    "latency_ms": 12004,
                     "latency_tone": "bad",
                     "probe": "unavailable"
                   },
@@ -2215,7 +2222,7 @@
                     "provider": "deepseek",
                     "model": "deepseek-chat",
                     "profile": "cheap",
-                    "latency_ms": 705,
+                    "latency_ms": 708,
                     "latency_tone": "ok",
                     "probe": "fluent"
                   },
@@ -2223,7 +2230,7 @@
                     "provider": "glm",
                     "model": "glm-4.5-air",
                     "profile": "cheap",
-                    "latency_ms": 1408,
+                    "latency_ms": 706,
                     "latency_tone": "ok",
                     "probe": "fluent"
                   },
@@ -2231,7 +2238,7 @@
                     "provider": "anthropic",
                     "model": "claude-opus-5",
                     "profile": "production",
-                    "latency_ms": 4207,
+                    "latency_ms": 4208,
                     "latency_tone": "warn",
                     "probe": "usable"
                   }
@@ -2247,7 +2254,7 @@
                     "provider": "deepseek",
                     "model": "deepseek-chat",
                     "profile": "cheap",
-                    "latency_ms": 705,
+                    "latency_ms": 708,
                     "latency_tone": "ok",
                     "probe": "fluent"
                   },
@@ -2255,7 +2262,7 @@
                     "provider": "anthropic",
                     "model": "claude-sonnet-5",
                     "profile": "production",
-                    "latency_ms": 706,
+                    "latency_ms": 707,
                     "latency_tone": "ok",
                     "probe": "fluent"
                   },
@@ -2263,7 +2270,7 @@
                     "provider": "glm",
                     "model": "glm-4.5-air",
                     "profile": "production",
-                    "latency_ms": 1408,
+                    "latency_ms": 706,
                     "latency_tone": "ok",
                     "probe": "fluent"
                   }
@@ -2279,7 +2286,7 @@
                     "provider": "glm",
                     "model": "glm-4.5-air",
                     "profile": "balanced",
-                    "latency_ms": 1408,
+                    "latency_ms": 706,
                     "latency_tone": "ok",
                     "probe": "fluent"
                   },
@@ -2287,7 +2294,7 @@
                     "provider": "deepseek",
                     "model": "deepseek-chat",
                     "profile": "cheap",
-                    "latency_ms": 705,
+                    "latency_ms": 708,
                     "latency_tone": "ok",
                     "probe": "fluent"
                   },
@@ -2295,7 +2302,7 @@
                     "provider": "anthropic",
                     "model": "claude-haiku-4-5",
                     "profile": "production",
-                    "latency_ms": 705,
+                    "latency_ms": 709,
                     "latency_tone": "ok",
                     "probe": "fluent"
                   }
@@ -2311,7 +2318,7 @@
                     "provider": "anthropic",
                     "model": "claude-opus-5",
                     "profile": "production",
-                    "latency_ms": 4207,
+                    "latency_ms": 4208,
                     "latency_tone": "warn",
                     "probe": "usable"
                   }
@@ -2322,19 +2329,19 @@
             "actions": [
               {
                 "id": "use:global:balanced",
-                "label": "use for every client"
+                "label": "所有客户端都用它"
               },
               {
                 "id": "use:claude:balanced",
-                "label": "use for claude"
+                "label": "给 claude 用"
               },
               {
                 "id": "use:codex:balanced",
-                "label": "use for codex"
+                "label": "给 codex 用"
               },
               {
                 "id": "probe",
-                "label": "⚡ Test this profile"
+                "label": "⚡ 探这一份"
               }
             ]
           },
@@ -2359,7 +2366,7 @@
                     "provider": "anthropic",
                     "model": "claude-fable-5",
                     "profile": "production",
-                    "latency_ms": 1206,
+                    "latency_ms": 1205,
                     "latency_tone": "ok",
                     "probe": "fluent"
                   },
@@ -2380,7 +2387,7 @@
                     "provider": "deepseek",
                     "model": "deepseek-chat",
                     "profile": "cheap",
-                    "latency_ms": 705,
+                    "latency_ms": 708,
                     "latency_tone": "ok",
                     "probe": "fluent"
                   },
@@ -2388,7 +2395,7 @@
                     "provider": "glm",
                     "model": "glm-4.5-air",
                     "profile": "cheap",
-                    "latency_ms": 1408,
+                    "latency_ms": 706,
                     "latency_tone": "ok",
                     "probe": "fluent"
                   },
@@ -2404,7 +2411,7 @@
                     "provider": "minimax",
                     "model": "MiniMax-M2.7-highspeed",
                     "profile": "balanced",
-                    "latency_ms": 12002,
+                    "latency_ms": 12004,
                     "latency_tone": "bad",
                     "probe": "unavailable"
                   },
@@ -2417,7 +2424,7 @@
                     "provider": "anthropic",
                     "model": "claude-opus-5",
                     "profile": "production",
-                    "latency_ms": 4207,
+                    "latency_ms": 4208,
                     "latency_tone": "warn",
                     "probe": "usable"
                   }
@@ -2433,7 +2440,7 @@
                     "provider": "deepseek",
                     "model": "deepseek-chat",
                     "profile": "cheap",
-                    "latency_ms": 705,
+                    "latency_ms": 708,
                     "latency_tone": "ok",
                     "probe": "fluent"
                   },
@@ -2441,7 +2448,7 @@
                     "provider": "anthropic",
                     "model": "claude-sonnet-5",
                     "profile": "production",
-                    "latency_ms": 706,
+                    "latency_ms": 707,
                     "latency_tone": "ok",
                     "probe": "fluent"
                   },
@@ -2449,7 +2456,7 @@
                     "provider": "glm",
                     "model": "glm-4.5-air",
                     "profile": "production",
-                    "latency_ms": 1408,
+                    "latency_ms": 706,
                     "latency_tone": "ok",
                     "probe": "fluent"
                   }
@@ -2465,7 +2472,7 @@
                     "provider": "deepseek",
                     "model": "deepseek-chat",
                     "profile": "cheap",
-                    "latency_ms": 705,
+                    "latency_ms": 708,
                     "latency_tone": "ok",
                     "probe": "fluent"
                   },
@@ -2473,7 +2480,7 @@
                     "provider": "glm",
                     "model": "glm-4.5-air",
                     "profile": "balanced",
-                    "latency_ms": 1408,
+                    "latency_ms": 706,
                     "latency_tone": "ok",
                     "probe": "fluent"
                   },
@@ -2481,7 +2488,7 @@
                     "provider": "anthropic",
                     "model": "claude-haiku-4-5",
                     "profile": "production",
-                    "latency_ms": 705,
+                    "latency_ms": 709,
                     "latency_tone": "ok",
                     "probe": "fluent"
                   }
@@ -2497,7 +2504,7 @@
                     "provider": "anthropic",
                     "model": "claude-opus-5",
                     "profile": "production",
-                    "latency_ms": 4207,
+                    "latency_ms": 4208,
                     "latency_tone": "warn",
                     "probe": "usable"
                   }
@@ -2508,15 +2515,15 @@
             "actions": [
               {
                 "id": "use:global:cheap",
-                "label": "use for every client"
+                "label": "所有客户端都用它"
               },
               {
                 "id": "use:claude:cheap",
-                "label": "use for claude"
+                "label": "给 claude 用"
               },
               {
                 "id": "probe",
-                "label": "⚡ Test this profile"
+                "label": "⚡ 探这一份"
               }
             ]
           },
@@ -2541,7 +2548,7 @@
                     "provider": "anthropic",
                     "model": "claude-fable-5",
                     "profile": "production",
-                    "latency_ms": 1206,
+                    "latency_ms": 1205,
                     "latency_tone": "ok",
                     "probe": "fluent"
                   },
@@ -2562,7 +2569,7 @@
                     "provider": "minimax",
                     "model": "MiniMax-M2.7-highspeed",
                     "profile": "local",
-                    "latency_ms": 12002,
+                    "latency_ms": 12004,
                     "latency_tone": "bad",
                     "probe": "unavailable"
                   },
@@ -2583,7 +2590,7 @@
                     "provider": "deepseek",
                     "model": "deepseek-chat",
                     "profile": "cheap",
-                    "latency_ms": 705,
+                    "latency_ms": 708,
                     "latency_tone": "ok",
                     "probe": "fluent"
                   },
@@ -2591,7 +2598,7 @@
                     "provider": "glm",
                     "model": "glm-4.5-air",
                     "profile": "cheap",
-                    "latency_ms": 1408,
+                    "latency_ms": 706,
                     "latency_tone": "ok",
                     "probe": "fluent"
                   },
@@ -2599,7 +2606,7 @@
                     "provider": "anthropic",
                     "model": "claude-opus-5",
                     "profile": "production",
-                    "latency_ms": 4207,
+                    "latency_ms": 4208,
                     "latency_tone": "warn",
                     "probe": "usable"
                   }
@@ -2615,7 +2622,7 @@
                     "provider": "deepseek",
                     "model": "deepseek-chat",
                     "profile": "cheap",
-                    "latency_ms": 705,
+                    "latency_ms": 708,
                     "latency_tone": "ok",
                     "probe": "fluent"
                   },
@@ -2623,7 +2630,7 @@
                     "provider": "anthropic",
                     "model": "claude-sonnet-5",
                     "profile": "production",
-                    "latency_ms": 706,
+                    "latency_ms": 707,
                     "latency_tone": "ok",
                     "probe": "fluent"
                   },
@@ -2631,7 +2638,7 @@
                     "provider": "glm",
                     "model": "glm-4.5-air",
                     "profile": "production",
-                    "latency_ms": 1408,
+                    "latency_ms": 706,
                     "latency_tone": "ok",
                     "probe": "fluent"
                   }
@@ -2647,7 +2654,7 @@
                     "provider": "glm",
                     "model": "glm-4.5-air",
                     "profile": "balanced",
-                    "latency_ms": 1408,
+                    "latency_ms": 706,
                     "latency_tone": "ok",
                     "probe": "fluent"
                   },
@@ -2655,7 +2662,7 @@
                     "provider": "deepseek",
                     "model": "deepseek-chat",
                     "profile": "cheap",
-                    "latency_ms": 705,
+                    "latency_ms": 708,
                     "latency_tone": "ok",
                     "probe": "fluent"
                   },
@@ -2663,7 +2670,7 @@
                     "provider": "anthropic",
                     "model": "claude-haiku-4-5",
                     "profile": "production",
-                    "latency_ms": 705,
+                    "latency_ms": 709,
                     "latency_tone": "ok",
                     "probe": "fluent"
                   }
@@ -2679,7 +2686,7 @@
                     "provider": "anthropic",
                     "model": "claude-opus-5",
                     "profile": "production",
-                    "latency_ms": 4207,
+                    "latency_ms": 4208,
                     "latency_tone": "warn",
                     "probe": "usable"
                   }
@@ -2690,19 +2697,19 @@
             "actions": [
               {
                 "id": "use:global:local",
-                "label": "use for every client"
+                "label": "所有客户端都用它"
               },
               {
                 "id": "use:claude:local",
-                "label": "use for claude"
+                "label": "给 claude 用"
               },
               {
                 "id": "use:codex:local",
-                "label": "use for codex"
+                "label": "给 codex 用"
               },
               {
                 "id": "probe",
-                "label": "⚡ Test this profile"
+                "label": "⚡ 探这一份"
               }
             ]
           }
@@ -3308,7 +3315,7 @@
       "locked": "这台机器上没有装 opencode —— 这张卡上的设置暂时都不会生效。用 `newgate opencode -y` 装上它。",
       "order": 0,
       "data": null,
-      "error": "/tmp/ng-snap.g9ZJln/ng/omo-slots.json 没有槽位注册表 —— 接管一次就会生成：newgate on opencode"
+      "error": "/tmp/ng-snap.4mEsVp/ng/omo-slots.json 没有槽位注册表 —— 接管一次就会生成：newgate on opencode"
     },
     {
       "id": "plugin-manager.modules",
@@ -3782,8 +3789,8 @@
       "live": true,
       "order": 0,
       "data": {
-        "file": "/tmp/ng-snap.g9ZJln/ng/state.json",
-        "base": "sha256:b359e694dbe08514d20083b3f5e8ccd15357c199b2bd644205b7e28ebf19b2cb",
+        "file": "/tmp/ng-snap.4mEsVp/ng/state.json",
+        "base": "sha256:e5052bffa09479bae4ea54c409d6582fd6c00ef1068130dceb06f8a43f2ef85f",
         "items": [
           {
             "id": "deepseek.backfill-reasoning",
