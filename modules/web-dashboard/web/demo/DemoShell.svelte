@@ -46,17 +46,28 @@
    */
   const landing = sections.find((s) => s.default)?.source ?? sections[0].source;
 
-  /** 侧栏的行序：不归组的那几节排最前，其余按分组**第一次出现**的先后聚在一起。 */
+  /**
+   * 侧栏的行序：**声明了落点的那一节排第一**（不画分组标题），然后是不归组的那几节，
+   * 其余按分组**第一次出现**的先后聚在一起。
+   *
+   * 规则与产品那份 Sidebar.svelte **逐字一样**（含 `landing` 那三处判断）。这里重写
+   * 一份是当初的取舍（两个组件吃的 props 不同），但规则分叉过一次——产品那边把主页
+   * 置顶了、这边没跟，于是演示页的目录顺序与真界面对不上。演示页值得存在的地方正是
+   * 「它就是那个界面」，所以这里补上。
+   */
   function sidebarRows(): ({ kind: "group"; name: string } | { kind: "sec"; s: Section })[] {
     const out: ({ kind: "group"; name: string } | { kind: "sec"; s: Section })[] = [];
-    for (const s of sections) if (!s.group) out.push({ kind: "sec", s });
+    const landingSec = sections.find((s) => s.default);
+    if (landingSec) out.push({ kind: "sec", s: landingSec });
+    for (const s of sections) if (!s.group && s !== landingSec) out.push({ kind: "sec", s });
     const seen: string[] = [];
     for (const s of sections) {
-      if (!s.group) continue;
+      if (!s.group || s === landingSec) continue;
       if (seen.includes(s.group)) continue;
       seen.push(s.group);
       out.push({ kind: "group", name: s.group });
-      for (const g of sections) if (g.group === s.group) out.push({ kind: "sec", s: g });
+      for (const g of sections)
+        if (g.group === s.group && g !== landingSec) out.push({ kind: "sec", s: g });
     }
     return out;
   }
