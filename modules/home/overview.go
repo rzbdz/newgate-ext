@@ -66,11 +66,9 @@ type overviewDeps struct {
 func overviewConcept(all []*configapi.Chains, d overviewDeps) view.Concept {
 	health := healthByBinding(d.health)
 	agents := overviewAgents(d.agents)
-	cards := make([]view.OverviewCard, 0, len(all))
-	for _, one := range all {
-		if one == nil {
-			continue
-		}
+	ordered := orderCards(all)
+	cards := make([]view.OverviewCard, 0, len(ordered))
+	for _, one := range ordered {
 		cards = append(cards, overviewCard(one, agents, health, d.gateway))
 	}
 	c := view.Concept{
@@ -80,7 +78,7 @@ func overviewConcept(all []*configapi.Chains, d overviewDeps) view.Concept {
 			Agents: agents,
 			// 「默认」那一张排在网格最前面（它是这一屏的第一句：**此刻大家走的是谁**）。
 			// 它的链是从 cards 里抄的，所以必须在 cards 建好之后再建它。
-			Auto:  autoCard(agents, cards),
+			Auto:  autoCard(agents, cards, all, d.gateway),
 			Cards: cards,
 		},
 		// Order 0：与 home.chains 同住一节，这一张排前面（它才是首屏要的那一屏，
@@ -145,15 +143,62 @@ func overviewAgents(cat agentapi.AgentCatalog) []view.OverviewAgent {
 			})
 		}
 	}
-	// Ready 恒 true：它不是「装了没有」，而是「这一档能不能点」——空这一档永远能点。
-	// Own 恒 true：这一档**就是**全局默认本身，不存在「它跟着谁」。
+	// 末尾那一档**不是客户端，是「自动」**：它选的那一份就是「自动」最终 resolve 到
+	// 的 profile，而各个客户端标签里选「自动」= 取这一档的结果。所以它的 Own 恒 true
+	// ——「自动」不存在「它跟着谁」，它就是那个被跟的。Ready 恒 true：它永远能点。
+	//
+	// 名字叫「自动」而不是「全部客户端」：它**不是**「一键把这份应用给所有人」那个
+	// 动作（那种动作确实不该住在标签栏里，见 cards 与 autoCard——改自动指向谁只在
+	// 这一档下做）。它是一件事物的名字。
 	return append(out, view.OverviewAgent{
-		ID: "", Name: i18n.T("all clients", nil), Ready: true, Own: true,
+		ID: "", Name: i18n.T("Auto", nil), Ready: true, Own: true,
 		Profile: st.ActiveFor(""),
 	})
 }
 
 // overviewCard 是一份 profile 在这一屏上的那张卡。
+// orderCards 把这一屏的卡片排成**固定**的次序：先按 profile 的 pri，再按名字。
+//
+// # 为什么不拿「此刻生效的是哪一份」参与排序
+//
+// 内核的 `orderedProfiles`（chains.go）就是那么排的——它服务的是另一个问题：
+// `newgate profiles` 与 Chains 那一屏，第一眼要找的恰恰是「此刻生效的是谁」。
+//
+// 这一屏不一样：它是拿来**扫**的，而在这里点一下就会改掉「自动指向谁」。让缺省参与
+// 排序的话，用户点一张卡，整屏卡片当场换位置，他得重新找一遍刚才看的地方。实测用户
+// 的原话：「点击后重排序这个我不喜欢……很割裂的，点击之后刷新换位置了」。
+//
+// 两处判据不同是**有意的**，所以这里自己排一遍，不回头改内核那一份。
+func orderCards(all []*configapi.Chains) []*configapi.Chains {
+	out := make([]*configapi.Chains, 0, len(all))
+	for _, one := range all {
+		if one != nil {
+			out = append(out, one)
+		}
+	}
+	snap, err := store.Load()
+	if err != nil {
+		// 读不出来（配置目录整个读不了）：**保持调用方给的次序**，不报错。
+		// 这一屏照常画得出来，只是次序退化成内核那一份（缺省在最前）——比让整屏
+		// 消失好，与 lib/view 里 Concept.Broken 那条同一个取舍。
+		return out
+	}
+	prio := make(map[string]int, len(snap.Profiles))
+	for _, pr := range snap.Profiles {
+		prio[pr.Name] = pr.Prio()
+	}
+	// SliceStable 而不是 Slice：pri 与名字都一样的两份（同名不可能，但 pri 相同
+	// 很常见）保持内核给的相对次序，两次渲染才落在同一个地方。
+	sort.SliceStable(out, func(i, j int) bool {
+		pi, pj := prio[out[i].Profile], prio[out[j].Profile]
+		if pi != pj {
+			return pi < pj
+		}
+		return out[i].Profile < out[j].Profile
+	})
+	return out
+}
+
 func overviewCard(one *configapi.Chains, agents []view.OverviewAgent, health map[string]breakerapi.Status, g gatewayapi.Gateway) view.OverviewCard {
 	card := view.OverviewCard{
 		Profile: one.Profile,
@@ -277,17 +322,33 @@ func cardActions(agents []view.OverviewAgent, profile string, chains []configapi
 	return out
 }
 
-// useActions 是**一份 profile 那张卡**上的「固定用它」。
+// useActions 是**一份 profile 那张卡**上的「用它」。
 //
-// 判据是「这一家**自己**设过没有」，不是「它此刻解析成哪一份」：给 claude 固定选 ds
-// 与「claude 跟着全局、全局恰好是 ds」是**两个状态**——路由结果此刻一样，但改掉全局
-// 之后一个跟着变、一个不变。拿解析结果去比，症状是「用户想固定住，界面却说它已经在
-// 用了、不给按钮」，于是他永远做不出那一步。
+// # 同一张卡、同一句话，含义由**你在哪一档**决定
 //
-// 全局那一档（`use:global:<profile>`）**不在这里**：它搬到「自动」那张卡上了——它
-// 改的是全局默认，而那件事属于那一张卡（见 autoCard）。
+//   - 在「自动」那一档下：`use:global:<profile>` = 把**自动**指到这一份；
+//   - 在某个客户端那一档下：`use:<agent>:<profile>` = 把**这一家固定**在它上面。
+//
+// 前端按当前这一档挑其中一个（见 Overview.svelte 的 actions）——所以卡片本身就是
+// 那个选择器，不需要在卡里再摆一排同名的按钮（那只是把同一件事说两遍）。
+//
+// 固定那一条的判据是「这一家**自己**设过没有」，不是「它此刻解析成哪一份」：给 claude
+// 固定选 ds 与「claude 跟着自动、自动恰好是 ds」是**两个状态**——路由结果此刻一样，
+// 但改掉自动之后一个跟着变、一个不变。拿解析结果去比，症状是「用户想固定住，界面却
+// 说它已经在用了、不给按钮」，于是他永远做不出那一步。
 func useActions(agents []view.OverviewAgent, profile string) []view.Action {
-	out := make([]view.Action, 0, len(agents))
+	out := make([]view.Action, 0, len(agents)+1)
+	// 「自动」指向这一份。此刻已经指着它时不出现（选它自己什么都不会变）。
+	if st := store.LoadState(); st.ActiveFor("") != profile {
+		name := profile
+		out = append(out, view.Action{
+			ID: useActionID(useGlobal, name),
+			// 它只在「自动」那一档下被画出来（前端按当前这一档挑），所以这句话
+			// 说的就是那件事：把自动指到这一份上。profile 名是**机器取值**，不翻。
+			Label: func() string { return i18n.T("set as auto", nil) },
+			Run:   func() (string, error) { return "", setAgentProfile("", name) },
+		})
+	}
 	for _, a := range agents {
 		if a.ID == "" || !a.Ready {
 			continue
@@ -334,7 +395,7 @@ func useActions(agents []view.OverviewAgent, profile string) []view.Action {
 // `cards` 是已经建好的那几张 profile 卡：这一张的链就是从里面**抄**的那一份，所以
 // 两处永远说的是同一个时刻的同一份结论（各建一次的话，两次读盘之间配置变了，同一
 // 份 profile 会在两张卡上显示两条不同的链）。
-func autoCard(agents []view.OverviewAgent, cards []view.OverviewCard) *view.OverviewCard {
+func autoCard(agents []view.OverviewAgent, cards []view.OverviewCard, all []*configapi.Chains, g gatewayapi.Gateway) *view.OverviewCard {
 	st := store.LoadState()
 	cur := st.ActiveFor("")
 
@@ -348,23 +409,11 @@ func autoCard(agents []view.OverviewAgent, cards []view.OverviewCard) *view.Over
 		break
 	}
 
-	// 成员：能指向的每一份（此刻指向的那一份不出现——选它自己什么都不会变）。
-	// 名字就是按钮上的字，所以这里不再包一层 i18n：profile 名是**机器取值**。
-	members := 0
-	for _, one := range cards {
-		if one.Profile == cur {
-			continue
-		}
-		name := one.Profile
-		card.Actions = append(card.Actions, view.Action{
-			ID:    useActionID(useGlobal, name),
-			Label: func() string { return name },
-			Run:   func() (string, error) { return "", setAgentProfile("", name) },
-		})
-		members++
-	}
+	// **不摆成员表**：能指向哪几份由下面那几张 profile 卡自己说——在「自动」那一档
+	// 下点某一张 = 把自动指到它（见 useActions）。卡片本身就是那个选择器，多摆一排
+	// 同名的按钮只是把同一件事说两遍。
 
-	// 「这一家跟着默认走」：只出现在**自己设过**的那几家上——没设过的本来就在跟着，
+	// 「这一家跟着自动走」：只出现在**自己设过**的那几家上——没设过的本来就在跟着，
 	// 给它一个「回到自动」是没有意义的（它已经在原地了）。
 	for _, a := range agents {
 		if a.ID == "" || !a.Ready || !a.Own {
@@ -383,8 +432,36 @@ func autoCard(agents []view.OverviewAgent, cards []view.OverviewCard) *view.Over
 		})
 	}
 
-	// 一个成员都没有、也没有谁固定着：这一张没什么可说的，不画。
-	if members == 0 && len(card.Actions) == 0 {
+	// 探活：这一张摆的就是那条链，所以「它通不通、多快」在这里问得出来，与 profile 卡
+	// 上那一颗是同一件事。
+	//
+	// ID 是 `probe-auto` 而不是 `probe`：账本按**动作 ID** 取第一个匹配，而每张
+	// profile 卡上都有一个 `probe`（十来个同名的），这一个会永远点不到——用户点的是
+	// 「探自动这条」，跑的却是第一张 profile 卡的探活。加一段机器标记之后它在整个
+	// 概念里唯一。
+	if g != nil {
+		for _, one := range all {
+			if one == nil || one.Profile != cur {
+				continue
+			}
+			if targets := probeTargetsOf(one.Keys); len(targets) > 0 {
+				card.Actions = append(card.Actions, view.Action{
+					ID:    "probe-auto",
+					Label: func() string { return "⚡ " + i18n.T("Test this profile", nil) },
+					Run:   func() (string, error) { return "", probeSet(g, targets) },
+				})
+			}
+			break
+		}
+	}
+
+	// **只要有一份 profile，这一张就画**——哪怕它此刻一个按钮都没有。
+	//
+	// 它不是「有动作才值得露面的东西」：它是这一屏回答「自动此刻是谁」的那一张，
+	// 而这件事**任何时候都有答案**（没有答案本身就是答案，见 Profile 为空那种）。
+	// 少了它，用户就只剩「每份 profile 各一张卡」这一堆，而「我到底在跟着谁」要自己
+	// 去比对——那正是当初把这两件事合成一张的那种错误。
+	if len(cards) == 0 {
 		return nil
 	}
 	return card

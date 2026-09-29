@@ -304,33 +304,37 @@ func TestOverviewAgentsAndUseActions(t *testing.T) {
 	if cheap[useActionID("codex", "cheap")] {
 		t.Error("codex 已经固定在 cheap 上了，不该再报一个 use:codex")
 	}
-	// **profile 卡上不该再有全局那一档**：那是「默认」那张卡的事。
-	if cheap[useActionID(useGlobal, "cheap")] {
-		t.Error("use:global 该长在「默认」那张卡上，不该出现在 profile 卡上")
+	// **同一张卡上还有「把自动指到它」那一条**：它在「自动」那一档下才会被画出来
+	// （前端按当前这一档挑，见 Overview.svelte 的 actions）。两句话长在同一张卡上
+	// 是有意的——同一张卡、同一个手势，含义由你在哪一档决定。
+	if !cheap[useActionID(useGlobal, "cheap")] {
+		t.Error("cheap 那张卡上该有 use:global:cheap（在「自动」档下点它 = 把自动指到 cheap）")
 	}
 
-	// 「默认」那张：此刻指向 production，所以它的成员里有 cheap（换个默认），
-	// 而且只有 codex 一个「跟着默认走」（claude 本来就在跟着，给它一个按钮是没有意义
-	// 的——它已经在原地了）。
+	// 「自动」那张：它此刻 resolve 到 production，而它自己**不摆成员表**——能指向
+	// 哪几份由下面那几张 profile 卡自己说（点它们就是改自动）。
 	au := f.auto()
 	if au.Profile != "production" {
-		t.Errorf("「默认」该报它此刻指向的那一份 production，实际 %q", au.Profile)
+		t.Errorf("「自动」该报它此刻 resolve 到的那一份 production，实际 %q", au.Profile)
 	}
 	if !au.Default || au.File == "" {
-		t.Errorf("「默认」该带上默认记号与它指向那份的文件，实际 %+v", au)
+		t.Errorf("「自动」该带上默认记号与它指向那份的文件，实际 %+v", au)
 	}
 	am := actions(au)
-	if !am[useActionID(useGlobal, "cheap")] {
-		t.Error("「默认」那张卡上该有 use:global:cheap（把默认改成 cheap）")
-	}
-	if am[useActionID(useGlobal, "production")] {
-		t.Error("此刻指向的那一份不该再报一个动作——选它自己什么都不会变")
+	if am[useActionID(useGlobal, "cheap")] {
+		t.Error("「自动」那张卡上不该有成员动作——选择靠点 profile 卡本身")
 	}
 	if !am[useAutoPrefix+"codex"] {
-		t.Error("codex 自己设过，该有一条「跟着默认走」")
+		t.Error("codex 自己设过，该有一条「跟着自动走」")
 	}
 	if am[useAutoPrefix+"claude"] {
-		t.Error("claude 没设过、本来就在跟着，不该有它的「跟着默认走」")
+		t.Error("claude 没设过、本来就在跟着，不该有它的「跟着自动走」")
+	}
+	// 它的链必须与它指向的那一份**逐字相同**：两张卡各建一次的话，两次读盘之间配置
+	// 变了，同一份 profile 会在两张卡上显示两条不同的链。
+	if len(au.Roles) != len(f.card("production").Roles) {
+		t.Errorf("「自动」的链该与 production 那张逐字相同，档位数 %d vs %d",
+			len(au.Roles), len(f.card("production").Roles))
 	}
 	if cheap[useActionID("opencode", "cheap")] {
 		t.Error("opencode 没装，不该报它的按钮")
@@ -440,8 +444,8 @@ func TestOverviewWithoutOptionalPorts(t *testing.T) {
 	if len(ov.Cards) != 2 {
 		t.Fatalf("两张卡都该在，实际 %d 张", len(ov.Cards))
 	}
-	if !actions(f.auto())[useActionID(useGlobal, "cheap")] {
-		t.Error("没有客户端可选时，「默认」那张卡是唯一能换链的手段，必须在")
+	if !actions(f.card("cheap"))[useActionID(useGlobal, "cheap")] {
+		t.Error("「把自动指到它」必须在——一个客户端都没装时，它是唯一能换链的手段")
 	}
 	for _, c := range ov.Cards {
 		if actions(c)["probe"] {

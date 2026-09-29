@@ -102,6 +102,9 @@ const en: Record<string, string> = {
   // 「默认」那张卡标题里的括号：它此刻指向哪一份。括号是**这句话的一部分**
   // （中文用全角，英文用半角），所以整句走目录表，不在模板里拼。
   "(currently {profile})": "(currently {profile})",
+  // 「自动」那一张卡的名字：它不是「默认」，是**自动最终 resolve 到的那一份**。
+  // 各个客户端标签里选「自动」= 取它此刻指向的结果（见后端 overview.go 的 autoCard）。
+  auto: "auto",
   // 首屏卡片上文件路径那一格的悬停提示——它是去配置里编辑这份文件的入口。
   "edit this file": "edit this file",
   "+{n} more on the chain": "+{n} more on the chain",
@@ -192,6 +195,7 @@ const zhHans: Record<string, string> = {
   "in use": "正在使用",
   "in use by {client}": "{client} 正在使用",
   "(currently {profile})": "（当前:{profile}）",
+  auto: "自动",
   "edit this file": "去编辑这份文件",
   "+{n} more on the chain": "链上还有 {n} 站",
   ms: "毫秒",

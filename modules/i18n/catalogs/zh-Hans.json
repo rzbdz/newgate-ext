@@ -80,6 +80,10 @@
       "text": "Anthropic 方言下不再给 content[] 开头补 thinking 块，同样触发「content[].thinking 必须回传」400",
       "reviewed": true
     },
+    "Auto": {
+      "text": "自动",
+      "reviewed": true
+    },
     "Backfill reasoning_content (hand 2)": {
       "text": "补 reasoning_content（第 2 手）",
       "reviewed": true
@@ -326,10 +330,6 @@
     },
     "adopt them all": {
       "text": "全部采纳",
-      "reviewed": true
-    },
-    "all clients": {
-      "text": "全部客户端",
       "reviewed": true
     },
     "already on the chain": {
@@ -926,6 +926,10 @@
     },
     "section actions use POST": {
       "text": "栏目动作使用 POST",
+      "reviewed": true
+    },
+    "set as auto": {
+      "text": "设为自动",
       "reviewed": true
     },
     "short-circuit the Bash classifier: on=60s / forever=permanent / off=disabled": {

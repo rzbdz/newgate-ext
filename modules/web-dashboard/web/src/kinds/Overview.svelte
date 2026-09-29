@@ -114,6 +114,9 @@
    * 它），而那正是需要这条规则的原因——颜色说的是**关系**，不是内容。
    */
   function isActive(c: Card): boolean {
+    // 「自动」那一档：选中的是**一份 profile 卡**（它定义了自动指向谁）。
+    if (!current?.id) return !c.auto && c.profile === current?.profile;
+    // 客户端那一档：跟着自动时选中「自动」那张，固定住时选中被固定的那一份。
     return follows ? !!c.auto : !c.auto && c.profile === current?.profile;
   }
 
@@ -132,33 +135,47 @@
    * 空 id 那一档（没装任何客户端，或者用户点了「全部客户端」）画的是全局那一个。
    */
   function actions(c: Card): Act[] {
-    const out: Act[] = [];
-    const who = current?.id ? current.id : "global";
-    for (const a of c.actions ?? []) {
-      // 「默认」那张卡上的 `use:global:<profile>` **不是按钮**：它们是这张卡**里面**
-      // 那一排成员（见模板里的 .members）。摆到卡片头上会与「给谁用」那一类混成
-      // 一堆同义词，而它们做的事完全不同（一个改全局默认，一个把这一家固定住）。
-      if (c.auto && a.id.startsWith("use:")) continue;
-      if (a.id.startsWith("auto:")) {
-        // 「跟着默认走」（`auto:<agent>`）：它只长在「默认」那张卡上（那件事只有在
-        // 那张卡上说得通），而点它改的是**当前这一栏**的状态——所以切到别家时不该
-        // 还留着，那是别人家的状态，点下去改的是别人。
-        if (c.auto && a.id === `auto:${who}`) out.push(a);
-        continue;
-      }
-      if (!a.id.startsWith("use:")) {
-        out.push(a); // 探活那类：与标签无关，照画。
-        continue;
-      }
-      // 把**这一份**指给当前这一栏（`use:<agent>:<profile>`）。这一族只长在
-      // profile 卡上——「默认」那张有它自己的 `use:global:*`，在上面被跳过了。
-      if (!c.auto && a.id === `use:${who}:${c.profile}`) out.push(a);
-    }
-    return out;
+    // 这一排按钮里**只留「不是选择」的那些**（今天就是探活）。
+    //
+    // 「用它」那一族（`use:` / `auto:`）不再画成按钮：**点卡片本身就是那个动作**
+    // （见 pick）。一张卡上再摆一个与自己同名的按钮，是把同一件事说两遍——而用户
+    // 的原话是「给 xx 用这个多余的，直接点卡就切换了」。
+    return (c.actions ?? []).filter((a) => !isPick(a.id));
   }
 
-  /** 网格里摆的几张卡：「默认」在最前，后面是每一份 profile。 */
-  const shown = $derived<Card[]>(auto ? [auto, ...cards] : cards);
+  /** 这一族动作是「选它」——它们由**点卡片**触发，不画成按钮。 */
+  function isPick(id: string): boolean {
+    return id.startsWith("use:") || id.startsWith("auto:");
+  }
+
+  /**
+   * 这一张卡被点中时该跑哪个动作。
+   *
+   * 没有 = **它已经选着了**（后端不给「把这一份指给它自己」那个动作，见
+   * overview.go 的 useActions），于是那一下什么都不该发生——而不是让界面替它编一个
+   * 结果出来。
+   *
+   * 挑 ID 的判据与以前画按钮时**逐字相同**：同一张卡上那句话的含义由当前这一档
+   * 决定（`use:global:*` 在「自动」档、`use:<agent>:*` 在客户端档），所以这里还是
+   * 拿 `who` 去拼。
+   */
+  function pickAction(c: Card): Act | undefined {
+    const who = current?.id ? current.id : "global";
+    const want = c.auto ? `auto:${who}` : `use:${who}:${c.profile}`;
+    return (c.actions ?? []).find((a) => a.id === want);
+  }
+
+  /**
+   * 网格里摆的几张卡。
+   *
+   * 客户端那一档：「自动」在最前（它的内容 = 自动此刻 resolve 到的那一份），后面是
+   * 每一份 profile。
+   *
+   * **「自动」那一档下不摆它**：那一档里**选中的就是一张 profile 卡本身**——点哪一张
+   * 就把自动指到哪一张。再摆一张「自动」卡，屏幕上就有两个东西在说同一件事，而且
+   * 那张卡的内容正是「此刻选中的那一张」的副本。
+   */
+  const shown = $derived<Card[]>(auto && current?.id ? [auto, ...cards] : cards);
 
   /**
    * 一张卡的键（each 的 key、摊开状态按它存）。
@@ -169,20 +186,6 @@
    */
   function keyOf(c: Card): string {
     return c.auto ? "\u0000auto" : c.profile;
-  }
-
-  /**
-   * 「默认」那张卡**里面**那一排成员：它能指向的每一份 profile。
-   *
-   * 判据是后端报没报那个动作（`use:global:<profile>`），不是前端自己把 cards 列一
-   * 遍：能指向哪几份是贡献者的事（比如**此刻指向的那一份不出现**——选它自己什么都
-   * 不会变）。前端列一遍就等于把那条规则抄了第二份，而两处迟早会不一致。
-   */
-  function members(c: Card): { profile: string; act?: Act }[] {
-    return cards.map((m) => ({
-      profile: m.profile,
-      act: (c.actions ?? []).find((a) => a.id === `use:global:${m.profile}`),
-    }));
   }
 
   /**
@@ -308,13 +311,35 @@
 <div class="grid">
   {#each shown as c (keyOf(c))}
     <section class="pc" class:on={isActive(c)} class:folded-open={!!open[keyOf(c)]}>
+      <!-- 铺满整张卡的一个**真按钮**：点卡片任意处 = 选它（见 pickAction）。
+           为什么是这样而不是给 <section> 挂 onclick：那样键盘上根本做不出这个动作
+           （屏幕阅读器也读不出「这里可以点」），而给它编一个 role 又会与「卡里本来
+           就有别的按钮」打架（按钮不能套按钮）。一个铺底的按钮两样都解决：它是真
+           控件，Tab 到得了、回车点得动，而卡里那几个按钮压在它上面各管各的。
+           没有可做的动作（已经选着它了）时**不铺**——一个点了没反应的控件比没有控件
+           更糟，它会让用户以为界面卡了。 -->
+      {#if pickAction(c)}
+        {@const pa = pickAction(c)!}
+        <button
+          class="surface"
+          data-nopick
+          aria-label={pa.label}
+          title={pa.label}
+          onclick={() => onAction?.(pa)}
+        ></button>
+      {/if}
       <header class="phead">
         <!-- 链名（= profile 名）是这一张卡上最大的一行字：用户在这一屏上做的唯一
              一个决定是「用哪一份」，而名字就是那个决定的宾语。
              它同时是**摊开/收起**的开关（仿 Clash 的组头）：整行都点得动，比在角落
              放一个 12px 的小三角好按得多，而这一屏上最频繁的动作就是「扫一遍」和
              「摊开看这条」。 -->
-        <button class="tog" aria-expanded={!!open[keyOf(c)]} onclick={(ev) => toggle(keyOf(c), ev)}>
+        <button
+          class="tog"
+          data-nopick
+          aria-expanded={!!open[keyOf(c)]}
+          onclick={(ev) => toggle(keyOf(c), ev)}
+        >
           <svg class="chev" viewBox="0 0 16 16" aria-hidden="true">
             <path d="M6 4l4 4-4 4" />
           </svg>
@@ -323,7 +348,7 @@
                  括号里那个值会跟着全局默认变——这正是它与 ds 那张卡的分别：
                  两张此刻显示同一条链，但这一张说的是「大家都跟着它」，那一张说的是
                  「这一份本身」。 -->
-            <span class="pname">{t("default")}</span>
+            <span class="pname">{t("auto")}</span>
             {#if c.profile}
               <span class="cur">{t("(currently {profile})", { profile: c.profile })}</span>
             {/if}
@@ -344,7 +369,7 @@
           </span>
         {/if}
         {#each actions(c) as a (a.id)}
-          <button class="tiny ghost" data-action={a.id} onclick={() => onAction?.(a)}>
+          <button class="tiny ghost" data-nopick data-action={a.id} onclick={() => onAction?.(a)}>
             {a.label}
           </button>
         {/each}
@@ -357,7 +382,12 @@
              不能跳时（没有这个回调，或者那份文件此刻没有可编辑的卡）就照旧画成一
              行字，而不是一个点了没反应的链接。 -->
         {#if onOpenFile}
-          <button class="meta mono link" onclick={() => onOpenFile(c.file!)} title={t("edit this file")}>
+          <button
+            class="meta mono link"
+            data-nopick
+            onclick={() => onOpenFile(c.file!)}
+            title={t("edit this file")}
+          >
             {c.file}
           </button>
         {:else}
@@ -365,24 +395,6 @@
         {/if}
       {/if}
 
-      {#if c.auto}
-        <!-- 这一张**里面**那一排成员：点一个就把「默认」指到那一份上（整张卡的内容
-             跟着换成它的链）。此刻指向的那一个没有动作，所以它画成选中态而不是按钮
-             ——见 members()（那条规则住在后端，前端只照着画）。 -->
-        <div class="members">
-          {#each members(c) as m (m.profile)}
-            <button
-              class="member mono"
-              class:on={m.profile === c.profile}
-              disabled={!m.act}
-              data-action={m.act?.id}
-              onclick={() => m.act && onAction?.(m.act)}
-            >
-              {m.profile}
-            </button>
-          {/each}
-        </div>
-      {/if}
 
       <ul class="roles" class:flat={!open[keyOf(c)]}>
         {#if !open[keyOf(c)]}
@@ -615,33 +627,25 @@
   }
   .meta.link:hover { color: var(--ink); text-decoration: underline; }
 
-  /* 「默认」那张卡里面那一排成员：一份 profile 一个。摆成一条会换行的横排——
-     它们是一个**集合**（此刻能指向哪几份），横着读比竖着读快；换行而不是横向滚动：
-     十几种 profile 在一张卡里滚动条没人找得到。 */
-  .members {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 3px;
-    margin: 0 0 5px;
-  }
-  .member {
-    font-size: 10.5px;
-    padding: 1px 6px;
+  /* 铺底的「选它」按钮：铺满整张卡、压在内容下面（见模板里那一段）。
+     内容那一层设 pointer-events: none，点击于是**穿过去**落到它身上；里面的真按钮
+     再单独打开——这样点卡片任意空白处都是选它，点小三角/探活/路径各是各的。 */
+  .pc { position: relative; }
+  .surface {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    padding: 0;
     background: transparent;
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    color: var(--dim);
+    border: 0;
+    border-radius: inherit;
     cursor: pointer;
   }
-  .member:hover:not(:disabled) { color: var(--ink); border-color: var(--accent); }
-  /* 此刻指向的那一个：它没有动作（选它自己什么都不会变），所以画成**选中的样子**
-     而不是一个按下去没反应的按钮。 */
-  .member.on {
-    color: var(--ink);
-    border-color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 16%, transparent);
-    cursor: default;
-  }
+  /* 悬停只**提一下**：边框亮一档就够了，整块变色会让一屏十几张卡都在闪。 */
+  .pc:has(.surface:hover) { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
+  .pc:has(.surface:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .pc > :not(.surface) { position: relative; z-index: 1; pointer-events: none; }
+  .pc > :not(.surface) button { pointer-events: auto; }
 
   .roles { list-style: none; margin: 0; padding: 0; }
   .roles > li + li { margin-top: 8px; }

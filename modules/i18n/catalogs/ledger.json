@@ -52,6 +52,7 @@
     "; ": {},
     "Anthropic": {},
     "Anthropic-dialect requests no longer get a thinking block prepended to content[], which triggers the same \"content[].thinking must be passed back\" 400": {},
+    "Auto": {},
     "Backfill reasoning_content (hand 2)": {},
     "Backfill the thinking block (hand 3)": {},
     "Bash classifier: the whole chain is rerouted to light": {},
@@ -126,7 +127,6 @@
     "a white theme for the web interface": {},
     "accepted but not rendered": {},
     "adopt them all": {},
-    "all clients": {},
     "already on the chain": {},
     "and {n} more": {
       "args": [
@@ -560,6 +560,7 @@
       ]
     },
     "section actions use POST": {},
+    "set as auto": {},
     "short-circuit the Bash classifier: on=60s / forever=permanent / off=disabled": {},
     "simple-cli (renders status and the commands; the other injection points are accepted but not shown)": {},
     "slot": {},
