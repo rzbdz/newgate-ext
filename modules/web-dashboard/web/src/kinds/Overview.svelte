@@ -52,7 +52,15 @@
     roles: Row[];
     actions?: Act[];
   };
-  type Agent = { id: string; name: string; profile?: string; own?: boolean; ready?: boolean };
+  type Agent = {
+    id: string;
+    name: string;
+    /** 客户端自带的图标（SVG path 的 `d`，24 视口；空 = 没给，见后端 overview.go）。 */
+    icon?: string;
+    profile?: string;
+    own?: boolean;
+    ready?: boolean;
+  };
   type Data = { agents: Agent[]; auto?: Card; cards: Card[] };
 
   import { t } from "../i18n";
@@ -286,13 +294,22 @@
         aria-selected={current?.id === a.id}
         onclick={() => (tab = a.id)}
       >
-        <!-- 图标：一个终端形状的记号。**客户端是机器取值**（claude / codex），没有
-             一套现成的图标可挑，而这一格要的是「一眼分出几个客户端」——形状统一、
-             颜色跟着装没装走就够了，比给每家编一个图标诚实。 -->
-        <svg class="ico" viewBox="0 0 16 16" aria-hidden="true">
-          <rect x="1.5" y="2.5" width="13" height="11" rx="2.5" />
-          <path d="M4.6 6.2 6.6 8l-2 1.8M8.4 10.2h3" />
-        </svg>
+        {#if a.icon}
+          <!-- 客户端**自己带的**图标（见 confighook.Agent.Icon）：这一格不认识它是
+               谁，只把那一串路径放进一个 24 视口的方框里。颜色走 currentColor，
+               于是四套皮肤下都对；「没装」那档由 .agent.off 的透明度压下去。 -->
+          <svg class="ico brand" viewBox="0 0 24 24" aria-hidden="true">
+            <path d={a.icon} />
+          </svg>
+        {:else}
+          <!-- 没给图标（或者这一档根本不是客户端，比如「自动」）：画一个终端形状的
+               通用记号。**空着不画**是不行的——一排标签里少一个图标，看起来像加载
+               失败。 -->
+          <svg class="ico" viewBox="0 0 16 16" aria-hidden="true">
+            <rect x="1.5" y="2.5" width="13" height="11" rx="2.5" />
+            <path d="M4.6 6.2 6.6 8l-2 1.8M8.4 10.2h3" />
+          </svg>
+        {/if}
         <span class="nm">{a.name}</span>
         {#if a.profile}
           <!-- 标签上只写它此刻实际走的那一份。**不在这里说「自动/固定」**：那是
@@ -543,6 +560,17 @@
     stroke-width: 1.4;
     stroke-linecap: round;
     stroke-linejoin: round;
+  }
+  /* 品牌图标与上面那个通用记号**不是一套画法**：lobehub 那一套是填充的
+     （`fill="currentColor" fill-rule="evenodd"`），通用记号是描边的。分成两个
+     class 而不是在一个 `.ico` 里互相覆盖——两者的 fill/stroke 是互斥取值，
+     混在一起总有一边要写 `none` 去压另一边，而那是会写漏的。 */
+  .ico.brand {
+    width: 15px;
+    height: 15px;
+    fill: currentColor;
+    fill-rule: evenodd;
+    stroke: none;
   }
   .nm { font-size: 12px; font-weight: 600; }
   .cur { font-size: 11px; color: var(--dim); }

@@ -126,7 +126,15 @@ func overviewAgents(cat agentapi.AgentCatalog) []view.OverviewAgent {
 		sort.Strings(names)
 		for _, id := range names {
 			ap := agentapi.AgentProfile{AgentID: id}
+			// 图标原样从**客户端自己的声明**里带过去（见 confighook.Agent.Icon）。
+			// 这里不做任何取舍、也不认识任何一家：查得到就带，查不到就是空的，
+			// 界面那时画它自己的通用记号。
+			icon := ""
+			if a, ok := cat.Get(id); ok && a != nil {
+				icon = a.Icon
+			}
 			out = append(out, view.OverviewAgent{
+				Icon: icon,
 				ID:   id,
 				Name: id, // 客户端名是**机器取值**（claude / codex），它本来就是给人看的字。
 				// ActiveFor 而不是 Active[id]：没单配过时它返回全局默认，而那句才是

@@ -11,6 +11,8 @@ const ID = "opencode"
 
 func Agent() *agentapi.Agent {
 	return &agentapi.Agent{
+		// 界面上的图标（见 icon.go：它为什么住在这个模块里）。
+		Icon:    iconPath,
 		ID:      ID,
 		Bin:     []string{"opencode"},
 		Dialect: "openai",
