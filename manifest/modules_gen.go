@@ -27,6 +27,9 @@ import (
 	ext_opencode "github.com/rzbdz/newgate-ext/modules/opencode"
 	ext_opencodeomo "github.com/rzbdz/newgate-ext/modules/opencodeomo"
 	ext_simple_cli "github.com/rzbdz/newgate-ext/modules/simple-cli"
+	ext_theme_anthropic "github.com/rzbdz/newgate-ext/modules/theme-anthropic"
+	ext_theme_dark "github.com/rzbdz/newgate-ext/modules/theme-dark"
+	ext_theme_light "github.com/rzbdz/newgate-ext/modules/theme-light"
 	ext_tui "github.com/rzbdz/newgate-ext/modules/tui"
 	ext_web_dashboard "github.com/rzbdz/newgate-ext/modules/web-dashboard"
 	app "github.com/rzbdz/newgate/app"
@@ -55,6 +58,9 @@ func Specs() map[string]app.Selection {
 				{Dir: "opencode", Component: ext_opencode.New()},
 				{Dir: "opencodeomo", Component: ext_opencodeomo.New()},
 				{Dir: "web-dashboard", Component: ext_web_dashboard.New()},
+				{Dir: "theme-dark", Component: ext_theme_dark.New()},
+				{Dir: "theme-light", Component: ext_theme_light.New()},
+				{Dir: "theme-anthropic", Component: ext_theme_anthropic.New()},
 			},
 		},
 		"dist-dev.json": {
@@ -70,6 +76,9 @@ func Specs() map[string]app.Selection {
 				{Dir: "opencode", Component: ext_opencode.New()},
 				{Dir: "opencodeomo", Component: ext_opencodeomo.New()},
 				{Dir: "web-dashboard", Component: ext_web_dashboard.New()},
+				{Dir: "theme-dark", Component: ext_theme_dark.New()},
+				{Dir: "theme-light", Component: ext_theme_light.New()},
+				{Dir: "theme-anthropic", Component: ext_theme_anthropic.New()},
 				{Dir: "codex", Component: ext_codex.New()},
 				{Dir: "codex_deepseek", Component: ext_codex_deepseek.New()},
 				{Dir: "arch-diagram", Component: ext_arch_diagram.New()},
@@ -109,6 +118,9 @@ func Specs() map[string]app.Selection {
 				{Dir: "opencode", Component: ext_opencode.New()},
 				{Dir: "opencodeomo", Component: ext_opencodeomo.New()},
 				{Dir: "web-dashboard", Component: ext_web_dashboard.New()},
+				{Dir: "theme-dark", Component: ext_theme_dark.New()},
+				{Dir: "theme-light", Component: ext_theme_light.New()},
+				{Dir: "theme-anthropic", Component: ext_theme_anthropic.New()},
 				{Dir: "codex", Component: ext_codex.New()},
 				{Dir: "codex_deepseek", Component: ext_codex_deepseek.New()},
 			},

@@ -72,6 +72,10 @@
       "text": "；",
       "reviewed": true
     },
+    "Anthropic": {
+      "text": "Anthropic",
+      "reviewed": true
+    },
     "Anthropic-dialect requests no longer get a thinking block prepended to content[], which triggers the same \"content[].thinking must be passed back\" 400": {
       "text": "Anthropic 方言下不再给 content[] 开头补 thinking 块，同样触发「content[].thinking 必须回传」400",
       "reviewed": true
@@ -90,6 +94,10 @@
     },
     "Binding mode": {
       "text": "绑定方式",
+      "reviewed": true
+    },
+    "Black": {
+      "text": "黑",
       "reviewed": true
     },
     "Chains": {
@@ -252,6 +260,10 @@
       "text": "点名这个模型的请求落到哪一档。必填——没有档位的那一行保存会被拒",
       "reviewed": true
     },
+    "White": {
+      "text": "白",
+      "reviewed": true
+    },
     "[naked] forever mode: the classifier request was approved directly, the upstream was not called": {
       "text": "[naked] forever 模式：分类器请求被直接批准，未调用上游",
       "reviewed": true
@@ -294,6 +306,18 @@
     },
     "a status provider cannot be nil": {
       "text": "状态提供者不能为 nil",
+      "reviewed": true
+    },
+    "a theme needs an id": {
+      "text": "一套皮肤必须有 id",
+      "reviewed": true
+    },
+    "a true-black theme for the web interface": {
+      "text": "网页界面的真黑皮肤",
+      "reviewed": true
+    },
+    "a white theme for the web interface": {
+      "text": "网页界面的白色皮肤",
       "reviewed": true
     },
     "accepted but not rendered": {
@@ -462,6 +486,10 @@
     },
     "chain head {head}": {
       "text": "链头 {head}",
+      "reviewed": true
+    },
+    "choosing a theme needs Content-Type: application/json (got {ct})": {
+      "text": "换皮肤要 Content-Type: application/json（现在是 {ct}）",
       "reviewed": true
     },
     "classifier override {head} did not take effect; falling back to the light-tier chain": {
@@ -988,6 +1016,10 @@
       "text": "AES 密钥不可用: {err}",
       "reviewed": true
     },
+    "the Anthropic brand palette for the web interface": {
+      "text": "网页界面的 Anthropic 品牌配色",
+      "reviewed": true
+    },
     "the Claude Code client": {
       "text": "Claude Code 客户端接入",
       "reviewed": true
@@ -1174,6 +1206,18 @@
     },
     "the whole special_treatment layer is off — none of this counts until it is switched back on": {
       "text": "整个 special_treatment 层关着 — 在把它开回来之前，这里配的都不算数",
+      "reviewed": true
+    },
+    "theme {id} has no name": {
+      "text": "皮肤 {id} 没有名字",
+      "reviewed": true
+    },
+    "theme {id} is already registered": {
+      "text": "皮肤 {id} 已经被登记过了",
+      "reviewed": true
+    },
+    "there is no theme {id} in this build": {
+      "text": "这次装配里没有 {id} 这套皮肤",
       "reviewed": true
     },
     "there was no concrete model name before takeover": {

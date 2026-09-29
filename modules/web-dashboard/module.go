@@ -55,6 +55,10 @@ const (
 //   - cliapi 在 → 挂 `newgate web`（告诉用户界面上哪儿找）。
 func New() modules.Component {
 	views := viewapi.NewRegistry()
+	// 皮肤登记处（见 api.go 与 theme.go）：与概念账本同一条路——界面提供端口，
+	// 皮肤模块在自己的 Start 里往里注册。装一个皮肤不必改这个包，删光皮肤模块
+	// 界面也照常工作（走出厂那套令牌）。
+	themes := newThemeRegistry()
 	// self 是这次装配的事实：挂上了没有、挂上之后怎么撤。命令要用它如实回答
 	// 「界面上哪儿找」——装了本模块**不等于**它有入口（porthub 缺席时就没有），
 	// 让命令按实际挂载结果说话，而不是按「我装了没有」猜。
@@ -74,13 +78,16 @@ func New() modules.Component {
 		// 这本账就是**它提供出去的东西**：别的模块 Optional 依赖它，在自己的
 		// Start 里往里注册概念。所以它必须在 Bind 期就存在（New 里建），而不是
 		// Start 里——后者的话，比它先 Start 的模块就注册不进来了。
-		Provides: []modules.Provision{modules.Provide(viewapi.Capability, viewapi.Service(views))},
+		Provides: []modules.Provision{
+			modules.Provide(viewapi.Capability, viewapi.Service(views)),
+			modules.Provide(ThemeCapability, ThemeService(themes)),
+		},
 		Start: func(_ context.Context, ctx modules.Context) error {
 			sub, err := fs.Sub(assets, AssetDir)
 			if err != nil {
 				return err
 			}
-			handler := NewHandler(sub, views)
+			handler := NewHandler(sub, views, themes)
 			// 两条路，只能走一条，而且都要先问「这条路存不存在」：
 			//
 			//   - **porthub 在**：挂到共享端口上（常态）。挂载是进程内注册（不产生

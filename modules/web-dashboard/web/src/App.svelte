@@ -25,8 +25,12 @@
     type Section,
     type RowAction,
     type SectionAction,
+    type Themes,
+    themes,
+    setTheme,
   } from "./api";
   import { setLang, t } from "./i18n";
+  import { applyTheme } from "./theme";
   import { emptyRoute, fileOf, parseHash, writeHash, type Action, type Route } from "./nav";
   import ConflictDialog from "./ConflictDialog.svelte";
   import Shortcuts from "./Shortcuts.svelte";
@@ -51,6 +55,17 @@
    * 不是 Svelte 的响应式状态——所以换语言这件事必须由**重新渲染整棵树**来落地。
    */
   let lang = $state("");
+
+  /**
+   * themeDoc 是这一刻装着的皮肤表（见 api.ts 的 Themes 与后端
+   * modules/web-dashboard/api.go）。
+   *
+   * 它**不进快照**：皮肤是界面自己的偏好，不是任何一个模块的贡献（谁贡献了
+   * 「这一屏用什么颜色」？）。所以它走自己那条口，而且**读失败不是错误**——一个
+   * 读不出皮肤表的后端（老版本）不该让整个界面打不开：空表就是「只有出厂那套」，
+   * 界面照常画。
+   */
+  let themeDoc = $state<Themes>({ active: "", themes: [] });
 
   /**
    * 现在在看哪一节、哪一张卡、并排还是折叠。
@@ -733,8 +748,44 @@
     return () => window.removeEventListener("beforeunload", warn);
   });
 
+  /**
+   * 读一次皮肤表。
+   *
+   * **读不出来不是错误**：老版本的后端没有这条口（404），而一个读不到皮肤的界面
+   * 该照常打开——空表就是「只有出厂那套令牌」。为它弹一句红字，等于把「这个后端
+   * 少一个装饰性功能」说成「这个界面坏了」。
+   */
+  async function loadThemes() {
+    try {
+      themeDoc = await themes();
+    } catch {
+      themeDoc = { active: "", themes: [] };
+    }
+  }
+
+  /** 换一套皮肤。空 id = 回到出厂那套令牌（见 theme.ts 的 applyTheme）。 */
+  async function pickTheme(id: string) {
+    try {
+      await setTheme(id);
+      // 换完重读而不是就地改本地那份：**存下来的是哪一套**只有后端知道
+      // （它可能拒绝、也可能是另一个标签页刚改过），本地猜一份就会与盘上不一致。
+      await loadThemes();
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e);
+    }
+  }
+
+  /**
+   * 皮肤落到 DOM 上（见 theme.ts）。放在 effect 里而不是 pickTheme 里：这样
+   * **一处理**——首屏读到的那份、换完重读的那份，走的都是同一条路。
+   */
+  $effect(() => {
+    applyTheme(themeDoc);
+  });
+
   route = parseHash(location.hash);
   load();
+  void loadThemes();
 
   // 自动刷新只问**活着的那几位**（计数器、日志）。整份重读会把配置目录每三秒
   // 重读一遍，而那个成本换不到任何新信息——配置文件不会自己变。
@@ -770,6 +821,25 @@
     <span class="spacer"></span>
     {#if note}<span class="dim mono">{t("as of {time}", { time: note })}</span>{/if}
     <label class="dim row"><input type="checkbox" bind:checked={auto} /> {t("auto-refresh")}</label>
+    <!-- 皮肤切换：一个下拉，不是一排按钮。皮肤是**装了才知道有几套**的东西
+         （装几个 theme-* 模块就有几套），一排按钮的宽度会跟着装配变；而下拉
+         天然长得下一个可变的集合，也不需要为「选了哪一套」另找地方显示。
+         没有皮肤模块时**整个下拉不出现**——一个只有「跟随系统」一个选项的下拉
+         是个死控件，它占着位置却什么都没得选。 -->
+    {#if themeDoc.themes.length}
+      <select
+        class="dim"
+        value={themeDoc.active}
+        title={t("theme")}
+        aria-label={t("theme")}
+        onchange={(e) => pickTheme(e.currentTarget.value)}
+      >
+        <option value="">{t("follow the system")}</option>
+        {#each themeDoc.themes as th (th.id)}
+          <option value={th.id}>{th.name}</option>
+        {/each}
+      </select>
+    {/if}
     <button onclick={reloadAll} disabled={busy}>{t("reload")}</button>
     <button class="primary" onclick={saveAll} disabled={busy || !dirty.length}>
       {t("save")}{dirty.length ? ` (${dirty.length})` : ""}

@@ -226,6 +226,47 @@ export interface PreviewResult {
 }
 
 /**
+ * 一套皮肤（见后端 modules/web-dashboard/api.go 的 Theme）。
+ *
+ * 这些字段全部由**后端**给：哪几套皮肤是装的、每套叫什么、是不是深色底、以及那串
+ * 令牌覆盖。前端不认识任何一套皮肤——它只把 `css` 注进去、把 `dark` 转成
+ * `color-scheme`。加一套皮肤 = 加一个模块，这个文件不动。
+ */
+export interface ThemeInfo {
+  /** 机器标记（存进 state.json 的就是它）。不翻译。 */
+  id: string;
+  /** 给人看的名字（后端已经翻好，与概念标题同一条路）。 */
+  name: string;
+  /** 深色底。浏览器那几样不归 CSS 变量管的东西（滚动条、控件）跟着它走。 */
+  dark: boolean;
+  /** 对设计令牌的覆盖，形如 `--bg: #000;`。**只有令牌，没有选择器**。 */
+  css: string;
+}
+
+export interface Themes {
+  /** 此刻生效的那一套。**空 = 出厂令牌**（不是「没读到」）。 */
+  active: string;
+  themes: ThemeInfo[];
+}
+
+/** 读一次皮肤表。它与快照分开：皮肤是界面自己的偏好，不属于任何模块的贡献。 */
+export async function themes(): Promise<Themes> {
+  return json<Themes>(await fetch(`${API}/themes`));
+}
+
+/** 换一套皮肤。空 id = 回到出厂那套令牌。 */
+export async function setTheme(id: string): Promise<void> {
+  const r = await json<{ ok?: boolean; error?: unknown }>(
+    await fetch(`${API}/themes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    }),
+  );
+  if (r.error) throw new Error(errText(r.error));
+}
+
+/**
  * 问一句：「这份文件**还没落盘的草稿**长这样时，这张卡该显示成什么样？」
  *
  * 用途只有一处，但很要命：一份文件的两半（控件 + 原文）都能改。用户在原文里粘了

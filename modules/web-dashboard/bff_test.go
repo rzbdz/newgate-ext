@@ -27,7 +27,7 @@ func testAssets() fs.FS {
 }
 
 func newHandler() *Handler {
-	return NewHandler(testAssets(), view.NewRegistry())
+	return NewHandler(testAssets(), view.NewRegistry(), newThemeRegistry())
 }
 
 // contribute 登记一个贡献者：产出函数每次被调用都原样交出这批概念。

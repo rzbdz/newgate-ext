@@ -50,11 +50,13 @@
       ]
     },
     "; ": {},
+    "Anthropic": {},
     "Anthropic-dialect requests no longer get a thinking block prepended to content[], which triggers the same \"content[].thinking must be passed back\" 400": {},
     "Backfill reasoning_content (hand 2)": {},
     "Backfill the thinking block (hand 3)": {},
     "Bash classifier: the whole chain is rerouted to light": {},
     "Binding mode": {},
+    "Black": {},
     "Chains": {},
     "Classifier config": {},
     "Classifier override": {},
@@ -99,6 +101,7 @@
     "Usage: newgate omo unset <slot key>": {},
     "Usage: newgate omo use <slot key> <@other-key|tier|provider/model>": {},
     "Which tier a request naming that model resolves to. Required — a row without one is rejected on save.": {},
+    "White": {},
     "[naked] forever mode: the classifier request was approved directly, the upstream was not called": {},
     "[naked] the classifier request was approved directly, the upstream was not called (the configuration is no longer valid)": {},
     "[naked] the classifier request was approved directly, the upstream was not called (the window expired right after the interception)": {},
@@ -118,6 +121,9 @@
     "a reference loop": {},
     "a row has no model name — nothing would ever match it": {},
     "a status provider cannot be nil": {},
+    "a theme needs an id": {},
+    "a true-black theme for the web interface": {},
+    "a white theme for the web interface": {},
     "accepted but not rendered": {},
     "adopt them all": {},
     "all clients": {},
@@ -259,6 +265,11 @@
     "chain head {head}": {
       "args": [
         "head"
+      ]
+    },
+    "choosing a theme needs Content-Type: application/json (got {ct})": {
+      "args": [
+        "ct"
       ]
     },
     "classifier override {head} did not take effect; falling back to the light-tier chain": {
@@ -603,6 +614,7 @@
       ]
     },
     "the AES key is unusable: {err}": {},
+    "the Anthropic brand palette for the web interface": {},
     "the Claude Code client": {},
     "the Claude Code × DeepSeek crossing": {},
     "the Claude Code × GLM crossing": {},
@@ -716,6 +728,21 @@
     "the trailing user turn holds only tool_result and no user instruction — appended a continue instruction (the upstream misreports an instruction-less tail as a missing reasoning_content)": {},
     "the web configuration interface: a BFF and the front-end bundle": {},
     "the whole special_treatment layer is off — none of this counts until it is switched back on": {},
+    "theme {id} has no name": {
+      "args": [
+        "id"
+      ]
+    },
+    "theme {id} is already registered": {
+      "args": [
+        "id"
+      ]
+    },
+    "there is no theme {id} in this build": {
+      "args": [
+        "id"
+      ]
+    },
     "there was no concrete model name before takeover": {},
     "thinking block": {},
     "this build cannot serve a web interface: nothing provides a shared port (porthub) or a serve-time hook (serving)": {},

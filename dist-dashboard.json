@@ -10,7 +10,12 @@
     "claudecode",
     "opencode",
     "opencodeomo",
-    "web-dashboard"
+    "web-dashboard",
+    "theme-dark",
+    "theme-light",
+    "theme-anthropic"
   ],
-  "disable": ["cli"]
+  "disable": [
+    "cli"
+  ]
 }

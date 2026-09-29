@@ -12,6 +12,9 @@
     "opencode",
     "opencodeomo",
     "web-dashboard",
+    "theme-dark",
+    "theme-light",
+    "theme-anthropic",
     "codex",
     "codex_deepseek",
     "arch-diagram"

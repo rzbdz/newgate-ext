@@ -37,10 +37,14 @@ const Contract = 1
 type Handler struct {
 	assets fs.FS
 	views  *view.Registry
+	// themes 是皮肤登记处（见 api.go / theme.go）。它是**本模块自己**的东西，
+	// 不是从装配图里取来的：装皮肤的模块 Optional 依赖本端口，而 port 的生命周期
+	// 就是这次装配，两边看到的是同一个实例。
+	themes *themeRegistry
 }
 
-func NewHandler(assets fs.FS, views *view.Registry) *Handler {
-	return &Handler{assets: assets, views: views}
+func NewHandler(assets fs.FS, views *view.Registry, themes *themeRegistry) *Handler {
+	return &Handler{assets: assets, views: views, themes: themes}
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -63,6 +67,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.writeJSONStatus(w, http.StatusOK, doc)
+	case r.URL.Path == "/api/themes":
+		// 皮肤是**界面自己的偏好**，不在概念账本里——所以它走自己这条口，而不是
+		// 塞进快照。快照那份数据是各模块贡献出来的「我这一面长什么样」，
+		// 而「这一屏用什么颜色」不属于任何一个模块。
+		if r.Method == http.MethodPost {
+			h.setTheme(w, r)
+			return
+		}
+		h.writeJSONStatus(w, http.StatusOK, themeDocOf(h.themes))
 	case r.URL.Path == "/api/health":
 		h.writeJSONStatus(w, http.StatusOK, map[string]any{"ok": true, "contract": Contract})
 	case r.URL.Path == "/api/section":
@@ -417,6 +430,37 @@ func (h *Handler) sectionAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.writeJSONStatus(w, http.StatusOK, applyResponse{OK: true, Focus: focus})
+}
+
+// setTheme 换一套皮肤（POST /api/themes，体是 `{"id": "..."}`）。
+//
+// 空 id 是**合法的**，意思是「回到出厂那套令牌」——所以它不是一个需要特殊对待的
+// 输入，而是这一格本来就有第四个取值。不认识的 id 报错而不是悄悄落回出厂：那多半
+// 是模块被关掉了，而用户点了没反应与「这套皮肤没了」是两句话。
+func (h *Handler) setTheme(w http.ResponseWriter, r *http.Request) {
+	if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		h.writeJSONStatus(w, http.StatusUnsupportedMediaType, applyResponse{
+			Error: i18n.T("choosing a theme needs Content-Type: application/json (got {ct})", i18n.A{"ct": ct})})
+		return
+	}
+	var req struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&req); err != nil {
+		h.writeJSONStatus(w, http.StatusBadRequest, applyResponse{
+			Error: i18n.T("the request body is not valid JSON: {err}", i18n.A{"err": err})})
+		return
+	}
+	if req.ID != "" && !h.themes.has(req.ID) {
+		h.writeJSONStatus(w, http.StatusBadRequest, applyResponse{
+			Error: i18n.T("there is no theme {id} in this build", i18n.A{"id": req.ID})})
+		return
+	}
+	if err := setSelectedTheme(req.ID); err != nil {
+		h.writeJSONStatus(w, http.StatusInternalServerError, applyResponse{Error: err.Error()})
+		return
+	}
+	h.writeJSONStatus(w, http.StatusOK, applyResponse{OK: true})
 }
 
 // actionInfos 把贡献者那份动作表端成界面认识的样子（求值标签）。

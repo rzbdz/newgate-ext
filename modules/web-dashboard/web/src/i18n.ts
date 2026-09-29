@@ -28,6 +28,10 @@ const en: Record<string, string> = {
   "as of {time}": "as of {time}",
   "auto-refresh": "auto-refresh",
   reload: "reload",
+  // 皮肤切换那个下拉（见 App.svelte）。选项里除了装着的皮肤，还有一档
+  // 「跟随系统」——它不是一个皮肤模块，是**出厂那套令牌**，跟着系统深浅走。
+  theme: "theme",
+  "follow the system": "follow the system",
   save: "save",
   "no concepts — nothing installed in this process contributes a view.":
     "no concepts — nothing installed in this process contributes a view.",
@@ -121,6 +125,8 @@ const zhHans: Record<string, string> = {
   "as of {time}": "数据时间 {time}",
   "auto-refresh": "自动刷新",
   reload: "重载",
+  theme: "皮肤",
+  "follow the system": "跟随系统",
   save: "保存",
   "no concepts — nothing installed in this process contributes a view.":
     "没有任何概念 —— 这个进程里装的模块都没有界面上要展示的东西。",

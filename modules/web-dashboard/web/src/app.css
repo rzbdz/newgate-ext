@@ -34,8 +34,14 @@
   --radius: 12px;
   --radius-sm: 8px;
 }
+/* 出厂那套浅色：**只在没有选皮肤时**生效（`:root:not([data-theme])`）。
+   少了那个 :not，选了皮肤也白选——这一段的 `:root` 与皮肤那段的
+   `:root[data-theme="x"]` 具体度不同（后者高），本该是皮肤赢；但中间还夹着
+   `@media`，而媒体查询本身**不加具体度**，所以两个规则撞在同一个元素上时，
+   判的是选择器本身——带上 :not 才是「没选皮肤时才走这里」这句话的准确写法。
+   见 src/theme.ts 的文件头。 */
 @media (prefers-color-scheme: light) {
-  :root {
+  :root:not([data-theme]) {
     --bg: hsl(38 28% 91%);
     --panel: hsl(35 25% 89%);
     --panel-2: hsl(35 20% 85%);
