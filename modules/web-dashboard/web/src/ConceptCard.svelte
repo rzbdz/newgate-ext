@@ -70,6 +70,20 @@
   /** 渲染器看到的那份数据：草稿预览优先于快照。 */
   const shown = $derived(preview !== undefined ? preview : concept.data);
 
+  /**
+   * 这几种 Kind 的渲染器**是表单**（输入框、开关、下拉），`writable` 为 false 时
+   * 它们全部禁掉——那时才需要一句话说清「为什么点不动」（并给一个理由）。
+   *
+   * 其余 Kind（overview / chains / table / series / log）**根本没有可编辑的东西**：
+   * 它们改的是那一份数据，靠卡片上、行上的**动作**（按钮）。给它们挂一个「只读」，
+   * 说的是「你没法保存这张卡」——而这张卡上本来就没有能保存的东西。实测过这一屏：
+   * 9 张卡被挂上它，其中 7 张是这种（健康表、日志、计数器、插件表、接管表、总览、
+   * 候选链），而且鼠标停上去还给一句 `可能带凭据` ——那是**编出来的理由**，
+   * 那些卡上没有任何凭据。真该说话的是 providers.json / state.json 那两张。
+   */
+  const EDITOR_KINDS = new Set(["mapping-editor", "code", "toggles", "records"]);
+  const canEdit = $derived(EDITOR_KINDS.has(concept.kind));
+
   function changed(v: unknown) {
     onEdit(v);
   }
@@ -123,7 +137,7 @@
     {#if concept.locked}
       <!-- 锁灰的理由就在卡片头上：整张卡禁掉了，不说为什么等于让用户猜。 -->
       <span class="pill locked-pill" title={concept.locked}>{t("locked")}</span>
-    {:else if !concept.writable && !concept.error}
+    {:else if !concept.writable && canEdit && !concept.error}
       <span
         class="pill"
         title={t("the contributor offers no way to write this one back (it may hold credentials)")}

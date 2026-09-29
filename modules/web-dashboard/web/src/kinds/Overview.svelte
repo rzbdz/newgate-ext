@@ -131,6 +131,51 @@
     return Math.max(0, (r.steps?.length ?? 0) - 1 - FALLBACKS);
   }
 
+  /**
+   * 哪几张卡摊开了。**默认全收着**（见下面 groups 的说明）。
+   *
+   * 摊开是**按卡**的，不是按档的：这一屏上要摊开一张卡时的那个问题永远是「这条链
+   * 到底怎么走」，而那条链的五档是一起读的（比着看才知道哪档先掉下去）。按档摊开
+   * 一次只能看一档，反而要开五次。
+   */
+  let open = $state<Record<string, boolean>>({});
+  function toggle(profile: string) {
+    open = { ...open, [profile]: !open[profile] };
+  }
+
+  /**
+   * 一张卡收起来时的那几行：**按「链头 + 链长」把档位并起来**。
+   *
+   * # 为什么收起来时不画那几站
+   *
+   * 这一屏的默认视图回答的是「每档从谁起、快不快、后面还垫着几站」，而不是「第 4
+   * 站是谁」。实测这一屏的家底：11 张卡 × 5 档全摊开是 **310 行、整页约 8000px**，
+   * 收起来是 **27 行、约 1700px**。差这么多是因为**一半的档位跟别人共用链头**
+   * （55 个档位里 28 个），而差异要到第 3 站往后才出现——那几站的归属是摊开时读的
+   * 东西（也是 `newgate tier` 与 Chains 那一屏的东西）。
+   *
+   * 并的判据是**链头 + 链长**两样一起：光看链头会把「同一个头但后面垫得不一样长」
+   * 的两档并成一行，而 `+N` 那个角标正是靠它区分——并错了两档会显示同一个深度。
+   */
+  type Group = { key: string; tiers: string[]; row: Row; depth: number };
+  function groups(roles: Row[]): Group[] {
+    const out: Group[] = [];
+    const at = new Map<string, Group>();
+    for (const r of roles) {
+      const depth = Math.max(0, (r.steps?.length ?? 0) - 1);
+      const key = `${r.head ?? ""}\u0000${depth}`;
+      const hit = at.get(key);
+      if (hit) {
+        hit.tiers.push(r.label ?? r.tier);
+        continue;
+      }
+      const g: Group = { key, tiers: [r.label ?? r.tier], row: r, depth };
+      at.set(key, g);
+      out.push(g);
+    }
+    return out;
+  }
+
   function toneClass(tone: string | undefined): string {
     return tone === "ok" || tone === "warn" || tone === "bad" ? `t-${tone}` : "";
   }
@@ -182,11 +227,19 @@
 
 <div class="grid">
   {#each cards as c (c.profile)}
-    <section class="pc" class:on={isActive(c)}>
+    <section class="pc" class:on={isActive(c)} class:folded-open={!!open[c.profile]}>
       <header class="phead">
         <!-- 链名（= profile 名）是这一张卡上最大的一行字：用户在这一屏上做的唯一
-             一个决定是「用哪一份」，而名字就是那个决定的宾语。 -->
-        <span class="pname">{c.profile}</span>
+             一个决定是「用哪一份」，而名字就是那个决定的宾语。
+             它同时是**摊开/收起**的开关（仿 Clash 的组头）：整行都点得动，比在角落
+             放一个 12px 的小三角好按得多，而这一屏上最频繁的动作就是「扫一遍」和
+             「摊开看这条」。 -->
+        <button class="tog" aria-expanded={!!open[c.profile]} onclick={() => toggle(c.profile)}>
+          <svg class="chev" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M6 4l4 4-4 4" />
+          </svg>
+          <span class="pname">{c.profile}</span>
+        </button>
         {#if c.default}
           <span class="pill ok-pill">{t("default")}</span>
         {/if}
@@ -210,66 +263,104 @@
         <div class="meta mono">{c.file}</div>
       {/if}
 
-      <ul class="roles">
-        {#each c.roles as r (r.id ?? r.tier)}
-          <li>
-            <div class="tier">
-              <span class="tierline">
-                <span class="tname" title={r.tier}>{r.label ?? r.tier}</span>
-                {#if r.head}
-                  <span class="head mono {toneClass(r.tone)}">{r.head}</span>
+      <ul class="roles" class:flat={!open[c.profile]}>
+        {#if !open[c.profile]}
+          <!-- 收起来的样子：一行一组（组 = 链头相同、链长也相同的那些档位）。
+               仿 Clash 的组员表——**默认只给「谁、多快、后面还垫着几站」**，站的
+               归属是摊开才读的东西。 -->
+          {#each groups(c.roles) as g (g.key)}
+            <li class="grp">
+              <span class="tiers">
+                {#each g.tiers as tn (tn)}<span class="tname">{tn}</span>{/each}
+              </span>
+              <span class="headline">
+                {#if g.row.head}
+                  <!-- 窄卡里链头会被截掉（`minimax/MiniMax-M2.7-hig…`），而它是这一行
+                       最要紧的那个值——全名走 title，鼠标停上去看得到。 -->
+                  <span class="head mono {toneClass(g.row.tone)}" title={g.row.head}>{g.row.head}</span>
+                  {#if g.depth}
+                    <span class="depth mono" title={t("+{n} more on the chain", { n: g.depth })}>
+                      +{g.depth}
+                    </span>
+                  {/if}
                 {:else}
+                  <!-- 一档都没有候选举不起来：那**为什么**举不起来才是这一行的内容
+                       （空档位在界面上不能只显示一个「空」字，那看起来像加载失败）。 -->
                   <span class="dim">{t("no steps")}</span>
+                  {#if g.row.note}<span class="dim note">{g.row.note}</span>{/if}
                 {/if}
               </span>
-              <!-- 延迟单独占一列、右对齐：这一列是**拿来竖着比**的（同一张卡里哪一档
-                   快、两张卡之间谁快），所以它得像表格里的数字列那样对齐。跟在链头
-                   后面会随名字长短左右横跳，也就没法比了。 -->
-              {#if r.steps?.[0]?.latency_ms}
-                <span class="ms mono {toneClass(r.steps[0].latency_tone)}" title={msTitle(r.steps[0])}>
-                  {r.steps[0].latency_ms}{t("ms")}
+              {#if g.row.steps?.[0]?.latency_ms}
+                <span
+                  class="ms mono {toneClass(g.row.steps[0].latency_tone)}"
+                  title={msTitle(g.row.steps[0])}
+                >
+                  {g.row.steps[0].latency_ms}{t("ms")}
                 </span>
               {/if}
-            </div>
-
-            <!-- 链头之后的前三站：小一号、缩进，与链头对齐。链头自己已经在上面那
-                 一行了，所以这里从第二站开始（不是把链头再说一遍）。 -->
-            {#if rest(r).length}
-              <ol class="steps">
-                {#each rest(r) as s, i (i)}
-                  <li>
-                    <span class="idx mono">{i + 2}</span>
-                    <span class="mono binding">
-                      <span class="prov">{s.provider}</span><span class="slash">/</span
-                      ><span class="model">{s.model}</span>
-                    </span>
-                    {#if s.profile && s.profile !== c.profile}
-                      <span class="pill from">{s.profile}</span>
-                    {/if}
-                    {#if s.latency_ms}
-                      <span class="ms mono {toneClass(s.latency_tone)}" title={msTitle(s)}>
-                        {s.latency_ms}{t("ms")}
-                      </span>
-                    {:else if s.probe}
-                      <!-- 没有延迟样本但有探活结论（比如刚探过、样本还没落）。
-                           画结论而不是留空：这两件事都是「这条站此刻怎么样」。 -->
-                      <span class="dim grade mono" title={msTitle(s)}>{s.probe}</span>
-                    {/if}
-                  </li>
-                {/each}
-                {#if hidden(r)}
-                  <li class="more dim">
-                    {t("+{n} more on the chain", { n: hidden(r) })}
-                  </li>
+            </li>
+          {/each}
+        {:else}
+          {#each c.roles as r (r.id ?? r.tier)}
+            <li>
+              <div class="tier">
+                <span class="tierline">
+                  <span class="tname" title={r.tier}>{r.label ?? r.tier}</span>
+                  {#if r.head}
+                    <span class="head mono {toneClass(r.tone)}">{r.head}</span>
+                  {:else}
+                    <span class="dim">{t("no steps")}</span>
+                  {/if}
+                </span>
+                <!-- 延迟单独占一列、右对齐：这一列是**拿来竖着比**的（同一张卡里哪一档
+                     快、两张卡之间谁快），所以它得像表格里的数字列那样对齐。跟在链头
+                     后面会随名字长短左右横跳，也就没法比了。 -->
+                {#if r.steps?.[0]?.latency_ms}
+                  <span class="ms mono {toneClass(r.steps[0].latency_tone)}" title={msTitle(r.steps[0])}>
+                    {r.steps[0].latency_ms}{t("ms")}
+                  </span>
                 {/if}
-              </ol>
-            {/if}
+              </div>
 
-            {#if r.note}
-              <p class="dim skip">{r.note}</p>
-            {/if}
-          </li>
-        {/each}
+              <!-- 链头之后的前三站：小一号、缩进，与链头对齐。链头自己已经在上面那
+                   一行了，所以这里从第二站开始（不是把链头再说一遍）。 -->
+              {#if rest(r).length}
+                <ol class="steps">
+                  {#each rest(r) as s, i (i)}
+                    <li>
+                      <span class="idx mono">{i + 2}</span>
+                      <span class="mono binding">
+                        <span class="prov">{s.provider}</span><span class="slash">/</span
+                        ><span class="model">{s.model}</span>
+                      </span>
+                      {#if s.profile && s.profile !== c.profile}
+                        <span class="pill from">{s.profile}</span>
+                      {/if}
+                      {#if s.latency_ms}
+                        <span class="ms mono {toneClass(s.latency_tone)}" title={msTitle(s)}>
+                          {s.latency_ms}{t("ms")}
+                        </span>
+                      {:else if s.probe}
+                        <!-- 没有延迟样本但有探活结论（比如刚探过、样本还没落）。
+                             画结论而不是留空：这两件事都是「这条站此刻怎么样」。 -->
+                        <span class="dim grade mono" title={msTitle(s)}>{s.probe}</span>
+                      {/if}
+                    </li>
+                  {/each}
+                  {#if hidden(r)}
+                    <li class="more dim">
+                      {t("+{n} more on the chain", { n: hidden(r) })}
+                    </li>
+                  {/if}
+                </ol>
+              {/if}
+
+              {#if r.note}
+                <p class="dim skip">{r.note}</p>
+              {/if}
+            </li>
+          {/each}
+        {/if}
       </ul>
     </section>
   {/each}
@@ -337,6 +428,12 @@
     border-radius: var(--radius);
     padding: 10px 12px 12px;
   }
+  /* 摊开的那一张**占满整行**。
+     为什么：它是网格里的一员，而摊开之后它比邻居高好几倍——留在自己那一列的话，
+     同一行的另外两张卡下面会空出一大片（实测约 1400px 宽、几百像素高的空洞），
+     而且那几站的名字挤在 360px 里还要截断。占满整行之后洞没有了，链也读得开。
+     代价是下面所有卡会往下挪——但那本来就是「我要读这一条」这个动作该有的样子。 */
+  .pc.folded-open { grid-column: 1 / -1; }
   /* 这一栏正在用的那一份：左边一条强调色 + 一圈亮一点的边。**只有一条线索**
      （颜色）不够——下面还有一句 `in use by …` 的陈述（见 .ok-pill）。 */
   .pc.on {
@@ -344,11 +441,64 @@
     box-shadow: inset 3px 0 0 var(--accent);
   }
   .phead { display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap; }
+  /* 卡名那一格同时是摊开/收起开关。做成按钮之后要**把浏览器给按钮的默认样子全
+     退掉**，否则它会变成一个小方块，而这行字在这张卡上是最大的那一行。 */
+  .tog {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-left: -4px;
+    padding: 1px 4px 1px 2px;
+    background: none;
+    border: 0;
+    border-radius: var(--radius-sm);
+    color: inherit;
+    cursor: pointer;
+  }
+  .tog:hover { background: var(--panel-2); }
+  .chev {
+    width: 12px;
+    height: 12px;
+    flex: none;
+    fill: none;
+    stroke: var(--dim);
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: transform 120ms ease;
+  }
+  /* 尖角指哪边 = 点了会往哪边去：收着时指右（摊开），摊开时指下。 */
+  .tog[aria-expanded="true"] .chev { transform: rotate(90deg); }
+  /* 动效只用来交代「这一下点到了」，所以两种状态都尊重系统的减少动效偏好。 */
+  @media (prefers-reduced-motion: reduce) {
+    .chev { transition: none; }
+  }
   .pname { font-size: 14px; font-weight: 700; }
   .meta { font-size: 11px; color: var(--dim); margin: 1px 0 7px; }
 
   .roles { list-style: none; margin: 0; padding: 0; }
   .roles > li + li { margin-top: 8px; }
+  /* 收起来时行与行之间紧挨着：那些行是**拿来竖着扫的**（哪档快、哪档深），行距大
+     了扫起来就断。摊开时留 8px，因为那时每一块是一条链，块与块要分得开。 */
+  .roles.flat > li + li { margin-top: 2px; }
+  /* 收起来的一行：[档位们] [链头 +N] [延迟]，三列。
+     档位那一列是**固定宽**的：并起来的组有几档是变的（1 到 5 档），让它各自撑开
+     的话每行的链头都会错开，而这一列正是拿来竖着对位的。 */
+  .grp {
+    display: grid;
+    grid-template-columns: 92px minmax(0, 1fr) auto;
+    align-items: baseline;
+    gap: 8px;
+    padding: 2px 0;
+  }
+  .tiers { display: flex; flex-wrap: wrap; gap: 2px 5px; }
+  .tiers .tname { min-width: 0; }
+  .headline { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+  .headline .head { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* 链头之后还有几站。它是**深度**，不是内容——摊开才知道那几站是谁，所以这里
+     只给个数（与摊开时那个 `+N more on the chain` 同一句话）。 */
+  .depth { font-size: 10px; color: var(--dim); opacity: 0.75; flex: none; }
+  .note { font-size: 10px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* 一行 = [档位 + 链头] [延迟]，两列。
      - 前两样**必须包在一个格子里**（.tierline）：三样平铺进两列时，第三个（延迟）
        会被挤到下一行去，而那一行看起来像「这一档有两个链头」。
