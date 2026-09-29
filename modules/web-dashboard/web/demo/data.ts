@@ -38,15 +38,31 @@
  * 脚本只做上面那张替换表 + 取尾 60 行日志 + 固定 `generated_at`（它每跑一次都
  * 会变，而这份数据进了版本控制——不固定的话每次重摘都是一整份 diff）。
  */
-import type { Snapshot } from "../src/api";
+import type { Snapshot, Themes } from "../src/api";
 import { setLang } from "../src/i18n";
 import raw from "./snapshot.json";
+import rawThemes from "./themes.json";
 
 export const DEMO_LANG = "zh-Hans";
 
 /** 那一份完整的快照。json 的形状由 api.ts 的 `Snapshot` 钉住（见下面的断言）。 */
 export function snapshot(): Snapshot {
   return raw as unknown as Snapshot;
+}
+
+/**
+ * 皮肤表（`GET /ui/api/themes` 的原文）。
+ *
+ * 它与快照**分开摘、分开存**，因为它们在真后端上本来就是两条口：皮肤是界面自己的
+ * 偏好，不在概念账本里（见 modules/web-dashboard/api.go）。摘法与快照逐条相同——
+ * `tools/demo-snapshot.py` 的第三个参数，同一张禁词表，同一份「不手抄」的理由。
+ *
+ * 这份数据里 `active` 是空的：演示页没有后端可存「用户选了哪一套」，所以它跟真界面
+ * 打开时一样——走出厂那套令牌，由访客自己在那个下拉里挑（挑了只在这个浏览器里生效，
+ * 刷新就回到出厂）。
+ */
+export function themes(): Themes {
+  return rawThemes as unknown as Themes;
 }
 
 /** 让真组件按中文渲染（`t()` 查不到时回落英文，所以这一步不做的话界面上会中英混着）。 */

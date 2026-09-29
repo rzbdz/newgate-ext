@@ -1,0 +1,23 @@
+{
+  "active": "",
+  "themes": [
+    {
+      "id": "anthropic",
+      "name": "Anthropic",
+      "dark": false,
+      "css": "\n  --bg: #faf9f5;\n  --panel: #f0eee6;\n  --panel-2: #e8e6dc;\n  --line: #d8d4c7;\n  --ink: #141413;\n  --dim: #6f6c64;\n  --accent: #d97757;\n  --ok: #3d7a4e;\n  --warn: #a96a12;\n  --danger: #bc3f36;\n"
+    },
+    {
+      "id": "dark",
+      "name": "黑",
+      "dark": true,
+      "css": "\n  --bg: hsl(0 0% 2%);\n  --panel: hsl(0 0% 6%);\n  --panel-2: hsl(0 0% 11%);\n  --line: hsl(0 0% 18%);\n  --ink: hsl(0 0% 94%);\n  --dim: hsl(0 0% 60%);\n  --accent: hsl(212 92% 62%);\n  --ok: hsl(142 52% 54%);\n  --warn: hsl(38 92% 60%);\n  --danger: hsl(0 72% 64%);\n"
+    },
+    {
+      "id": "light",
+      "name": "白",
+      "dark": false,
+      "css": "\n  --bg: hsl(0 0% 100%);\n  --panel: hsl(0 0% 98%);\n  --panel-2: hsl(0 0% 95%);\n  --line: hsl(0 0% 86%);\n  --ink: hsl(0 0% 8%);\n  --dim: hsl(0 0% 42%);\n  --accent: hsl(212 88% 42%);\n  --ok: hsl(142 62% 28%);\n  --warn: hsl(32 88% 34%);\n  --danger: hsl(0 68% 44%);\n"
+    }
+  ]
+}

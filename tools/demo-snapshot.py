@@ -41,6 +41,7 @@
 
 import hashlib
 import json
+import os
 import re
 import sys
 
@@ -117,11 +118,27 @@ def swap_digests(concept: dict) -> None:
     visit(concept.get("data") or {})
 
 
+def scan(out: str) -> list[str]:
+    """按禁词表复扫一遍产物，返回「发现了什么」。"""
+    bad = []
+    for pattern, what in FORBIDDEN:
+        hits = sorted(set(re.findall(pattern, out)))[:3]
+        if hits:
+            bad.append(f"  {what}：{hits}")
+    return bad
+
+
 def main() -> int:
-    if len(sys.argv) != 3:
+    if len(sys.argv) not in (3, 4):
         print(__doc__.split("# 为什么")[0].strip(), file=sys.stderr)
         return 2
     src, dst = sys.argv[1], sys.argv[2]
+    # 第三个数是 `GET /ui/api/themes` 的原文（可选）。给的话就在同一个目录里写出
+    # `themes.json`——演示页要演皮肤，而皮肤**不在快照里**（它是界面自己的偏好，
+    # 见 modules/web-dashboard/api.go）。与快照同一条规矩：**从真后端摘，不手抄**，
+    # 手抄一份「差不多的皮肤表」等于留一份没有守卫的副本，而它的漂移方式恰恰是
+    # 「演示页上的皮肤和真界面的对不上」——那种错没人会报成 bug。
+    themes_src = sys.argv[3] if len(sys.argv) == 4 else None
 
     snap = json.load(open(src, encoding="utf-8"))
     snap = walk(snap)
@@ -135,12 +152,16 @@ def main() -> int:
 
     out = json.dumps(snap, ensure_ascii=False, indent=2) + "\n"
 
+    # 皮肤也过**同一张禁词表**：它是一份新的内容来源，而那份表存在的理由是
+    # 「摘录出错的样子是悄悄把不该公开的东西写进了公开站」——多一个来源就要多扫一遍，
+    # 不能假定「皮肤里不会有那些东西」（今天确实没有，但那是事实、不是保证）。
+    themes_out = None
+    if themes_src:
+        doc = json.load(open(themes_src, encoding="utf-8"))
+        themes_out = json.dumps(doc, ensure_ascii=False, indent=2) + "\n"
+
     # 先自检再写盘：发现了东西就一个字节都不写。
-    bad = []
-    for pattern, what in FORBIDDEN:
-        hits = sorted(set(re.findall(pattern, out)))[:3]
-        if hits:
-            bad.append(f"  {what}：{hits}")
+    bad = scan(out) + (scan(themes_out) if themes_out else [])
     if bad:
         print("摘录失败——产物里还有不该公开的东西（一个字节都没写）：", file=sys.stderr)
         print("\n".join(bad), file=sys.stderr)
@@ -151,6 +172,11 @@ def main() -> int:
     concepts = len(snap.get("concepts") or [])
     sections = len(snap.get("sections") or [])
     print(f"写出 {dst}：{sections} 节 / {concepts} 张卡 / {len(out.encode())} 字节")
+    if themes_out:
+        tpath = os.path.join(os.path.dirname(dst), "themes.json")
+        with open(tpath, "w", encoding="utf-8") as f:
+            f.write(themes_out)
+        print(f"写出 {tpath}：{len((doc.get('themes') or []))} 套皮肤 / {len(themes_out.encode())} 字节")
     return 0
 
 

@@ -27,8 +27,9 @@
   import { fileOf } from "../src/nav";
   import { t } from "../src/i18n";
   import { d } from "./strings";
-  import type { Concept, ConceptAction, RowAction, Section } from "../src/api";
-  import { snapshot, useDemoLanguage } from "./data";
+  import { applyTheme } from "../src/theme";
+  import type { Concept, ConceptAction, RowAction, Section, Themes } from "../src/api";
+  import { snapshot, themes, useDemoLanguage } from "./data";
 
   useDemoLanguage();
 
@@ -101,6 +102,26 @@
 
   const dirty = $derived(Object.keys(drafts).length);
 
+  /**
+   * 皮肤：演示页**只放在这个浏览器的内存里**。
+   *
+   * 真界面上这一格会 POST 回后端、记进 state.json（见 web-dashboard 的 theme.go）；
+   * 演示页没有后端可存，所以挑了只当场生效、刷新回到出厂那套令牌。这是**唯一**
+   * 一处与真界面行为不同的地方，而它不同得合理：演示页的每一处状态都是这种「点着
+   * 玩、不留痕」的性子。
+   */
+  let theme = $state<Themes>({ ...themes(), active: "" });
+
+  function pickTheme(id: string) {
+    theme = { ...theme, active: id };
+  }
+
+  // 与 App.svelte 里那条同一条路（applyTheme 只碰 DOM），所以两边落下去的结果
+  // 逐字一样——演示页演的就是真界面那套颜色。
+  $effect(() => {
+    applyTheme(theme);
+  });
+
   function say(msg: string) {
     toast = msg;
     // 提示自己消失：演示页不该留下一个要手动关的东西（它只是说一句「这里没有
@@ -168,6 +189,21 @@
          （见 say / noBackend 的 toast），不需要先被通知一遍。 -->
     <strong class="brand">newgate</strong>
     <span class="spacer"></span>
+    <!-- 皮肤切换：与真界面那一格同一个形状，只是它只在这里生效（见 pickTheme）。 -->
+    {#if theme.themes.length}
+      <select
+        class="dim"
+        value={theme.active}
+        title={t("theme")}
+        aria-label={t("theme")}
+        onchange={(e) => pickTheme(e.currentTarget.value)}
+      >
+        <option value="">{t("follow the system")}</option>
+        {#each theme.themes as th (th.id)}
+          <option value={th.id}>{th.name}</option>
+        {/each}
+      </select>
+    {/if}
     <button class="primary" onclick={onSave} disabled={!dirty}>
       {t("save")}{dirty ? ` (${dirty})` : ""}
     </button>
