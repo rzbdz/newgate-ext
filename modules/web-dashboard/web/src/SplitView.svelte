@@ -23,6 +23,7 @@
     onDeleteFile,
     onAction,
     onRowAction,
+    onOpenFile,
     onToggleSplit,
   }: {
     left: Concept;
@@ -42,6 +43,10 @@
     // 跑某一行上的一个动作（见 api.ts 的 RowAction）。同一条理由要带 id：两张
     // 卡都在手里，而那一行只属于其中一张。
     onRowAction?: (id: string, row: string, a: RowAction) => void;
+    // 跳到**编辑这份文件**的那张卡上（见 App.svelte 的 openFile）。不带卡 id：
+    // 要去的地方由文件决定，而两张卡说的是同一份文件——带上 id 反而会诱导调用方
+    // 按「哪一半」分叉，而那正是这一跳要避免的。
+    onOpenFile?: (file: string) => void;
     onToggleSplit: () => void;
   } = $props();
 
@@ -67,6 +72,7 @@
         {onDeleteFile}
         onAction={(a) => onAction?.(left.id, a)}
         onRowAction={(row, a) => onRowAction?.(left.id, row, a)}
+        {onOpenFile}
       />
     </div>
     {#if two && right}

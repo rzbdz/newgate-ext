@@ -76,7 +76,13 @@ func overviewConcept(all []*configapi.Chains, d overviewDeps) view.Concept {
 	c := view.Concept{
 		ID: overviewID, Kind: view.KindOverview,
 		Title: i18n.T("Routes", nil),
-		Data:  view.Overview{Agents: agents, Cards: cards},
+		Data: view.Overview{
+			Agents: agents,
+			// 「默认」那一张排在网格最前面（它是这一屏的第一句：**此刻大家走的是谁**）。
+			// 它的链是从 cards 里抄的，所以必须在 cards 建好之后再建它。
+			Auto:  autoCard(agents, cards),
+			Cards: cards,
+		},
 		// Order 0：与 home.chains 同住一节，这一张排前面（它才是首屏要的那一屏，
 		// 见 view.Concept.Order）；chains 给自己一个更大的数。
 		Order: 0,
@@ -152,7 +158,9 @@ func overviewCard(one *configapi.Chains, agents []view.OverviewAgent, health map
 	card := view.OverviewCard{
 		Profile: one.Profile,
 		File:    profileFile(one.Profile),
-		Default: one.Default,
+		// **不设 Default**：那个记号现在归「自动」那张卡——它才是「全局默认」本身，
+		// 而这一张只是**恰好是它此刻指向的那一份**。两张都挂上「默认」，读的人就
+		// 分不出该看哪一张了。
 		Roles:   make([]view.OverviewRow, 0, len(one.Keys)),
 		Actions: cardActions(agents, one.Profile, one.Keys, g),
 	}
@@ -269,58 +277,117 @@ func cardActions(agents []view.OverviewAgent, profile string, chains []configapi
 	return out
 }
 
-// useActions 是这张卡上的「用它」按钮，外加那张**正固定着它的卡**上的「改回自动」。
+// useActions 是**一份 profile 那张卡**上的「固定用它」。
 //
-// 四条取舍：
+// 判据是「这一家**自己**设过没有」，不是「它此刻解析成哪一份」：给 claude 固定选 ds
+// 与「claude 跟着全局、全局恰好是 ds」是**两个状态**——路由结果此刻一样，但改掉全局
+// 之后一个跟着变、一个不变。拿解析结果去比，症状是「用户想固定住，界面却说它已经在
+// 用了、不给按钮」，于是他永远做不出那一步。
 //
-//   - **固定用它**的判据是「这一家**自己**设过没有」，不是「它此刻解析成哪一份」。
-//     这两件事必须分开：「给 claude 固定选 ds」与「claude 跟着全局、全局恰好是 ds」
-//     是**两个状态**——路由结果此刻一样，但改掉全局之后一个跟着变、一个不变。拿解析
-//     结果去比，前一版的症状正是「用户想固定住，界面却说它已经在用了、不给按钮」，
-//     于是他永远没法把那一步做出来。
-//   - **改回自动**只出现在「这一家固定在这一份上」的那张卡上：那是这件事唯一说得通
-//     的地方（别处没有「你本来固定着，现在想松开」这个意思）。它反着走
-//     `setAgentProfile(id, "")`，落点是 confighook 那句「空串 = 回到跟随全局默认」。
-//   - **没装的客户端不出两种按钮**：这台机器上改了也不会有任何东西经过它。而「哪些
-//     装了」是客户端目录的判据（它自己的事实优先、其次找 PATH），不是这里猜的。
-//   - **全局那一档永远在**：一个客户端都没装时，它是唯一能把链换掉的手段。
+// 全局那一档（`use:global:<profile>`）**不在这里**：它搬到「自动」那张卡上了——它
+// 改的是全局默认，而那件事属于那一张卡（见 autoCard）。
 func useActions(agents []view.OverviewAgent, profile string) []view.Action {
-	st := store.LoadState()
-	out := make([]view.Action, 0, len(agents)+1)
-	if st.DefaultProfile != profile {
-		out = append(out, view.Action{
-			ID:    useActionID(useGlobal, profile),
-			Label: func() string { return i18n.T("use for every client", nil) },
-			// SetDefaultProfile(name, false)：**不动**那些单配过的客户端。把它们一起
-			// 收敛是另一个决定（配置那节的 `apply to all` 才是那个），而这一屏说的是
-			// 「这份档位应用起来」。
-			Run: func() (string, error) { return "", setAgentProfile("", profile) },
-		})
-	}
+	out := make([]view.Action, 0, len(agents))
 	for _, a := range agents {
 		if a.ID == "" || !a.Ready {
 			continue
 		}
+		// 已经**固定**在这一份上的那一栏不出现（把它指给它自己是件没有意义的事）。
+		if a.Own && a.Profile == profile {
+			continue
+		}
 		id, name := a.ID, a.Name
-		pinned := a.Own && a.Profile == profile
-		if !pinned {
-			out = append(out, view.Action{
-				ID: useActionID(id, profile),
-				Label: func() string {
-					return i18n.T("use for {client}", i18n.A{"client": name})
-				},
-				Run: func() (string, error) { return "", setAgentProfile(id, profile) },
-			})
-		}
-		if pinned {
-			out = append(out, view.Action{
-				ID:    useAutoPrefix + id,
-				Label: func() string { return i18n.T("follow the default", nil) },
-				Run:   func() (string, error) { return "", setAgentProfile(id, "") },
-			})
-		}
+		out = append(out, view.Action{
+			ID: useActionID(id, profile),
+			Label: func() string {
+				return i18n.T("use for {client}", i18n.A{"client": name})
+			},
+			Run: func() (string, error) { return "", setAgentProfile(id, profile) },
+		})
 	}
 	return out
+}
+
+// autoCard 是网格最前面那一张**「默认」**卡——它不是一份 profile，是一条间接引用。
+//
+// # 它长什么样
+//
+// 名字是「默认」，后面括着它**此刻指向**哪一份（`{current}` 就是那个）；表里摆的是
+// **那一份此刻的链**（与那份 profile 自己那张卡一模一样的内容）；卡片头上一排是它
+// 能指向的几个成员，点一个就整张换成那一份。
+//
+// # 它为什么必须与 profile 卡分开
+//
+// 它与「ds 那张卡」此刻**长得一模一样**（指向 ds 时），但说的是两件事：
+//
+//   - 在这一张上点「给 claude 用」= 让 claude **跟着全局默认走**；
+//   - 在 ds 那张上点同一句话 = 把 claude **固定**在 ds 上。
+//
+// 这两者的路由在当下完全相同，而改掉全局默认之后一个跟着变、一个不变。合成一张卡，
+// 「我就是要它固定住」这件事就没有地方表达了；分开之后，「这一栏此刻在用谁」也有了
+// 准头——高亮落在哪一张上，说的就是它到底是跟着还是固定着。
+//
+// 不是我们发明的记法：Clash 里一个 group 的成员里既可以有节点、也可以有另一个
+// group（选中后者 = 跟随那个 group 的选择），而那个 group 自己也有成员表。差别只在
+// 于 Clash 那个是延迟测速自动挑的，我们这个是人挑的。
+//
+// `cards` 是已经建好的那几张 profile 卡：这一张的链就是从里面**抄**的那一份，所以
+// 两处永远说的是同一个时刻的同一份结论（各建一次的话，两次读盘之间配置变了，同一
+// 份 profile 会在两张卡上显示两条不同的链）。
+func autoCard(agents []view.OverviewAgent, cards []view.OverviewCard) *view.OverviewCard {
+	st := store.LoadState()
+	cur := st.ActiveFor("")
+
+	card := &view.OverviewCard{Auto: true, Profile: cur, Default: true}
+	for _, one := range cards {
+		if one.Profile != cur {
+			continue
+		}
+		card.File = one.File
+		card.Roles = one.Roles
+		break
+	}
+
+	// 成员：能指向的每一份（此刻指向的那一份不出现——选它自己什么都不会变）。
+	// 名字就是按钮上的字，所以这里不再包一层 i18n：profile 名是**机器取值**。
+	members := 0
+	for _, one := range cards {
+		if one.Profile == cur {
+			continue
+		}
+		name := one.Profile
+		card.Actions = append(card.Actions, view.Action{
+			ID:    useActionID(useGlobal, name),
+			Label: func() string { return name },
+			Run:   func() (string, error) { return "", setAgentProfile("", name) },
+		})
+		members++
+	}
+
+	// 「这一家跟着默认走」：只出现在**自己设过**的那几家上——没设过的本来就在跟着，
+	// 给它一个「回到自动」是没有意义的（它已经在原地了）。
+	for _, a := range agents {
+		if a.ID == "" || !a.Ready || !a.Own {
+			continue
+		}
+		id, name := a.ID, a.Name
+		card.Actions = append(card.Actions, view.Action{
+			ID: useAutoPrefix + id,
+			// 与 profile 卡上那句**是同一句话**，这是有意的：在「默认」这张卡上点它
+			// = 把默认给这一家用（它于是跟着全局走），在 ds 那张上点它 = 把 ds 固定
+			// 给这一家用。同一句动词落在不同的主语上，而主语就是那张卡本身。
+			Label: func() string {
+				return i18n.T("use for {client}", i18n.A{"client": name})
+			},
+			Run: func() (string, error) { return "", setAgentProfile(id, "") },
+		})
+	}
+
+	// 一个成员都没有、也没有谁固定着：这一张没什么可说的，不画。
+	if members == 0 && len(card.Actions) == 0 {
+		return nil
+	}
+	return card
 }
 
 // useActionID 拼一个「用它」动作的 ID（见 useActionPrefix）。

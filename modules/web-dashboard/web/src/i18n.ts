@@ -99,8 +99,11 @@ const en: Record<string, string> = {
   // **固定**与**自动**是两句话，不能合成一句：固定选 ds 之后改掉全局默认不会动它，
   // 跟着默认走的则会一起被改掉——而它此刻恰好也解析成 ds。见 lib/view 的
   // OverviewAgent.Own。
-  auto: "auto",
-  "auto in use by {client}": "{client} follows the default",
+  // 「默认」那张卡标题里的括号：它此刻指向哪一份。括号是**这句话的一部分**
+  // （中文用全角，英文用半角），所以整句走目录表，不在模板里拼。
+  "(currently {profile})": "(currently {profile})",
+  // 首屏卡片上文件路径那一格的悬停提示——它是去配置里编辑这份文件的入口。
+  "edit this file": "edit this file",
   "+{n} more on the chain": "+{n} more on the chain",
   // 延迟那个单位。它单独一条而不是拼进数字里：中文写「毫秒」也不该改数字那一格
   // 的排版（那一列是拿来竖着比的）。
@@ -188,8 +191,8 @@ const zhHans: Record<string, string> = {
   "not installed": "没装",
   "in use": "正在使用",
   "in use by {client}": "{client} 正在使用",
-  auto: "自动",
-  "auto in use by {client}": "{client} 跟随默认",
+  "(currently {profile})": "（当前:{profile}）",
+  "edit this file": "去编辑这份文件",
   "+{n} more on the chain": "链上还有 {n} 站",
   ms: "毫秒",
 };

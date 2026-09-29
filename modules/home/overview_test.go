@@ -118,6 +118,19 @@ func (f *ovFixture) overview() view.Overview {
 	return view.Overview{}
 }
 
+// auto 取网格最前面那一张「默认」卡（它不是一个 profile，见 view.OverviewCard.Auto）。
+func (f *ovFixture) auto() view.OverviewCard {
+	f.t.Helper()
+	a := f.overview().Auto
+	if a == nil {
+		f.t.Fatal("首屏上没有「默认」那一张卡")
+	}
+	if !a.Auto {
+		f.t.Fatal("那张卡没有打上 Auto 记号——界面会把它当成一份 profile 画")
+	}
+	return *a
+}
+
 func (f *ovFixture) card(profile string) view.OverviewCard {
 	f.t.Helper()
 	for _, c := range f.overview().Cards {
@@ -285,22 +298,39 @@ func TestOverviewAgentsAndUseActions(t *testing.T) {
 	}
 
 	cheap := actions(f.card("cheap"))
-	for _, want := range []string{useActionID(useGlobal, "cheap"), useActionID("claude", "cheap")} {
-		if !cheap[want] {
-			t.Errorf("cheap 那张卡上该有 %s", want)
-		}
+	if !cheap[useActionID("claude", "cheap")] {
+		t.Error("cheap 那张卡上该有 use:claude:cheap（把 claude 固定到 cheap）")
 	}
 	if cheap[useActionID("codex", "cheap")] {
 		t.Error("codex 已经固定在 cheap 上了，不该再报一个 use:codex")
 	}
-	// 而它该报的是**反方向**那一个：松开这个固定、回到跟随全局。两个按钮互相排斥
-	// （固定着就给「改回自动」，没固定就给「固定用它」），因为它们说的是同一个决定的
-	// 两个方向。
-	if !cheap[useAutoPrefix+"codex"] {
-		t.Error("codex 固定在 cheap 上，该报一个「改回自动」")
+	// **profile 卡上不该再有全局那一档**：那是「默认」那张卡的事。
+	if cheap[useActionID(useGlobal, "cheap")] {
+		t.Error("use:global 该长在「默认」那张卡上，不该出现在 profile 卡上")
 	}
-	if cheap[useAutoPrefix+"claude"] {
-		t.Error("claude 没固定，cheap 那张卡上不该有它的「改回自动」")
+
+	// 「默认」那张：此刻指向 production，所以它的成员里有 cheap（换个默认），
+	// 而且只有 codex 一个「跟着默认走」（claude 本来就在跟着，给它一个按钮是没有意义
+	// 的——它已经在原地了）。
+	au := f.auto()
+	if au.Profile != "production" {
+		t.Errorf("「默认」该报它此刻指向的那一份 production，实际 %q", au.Profile)
+	}
+	if !au.Default || au.File == "" {
+		t.Errorf("「默认」该带上默认记号与它指向那份的文件，实际 %+v", au)
+	}
+	am := actions(au)
+	if !am[useActionID(useGlobal, "cheap")] {
+		t.Error("「默认」那张卡上该有 use:global:cheap（把默认改成 cheap）")
+	}
+	if am[useActionID(useGlobal, "production")] {
+		t.Error("此刻指向的那一份不该再报一个动作——选它自己什么都不会变")
+	}
+	if !am[useAutoPrefix+"codex"] {
+		t.Error("codex 自己设过，该有一条「跟着默认走」")
+	}
+	if am[useAutoPrefix+"claude"] {
+		t.Error("claude 没设过、本来就在跟着，不该有它的「跟着默认走」")
 	}
 	if cheap[useActionID("opencode", "cheap")] {
 		t.Error("opencode 没装，不该报它的按钮")
@@ -410,8 +440,8 @@ func TestOverviewWithoutOptionalPorts(t *testing.T) {
 	if len(ov.Cards) != 2 {
 		t.Fatalf("两张卡都该在，实际 %d 张", len(ov.Cards))
 	}
-	if !actions(f.card("cheap"))[useActionID(useGlobal, "cheap")] {
-		t.Error("没有客户端可选时，全局那一档是唯一能换链的手段，必须在")
+	if !actions(f.auto())[useActionID(useGlobal, "cheap")] {
+		t.Error("没有客户端可选时，「默认」那张卡是唯一能换链的手段，必须在")
 	}
 	for _, c := range ov.Cards {
 		if actions(c)["probe"] {

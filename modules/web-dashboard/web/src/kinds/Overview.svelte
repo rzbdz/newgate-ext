@@ -38,13 +38,22 @@
   };
   type Card = {
     profile: string;
+    /**
+     * 这一张是不是**「默认」那张**（见内核 view.OverviewCard.Auto）。
+     *
+     * 它与 profile 卡长得几乎一样，说的却是两件事：在这一张上点「给 claude 用」
+     * 是让 claude **跟着全局默认走**；在 ds 那张上点同一句话是把 claude **固定**在
+     * ds 上。两者的路由此刻相同，改掉全局之后一个跟着变、一个不变——所以它们必须
+     * 是两张卡（Clash 里一个 group 既能直接选节点、又能引用另一个 group）。
+     */
+    auto?: boolean;
     file?: string;
     default?: boolean;
     roles: Row[];
     actions?: Act[];
   };
   type Agent = { id: string; name: string; profile?: string; own?: boolean; ready?: boolean };
-  type Data = { agents: Agent[]; cards: Card[] };
+  type Data = { agents: Agent[]; auto?: Card; cards: Card[] };
 
   import { t } from "../i18n";
   import type { ConceptAction } from "../api";
@@ -52,6 +61,7 @@
   let {
     data,
     onAction,
+    onOpenFile,
   }: {
     data: Data;
     /**
@@ -62,10 +72,19 @@
      * modules/home/overview.go 的 probeSet。
      */
     onAction?: (a: ConceptAction) => void;
+    /**
+     * 跳到**编辑这份文件**的那张卡上（配置那一节里对应 profile 的那张）。
+     *
+     * 一趟导航，不是动作：它不改盘上的东西，所以不该走 `onAction`（那条路跑完会
+     * 清草稿、整份重读——对「我只是想去看看那个文件」这件事来说全是副作用）。
+     */
+    onOpenFile?: (file: string) => void;
   } = $props();
 
   const agents = $derived(data?.agents ?? []);
   const cards = $derived(data?.cards ?? []);
+  /** 「默认」那张卡（见 Card.auto）。没有可选的 profile 时后端不报它。 */
+  const auto = $derived<Card | undefined>(data?.auto);
 
   /**
    * 现在看的是哪一栏（agent 的机器标记；空串 = 那一档「全部客户端」）。
@@ -78,12 +97,24 @@
     agents.find((a) => a.id === tab) ?? agents.find((a) => a.ready) ?? agents[0],
   );
 
-  /** 这一栏此刻在用的那一份 profile（空 = 没有 / 跟随全局默认）。 */
-  const using = $derived(current?.profile ?? "");
+  /**
+   * 这一栏此刻**是不是跟着默认走**。
+   *
+   * 两件不同的事都落在这里：`own` 为假 = 这一家没自己设过、跟着全局；而「全部客户端」
+   * 那一档**本身就是全局默认**，所以它也在跟着（它没有「上一级」可跟，那个默认就是
+   * 它自己）。
+   */
+  const follows = $derived(!current?.id || !current?.own);
 
-  /** 这一张卡是不是**这一栏正在用的**那一份。 */
+  /**
+   * 这一张卡是不是**这一栏此刻在用的**那一个。
+   *
+   * 高亮落在**哪一张上**，正是「跟着」与「固定」的区别所在：跟着默认时高亮在「默认」
+   * 那张上，固定住时高亮在被固定的那一份上。两张卡的内容可能一模一样（默认恰好指向
+   * 它），而那正是需要这条规则的原因——颜色说的是**关系**，不是内容。
+   */
   function isActive(c: Card): boolean {
-    return using ? c.profile === using : !!c.default;
+    return follows ? !!c.auto : !c.auto && c.profile === current?.profile;
   }
 
   /**
@@ -104,21 +135,54 @@
     const out: Act[] = [];
     const who = current?.id ? current.id : "global";
     for (const a of c.actions ?? []) {
+      // 「默认」那张卡上的 `use:global:<profile>` **不是按钮**：它们是这张卡**里面**
+      // 那一排成员（见模板里的 .members）。摆到卡片头上会与「给谁用」那一类混成
+      // 一堆同义词，而它们做的事完全不同（一个改全局默认，一个把这一家固定住）。
+      if (c.auto && a.id.startsWith("use:")) continue;
       if (a.id.startsWith("auto:")) {
-        // 「改回自动」（`auto:<agent>`）：后端只把它挂在**这一家正固定着**的那张卡
-        // 上，但切到别家时不该还留着——那是别人家的状态，点下去改的是别人。
-        if (a.id === `auto:${who}`) out.push(a);
+        // 「跟着默认走」（`auto:<agent>`）：它只长在「默认」那张卡上（那件事只有在
+        // 那张卡上说得通），而点它改的是**当前这一栏**的状态——所以切到别家时不该
+        // 还留着，那是别人家的状态，点下去改的是别人。
+        if (c.auto && a.id === `auto:${who}`) out.push(a);
         continue;
       }
       if (!a.id.startsWith("use:")) {
         out.push(a); // 探活那类：与标签无关，照画。
         continue;
       }
-      // 全局那一档只在「全部客户端」里画：每张卡都挂一个「所有客户端都用它」，
-      // 会让这一屏上最常用的那个按钮淹在一堆同义词里。
-      if (a.id === `use:${who}:${c.profile}`) out.push(a);
+      // 把**这一份**指给当前这一栏（`use:<agent>:<profile>`）。这一族只长在
+      // profile 卡上——「默认」那张有它自己的 `use:global:*`，在上面被跳过了。
+      if (!c.auto && a.id === `use:${who}:${c.profile}`) out.push(a);
     }
     return out;
+  }
+
+  /** 网格里摆的几张卡：「默认」在最前，后面是每一份 profile。 */
+  const shown = $derived<Card[]>(auto ? [auto, ...cards] : cards);
+
+  /**
+   * 一张卡的键（each 的 key、摊开状态按它存）。
+   *
+   * 「默认」那张**没有 profile 名可用**——它的 profile 是它此刻指向的那一份，会跟着
+   * 变；拿它当键的话，切一次成员整张卡就被当成另一张重建了（摊开状态当场丢掉）。
+   * 所以它用固定的一个记号。
+   */
+  function keyOf(c: Card): string {
+    return c.auto ? "\u0000auto" : c.profile;
+  }
+
+  /**
+   * 「默认」那张卡**里面**那一排成员：它能指向的每一份 profile。
+   *
+   * 判据是后端报没报那个动作（`use:global:<profile>`），不是前端自己把 cards 列一
+   * 遍：能指向哪几份是贡献者的事（比如**此刻指向的那一份不出现**——选它自己什么都
+   * 不会变）。前端列一遍就等于把那条规则抄了第二份，而两处迟早会不一致。
+   */
+  function members(c: Card): { profile: string; act?: Act }[] {
+    return cards.map((m) => ({
+      profile: m.profile,
+      act: (c.actions ?? []).find((a) => a.id === `use:global:${m.profile}`),
+    }));
   }
 
   /**
@@ -228,16 +292,10 @@
         </svg>
         <span class="nm">{a.name}</span>
         {#if a.profile}
-          <!-- 「自动」与「固定」是**两个状态**，不能合成一句话：固定选 ds 之后改掉
-               全局默认不会动它；跟着默认走的则会被一起改掉。所以跟着走时说「自动」，
-               并把解析到的那一份另起一格写出来（那是它此刻实际走谁）；只有固定住的
-               才直接写那一份。 -->
-          {#if a.own}
-            <span class="cur mono">{a.profile}</span>
-          {:else}
-            <span class="auto">{t("auto")}</span>
-            <span class="cur mono dim">{a.profile}</span>
-          {/if}
+          <!-- 标签上只写它此刻实际走的那一份。**不在这里说「自动/固定」**：那是
+               「选了哪一个」这件事，而它由下面网格里**高亮落在哪一张卡上**回答
+               （见 isActive）——两处各说一遍，迟早会有一处说错。 -->
+          <span class="cur mono">{a.profile}</span>
         {/if}
         {#if a.ready === false}
           <span class="dim off">{t("not installed")}</span>
@@ -248,39 +306,41 @@
 {/if}
 
 <div class="grid">
-  {#each cards as c (c.profile)}
-    <section class="pc" class:on={isActive(c)} class:folded-open={!!open[c.profile]}>
+  {#each shown as c (keyOf(c))}
+    <section class="pc" class:on={isActive(c)} class:folded-open={!!open[keyOf(c)]}>
       <header class="phead">
         <!-- 链名（= profile 名）是这一张卡上最大的一行字：用户在这一屏上做的唯一
              一个决定是「用哪一份」，而名字就是那个决定的宾语。
              它同时是**摊开/收起**的开关（仿 Clash 的组头）：整行都点得动，比在角落
              放一个 12px 的小三角好按得多，而这一屏上最频繁的动作就是「扫一遍」和
              「摊开看这条」。 -->
-        <button class="tog" aria-expanded={!!open[c.profile]} onclick={(ev) => toggle(c.profile, ev)}>
+        <button class="tog" aria-expanded={!!open[keyOf(c)]} onclick={(ev) => toggle(keyOf(c), ev)}>
           <svg class="chev" viewBox="0 0 16 16" aria-hidden="true">
             <path d="M6 4l4 4-4 4" />
           </svg>
-          <span class="pname">{c.profile}</span>
+          {#if c.auto}
+            <!-- 「默认」那张：名字是**默认**，后面括着它此刻指向哪一份。
+                 括号里那个值会跟着全局默认变——这正是它与 ds 那张卡的分别：
+                 两张此刻显示同一条链，但这一张说的是「大家都跟着它」，那一张说的是
+                 「这一份本身」。 -->
+            <span class="pname">{t("default")}</span>
+            {#if c.profile}
+              <span class="cur">{t("(currently {profile})", { profile: c.profile })}</span>
+            {/if}
+          {:else}
+            <span class="pname">{c.profile}</span>
+          {/if}
         </button>
-        {#if c.default}
-          <span class="pill ok-pill">{t("default")}</span>
-        {/if}
         <span class="spacer"></span>
         {#if isActive(c)}
           <!-- 「这一栏正用着它」是一句**陈述**，不是按钮：把它指给它是没有意义的
                事（所以后端根本不报那个动作）。与 Concept.Note 那条同源——「不画
                那个按钮」与「什么都不说」是两件事。 -->
+          <!-- 「正在使用」是**同一句话**，两张卡上都这么写——谁被选中不是靠这张纸上
+               的字，而是靠**高亮落在哪一张卡上**（见 isActive）。这样读的人看到的
+               是「这一栏选了哪一个」，而不是两句要互相比较才分得出差别的话。 -->
           <span class="pill ok-pill" data-using="1">
-            {#if !current?.id}
-              {t("in use")}
-            {:else if current.own}
-              <!-- 固定住的那一份：它不会跟着全局默认动。 -->
-              {t("in use by {client}", { client: current.name })}
-            {:else}
-              <!-- 跟着默认走、而默认恰好是这一份：**不是**同一句话。它与上面那一条
-                   只差一个字，但改掉全局默认之后一个会走、一个不会。 -->
-              {t("auto in use by {client}", { client: current.name })}
-            {/if}
+            {current?.id ? t("in use by {client}", { client: current.name }) : t("in use")}
           </span>
         {/if}
         {#each actions(c) as a (a.id)}
@@ -291,11 +351,41 @@
       </header>
 
       {#if c.file}
-        <div class="meta mono">{c.file}</div>
+        <!-- 文件路径同时是**去编辑它**的入口：这一屏说的是「此刻走哪条链」，改链要
+             去配置那一节里这份文件的那张卡。路径本身是最自然的落点——用户看着它想
+             的就是「我要改的就是这个文件」。
+             不能跳时（没有这个回调，或者那份文件此刻没有可编辑的卡）就照旧画成一
+             行字，而不是一个点了没反应的链接。 -->
+        {#if onOpenFile}
+          <button class="meta mono link" onclick={() => onOpenFile(c.file!)} title={t("edit this file")}>
+            {c.file}
+          </button>
+        {:else}
+          <div class="meta mono">{c.file}</div>
+        {/if}
       {/if}
 
-      <ul class="roles" class:flat={!open[c.profile]}>
-        {#if !open[c.profile]}
+      {#if c.auto}
+        <!-- 这一张**里面**那一排成员：点一个就把「默认」指到那一份上（整张卡的内容
+             跟着换成它的链）。此刻指向的那一个没有动作，所以它画成选中态而不是按钮
+             ——见 members()（那条规则住在后端，前端只照着画）。 -->
+        <div class="members">
+          {#each members(c) as m (m.profile)}
+            <button
+              class="member mono"
+              class:on={m.profile === c.profile}
+              disabled={!m.act}
+              data-action={m.act?.id}
+              onclick={() => m.act && onAction?.(m.act)}
+            >
+              {m.profile}
+            </button>
+          {/each}
+        </div>
+      {/if}
+
+      <ul class="roles" class:flat={!open[keyOf(c)]}>
+        {#if !open[keyOf(c)]}
           <!-- 收起来的样子：**一档一行**，只说这一档从谁起、后面还垫着几站、多快。
                那几站是谁是摊开才读的东西（也是 `newgate tier` 与 Chains 那一屏的
                东西）；把它画在默认视图里，一张卡就是三十行，一屏放不下两张卡。
@@ -444,15 +534,6 @@
   }
   .nm { font-size: 12px; font-weight: 600; }
   .cur { font-size: 11px; color: var(--dim); }
-  /* 「自动」那一格：它不是一份档位的名字，是一种**状态**，所以给它一个记号（虚边框）
-     而不是等宽字——旁边紧跟着的那一份才是名字。 */
-  .auto {
-    font-size: 10px;
-    padding: 0 5px;
-    border: 1px dashed color-mix(in srgb, currentColor 45%, transparent);
-    border-radius: 999px;
-    opacity: 0.85;
-  }
   .off { font-size: 10px; }
 
   /* ---- 卡片 ---- */
@@ -520,6 +601,47 @@
   }
   .pname { font-size: 13.5px; font-weight: 700; }
   .meta { font-size: 10.5px; color: var(--dim); margin: 0 0 5px; }
+  /* 路径那一行做成按钮，但要**长得跟原来那行字一样**：它是这一张卡上最不起眼的
+     东西，而它现在是入口了——把它做成一个显眼的按钮，会让每一张卡上多出一个比
+     「给谁用」还抢眼的东西。悬停时才加下划线。 */
+  .meta.link {
+    display: block;
+    padding: 0;
+    background: none;
+    border: 0;
+    border-radius: 3px;
+    text-align: left;
+    cursor: pointer;
+  }
+  .meta.link:hover { color: var(--ink); text-decoration: underline; }
+
+  /* 「默认」那张卡里面那一排成员：一份 profile 一个。摆成一条会换行的横排——
+     它们是一个**集合**（此刻能指向哪几份），横着读比竖着读快；换行而不是横向滚动：
+     十几种 profile 在一张卡里滚动条没人找得到。 */
+  .members {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    margin: 0 0 5px;
+  }
+  .member {
+    font-size: 10.5px;
+    padding: 1px 6px;
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    color: var(--dim);
+    cursor: pointer;
+  }
+  .member:hover:not(:disabled) { color: var(--ink); border-color: var(--accent); }
+  /* 此刻指向的那一个：它没有动作（选它自己什么都不会变），所以画成**选中的样子**
+     而不是一个按下去没反应的按钮。 */
+  .member.on {
+    color: var(--ink);
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+    cursor: default;
+  }
 
   .roles { list-style: none; margin: 0; padding: 0; }
   .roles > li + li { margin-top: 8px; }

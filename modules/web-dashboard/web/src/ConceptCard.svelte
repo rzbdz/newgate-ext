@@ -25,6 +25,7 @@
     onDeleteFile,
     onAction,
     onRowAction,
+    onOpenFile,
   }: {
     concept: Concept;
     draft: unknown;
@@ -64,6 +65,14 @@
      * props 里：卡片的职责就是「把 App 的手递给它选中的那个渲染器」。
      */
     onRowAction?: (row: string, a: RowAction) => void;
+    /**
+     * 跳到**编辑这份文件**的那张卡上（见 App.svelte 的 openFile）。
+     *
+     * 它不是「动作」：动作会改盘上的东西、跑完要重读，而这一跳只换一张卡看。
+     * 混进 `onAction` 里的话，用户点一下「编辑」会发现草稿被清掉了——那是
+     * 卡片动作的副作用（它改盘，重读之后基线全过期），而这里什么都没改。
+     */
+    onOpenFile?: (file: string) => void;
   } = $props();
 
   const isDirty = $derived(draft !== undefined);
@@ -191,7 +200,7 @@
       <!-- 首屏那一张：客户端标签 + 一份 profile 一张卡。它只有**卡片头**上的动作
            （「就用它」与「整张卡探一遍」），没有行上的——单条 binding 的探活在健康表
            那一节，理由见 kinds/Overview.svelte 的 props 说明。 -->
-      <Overview data={shown} onAction={(a) => onAction?.(a)} />
+      <Overview data={shown} onAction={(a) => onAction?.(a)} {onOpenFile} />
     {:else if concept.kind === "series"}
       <Series data={shown} />
     {:else if concept.kind === "log"}

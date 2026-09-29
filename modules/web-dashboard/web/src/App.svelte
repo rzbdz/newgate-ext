@@ -198,6 +198,20 @@
   ]);
 
   /**
+   * **首屏那一节**的来源（声明了落点的那一节，见 lib/view 的 Section.Default）。
+   *
+   * 它单独列出来是因为它要按**另一条节奏**刷：那一屏的产出要重读并重新解析每一份
+   * profile（见 core/lib/view 的 Concept.Live——声明的判据是「读一次贵不贵」，配置
+   * 那一位因此不声明 Live）。跟着计数器那条 3 秒的路走，等于把「看一眼请求数」变成
+   * 「每 3 秒解析一次全部配置」，而这一屏开着不动的时候，那笔钱换不到任何新信息。
+   *
+   * 但它**也确实会变**，而且是这个界面自己的动作让它变的：探活回来的延迟落在健康表
+   * 里，而首屏每一站的颜色就读那张表。所以它得有自己的节奏，不能只靠「用户手动点
+   * 重载」——那一屏是拿来放着看的。
+   */
+  const homeSources = $derived(sections.filter((s) => s.default).map((s) => s.source));
+
+  /**
    * 把一列概念排成**后端那份顺序**：`(source, order, id)`。
    *
    * 只在局部刷新（`load(sources)`）合并之后用：那时手里是「旧的没动的 + 刚拿到的」
@@ -383,6 +397,24 @@
    * 预览跟着消失（否则控件那一半会停在一份磁盘上并不存在的内容上）。
    */
   let previews = $state<Record<string, unknown>>({});
+
+  /**
+   * 跳到**编辑这份文件**的那张卡上。
+   *
+   * 这一跳能成立，靠的是「文件身份」这一件事已经在前端了（`fileOf`，见 nav.ts）；
+   * 而「哪一张卡是它的编辑器」这条规则也只有一份（controlOf，下面几行）——两处各
+   * 写一遍的话，从首屏跳过去可能落到**原文那一半**上，而那两半是同一份文件的两种
+   * 看法，落错一半用户还得再点一次。
+   *
+   * 找不到目标时**什么都不做**：那说明这份文件此刻没有可编辑的卡（比如贡献它的模块
+   * 被关掉了）。跳到一个不存在的地址比不跳更糟——它会把当前这一屏也弄丢。
+   */
+  function openFile(f: string) {
+    const target = controlOf(f) ?? concepts.find((c) => fileOf(c) === f);
+    if (!target) return;
+    route = { section: target.source, card: target.id, split: route.split };
+    writeHash(route);
+  }
 
   /** 这份文件上「控件那一半」：不是 code、且和它指同一份文件的那张卡。 */
   function controlOf(f: string): Concept | undefined {
@@ -787,14 +819,39 @@
   load();
   void loadThemes();
 
-  // 自动刷新只问**活着的那几位**（计数器、日志）。整份重读会把配置目录每三秒
-  // 重读一遍，而那个成本换不到任何新信息——配置文件不会自己变。
+  // 自动刷新走**两条节奏**。
+  //
+  //   - 自己会变的那几位（计数器、日志）每 3 秒问一次——它们便宜，而且变得快。
+  //   - **首屏那一节每 15 秒问一次**：它的产出要重读并重新解析每一份 profile（贵），
+  //     但探活的结果、以及命令行那边改过的配置都会落在它身上，而这一屏正是拿来
+  //     放着看的。整份重读（把首屏也按 3 秒刷）会把「看一眼请求数」变成「每 3 秒
+  //     解析一次全部配置」，而配置文件不会自己变——那个成本换不到新信息。
+  //
+  // 两条各自算各自的来源，重叠的部分（一节同时是 Live 又是首屏）只走快的那条：
+  // 同一份数据问两遍，多出来的那一遍没有任何用处。
+  // **来源在这两个回调里面读，不在 effect 身上读**——这不是风格问题，是这一条能
+  // 不能工作的分界：effect 会跟踪它同步执行期间读到的每一份状态，而那两份来源都是
+  // 派生自 `sections` / `concepts` 的**新数组**。于是每一次刷新（包括这两条定时器
+  // 自己发起的那些）都会让 effect 重跑、把两个定时器都清掉重建——而 15 秒那个永远
+  // 等不到第 15 秒，它每 3 秒就被重置一次。
+  //
+  // 实测过：改之前首屏那一节在 17 秒里被刷了 **0** 次，而 3 秒那条看着是好的
+  // （它比重置的间隔短，所以偶尔能跑完一次）——两条都错，只是错的症状不一样。
   $effect(() => {
     if (!auto) return;
-    const src = liveSources;
-    if (!src.length) return;
-    const t = setInterval(() => void load(src, true), 3000);
-    return () => clearInterval(t);
+    const fast = setInterval(() => {
+      const src = liveSources;
+      if (src.length) void load(src, true);
+    }, 3000);
+    const slow = setInterval(() => {
+      const live = liveSources;
+      const home = homeSources.filter((s) => !live.includes(s));
+      if (home.length) void load(home, true);
+    }, 15000);
+    return () => {
+      clearInterval(fast);
+      clearInterval(slow);
+    };
   });
 </script>
 
@@ -905,6 +962,7 @@
           onDeleteFile={deleteActive}
           onAction={runCardAction}
           onRowAction={runRow}
+          onOpenFile={openFile}
           onToggleSplit={toggleSplit}
         />
       {:else if concepts.length}
