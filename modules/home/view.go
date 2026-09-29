@@ -18,7 +18,7 @@ const conceptID = "home.chains"
 // 这一条在这里格外要紧——链的结论要重读并重新解析每一份 profile（见
 // configapi.Config.AllChains 与 lib/view 的包注释），而每一条 `newgate …` 命令
 // 都会跑到这里，其中绝大多数没有人会打开界面。
-func registerView(v view.Service, cfg configapi.Config) (modules.Release, error) {
+func registerView(v view.Service, cfg configapi.Config, deps overviewDeps) (modules.Release, error) {
 	// `.Landing()`：首屏落在这一节上。多个人声明时按 Source 取最小的那个
 	// （见 lib/view 的 Sections），所以它不是一个「抢座位」的动作——多一份声明
 	// 不会让这一屏变成随机的，只会按 Source 分胜负。
@@ -27,11 +27,16 @@ func registerView(v view.Service, cfg configapi.Config) (modules.Release, error)
 	// （见 Sidebar.svelte 的 rows），而首屏本来就要落在这一节上——它自己跑到最上面
 	// 之后，那一栏反而没有位置可站，读的人也就不知道它凭什么在最上面。给它一个
 	// 名字，是让「为什么它在第一位」变成看得见的（与 Section.Group 那条注释同源）。
-	return v.Register(Name,
-		view.Title(func() string { return i18n.T("Home", nil) }).
-			Landing().
-			In(func() string { return i18n.T("Overview", nil) }),
-		concepts(cfg))
+	section := view.Title(func() string { return i18n.T("Home", nil) }).
+		Landing().
+		In(func() string { return i18n.T("Overview", nil) })
+	// 右上角那个「全都探一遍」：它要探的是这一屏**所有** profile 的链站，那个集合
+	// 不属于任何一张卡，所以它长在节上（理由见 overview.go 的 probeAllAction）。
+	// 没装网关时**不挂**——一个按下去必然失败的按钮比没有按钮更糟。
+	if a, ok := probeAllAction(cfg, deps.gateway); ok {
+		section = section.Does(a)
+	}
+	return v.Register(Name, section, concepts(cfg, deps))
 }
 
 // concepts 是「此刻这些链长什么样」。每次被调用都重新读盘——CLI 刚建的档位、
@@ -42,27 +47,42 @@ func registerView(v view.Service, cfg configapi.Config) (modules.Release, error)
 // 意思。画成空屏会让用户以为配置丢了，而真正的原因（权限、路径）一个字都看不到。
 // 这与 config 那边逐张卡片给 Broken 的做法不冲突：那里是**一份文件**坏了，别的
 // 照常；这里失败的是「所有链」这件事本身。
-func concepts(cfg configapi.Config) view.Contributor {
+//
+// # 两概念共用一次 AllChains
+//
+// 这一节有两张卡（首屏那张总览 + 逐条读的链卡），它们摆的必须是**同一个时刻**的
+// 配置。各自问一次 AllChains 的代价不止是双倍（那一位要重读并重新解析每一份
+// profile），更糟的是两次调用之间盘可能被人改了一笔——于是两张卡说的是两份不同的
+// 配置，而屏幕上完全看不出异样。所以链只取一次，往下传（见 chains.go 的文件头）。
+func concepts(cfg configapi.Config, deps overviewDeps) view.Contributor {
 	return func() ([]view.Concept, error) {
 		all, err := cfg.AllChains()
 		if err != nil {
 			return nil, err
 		}
-		return []view.Concept{{
-			ID: conceptID, Kind: view.KindChains,
-			Title: i18n.T("Chains", nil),
-			Data:  Chains(all),
-			// Order 0：这一节今天只有这一张卡（Order 只在**同一节里**分先后，
-			// 见 view.Concept.Order），写 0 是把它放在默认位置上，将来这一节长出
-			// 第二张卡时新卡只需给自己一个更大的数。
-			//
-			// 没有 Apply：这一屏上的改动走**行上的动作**（「把这一档换成 X」，
-			// 见 configapi.Chain.Actions）。整张卡级的写回没有意义——链是算出来的
-			// 结论，不是一个可以整份交回来的文档。
-			//
-			// 没有 Live：这一面读盘、不读内存态（见 lib/view 的 Concept.Live——
-			// 声明的判据是「读一次贵不贵」，不是「数据会不会变」）。
-			Order: 0,
-		}}, nil
+		return []view.Concept{
+			overviewConcept(all, deps),
+			chainsConcept(all),
+		}, nil
+	}
+}
+
+// chainsConcept 是逐条读的那一屏：每一档此刻解析成什么、谁被跳过、为什么。
+func chainsConcept(all []*configapi.Chains) view.Concept {
+	return view.Concept{
+		ID: conceptID, Kind: view.KindChains,
+		Title: i18n.T("Chains", nil),
+		Data:  Chains(all),
+		// Order 10：同一节里排在首屏那张卡**后面**（Overview 是 0）。两张卡的分工见
+		// KindOverview 的注释：那一张是「拿它做决定」，这一张是「逐条读」。Order 只
+		// 影响这一节里的先后，见 view.Concept.Order。
+		//
+		// 没有 Apply：这一屏上的改动走**行上的动作**（「把这一档换成 X」，
+		// 见 configapi.Chain.Actions）。整张卡级的写回没有意义——链是算出来的
+		// 结论，不是一个可以整份交回来的文档。
+		//
+		// 没有 Live：这一面读盘、不读内存态（见 lib/view 的 Concept.Live——
+		// 声明的判据是「读一次贵不贵」，不是「数据会不会变」）。
+		Order: 10,
 	}
 }

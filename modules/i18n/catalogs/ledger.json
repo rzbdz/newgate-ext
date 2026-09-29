@@ -91,6 +91,9 @@
         "err"
       ]
     },
+    "Routes": {},
+    "Test everything": {},
+    "Test this profile": {},
     "The model name codex itself sends — copy it out of `codex debug models` (the slug).": {},
     "Usage: newgate omo [ls | use <key> <binding> | unset <key> | mode current|suggested | explain <key>]": {},
     "Usage: newgate omo explain <slot key>": {},
@@ -118,7 +121,14 @@
     "a status provider cannot be nil": {},
     "accepted but not rendered": {},
     "adopt them all": {},
+    "all clients": {},
     "already on the chain": {},
+    "and {n} more": {
+      "args": [
+        "n"
+      ],
+      "other": "and {n} more"
+    },
     "another sync round is already running; this round was skipped": {},
     "api_key missing": {},
     "arch": {},
@@ -476,6 +486,12 @@
       ]
     },
     "previewing uses POST": {},
+    "probed {n} binding": {
+      "args": [
+        "n"
+      ],
+      "other": "probed {n} bindings"
+    },
     "profile selection": {},
     "profile {name} extends {extends}, but this configuration has no such profile": {
       "args": [
@@ -754,6 +770,12 @@
         "cmd"
       ]
     },
+    "use for every client": {},
+    "use for {client}": {
+      "args": [
+        "client"
+      ]
+    },
     "value": {},
     "variant={variant} shifts down one step ({from} → {to})": {
       "args": [
@@ -888,6 +910,13 @@
       ],
       "other": "{n} managed files on this machine were modified locally; applying the remote configuration stopped (your changes will not be overwritten)"
     },
+    "{n} not answering ({list})": {
+      "args": [
+        "list",
+        "n"
+      ],
+      "other": "{n} not answering ({list})"
+    },
     "{n} slot differs from the recommendation": {
       "args": [
         "n"
@@ -907,10 +936,21 @@
       ],
       "other": "{n} slot keys, but the registry is not group-readable (the user running the daemon cannot see it)"
     },
+    "{n} still in flight — refresh in a moment": {
+      "args": [
+        "n"
+      ],
+      "other": "{n} still in flight — refresh in a moment"
+    },
     "{providers} carries an inline api_key for {names}: a secret may only travel over the secrets channel (newgate config secrets on the host); the config channel never carries one — on the host it is managed by git, so a single commit puts it in history forever": {
       "args": [
         "names",
         "providers"
+      ]
+    },
+    "{report}": {
+      "args": [
+        "report"
       ]
     },
     "{section}.{name} → {provider}/{key} (now {now}{suggested})": {

@@ -86,6 +86,16 @@ const en: Record<string, string> = {
   follow: "follow",
   "no log file yet — this daemon has not written anything.":
     "no log file yet — this daemon has not written anything.",
+  // ---- 首屏（kinds/Overview.svelte）：客户端标签 + 一份 profile 一张卡 ----
+  "not installed": "not installed",
+  // 「这一栏正用着它」——那一格**不是按钮**（把它指给它是没有意义的事，所以后端
+  // 根本不报那个动作），它是陈述，所以措辞是陈述句。
+  "in use": "in use",
+  "in use by {client}": "in use by {client}",
+  "+{n} more on the chain": "+{n} more on the chain",
+  // 延迟那个单位。它单独一条而不是拼进数字里：中文写「毫秒」也不该改数字那一格
+  // 的排版（那一列是拿来竖着比的）。
+  ms: "ms",
 };
 
 const zhHans: Record<string, string> = {
@@ -164,6 +174,11 @@ const zhHans: Record<string, string> = {
   follow: "跟随",
   "no log file yet — this daemon has not written anything.":
     "还没有日志文件 —— 这个守护进程什么都还没写过。",
+  "not installed": "没装",
+  "in use": "正在使用",
+  "in use by {client}": "{client} 正在使用",
+  "+{n} more on the chain": "链上还有 {n} 站",
+  ms: "毫秒",
 };
 
 const dicts: Record<string, Record<string, string>> = { en, "zh-Hans": zhHans };

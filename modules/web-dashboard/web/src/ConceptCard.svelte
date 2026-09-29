@@ -14,6 +14,7 @@
   import LogView from "./kinds/LogView.svelte";
   import Table from "./kinds/Table.svelte";
   import Chains from "./kinds/Chains.svelte";
+  import Overview from "./kinds/Overview.svelte";
 
   let {
     concept,
@@ -172,6 +173,11 @@
            它改的是**这张卡里的一行**，跑完卡还在，重读快照就对；而卡上的动作是给
            「把这一份设为默认」那种改完要换卡的事情用的。理由写在 Chains.svelte 里。 -->
       <Chains data={shown} onAction={(row, a) => onRowAction?.(row, a)} />
+    {:else if concept.kind === "overview"}
+      <!-- 首屏那一张：客户端标签 + 一份 profile 一张卡。它只有**卡片头**上的动作
+           （「就用它」与「整张卡探一遍」），没有行上的——单条 binding 的探活在健康表
+           那一节，理由见 kinds/Overview.svelte 的 props 说明。 -->
+      <Overview data={shown} onAction={(a) => onAction?.(a)} />
     {:else if concept.kind === "series"}
       <Series data={shown} />
     {:else if concept.kind === "log"}

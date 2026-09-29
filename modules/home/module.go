@@ -30,7 +30,10 @@ import (
 	modules "github.com/rzbdz/newgate/component"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 	viewapi "github.com/rzbdz/newgate/lib/view"
+	breakerapi "github.com/rzbdz/newgate/modules/breaker"
 	configapi "github.com/rzbdz/newgate/modules/config"
+	agentapi "github.com/rzbdz/newgate/modules/confighook"
+	gatewayapi "github.com/rzbdz/newgate/modules/gateway"
 )
 
 // Name 是这个模块在装配表与 `newgate plugin` 里的名字。
@@ -64,13 +67,32 @@ func New() modules.Component {
 			// 弱依赖：界面在就登记进去，不在就跳过。这条模块被装进任何一份
 			// 规格书（包括没装任何界面的）都不会装不起来。
 			modules.Optional(viewapi.Capability),
+			// 下面三条是首屏那张卡**多出来的两件事**要用的（见 overview.go 的文件头：
+			// 链之外的「健康」与「就用它」）。它们都是弱依赖，判据是同一条——**没有
+			// 它们，这一屏还能不能说真话**：健康表不在就没有延迟那一格、网关不在就
+			// 没有探活按钮、客户端目录不在就没有上面那排标签，而链照常列出来、
+			// 「全部客户端」那一档照常能把链换掉。
+			//
+			// 为什么不让它们变成强依赖：那样一来这一节只在「装了网关 + 装了健康表 +
+			// 装了某个客户端」的装配里才存在——而「这台机器上装了哪些模块」是发行版
+			// 的事（core/CLAUDE.md §0），一张首页不该给规格书加约束。
+			modules.Optional(breakerapi.Capability),
+			modules.Optional(agentapi.AgentCatalogCapability),
+			modules.Optional(gatewayapi.Capability),
 		},
 		Start: func(_ context.Context, ctx modules.Context) error {
 			v, ok := modules.Get(ctx, viewapi.Capability)
 			if !ok {
 				return nil
 			}
-			release, err := registerView(v, modules.MustGet(ctx, configapi.Capability))
+			// 三个 Optional 都用手写取（modules.Get 返回 ok），**不用 MustGet**：
+			// 弱依赖缺席是常态，MustGet 会 panic。
+			agents, _ := modules.Get(ctx, agentapi.AgentCatalogCapability)
+			health, _ := modules.Get(ctx, breakerapi.Capability)
+			gateway, _ := modules.Get(ctx, gatewayapi.Capability)
+			release, err := registerView(v, modules.MustGet(ctx, configapi.Capability), overviewDeps{
+				agents: agents, health: health, gateway: gateway,
+			})
 			if err != nil {
 				return err
 			}

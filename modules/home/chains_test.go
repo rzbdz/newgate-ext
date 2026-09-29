@@ -55,7 +55,11 @@ func newFixture(t *testing.T) *fixture {
 	cfg := testkit.Get(g, configapi.Capability)
 
 	f := &fixture{t: t, reg: view.NewRegistry(), cfg: cfg}
-	if _, err := registerView(f.reg, cfg); err != nil {
+	// overviewDeps{} 是**全部缺席**那一档：这张图里只装了本模块与 config，健康表、
+	// 客户端目录、网关都不在。那正是这一节必须成立的一种装配（见 module.go 那三条
+	// Optional）——首屏照常出卡，只是没有延迟那一格、没有探活按钮、上面只有一档
+	// 「全部客户端」。真装齐的那几条路由 overview_test.go 起一张大一点的图去验。
+	if _, err := registerView(f.reg, cfg, overviewDeps{}); err != nil {
 		t.Fatalf("把这一节挂进账本失败: %v", err)
 	}
 	f.concept = f.snapshot()
@@ -65,16 +69,23 @@ func newFixture(t *testing.T) *fixture {
 // snapshot 重问一遍快照并取出这一节（每次调都是新的结论——产出函数每次重算）。
 func (f *fixture) snapshot() view.Concept {
 	f.t.Helper()
+	return f.conceptByID(conceptID)
+}
+
+// conceptByID 从一次快照里取一个概念。每次调都是一次**新的**快照（产出函数每次
+// 重算），所以它也是「这一节此刻报了什么」的读法。
+func (f *fixture) conceptByID(id string) view.Concept {
+	f.t.Helper()
 	all, err := f.reg.Snapshot()
 	if err != nil {
 		f.t.Fatalf("快照失败: %v", err)
 	}
 	for _, c := range all {
-		if c.ID == conceptID {
+		if c.ID == id {
 			return c
 		}
 	}
-	f.t.Fatalf("这一节没报出 %s（快照里有 %d 个概念）", conceptID, len(all))
+	f.t.Fatalf("这一节没报出 %s（快照里有 %d 个概念）", id, len(all))
 	return view.Concept{}
 }
 
