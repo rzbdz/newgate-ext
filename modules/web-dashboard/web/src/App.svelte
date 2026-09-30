@@ -711,10 +711,17 @@
     if (res.error) error = res.error;
   }
 
-  async function runAction(a: SectionAction) {
+  async function runAction(a: SectionAction, source = section?.source) {
     busy = true;
     error = "";
-    const res = await runSectionAction(route.section, a.id);
+    // **来源要由调用方给**（默认取「此刻那一栏」）。
+    //
+    // 这里曾经写的是 `route.section`，而主页模式下它是**空的**——于是点
+    // `auto fallback` 发出去的是 `{"source": "", "action": "fallback"}`，后端回
+    // 「上没有叫 fallback 的动作」。按钮画得出来（它读的是落点那一节），地址却算
+    // 在别处，两处对不上时只有**点下去**才看得见（2026-09-30 实测踩到，用户的原话：
+    // 「fallback 按钮还是关不掉啊」）。
+    const res = await runSectionAction(source ?? "", a.id);
     busy = false;
     if (res.error) {
       error = res.error;
