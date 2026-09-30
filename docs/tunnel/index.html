@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="canonical" href="https://rzbdz.github.io/newgate-ext/docs/tunnel/">
+<meta name="theme-color" content="#0f1115">
+<meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+
+<title>穿过 SSH 看远端界面 · newgate-ext</title>
+<meta name="description" content="内网里常有一类机器：只开 SSH。newgate 在那台机器上照常跑着，网页界面在它的 127.0.0.1:8899 上听着——但从你这台机器够不到它。这个模块给出的答案是：穿过 SSH 去把它取回来。">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="newgate-ext">
+<meta property="og:title" content="穿过 SSH 看远端界面 · newgate-ext">
+<meta property="og:description" content="内网里常有一类机器：只开 SSH。newgate 在那台机器上照常跑着，网页界面在它的 127.0.0.1:8899 上听着——但从你这台机器够不到它。这个模块给出的答案是：穿过 SSH 去把它取回来。">
+<meta property="og:url" content="https://rzbdz.github.io/newgate-ext/docs/tunnel/">
+<meta property="og:locale" content="zh_CN">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="穿过 SSH 看远端界面 · newgate-ext">
+<meta name="twitter:description" content="内网里常有一类机器：只开 SSH。newgate 在那台机器上照常跑着，网页界面在它的 127.0.0.1:8899 上听着——但从你这台机器够不到它。这个模块给出的答案是：穿过 SSH 去把它取回来。">
+
+<link rel="icon" type="image/svg+xml" href="/newgate-ext/favicon.svg">
+<link rel="stylesheet" href="/newgate-ext/site.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/newgate-ext/"><strong>newgate-ext</strong></a>
+  <span class="spacer"></span>
+  <nav class="langs"><a href="/newgate-ext/docs/tunnel/" class="on">中文</a><span class="soon" title="not written yet">English</span></nav>
+</header>
+<div class="shell">
+  <nav class="side">
+    <ul>
+    <li><a href="/newgate-ext/">首页</a></li>
+    <li><a href="/newgate-ext/docs/">文档</a></li>
+    <li><a href="/newgate-ext/docs/quickstart/">快速开始</a></li>
+    <li><a href="/newgate-ext/docs/tiers/">档位与 profile</a></li>
+    <li><a href="/newgate-ext/docs/clients/">接管客户端</a></li>
+    <li><a href="/newgate-ext/docs/codex/">Codex 模式</a></li>
+    <li><a href="/newgate-ext/docs/config/">配置与命令</a></li>
+    <li class="on"><a href="/newgate-ext/docs/tunnel/">穿过 SSH 看远端界面</a></li>
+    <li><a href="/newgate-ext/docs/troubleshooting/">排障</a></li>
+    <li><a href="/newgate-ext/docs/modules/">写一个模块</a></li>
+    <li><a href="/newgate-ext/docs/fork/">fork 一份发行版</a></li>
+    <li><a href="/newgate-ext/changelog/">更新日志</a></li>
+    </ul>
+  </nav>
+  <main>
+    <h1>穿过 SSH 看远端界面</h1>
+    <p>内网里常有一类机器：<strong>只开 SSH</strong>。newgate 在那台机器上照常跑着，网页界面在它的 <code>127.0.0.1:8899</code> 上听着——但从你这台机器够不到它。这个模块给出的答案是：穿过 SSH 去把它取回来。</p>
+<p>一个模块（<code>modules/ssh-tunnel</code>），两条路，同时在：</p>
+<pre><code class="lang-text">newgate tunnel add snode1 --host 10.0.50.11 --user me --remote-port 8899 --local-port 9401
+
+http://127.0.0.1:9401/ui/                  转发端口 —— 一个字节都不动
+http://127.0.0.1:8899/ui/remote/snode1/    共享端口上的 route —— 路径被改写</code></pre>
+<h2>两条路为什么都在</h2>
+<p>远端那个界面的产物里，绝对前缀是<strong>构建期烘死</strong>的：<code>vite.config.ts</code> 的 <code>base: &quot;/ui/&quot;</code> 会出现在三个地方——<code>index.html</code> 里的 <code>src</code>/<code>href</code>、CSS 的 <code>url()</code>、以及 JS 里 <code>import.meta.env.BASE_URL + &quot;api&quot;</code> 折出来的那个<strong>字符串</strong>。挂在一条路径底下就绕不开改写。</p>
+<ul>
+<li><strong>转发端口</strong>（相当于 <code>ssh -L</code>）：路径一个字节都不动，远端界面原样可用。<strong>保真。</strong> 代价是本机多占一个端口。</li>
+<li><strong>route</strong>：不占端口，任何路径都能到达它。代价是改写——<strong>尽力而为</strong>，不是等价物。</li>
+</ul>
+<h2>route 到底改了些什么</h2>
+<p>改写是<strong>一处前缀替换</strong>，因为远端那个绝对前缀只有一个字面量 <code>/ui/</code>。但有三处值得单独说，它们各自错过一次就很难查：</p>
+<p><strong>① JS 产物里的 API 基址。</strong> <code>import.meta.env.BASE_URL + &quot;api&quot;</code> 在构建期折成了 <code>const Fn=&quot;/ui/api&quot;</code>，写在 bundle 里面。这<strong>不是</strong>一个资源引用（那种地址在 HTML 那一遍已经改过），而是一个运行期用来拼 URL 的值。不改它的后果是：隧道里那个页面照着<strong>本机自己</strong>的 <code>/ui/api</code> 发请求——界面渲染得漂漂亮亮，<strong>每一个数字都是错的那台机器的</strong>。这比白屏糟得多，因为看起来是好的。</p>
+<p><strong>② 重定向（<code>Location</code>）。</strong> 远端对 <code>/ui</code>（没有尾斜杠）会 302 到 <code>/ui/</code>，那个地址在本机上是<strong>你自己的界面</strong>。不改写的症状是：点一下，从一个远端界面跳到了本地界面，而两者长得几乎一样。这是整套改写里唯一一处看不出来的错。</p>
+<p><strong>③ 外链不能碰。</strong> <code>https://example.com/ui/x</code> 里的 <code>/ui/</code> 不是远端自己的路径。裸替换会把它悄悄改成 <code>/ui/remote/&lt;id&gt;/x</code>——<strong>把用户的出站链接指回我们自己</strong>，而这件事错了没有任何症状。所以替换前会往回看到分隔符，带 scheme 或协议相对的一律跳过。</p>
+<p>改写的对象是 <code>text/html</code>、<code>text/css</code>、<code>text/javascript</code>（按内容类型判），带 <code>Content-Encoding</code> 的一律不动（压缩过的正文里没有明文路径可改）。</p>
+<p><strong>会坏的地方，说在前面</strong>：一个<strong>运行期才拼出绝对地址</strong>的界面（不是从那个 <code>/ui/</code> 字面量来的）过不来。所以 route 上看着不对时，用转发端口。</p>
+<h2>认证与信任</h2>
+<p><strong>只认密钥文件与 ssh-agent，不做密码。</strong></p>
+<p>这不是省事，是一条有后果的取舍：正因为配置里没有任何秘密，那份 target 列表才可以整份住在 <code>state.json</code>（0660、web 界面能编辑）。<code>identity</code> 存的是<strong>路径</strong>， <code>host_key</code> 存的是<strong>策略</strong>，两者都不是凭据。做密码的话，它要么落进那个谁都能读的文件里，要么另开一个只有命令行能碰的存储——后者会把「web 界面能配」砍掉一半。</p>
+<ul>
+<li>身份文件：显式给了 <code>identity</code> 就<strong>只</strong>试那一个（你指的是哪把钥匙就是哪把）；没给就按 <code>~/.ssh/id_ed25519</code>、<code>id_ecdsa</code>、<code>id_rsa</code> 的顺序，再叠上 ssh-agent。</li>
+<li><strong>主机密钥默认严格校验</strong>（<code>host_key: strict</code>）。不认识那台机器就拒，错误里写清下一步：先在终端 <code>ssh &lt;host&gt;</code> 一次，或者把这个 target 设成 <code>accept-new</code>。</li>
+<li><code>accept-new</code> 的语义是「<strong>没见过就记</strong>」，不是「变了也认」——记录里对不上时<strong>照拒</strong>，并且<strong>不会</strong>覆盖。变了就认是最危险的那种静默降级。</li>
+<li>记下一条新主机密钥时<strong>每次都会打日志</strong>：信任一台机器是一个事件。</li>
+<li><code>~/.ssh/config</code> 里 <code>Host</code> / <code>HostName</code> / <code>User</code> / <code>Port</code> / <code>IdentityFile</code> 会生效。 <code>ProxyJump</code>、<code>ProxyCommand</code>、<code>Match</code> 这些<strong>认不出但会影响连通性</strong>的键会<strong>报出来</strong>：静默忽略的后果是用户以为自己在走跳板机、实际直连了一个不可达的地址，而那看起来像网络问题。</li>
+</ul>
+<h2>连接的生命周期</h2>
+<p>默认是<strong>懒的</strong>：第一个请求才拨，连接池复用，空闲 <code>idle_seconds</code>（默认 300）之后断开。 <code>persistent: true</code> 的 target 在守护进程起来时就连，断了按 1s→30s 退避重连。</p>
+<p>复用不是优化，是这个功能有没有实用价值的决定因素：一次 SSH 握手是<strong>公钥运算</strong> （内网 50–200ms），比远端界面自己的一次 API 往返还贵。每个请求拨一次的话，打开一张控制台要付几十次握手的钱。</p>
+<p>守护进程每 2 秒让运行态追上配置，所以你在界面上改完，两秒内生效；它同时做空闲回收和 keepalive 探活（一条被对端或 NAT 悄悄掐掉的连接，不探的话症状是「第一个请求卡住」而不是「自动重连之后成功」）。</p>
+<h2>命令行</h2>
+<pre><code class="lang-bash">newgate tunnel                       # = ls，列出配置与两条路的地址
+newgate tunnel add &lt;id&gt; --host H [--user U] [--port 22] [--remote-port 8899] \
+                        [--local-port 0] [--identity PATH] [--persistent] \
+                        [--host-key strict|accept-new]
+newgate tunnel rm &lt;id&gt;
+newgate tunnel up &lt;id&gt;               # 让它常驻（改配置，守护进程两秒内跟上）
+newgate tunnel down &lt;id&gt;             # 改回按需拨号
+newgate tunnel test &lt;id&gt;             # 真拨一次，逐步报出卡在哪</code></pre>
+<p><strong><code>ls</code> 刻意不报连接状态</strong>：每一条 <code>newgate …</code> 都是另一个进程，它有自己的连接池，而那个池永远是空的——在那里打印「已连接」会是一句彻底的假话（真的连接在守护进程里）。要看谁连着，看网页界面上那张表，它是 live 的。</p>
+<p><code>tunnel test</code> 是这一族里唯一<strong>不需要守护进程</strong>的：它自己在当前进程里拨号，逐步报出 <code>dns</code> / <code>ssh</code> / <code>remote</code> 哪一步坏了。连不上时先跑它——一次成功的 SSH 与「SSH 通了但远端那个端口没人听」是完全不同的两件事，而它们的下一步动作也不同。</p>
+<h2>界面</h2>
+<p><code>/ui/remote/</code> 是索引页（朴素 HTML，不依赖前端产物——它在 web-dashboard 缺席的装配里也成立）。左侧栏的「路由 / 远端」一节里有两张卡：</p>
+<ul>
+<li><strong>目标</strong>：可写的配置卡，增删改都在这里（与别的配置卡同一套「整份替换」契约）。</li>
+<li><strong>连接</strong>：live 的状态表，两条路的地址都是<strong>能点的链接</strong>（新标签页打开——这是个带草稿的单页应用，链接把当前页顶掉就等于把没保存的编辑丢了）。转发端口没起来的那一格<strong>不给链接</strong>：点开就是连不上的地址，比没有链接更让人以为是自己配错了。</li>
+</ul>
+<h2>安全边界</h2>
+<ul>
+<li>本地这道门是<strong>唯一</strong>一道：只看 <code>Host</code> 头，只放行回环地址与 <code>localhost</code>（与架构图那道门同一条判据——挡 DNS rebinding 要看 Host，不是看对端地址）。远端那道门查的是它自己收到的 Host，而那个头是我们保留下来的浏览器填的那个。</li>
+<li>转发端口<strong>只绑 <code>127.0.0.1</code>，没有配置项可改</strong>。这个端口背后是一台<strong>没有 Host 门</strong>的远端界面，绑到别的地址等于把它对局域网敞开。要给别人用，该让别人自己建一条 tunnel（他们有自己的 SSH 凭据）。</li>
+<li>route 只转发<strong>远端的 <code>/ui</code> 那一棵</strong>：远端的 <code>/__newgate</code>（控制面）与 <code>/v1</code>（数据面）都够不到。</li>
+</ul>
+
+  </main>
+</div>
+<footer>
+  <p>这一页讲的是发行版 <strong>newgate-ext</strong> 的装配。内核机制的权威原文在
+     <a href="https://github.com/rzbdz/newgate">rzbdz/newgate</a>。</p>
+  <p><a href="https://github.com/rzbdz/newgate">内核</a> · <a href="https://github.com/rzbdz/newgate-ext/releases">版本发布</a></p>
+</footer>
+</body>
+</html>
