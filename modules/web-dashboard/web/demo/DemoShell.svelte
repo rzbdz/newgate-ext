@@ -48,27 +48,36 @@
   const landing = sections.find((s) => s.default)?.source ?? sections[0].source;
 
   /**
-   * 侧栏的行序：**声明了落点的那一节排第一**（不画分组标题），然后是不归组的那几节，
-   * 其余按分组**第一次出现**的先后聚在一起。
+   * 侧栏的行序：**声明了落点的那一节排第一**（不画分组标题），然后**按各节声明的
+   * 用途分档**，档内按来源序。
    *
-   * 规则与产品那份 Sidebar.svelte **逐字一样**（含 `landing` 那三处判断）。这里重写
-   * 一份是当初的取舍（两个组件吃的 props 不同），但规则分叉过一次——产品那边把主页
-   * 置顶了、这边没跟，于是演示页的目录顺序与真界面对不上。演示页值得存在的地方正是
-   * 「它就是那个界面」，所以这里补上。
+   * 与产品那份 Sidebar.svelte **同一条规则**（三个标题、同一个先后、没归类的排最后）。
+   * 这里重写一份是当初的取舍（两个组件吃的 props 不同），但规则**分叉过两次**——
+   * 一次是主页没置顶，一次是这里还在按贡献者写的 `group` 自由文本聚堆。演示页值得
+   * 存在的地方正是「它就是那个界面」，所以规则必须逐字一样。
    */
   function sidebarRows(): ({ kind: "group"; name: string } | { kind: "sec"; s: Section })[] {
     const out: ({ kind: "group"; name: string } | { kind: "sec"; s: Section })[] = [];
     const landingSec = sections.find((s) => s.default);
     if (landingSec) out.push({ kind: "sec", s: landingSec });
-    for (const s of sections) if (!s.group && s !== landingSec) out.push({ kind: "sec", s });
-    const seen: string[] = [];
+
+    const ORDER = ["clients", "routes", "settings"];
+    const head = (f: string): string =>
+      f === "clients" ? t("Clients") : f === "routes" ? t("Routes") : t("Settings");
+
+    const byField = new Map<string, Section[]>();
     for (const s of sections) {
-      if (!s.group || s === landingSec) continue;
-      if (seen.includes(s.group)) continue;
-      seen.push(s.group);
-      out.push({ kind: "group", name: s.group });
-      for (const g of sections)
-        if (g.group === s.group && g !== landingSec) out.push({ kind: "sec", s: g });
+      if (s === landingSec) continue;
+      const f = s.fields || "_other";
+      const g = byField.get(f);
+      if (g) g.push(s);
+      else byField.set(f, [s]);
+    }
+    for (const f of [...ORDER, "_other"]) {
+      const members = byField.get(f);
+      if (!members?.length) continue;
+      out.push({ kind: "group", name: f === "_other" ? t("Other") : head(f) });
+      for (const s of members) out.push({ kind: "sec", s });
     }
     return out;
   }
