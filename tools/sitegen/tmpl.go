@@ -88,12 +88,31 @@ var landingTmpl = template.Must(template.New("landing").Parse(`<!doctype html>
     <a class="button ghost" href="{{.Base}}docs/">文档</a>
   </p>
 
-  <div class="browser" aria-label="newgate 控制台">
+  <!-- 首页那一个框子有**两个 tab**：跑着的界面（真组件，喂假数据）与装配图
+       （一张 SVG，静态文件）。
+
+       为什么并排放在同一个框子里、而不是上下堆两截：它们回答的是同一个问题的两面
+       ——「这东西长什么样」与「这东西是怎么拼出来的」。拆成两截的话，首屏会连着
+       出现两个大块，第二个没人往下滚。
+
+       默认停在**界面**那一页（那是它的卖点）；role=tablist 与 aria-selected
+       是给读屏器的，键盘上左右箭头能切。两张都用同一圈 .browser 壳，所以切换时
+       外框不动、只有里面换内容——那一下才不至于像跳了一页。 -->
+  <div class="browser" data-tabs>
     <div class="browser-bar">
       <span class="dot"></span><span class="dot"></span><span class="dot"></span>
-      <span class="addr">newgate web</span>
+      <div class="browser-tabs" role="tablist" aria-label="newgate 控制台">
+        <button role="tab" aria-selected="true" data-tab="ui">newgate web</button>
+        <button role="tab" aria-selected="false" data-tab="arch">装配图</button>
+      </div>
+      <span class="addr">newgate-ext / dist.json</span>
     </div>
-    <iframe src="{{.Base}}demo/" title="newgate 控制台"></iframe>
+    <div class="browser-pane" data-pane="ui" role="tabpanel">
+      <iframe src="{{.Base}}demo/" title="newgate 控制台" loading="lazy"></iframe>
+    </div>
+    <div class="browser-pane" data-pane="arch" role="tabpanel" hidden>
+      <img src="{{.Base}}architecture.svg" alt="内核自带的模块与这个发行版自己写的模块，装进同一个二进制">
+    </div>
   </div>
   <ul class="chips">
     <li>一个静态二进制</li>
@@ -111,6 +130,39 @@ var landingTmpl = template.Must(template.New("landing").Parse(`<!doctype html>
      <a href="{{.Site.Kernel}}">rzbdz/newgate</a>。</p>
   <p><a href="{{.Site.Kernel}}">内核</a> · <a href="{{.Site.Releases}}">版本发布</a></p>
 </footer>
+<script>
+  // 首页那个框子的两个 tab（见上面 .browser 那一段）。
+  //
+  // 手写这十几行、不引任何东西：整站没有构建步骤、没有第三方脚本，而这是**唯一**
+  // 一处要 JS 的地方。二十行换来「引一个框架」，是把这一条规矩卖掉了。
+  //
+  // 行为只做两件：点 tab 切页；点 tab 时把**焦点留在那一排按钮里**（不然按完键盘
+  // 就落到 body 上，读屏器要从头念）。左右箭头是 tablist 该有的规矩，一并给上。
+  (function () {
+    var box = document.querySelector('.browser[data-tabs]');
+    if (!box) return;
+    var tabs = [].slice.call(box.querySelectorAll('[role=tab]'));
+    var panes = [].slice.call(box.querySelectorAll('[data-pane]'));
+    function show(name) {
+      tabs.forEach(function (t) {
+        var on = t.dataset.tab === name;
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      panes.forEach(function (p) { p.hidden = p.dataset.pane !== name; });
+    }
+    tabs.forEach(function (t, i) {
+      t.addEventListener('click', function () { show(t.dataset.tab); });
+      t.addEventListener('keydown', function (e) {
+        var d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+        if (!d) return;
+        e.preventDefault();
+        var next = tabs[(i + d + tabs.length) % tabs.length];
+        show(next.dataset.tab);
+        next.focus();
+      });
+    });
+  })();
+</script>
 </body>
 </html>
 `))

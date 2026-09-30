@@ -1,0 +1,156 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 452" width="960" height="452" role="img"
+     aria-label="newgate 的装配：一份规格书喂给组装器，内核仓库自带的模块与发行版仓库自己写的模块装进同一个二进制"
+     font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans SC', sans-serif">
+  <!--
+    ══════════════════════════════════════════════════════════════════════════
+    newgate 的模块化架构图。README 与站点首页引用的是**这一份**（站点构建会把它
+    抄进产物，见 tools/sitegen/main.go 的 archSrc）——两张不同步的架构图比没有图更糟。
+
+    # 它要讲的那一件事
+
+    **连 gateway 和 cli 都是模块。** 内核仓库本身就是一个组装器，它自带的那些东西
+    （转发、熔断、终端界面、接管、槽位……）与发行版自己写的那些（客户端接入、上游
+    怪癖、皮肤）是**同一种东西**：一个目录、一个 `New()`。
+
+    所以两栏的分法不是「核心 vs 插件」，而是**哪个仓库出货**——两栏的标题写的就是
+    仓库名（`rzbdz/newgate` / `rzbdz/newgate-ext`），每个方块写的是它在那份仓库里的
+    **路径**（`modules/<名字>`，两个仓库都是这个形状：仓库根 = 模块根）。
+
+    # 三个刻意的取舍
+
+      - **方块上写路径而不是花名**：`modules/gateway` 是照着磁盘上那个目录抄的，
+        所以图上任何一格都对应得到仓库里的一行 `ls`。写花名（「转发层」）好看，
+        但它不指向任何东西。
+      - **两栏同形**：方块尺寸、圆角、字号逐字相同，只有底色区分来源。画成两种
+        形状就等于在说「这两类东西不一样」，而这张图的全部意思正好相反。
+      - **两种颜色**：墨（中性）与一条橙（强调）。橙色只出现在「发行版自己带的那一栏」
+        与「规格书」上，其余一律灰阶。
+
+    # 深色
+
+    浅色是默认、深色走 prefers-color-scheme——与站点、与界面同一套规矩（见
+    site/src/site.css 与界面 app.css 的文件头）。
+    ══════════════════════════════════════════════════════════════════════════
+  -->
+  <style>
+    .bg    { fill: #ffffff; }
+    .spec  { fill: #fdf2ed; stroke: #e9ac93; }
+    .asm   { fill: #f7f5f0; stroke: #e7e3d9; }
+    .panel { fill: #fcfbf8; stroke: #e7e3d9; }
+    .panel-hot { fill: #fefaf7; stroke: #eccfbe; }
+    .chip  { fill: #f2f0ea; stroke: #e2ded3; }
+    .chip-hot { fill: #fbe9e0; stroke: #e9b79c; }
+    .wire  { stroke: #cfcabd; fill: none; }
+    .ink   { fill: #141413; }
+    .mid   { fill: #5f5c54; }
+    .dim   { fill: #8f8c82; }
+    .hotink{ fill: #b85c3c; }
+    .t     { font-size: 13px; }
+    .h     { font-size: 15px; font-weight: 650; letter-spacing: -.01em; }
+    .repo  { font-size: 14px; font-weight: 650; letter-spacing: -.005em; }
+    .cap   { font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; }
+    .m     { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+    @media (prefers-color-scheme: dark) {
+      .bg    { fill: #0b0b0b; }
+      .spec  { fill: #1e1613; stroke: #6d4534; }
+      .asm   { fill: #141414; stroke: #262626; }
+      .panel { fill: #121212; stroke: #262626; }
+      .panel-hot { fill: #161211; stroke: #3d2a22; }
+      .chip  { fill: #1b1b1b; stroke: #2b2b2b; }
+      .chip-hot { fill: #241812; stroke: #4d3327; }
+      .wire  { stroke: #353535; }
+      .ink   { fill: #f2f2f1; }
+      .mid   { fill: #b6b3ab; }
+      .dim   { fill: #7c7972; }
+      .hotink{ fill: #e79274; }
+    }
+  </style>
+
+  <rect class="bg" width="960" height="452"/>
+
+  <!-- ── 规格书 ──────────────────────────────────────────────────────────
+       这一份发行版「是什么」的全部：一份 JSON，列出装哪些模块。 -->
+  <rect class="spec" x="340" y="20" width="280" height="44" rx="10"/>
+  <text class="m hotink" x="358" y="38">newgate-ext/dist.json</text>
+  <text class="m ink" x="358" y="55">{"modules": […]}</text>
+
+  <path class="wire" d="M480 64 L480 88" stroke-width="1.4"/>
+  <path class="wire" d="M476 84 L480 91 L484 84" stroke-width="1.4"/>
+  <text class="t dim" x="494" y="82">assemble(spec)</text>
+
+  <!-- ── 组装器 ──────────────────────────────────────────────────────────
+       内核真正做的事：把规格书点到的模块按 Requires/Provides 排好序、起停。
+       它不认识任何一家上游——它只认识那张表。 -->
+  <rect class="asm" x="44" y="96" width="872" height="54" rx="12"/>
+  <text class="cap dim" x="66" y="116">the assembler</text>
+  <text class="h ink" x="66" y="138">Requires / Provides → topological order → Start / Stop</text>
+  <text class="t dim" x="612" y="138">no upstream, no client, no product decision</text>
+
+  <g class="wire" stroke-width="1.2">
+    <path d="M256 212 L256 152"/><path d="M253 156 L256 149 L259 156"/>
+    <path d="M704 212 L704 152"/><path d="M701 156 L704 149 L707 156"/>
+  </g>
+
+  <!-- ── 两栏：同一个内核，两种来源 ─────────────────────────────────────── -->
+
+  <!-- 左：内核仓库自带的那些。**gateway 与 cli 就在这里面**——这正是这张图的题眼。 -->
+  <rect class="panel" x="44" y="212" width="424" height="198" rx="12"/>
+  <text class="cap dim" x="66" y="242">ships in the kernel</text>
+  <text class="repo m mid" x="66" y="258">rzbdz/newgate</text>
+  <text class="t dim" x="66" y="276">fourteen directories, all of them modules</text>
+
+  <g>
+    <rect class="chip" x="66"  y="288" width="184" height="24" rx="7"/>
+    <text class="m mid" x="78" y="304">modules/gateway</text>
+    <rect class="chip" x="262" y="288" width="184" height="24" rx="7"/>
+    <text class="m mid" x="274" y="304">modules/breaker</text>
+
+    <rect class="chip" x="66"  y="318" width="184" height="24" rx="7"/>
+    <text class="m mid" x="78" y="334">modules/cli</text>
+    <rect class="chip" x="262" y="318" width="184" height="24" rx="7"/>
+    <text class="m mid" x="274" y="334">modules/runtime</text>
+
+    <rect class="chip" x="66"  y="348" width="184" height="24" rx="7"/>
+    <text class="m mid" x="78" y="364">modules/config</text>
+    <rect class="chip" x="262" y="348" width="184" height="24" rx="7"/>
+    <text class="m mid" x="274" y="364">modules/porthub</text>
+
+    <rect class="chip" x="66"  y="378" width="184" height="24" rx="7"/>
+    <text class="m mid" x="78" y="394">modules/confighook</text>
+    <rect class="chip" x="262" y="378" width="184" height="24" rx="7"/>
+    <text class="m mid" x="274" y="394">… · ten more</text>
+  </g>
+
+  <!-- 右：发行版仓库自己带的那些。方块尺寸与左边**逐字相同**——同一种东西。 -->
+  <rect class="panel-hot" x="492" y="212" width="424" height="198" rx="12"/>
+  <text class="cap hotink" x="514" y="242">added by this distribution</text>
+  <text class="repo m hotink" x="514" y="258">rzbdz/newgate-ext</text>
+  <text class="t dim" x="514" y="276">the repository you fork; one directory each</text>
+
+  <g>
+    <rect class="chip-hot" x="514" y="288" width="184" height="24" rx="7"/>
+    <text class="m hotink" x="526" y="304">modules/claudecode</text>
+    <rect class="chip-hot" x="710" y="288" width="184" height="24" rx="7"/>
+    <text class="m hotink" x="722" y="304">modules/codex</text>
+
+    <rect class="chip-hot" x="514" y="318" width="184" height="24" rx="7"/>
+    <text class="m hotink" x="526" y="334">modules/deepseek</text>
+    <rect class="chip-hot" x="710" y="318" width="184" height="24" rx="7"/>
+    <text class="m hotink" x="722" y="334">modules/glm</text>
+
+    <rect class="chip-hot" x="514" y="348" width="184" height="24" rx="7"/>
+    <text class="m hotink" x="526" y="364">modules/web-dashboard</text>
+    <rect class="chip-hot" x="710" y="348" width="184" height="24" rx="7"/>
+    <text class="m hotink" x="722" y="364">modules/home</text>
+
+    <rect class="chip-hot" x="514" y="378" width="184" height="24" rx="7"/>
+    <text class="m hotink" x="526" y="394">modules/theme-*</text>
+    <rect class="chip-hot" x="710" y="378" width="184" height="24" rx="7"/>
+    <text class="m hotink" x="722" y="394">modules/yours</text>
+  </g>
+
+  <text class="t dim" x="44" y="424">Both columns are the same kind of thing — a directory with
+     <tspan class="m">New()</tspan> in it. The split is which repository ships it, not what it may do.</text>
+  <text class="t dim" x="44" y="444">A module the spec leaves out is not in the binary at all —
+     not a flag you turn off at runtime.</text>
+</svg>

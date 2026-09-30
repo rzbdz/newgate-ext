@@ -170,7 +170,11 @@ func TestUnrecognizedSyntaxIsAnError(t *testing.T) {
 		{"四级标题", "# T\n\n#### 太深了\n"},
 		{"缩进代码块", "# T\n\n    缩进四个空格\n"},
 		{"嵌套列表", "# T\n\n- 一层\n  - 二层\n"},
-		{"图片语法", "# T\n\n![图](a.png)\n"},
+		// 图片语法**不再一律报错**：本站放行自己的 svg（架构图那一张，见 md.go 的
+		// parseImage）。仍然拒的是**外链与位图**——那两种会让站点依赖别人的可用性、
+		// 或者破坏「站点就两三个文件、处处能离线看」。两条都在下面钉住。
+		{"外链图片", "# T\n\n![图](https://example.com/a.svg)\n"},
+		{"位图", "# T\n\n![图](a.png)\n"},
 		{"裸 HTML", "# T\n\n<div>手写标签</div>\n"},
 		{"下划线式标题", "标题\n===\n"},
 		{"未闭合的围栏", "# T\n\n```bash\nnewgate status\n"},
@@ -187,6 +191,22 @@ func TestUnrecognizedSyntaxIsAnError(t *testing.T) {
 				t.Error("这种写法该报错（它会静默地画错，而作者以为渲染器认了），却渲染成功了")
 			}
 		})
+	}
+}
+
+// TestLocalSvgFigureIsAllowed：本站自己的 svg 放行，而且渲染成 <img class="figure">。
+//
+// 这条与上面那条「外链/位图仍然报错」是一对：架构图是这一站唯一放行的一类图
+// （2026-09-30 用户要的），而放行的范围**必须写死**，不然这条口子会越开越大。
+func TestLocalSvgFigureIsAllowed(t *testing.T) {
+	body, _, err := renderMarkdown("# T\n\n![说明](../../architecture.svg)\n")
+	if err != nil {
+		t.Fatalf("本站的 svg 该放行，却报错: %v", err)
+	}
+	for _, want := range []string{`src="../../architecture.svg"`, `alt="说明"`, `class="figure"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("渲染结果里该有 %s，实际：%s", want, body)
+		}
 	}
 }
 

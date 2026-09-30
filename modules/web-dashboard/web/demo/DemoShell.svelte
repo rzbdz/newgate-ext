@@ -45,7 +45,8 @@
    * 卡都是写死的，不会出现「声明了落点但那一节是空的」。产品那边要回落，是因为模块
    * 可以被关掉、profile 可以被删。
    */
-  const landing = sections.find((s) => s.default)?.source ?? sections[0].source;
+  const landingSec = sections.find((s) => s.default) ?? sections[0];
+  const landing = landingSec.source;
 
   /**
    * 侧栏的行序：**声明了落点的那一节排第一**（不画分组标题），然后**按各节声明的
@@ -58,7 +59,7 @@
    */
   function sidebarRows(): ({ kind: "group"; name: string } | { kind: "sec"; s: Section })[] {
     const out: ({ kind: "group"; name: string } | { kind: "sec"; s: Section })[] = [];
-    const landingSec = sections.find((s) => s.default);
+    const landingSec = sections.find((s) => s.default) ?? sections[0];
     if (landingSec) out.push({ kind: "sec", s: landingSec });
 
     const ORDER = ["clients", "routes", "settings"];
@@ -83,6 +84,15 @@
   }
   const rows = sidebarRows();
 
+  /**
+   * 主页模式（与产品 App.svelte 的 `route.home` 同一条路）。
+   *
+   * **打开就是它**：这一页演的是那个界面，而那个界面今天开屏只剩卡片。进完整界面
+   * 要点左边那颗齿轮（见下面模板里那一颗）——演示页没有地址栏可跳，所以它用状态
+   * 而不是 hash，但两地**摆的东西**必须逐字一样。
+   */
+  let home = $state(true);
+
   let active = $state<string>(landing);
   /** 当前这一节里选中的那张卡（空 = 这一节的第一张，与产品一致）。 */
   let card = $state<string>("");
@@ -93,7 +103,10 @@
 
   const section = $derived(sections.find((s) => s.source === active));
   const cards = $derived(concepts.filter((c) => c.source === active));
-  const current = $derived(cards.find((c) => c.id === card) ?? cards[0]);
+  /** 主页模式下画的就是落点那一节的**第一张**卡（与产品 App 的 homeConcept 同一条）。 */
+  const homeCard = $derived(concepts.filter((c) => c.source === landing)[0]);
+
+  const current = $derived(home ? homeCard : (cards.find((c) => c.id === card) ?? cards[0]));
   /** 卡片顺序那一栏的形状：卡少就横着一条，多了就左侧竖着列——与产品的阈值同一条。 */
   const vertical = $derived(cards.length > 8);
 
@@ -201,15 +214,34 @@
   }
 </script>
 
-<div class="shell">
+<div class="shell" class:home>
   <header class="top">
-    <!-- 报头与产品那一份**长得一样**：一个牌子，右边一个保存。
-         这里**不写任何旁白**（原来有一条「这一页是真界面配假数据…」）。旁白是一句
-         每时每刻都杵在屏幕上的话，它把这一页说成「演示」而不是「界面」，而这一页
-         值得存在的地方恰恰是它就是那个界面。要看的人点一下任何东西就会知道
-         （见 say / noBackend 的 toast），不需要先被通知一遍。 -->
+    <!-- 与产品那份**同一个版面**：主页模式下左边一颗齿轮（进完整界面），右边是
+         这一节的全局动作 + 皮肤 + 保存；完整界面下左边是牌子 + 过滤框（演示页不给
+         真的过滤，只在产品里才有），右边多一颗房子（回主页）。 -->
+    {#if home}
+      <button class="icon" title={t("settings")} aria-label={t("settings")} onclick={() => (home = false)}>
+        <svg class="gear" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="3.1" />
+          <path
+            d="M19.5 14.6a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.9 2.9l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5v.2a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.9-2.9l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.9-2.9l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.9 2.9l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1h.2a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"
+          />
+        </svg>
+      </button>
+    {/if}
     <strong class="brand">newgate</strong>
     <span class="spacer"></span>
+    <!-- 主页模式下这一节的全局动作（今天只有 `auto fallback` 一颗）。演示页没有
+         后端，所以点它只弹一句。 -->
+    {#if home}
+      {#each landingSec?.actions ?? [] as a (a.id)}
+        {#if a.id === "fallback"}
+          <button class="tiny ghost toned" data-tone={a.tone} onclick={() => noBackend(a.label)}>
+            {a.label}
+          </button>
+        {/if}
+      {/each}
+    {/if}
     <!-- 皮肤切换：与真界面那一格同一个形状，只是它只在这里生效（见 pickTheme）。 -->
     {#if theme.themes.length}
       <ThemePicker doc={theme} onPick={pickTheme} />
@@ -217,8 +249,16 @@
     <button class="primary" onclick={onSave} disabled={!dirty}>
       {t("save")}{dirty ? ` (${dirty})` : ""}
     </button>
+    {#if !home}
+      <button class="icon" title={t("home mode")} aria-label={t("home mode")} onclick={() => (home = true)}>
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M2.6 7.4 8 3l5.4 4.4V13a.6.6 0 0 1-.6.6h-3v-3.4h-3.6v3.4h-3A.6.6 0 0 1 2.6 13z" />
+        </svg>
+      </button>
+    {/if}
   </header>
 
+  {#if !home}
   <nav class="side">
     <p class="head">{t("sections")}</p>
     {#each rows as r, i (`${r.kind}:${r.kind === "group" ? r.name : r.s.source}:${i}`)}
@@ -238,8 +278,10 @@
       {/if}
     {/each}
   </nav>
+  {/if}
 
   <section class="content" class:subcol={vertical}>
+    {#if !home}
     <div class="secbar">
       <span class="name">{section?.title}</span>
       <span class="spacer"></span>
@@ -249,8 +291,9 @@
         <button class="tiny ghost" onclick={() => noBackend(a.label)}>{a.label}</button>
       {/each}
     </div>
+    {/if}
 
-    {#if cards.length > 1}
+    {#if !home && cards.length > 1}
       {#if vertical}
         <!-- 卡多（config 那种）时：左侧一列，一眼扫完。 -->
         <nav class="v">
@@ -296,6 +339,7 @@
           {onDeleteFile}
           {onAction}
           {onRowAction}
+          bare={home}
           onToggleSplit={() => (split = !split)}
         />
       {:else}
@@ -318,6 +362,11 @@
     grid-template-rows: auto minmax(0, 1fr);
     height: 100%;
   }
+  /* 主页模式：目录那一栏不画，内容占满整宽（与产品 app.css 的 `.shell.home`
+     同一条）。 */
+  .shell.home { grid-template-columns: minmax(0, 1fr); }
+  .shell.home .content { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+
   .top {
     grid-column: 1 / -1;
     display: flex;

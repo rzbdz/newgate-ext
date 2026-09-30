@@ -59,30 +59,10 @@ DeepSeek 的 reasoning 回传与尾部形状、GLM 的思维链回传、Claude C
 模块（Claude Code × DeepSeek、Codex × DeepSeek、OpenCode 里 Oh My OpenAgent 的
 槽位）。读一个，换掉它，或者给一个我们从没听说过的上游写补丁。
 
-## Fork 下来，改成你自己的
+### 连 `gateway` 和 `cli` 都是模块
 
-一个模块就是一个目录、里面一个 `New()`。把我们的路由策略换成你的、扔掉你不在乎的
-怪癖、留下网关和熔断：
-
-```jsonc
-// dist-mine.json  →  build/build.sh  →  每个平台一个静态二进制
-{ "distribution": "mine",
-  "modules": ["tui", "deepseek", "glm", "claudecode", "opencode"],
-  "disable": [] }
-```
-
-网关、档位解析、熔断、界面、入口——全都是模块，所以换一个策略 = 换一个模块，而不是
-给内核打补丁。`newgate restart` 会把 socket 交出去，所以你发自己的版本不会打断任何
-人，包括正在会话里的你自己。想从几乎什么都没有开始，就从 `dist-hello.json` 起步
-（框架 + 一个 `hello`）。
-
-## 安装
-
-```bash
-gh release download --repo rzbdz/newgate-ext -p '*linux-amd64'
-mv newgate-default-linux-amd64 ~/.local/bin/newgate && chmod +x ~/.local/bin/newgate
-newgate init && newgate on claude     # 还有：newgate on codex / newgate on opencode
-```
-
-一个静态二进制，没有运行期依赖。`newgate init` 铺下一份带占位符的配置；把 key 放进
-`providers.json`（或者放进 `NEWGATE_KEY_*` 环境变量），重开一次 shell 就能干活了。
+一个模块就是一个目录、一个导出的 `New()`。内核那一栏里住着网关、熔断、终端界面、
+接管；右边那一栏是这个发行版加的：客户端接入、上游怪癖、网页界面、三套皮肤。**两栏
+是同一种东西**——分栏只看它由哪个仓库出货，不看它被允许做什么。规格书（8 行 JSON）
+没写进去的模块，二进制里根本没有它，不是一个运行期开关。上面那个框子的第二页
+（装配图）就是它。

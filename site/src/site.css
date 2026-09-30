@@ -71,6 +71,19 @@ body {
         "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
 }
 
+/* 正文里那张架构图（见 tools/sitegen/md.go 的 parseImage）。**不许它溢出**：
+   正文一栏比图上那些注释宽不了多少，而图一旦比视口宽，右边就被切掉——那比字小
+   糟得多。所以它就按栏宽走；要看得清靠**图上自己的字号**（见 architecture.svg
+   文件头那条「缩到 810 之后那几条注释只有 ~9px」的取舍），不靠把它拉宽。
+   `height: auto` 必须写：SVG 带 width/height 属性，不覆盖的话它会按 452 那么高
+   去拉伸。 */
+main img.figure {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 6px 0 18px;
+}
+
 /* 顶栏。粘住是因为文档很长，而「换一节」不该要先滚回顶。 */
 header.top {
   position: sticky; top: 0; z-index: 10;
@@ -218,7 +231,39 @@ body { background: var(--bg); }
 .browser-bar .dot:nth-child(1) { background: #e06c75; }
 .browser-bar .dot:nth-child(2) { background: #d9a441; }
 .browser-bar .dot:nth-child(3) { background: #4ea87a; }
-.browser-bar .addr { margin-left: 8px; flex: 1; }
+.browser-bar .addr { margin-left: auto; }
+
+/* 框子里那两个 tab（界面 / 装配图）。
+ *
+ * 形状是**分段控件**：一排按钮住在一个凹槽里，选中那一颗抬起一档（浅底 + 细边）。
+ * 与站点其余部分同一套用料——一样的圆角、一样的 --line、一样的等宽字。选中的那一
+ * 颗用 --bg 而不是 --accent：这个框子里已经有一整屏彩色界面（或者一张暖色图），
+ * 再点一颗蓝按钮进去，那一点就是整页最跳的东西，而它只是个开关。 */
+.browser-tabs { display: flex; gap: 2px; margin-left: 10px; }
+.browser-tabs button {
+  font-family: var(--mono); font-size: 12px;
+  padding: 3px 10px; border: 1px solid transparent; border-radius: 6px;
+  background: transparent; color: var(--dim); cursor: pointer;
+}
+.browser-tabs button:hover { color: var(--ink); }
+.browser-tabs button[aria-selected="true"] {
+  background: var(--bg); border-color: var(--line); color: var(--ink);
+}
+.browser-tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* 两个页签**同高**：都用 4:3 那一套（见下面 iframe 那条的说明），切换时框子不跳。
+ * `[hidden]` 必须显式写：下面给装配图那一页设了 display:flex，而那一条会盖掉浏览器
+ * 默认的 `[hidden] { display: none }`——不补这一句，两张会同时显示。 */
+.browser-pane[hidden] { display: none; }
+.browser-pane[data-pane="arch"] {
+  display: flex; align-items: center; justify-content: center;
+  /* `width: 100%` 不是可有可无的：`aspect-ratio` 配 `max-height` 时，块级元素一旦
+     被高度封顶，**宽度会反过来由比例算**——实测漏了它就缩成 800px（界面那一页是
+     1058px），切换 tab 时框子左右各缩一截。 */
+  width: 100%; aspect-ratio: 4 / 3; max-height: 600px;
+  padding: 0 34px; background: var(--bg);
+}
+.browser-pane[data-pane="arch"] img { display: block; width: 100%; height: auto; }
 /* 4:3，而且是**比例**不是高度。
  *
  * 原来写的是 `height: 640px`（窄屏 480px），那是「按桌面宽度调出来的一个数」：

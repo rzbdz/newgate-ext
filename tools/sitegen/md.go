@@ -41,6 +41,26 @@ import (
 	"unicode/utf8"
 )
 
+// parseImage 解析一条 `![alt](src)`，返回 alt、src 与**剩下的字符串**。
+//
+// 只认最简单的这一种（没有 title、路径里没有括号）：这一站放图的场合只有架构图
+// 一处，为它写一个完整的 CommonMark 图片解析器是把力气花在没人走的那条路上。
+func parseImage(s string) (alt, src, rest string, err error) {
+	if !strings.HasPrefix(s, "![") {
+		return "", "", s, fmt.Errorf("not an image: %q", s)
+	}
+	close := strings.Index(s, "](")
+	if close < 0 {
+		return "", "", s, fmt.Errorf("图片语法没闭合：%q", s)
+	}
+	after := s[close+2:]
+	end := strings.Index(after, ")")
+	if end < 0 {
+		return "", "", s, fmt.Errorf("图片的地址没闭合：%q", s)
+	}
+	return s[2:close], after[:end], after[end+1:], nil
+}
+
 // renderMarkdown 把一份 markdown 渲染成 HTML 片段，并取出页面标题。
 //
 // 标题 = 第一行 `# `。它**从正文里摘掉**：模板自己画 `<h1>`（全站只有一个 h1，
@@ -557,7 +577,23 @@ func inline(s string) (string, error) {
 			i += j + 4
 
 		case strings.HasPrefix(s[i:], "!["):
-			return "", fmt.Errorf("不认图片语法（本站不放截图，见 README 那份风格约定）：%q", s)
+			// **架构图是唯一放行的一类**（2026-09-30 用户明确要过一张）。
+			//
+			// 原来这里一律报错，理由是 README 那条「不要截图/终端转录」。那条禁的是
+			// **录屏式的截图**（让人看了不想读），不是「用一张图把结构讲清楚」——
+			// 后者恰恰是首页最缺的东西。
+			//
+			// 放行的范围写死在 `src` 上：**本站的 .svg**。外链图片会让站点依赖别人的
+			// 可用性，位图则与「站点就两三个文件、处处能离线看」这条不合。
+			alt, src, rest, err := parseImage(s[i:])
+			if err != nil {
+				return "", err
+			}
+			if !strings.HasSuffix(src, ".svg") || strings.Contains(src, "://") {
+				return "", fmt.Errorf("站点只放本站的 svg（外链与位图都不认，见 README 的风格约定）：%q", src)
+			}
+			b.WriteString(`<img class="figure" src="` + esc(src) + `" alt="` + esc(alt) + `">`)
+			i += len(s[i:]) - len(rest)
 
 		case s[i] == '[':
 			j := strings.Index(s[i:], "](")

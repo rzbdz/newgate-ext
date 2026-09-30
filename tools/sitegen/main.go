@@ -49,6 +49,13 @@ const (
 	// 它是**静态文件**，不是前端工具链的一部分：`--docs`（不装 node 也能跑的那条）
 	// 照样读得到它，因为它已经提交在仓库里。
 	faviconSrc = "modules/web-dashboard/web/public/favicon.svg"
+	// archSrc 是那张架构图，放在 site/src 下、**与站点一起进版本控制**。
+	//
+	// 与 favicon 的取舍正好相反，这里说的是「与源码一起改」：那张图画的就是这个仓库
+	// 的装配，改一个模块就要改它一笔。放进 site/src 之后，`site/build.sh` 一跑就带
+	// 上了，不必记得多拷一个文件。README 引的是同一份（`site/src/architecture.svg`）
+	// ——github 渲染相对路径的 SVG 是支持的，所以那边不用另存一份。
+	archSrc = "site/src/architecture.svg"
 )
 
 // site 是站点级配置（site/src/site.json）：站名、外链、语言表。
@@ -201,6 +208,13 @@ func run(root string) error {
 		return fmt.Errorf("读不到站点图标（%s）: %w", faviconSrc, err)
 	}
 	files = append(files, outFile{rel: "favicon.svg", bytes: fav})
+
+	// 架构图：同样抄进产物（同样是「站点要能独立端出去」那条）。
+	arch, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(archSrc)))
+	if err != nil {
+		return fmt.Errorf("读不到架构图（%s）: %w", archSrc, err)
+	}
+	files = append(files, outFile{rel: "architecture.svg", bytes: arch})
 	// .nojekyll：GitHub Pages 默认拿 Jekyll 过一遍，而它会把下划线开头的文件与目录
 	// 吃掉（我们今天的资源没有，但这道门是纯损失、零收益——一个空文件就关掉它）。
 	files = append(files, outFile{rel: ".nojekyll", bytes: nil})

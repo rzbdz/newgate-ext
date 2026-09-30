@@ -71,8 +71,16 @@ we have never heard of.
 
 ## Fork it, and make it yours
 
-A module is one directory with a `New()` in it. Swap our routing policy for
-yours, drop the quirks you don't care about, keep the gateway and the breaker:
+**Even the gateway and the CLI are modules.** A module is one directory with a
+`New()` in it, and every box below is one — the left column ships in the kernel
+([`rzbdz/newgate`](https://github.com/rzbdz/newgate)), the right one is what this
+distribution adds. The two columns are the same kind of thing; the split is only
+which repository ships it.
+
+![Two columns of modules — the fourteen the kernel ships, the ones this distribution adds — both feeding one binary](site/src/architecture.svg)
+
+Swap our routing policy for yours, drop the quirks you don't care about, keep the
+gateway and the breaker:
 
 ```jsonc
 // dist-mine.json  →  build/build.sh  →  one static binary per platform
@@ -82,7 +90,10 @@ yours, drop the quirks you don't care about, keep the gateway and the breaker:
 ```
 
 Gateway, tier resolution, breaker, UI and entry point are all modules, so
-replacing a policy means replacing a module — not patching a core. `newgate
+replacing a policy means replacing a module — not patching a core. And "module"
+is one thing, not two: the kernel's own `modules/gateway` and the
+`modules/deepseek` in your fork satisfy the same contract, declare the same
+`Requires`/`Provides`, and are ordered by the same assembler. `newgate
 restart` hands the socket over, so shipping your version doesn't interrupt
 anyone, including yourself mid-session. Start from `dist-hello.json` (the
 framework plus one `hello`) if you would rather begin at almost nothing.
