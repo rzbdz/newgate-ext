@@ -12,7 +12,9 @@
   //  2. **tone 是语义，不是颜色**。这里把 ok/warn/bad 翻成 CSS 变量；内核不传
   //     ANSI 也不传色值，否则同一份数据在终端与网页上就得各写一遍转义。
   //     认不出来的 tone 一律当没给：一个陌生的词不该让整格变成不可读的黑块。
-  type Cell = { text: string; tone?: string };
+  // href 非空 = 这一格是一个链接（见 view.Cell）。地址由贡献者给——它往往是
+  // 算出来的，而算法只有贡献者知道。
+  type Cell = { text: string; tone?: string; href?: string };
   type Column = { id: string; label: string; align?: string };
   /** 行上的一个按钮。label 是**贡献者写好的那句人话**（后端已经翻过），界面不译。 */
   type Act = { id: string; label: string };
@@ -76,7 +78,13 @@
         <tr>
           {#each columns as col (col.id)}
             {@const c = cell(row, col.id)}
-            <td class:right={col.align === "right"} class={toneClass(c.tone)}>{c.text}</td>
+            <td class:right={col.align === "right"} class={toneClass(c.tone)}>
+              {#if c.href}
+                <!-- target="_blank" 是**定死**的：这是一个带草稿的单页应用，
+                     链接把当前页顶掉就等于把那份没保存的编辑丢掉。 -->
+                <a href={c.href} target="_blank" rel="noopener noreferrer">{c.text}</a>
+              {:else}{c.text}{/if}
+            </td>
           {/each}
           {#if hasActions}
             <td class="acts">
@@ -116,6 +124,8 @@
   th { color: var(--dim); font-weight: 600; }
   td { font-family: var(--mono); }
   .right { text-align: right; }
+  a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+  a:hover { color: var(--accent); }
   tbody tr:hover { background: var(--panel-2); }
   .acts { width: 1%; } /* 按钮那一列贴着右边，别把数据的列挤窄 */
   .acts button + button { margin-left: 4px; }

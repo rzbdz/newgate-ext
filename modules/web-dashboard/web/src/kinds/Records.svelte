@@ -24,7 +24,15 @@
   // 排查起来像见鬼。base 是这一条代表的那份文件加载时的基线（可写记录集才有，
   // 删它时要 CAS 判断，见 view.Record.Base）。
   type Rec = { id: string; label: string; fields: Field[]; removable?: boolean; base?: string };
-  type Data = { file?: string; base?: string; items: Rec[]; can_add?: boolean; add_label?: string };
+  type Data = {
+    file?: string;
+    base?: string;
+    items: Rec[];
+    can_add?: boolean;
+    add_label?: string;
+    // 新增一条时的字段形状（贡献者给，见 view.Records.Blank）。
+    blank?: Field[];
+  };
 
   let {
     data,
@@ -91,7 +99,13 @@
    * 该列出别的档位）。
    */
   function blankFields(): Field[] {
-    return (data.items?.[0]?.fields ?? []).map((f) => ({ ...f, value: "" }));
+    // 形状优先取**贡献者显式给的那一份**（`data.blank`）。为什么要留这个口子：
+    // 字段的形状长在每一条记录上，所以「新的一条长什么样」过去只能去抄一条现成
+    // 的——而**一条都没有**的时候无处可抄，点「新增」得到的是一张一个输入框都
+    // 没有的空卡片，用户没有任何办法把内容填进去。装机就是这个状态（一份还没配
+    // 过任何东西的配置），所以它不是边角。
+    const shape = data.blank?.length ? data.blank : data.items?.[0]?.fields;
+    return (shape ?? []).map((f) => ({ ...f, value: "" }));
   }
 
   /**

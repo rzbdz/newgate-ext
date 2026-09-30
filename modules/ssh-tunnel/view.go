@@ -38,37 +38,7 @@ func targetsConcept(loaded Loaded) viewapi.Concept {
 			ID:        t.ID,
 			Label:     t.Label,
 			Removable: true,
-			Fields: []viewapi.Field{
-				{ID: "id", Label: i18n.T("id", nil), Kind: viewapi.FieldText, Value: t.ID,
-					Why: i18n.T("machine name: it is the URL segment (/ui/remote/<id>/) and cannot contain / ? # or spaces", nil)},
-				{ID: "label", Label: i18n.T("label", nil), Kind: viewapi.FieldText, Value: t.Label},
-				{ID: "host", Label: i18n.T("ssh host", nil), Kind: viewapi.FieldText, Value: t.Host,
-					Why: i18n.T("a name from ~/.ssh/config, or an address", nil)},
-				{ID: "user", Label: i18n.T("user", nil), Kind: viewapi.FieldText, Value: t.User},
-				{ID: "port", Label: i18n.T("ssh port", nil), Kind: viewapi.FieldText,
-					Value: strconv.Itoa(t.Port), Placeholder: strconv.Itoa(DefaultSSHPort)},
-				{ID: "identity", Label: i18n.T("private key", nil), Kind: viewapi.FieldText, Value: t.Identity,
-					Placeholder: "~/.ssh/id_ed25519",
-					Why:         i18n.T("a path, never key material. Leave empty to use the usual files and ssh-agent", nil)},
-				{ID: "remote_host", Label: i18n.T("remote host", nil), Kind: viewapi.FieldText,
-					Value: t.RemoteHost, Placeholder: DefaultRemoteHost,
-					Why: i18n.T("as seen from the far side", nil)},
-				{ID: "remote_port", Label: i18n.T("remote port", nil), Kind: viewapi.FieldText,
-					Value: strconv.Itoa(t.RemotePort), Placeholder: strconv.Itoa(DefaultRemotePort)},
-				{ID: "local_port", Label: i18n.T("forwarding port", nil), Kind: viewapi.FieldText,
-					Value: portOrEmpty(t.LocalPort), Placeholder: i18n.T("none", nil),
-					Why: i18n.T("a loopback port forwarded byte-for-byte; empty means this target is reachable "+
-						"only through the rewritten route", nil)},
-				{ID: "persistent", Label: i18n.T("connection", nil), Kind: viewapi.FieldSelect,
-					Value: persistentValue(t.Persistent), Options: []string{"lazy", "persistent"},
-					Why: i18n.T("lazy dials on the first request and lets go when idle; persistent keeps it open", nil)},
-				{ID: "idle_seconds", Label: i18n.T("idle timeout", nil), Kind: viewapi.FieldText,
-					Value: strconv.Itoa(t.IdleSeconds), Placeholder: strconv.Itoa(DefaultIdleSecs)},
-				{ID: "host_key", Label: i18n.T("host key", nil), Kind: viewapi.FieldSelect,
-					Value: t.HostKey, Options: []string{HostKeyStrict, HostKeyAcceptNew},
-					Why: i18n.T("strict refuses an unknown machine; accept-new records it the first time and "+
-						"still refuses if it later changes", nil)},
-			},
+			Fields:    targetFields(t),
 		})
 	}
 	c := viewapi.Concept{
@@ -80,6 +50,10 @@ func targetsConcept(loaded Loaded) viewapi.Concept {
 			Base:     loaded.Base,
 			CanAdd:   true,
 			AddLabel: i18n.T("add a target", nil),
+			// 新增一条时的形状。**必须有**：这份记录集的常态就是「一条都没有」
+			// （一台还没配过远端的机器），而界面过去只能去抄一条现成的记录——
+			// 没有可抄的时候，点「新增」得到的是一张一个输入框都没有的空卡片。
+			Blank: targetFields(Target{}.normalize()),
 		},
 		Apply: applyTargets,
 		Order: 10,
@@ -96,6 +70,45 @@ func targetsConcept(loaded Loaded) viewapi.Concept {
 	return c
 }
 
+// targetFields 是一条 target 的字段表。
+//
+// 抽出来是因为它有两个用处，而两份必须**逐字相同**：一条已有记录的字段、以及
+// 「新增一条」时的字段形状（Records.Blank）。抄成两份的后果是「新增的行」少几个
+// 输入框——那种错看起来只像「这个字段本来就没法配」。
+func targetFields(t Target) []viewapi.Field {
+	return []viewapi.Field{
+		{ID: "id", Label: i18n.T("id", nil), Kind: viewapi.FieldText, Value: t.ID,
+			Why: i18n.T("machine name: it is the URL segment (/ui/remote/<id>/) and cannot contain / ? # or spaces", nil)},
+		{ID: "label", Label: i18n.T("label", nil), Kind: viewapi.FieldText, Value: t.Label},
+		{ID: "host", Label: i18n.T("ssh host", nil), Kind: viewapi.FieldText, Value: t.Host,
+			Why: i18n.T("a name from ~/.ssh/config, or an address", nil)},
+		{ID: "user", Label: i18n.T("user", nil), Kind: viewapi.FieldText, Value: t.User},
+		{ID: "port", Label: i18n.T("ssh port", nil), Kind: viewapi.FieldText,
+			Value: strconv.Itoa(t.Port), Placeholder: strconv.Itoa(DefaultSSHPort)},
+		{ID: "identity", Label: i18n.T("private key", nil), Kind: viewapi.FieldText, Value: t.Identity,
+			Placeholder: "~/.ssh/id_ed25519",
+			Why:         i18n.T("a path, never key material. Leave empty to use the usual files and ssh-agent", nil)},
+		{ID: "remote_host", Label: i18n.T("remote host", nil), Kind: viewapi.FieldText,
+			Value: t.RemoteHost, Placeholder: DefaultRemoteHost,
+			Why: i18n.T("as seen from the far side", nil)},
+		{ID: "remote_port", Label: i18n.T("remote port", nil), Kind: viewapi.FieldText,
+			Value: strconv.Itoa(t.RemotePort), Placeholder: strconv.Itoa(DefaultRemotePort)},
+		{ID: "local_port", Label: i18n.T("forwarding port", nil), Kind: viewapi.FieldText,
+			Value: portOrEmpty(t.LocalPort), Placeholder: i18n.T("none", nil),
+			Why: i18n.T("a loopback port forwarded byte-for-byte; empty means this target is reachable "+
+				"only through the rewritten route", nil)},
+		{ID: "persistent", Label: i18n.T("connection", nil), Kind: viewapi.FieldSelect,
+			Value: persistentValue(t.Persistent), Options: []string{"lazy", "persistent"},
+			Why: i18n.T("lazy dials on the first request and lets go when idle; persistent keeps it open", nil)},
+		{ID: "idle_seconds", Label: i18n.T("idle timeout", nil), Kind: viewapi.FieldText,
+			Value: strconv.Itoa(t.IdleSeconds), Placeholder: strconv.Itoa(DefaultIdleSecs)},
+		{ID: "host_key", Label: i18n.T("host key", nil), Kind: viewapi.FieldSelect,
+			Value: t.HostKey, Options: []string{HostKeyStrict, HostKeyAcceptNew},
+			Why: i18n.T("strict refuses an unknown machine; accept-new records it the first time and "+
+				"still refuses if it later changes", nil)},
+	}
+}
+
 // statusConcept 是那张只读的状态表。
 func statusConcept(m *manager) viewapi.Concept {
 	st := m.Status()
@@ -109,8 +122,8 @@ func statusConcept(m *manager) viewapi.Concept {
 				"ssh":    {Text: t.User + "@" + t.DialAddr()},
 				"remote": {Text: t.RemoteAddr()},
 				"state":  {Text: stateText(s), Tone: stateTone(s)},
-				"port":   {Text: forwardText(s)},
-				"route":  {Text: Prefix + "/" + t.ID + "/"},
+				"port":   {Text: forwardText(s), Href: forwardHref(s)},
+				"route":  {Text: Prefix + "/" + t.ID + "/", Href: Prefix + "/" + t.ID + "/"},
 				"use":    {Text: useText(s)},
 			},
 			Actions: rowActions(m, t, s),
@@ -276,6 +289,17 @@ func forwardText(s TargetStatus) string {
 		return i18n.T("none", nil)
 	}
 	return s.Forward.Addr
+}
+
+// forwardHref 是转发端口那一格的可点地址。
+//
+// 端口没起来、或者这个 target 压根没要端口时留空——**那正是「这不是一个链接」**。
+// 给一个点开就是连不上的地址，比不给链接更糟：用户会以为自己配错了。
+func forwardHref(s TargetStatus) string {
+	if s.ForwardErr != "" || s.Forward.Addr == "" {
+		return ""
+	}
+	return "http://" + s.Forward.Addr + RemoteUIPrefix
 }
 
 func useText(s TargetStatus) string {
