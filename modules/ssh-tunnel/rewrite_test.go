@@ -182,19 +182,26 @@ func TestLocalPathsMapOntoTheRemoteOnes(t *testing.T) {
 	// 正文里的绝对地址被改成 /ui/remote/<id>/…，浏览器发回来的就是它，
 	// 而这里把它映射回远端要的 /ui/…。改了一边没改另一边，症状是每个资源
 	// 都 404——而 404 看起来像「远端没装那个东西」。
-	cases := []struct{ local, want string }{
-		{"/ds/", RemoteUIPrefix},
-		{"/ds", RemoteUIPrefix},
-		{"/ds/api/snapshot", "/ui/api/snapshot"},
-		{"/ds/assets/index-CpR3oezi.js", "/ui/assets/index-CpR3oezi.js"},
-		{"/ds/ui/assets/x.js", "/ui/ui/assets/x.js"},
-		// 尾巴里带 .. 时**不在这里清理**：原样交给 http 包去规范化。自己'清理'
-		// 反而会让 `..` 变成一个被我们亲手拼出来的路径。
-		{"/ds/../__newgate/upgrade", "/ui/../__newgate/upgrade"},
+	cases := []struct {
+		local, want string
+		ok          bool
+	}{
+		{local: "/ds/", want: "/ui/", ok: true},
+		{local: "/ds", want: "/ui/", ok: true},
+		{local: "/ds/api/snapshot", want: "/ui/api/snapshot", ok: true},
+		{local: "/ds/assets/index-CpR3oezi.js", want: "/ui/assets/index-CpR3oezi.js", ok: true},
+		{local: "/ds/ui/assets/x.js", want: "/ui/ui/assets/x.js", ok: true},
+		// 爬出 /ui 的一律拒。远端 `/__newgate` 是它的控制面（upgrade 会 fork 一个
+		// 新进程）、`/v1` 是它的数据面。今天那条路径碰巧打不到控制面，但那靠的是
+		// 「这条链路上没有别人会 clean 路径」——安全边界不能建在这上面。
+		{local: "/ds/../__newgate/upgrade"},
+		{local: "/ds/../v1/messages"},
+		{local: "/ds/../../etc/passwd"},
 	}
 	for _, tc := range cases {
-		if got := remotePath("ds", tc.local); got != tc.want {
-			t.Errorf("remotePath(%q) = %q，想要 %q", tc.local, got, tc.want)
+		got, ok := remotePath("ds", tc.local)
+		if ok != tc.ok || (ok && got != tc.want) {
+			t.Errorf("remotePath(%q) = (%q, %v)，想要 (%q, %v)", tc.local, got, ok, tc.want, tc.ok)
 		}
 	}
 }

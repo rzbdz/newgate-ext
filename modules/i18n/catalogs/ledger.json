@@ -1029,6 +1029,11 @@
     },
     "this page is a best-effort copy of the remote interface: paths inside it are rewritten. if something looks broken, use the forwarding port instead — that one is byte-for-byte.": {},
     "this process": {},
+    "this route only forwards the remote interface: {path} points outside it": {
+      "args": [
+        "path"
+      ]
+    },
     "this string is neither hex ({n} bytes) nor long enough as a raw key ({min} bytes) — was it copied in full?": {
       "args": [
         "min",

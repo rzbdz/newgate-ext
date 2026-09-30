@@ -1632,6 +1632,10 @@
       "text": "这个进程",
       "reviewed": true
     },
+    "this route only forwards the remote interface: {path} points outside it": {
+      "text": "这条 route 只转发远端的界面：{path} 落在了它外面",
+      "reviewed": true
+    },
     "this string is neither hex ({n} bytes) nor long enough as a raw key ({min} bytes) — was it copied in full?": {
       "text": "这串既不是十六进制（{n} 字节），也不够 {min} 字节原文——拷全了吗",
       "reviewed": true

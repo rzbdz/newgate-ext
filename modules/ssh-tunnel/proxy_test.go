@@ -164,6 +164,35 @@ func TestTheRootOfTheRouteMapsToTheRemoteRoot(t *testing.T) {
 	}
 }
 
+func TestAPathThatClimbsOutOfTheRemoteUIRootIsRefused(t *testing.T) {
+	// 这条 route 带进来的是一台**远端机器**，而它上面除了 `/ui/` 还有 `/__newgate`
+	// （控制面：升级、停守护、改状态）与 `/v1`（数据面：真金白银的模型调用）。
+	// `/ui/remote/ds/../__newgate/upgrade` 这种地址，如果只是把后缀拼上去转发，
+	// 本机就成了一台**替任何人转发远端控制面**的机器——而这条 route 的门只看 Host，
+	// 不看路径。
+	//
+	// 浏览器自己会把 `..` 规范化掉，所以这条防的是**不规范的客户端**（curl
+	// --path-as-is、脚本、别的程序）。正因为正常的浏览器碰不到它，它才必须有一条
+	// 测试：坏了没有任何症状。
+	h := newHarness(t, target("ds"))
+
+	for _, path := range []string{
+		Prefix + "/ds/../__newgate/upgrade",
+		Prefix + "/ds/../v1/messages",
+		Prefix + "/ds/../../etc/passwd",
+		Prefix + "/ds/..%2f..%2f__newgate/upgrade",
+	} {
+		rec := h.do("GET", path)
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("%s：状态 %d，想要 404", path, rec.Code)
+		}
+	}
+	// 更要紧的是这一条：被拒的请求**一个字节都不该碰到远端**。
+	if seen := h.remote.seen(); len(seen) != 0 {
+		t.Errorf("爬出 /ui 的路径碰到远端了：%v", seen)
+	}
+}
+
 // ---------- 改写 ----------
 
 func TestTheRemoteIndexComesBackRewritten(t *testing.T) {

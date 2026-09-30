@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -102,15 +103,26 @@ func (p *proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 远端的路径在这里算**一次**，并且在这一步就把爬出远端 `/ui` 那一棵的拒掉
+	// ——理由见 remotePath。算出来的值直接传给反代（不是让它在 Rewrite 里再算
+	// 一遍）：那样「拒掉」与「转发」用的是同一个结果，中间没有第二条路可走。
+	remote, ok := remotePath(id, r.URL.Path)
+	if !ok {
+		writePlain(w, http.StatusNotFound, i18n.T(
+			"this route only forwards the remote interface: {path} points outside it",
+			i18n.A{"path": r.URL.Path}))
+		return
+	}
+
 	w.Header().Set("X-Newgate-Tunnel", id)
-	p.reverseFor(t).ServeHTTP(w, r)
+	p.reverseFor(t, remote).ServeHTTP(w, r)
 }
 
 // reverseFor 组装这条 route 的 ReverseProxy。
 //
 // 每次现建一个 ReverseProxy 是廉价的（一个结构体）；真正要缓存的是它背后的
 // **http.Transport**——连接池在它里面（见 transportFor）。
-func (p *proxy) reverseFor(t Target) *httputil.ReverseProxy {
+func (p *proxy) reverseFor(t Target, remote string) *httputil.ReverseProxy {
 	local := LocalPrefix(t.ID)
 	return &httputil.ReverseProxy{
 		Transport: p.transportFor(t),
@@ -119,7 +131,10 @@ func (p *proxy) reverseFor(t Target) *httputil.ReverseProxy {
 			// Host 只是给 Transport 看的键：它不按这个拨号（DialContext 恒拨配置里
 			// 那一对）。给一个稳定值，让连接池只有一格。
 			pr.Out.URL.Host = "tunnel"
-			pr.Out.URL.Path = remotePath(t.ID, pr.In.URL.Path)
+			// remote 是调用方算好并验过的（ServeHTTP 里那一处）。这里**不重算**：
+			// 两个地方各算一次的话，将来有人只改了一边，症状是「拒掉的路径被发出去
+			// 了」或者反过来——而那种错在测试里是绿的。
+			pr.Out.URL.Path = remote
 			pr.Out.URL.RawPath = ""
 
 			// **保留客户端的 Host**（Go 的默认行为是把它换成目标主机）。
@@ -181,11 +196,35 @@ func (p *proxy) reverseFor(t Target) *httputil.ReverseProxy {
 // 的东西——而正文里的绝对地址（`/ui/assets/…`）被我们改写成 `/ui/remote/<id>/…`
 // 之后，浏览器发回来正好又落在这条规则上。**两边是同一件事的两面**，改了一边就
 // 得改另一边。
-func remotePath(id, local string) string {
+//
+// # 第二个返回值：这条路径有没有爬出远端的 `/ui`
+//
+// 拼出来的路径里可能带 `..`（`/ui/remote/ds/../__newgate/upgrade` → 接上之后是
+// `/ui/../__newgate/upgrade`）。**必须在这里规范化并拒绝**，理由与内核那条
+// 「绝不盲发 `/__newgate/upgrade`」是同一个：远端的 `/__newgate` 是它的控制面
+// （`upgrade` 会 fork 一个新进程）、`/v1` 是它的数据面。
+//
+// 今天那条路径**恰好**打不到控制面（远端 porthub 按 `/ui` 前缀把它交给了
+// web-dashboard，落到 SPA 兜底），但那是**运气**：只要中间任何一层把路径规范化
+// 一次（一个反代、一个 mux、一个将来的实现），`/ui/../__newgate/upgrade` 就变成
+// 了 `/__newgate/upgrade`。安全边界不能建在「今天这条链路上没有别人会 clean 路径」
+// 上面。
+func remotePath(id, local string) (string, bool) {
 	rel := strings.TrimPrefix(local, "/")
 	rel = strings.TrimPrefix(rel, id)
 	rel = strings.TrimPrefix(rel, "/")
-	return RemoteUIPrefix + rel
+	raw := RemoteUIPrefix + rel
+	p := path.Clean(raw)
+	if p != strings.TrimSuffix(RemoteUIPrefix, "/") && !strings.HasPrefix(p, RemoteUIPrefix) {
+		return "", false
+	}
+	// Clean 会把尾斜杠收掉，而**远端那棵树的根要留着它**：`/ui` 在远端是一次
+	// 302（到 `/ui/`），而那次重定向会被我们改写回这条 route 上，于是浏览器多跑
+	// 一个来回——功能上没错，但没有理由付这个钱。
+	if strings.HasSuffix(raw, "/") && !strings.HasSuffix(p, "/") {
+		p += "/"
+	}
+	return p, true
 }
 
 // transportFor 拿某个 target 的 http.Transport。
