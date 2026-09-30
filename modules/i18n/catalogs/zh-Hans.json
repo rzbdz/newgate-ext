@@ -228,10 +228,6 @@
       "text": "路由",
       "reviewed": true
     },
-    "Test everything": {
-      "text": "全部探一遍",
-      "reviewed": true
-    },
     "Test this profile": {
       "text": "探这一份",
       "reviewed": true
@@ -1098,10 +1094,6 @@
     },
     "the fable tier (the most expensive); also the marker used to spot a third-party model family falling back automatically": {
       "text": "fable 档（最贵档）；也是第三方模型族自动回退的识别依据",
-      "reviewed": true
-    },
-    "the fallback chain is off — every request stops at its chain head": {
-      "text": "fallback 链已关闭 —— 每发请求只走链头，后面那几站一站都不会走",
       "reviewed": true
     },
     "the file does not exist": {

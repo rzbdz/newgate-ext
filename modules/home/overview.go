@@ -91,17 +91,9 @@ func overviewConcept(all []*configapi.Chains, d overviewDeps) view.Concept {
 		// 是「读一次贵不贵」，不是「数据会不会变」）。探活的结果靠动作跑完之后
 		// 那次重读带回来，不靠轮询。
 	}
-	// fallback 关着时，这一屏画的那些「后面还垫着几站」**一站都不会走**——链还在
-	// 配置里，只是转发侧被一刀切到链头了。不说出来的话，这一屏上每一张卡都在讲一个
-	// 此刻不成立的承诺：用户看着 +7 的角标，以为断了会有人接上。
-	//
-	// 所以它不是一句装饰，是这个屏幕上**最要紧的那个事实**——语气也就给重的那个。
-	if d.gateway != nil && !d.gateway.FallbackOn() {
-		c.Note = &view.Note{
-			Text: i18n.T("the fallback chain is off — every request stops at its chain head", nil),
-			Tone: view.ToneBad,
-		}
-	}
+	// fallback 关着这件事**不在这里说**：右上角那颗状态按钮就是那句话（红 = 关着），
+	// 卡片上再挂一条红陈述是把同一件事说两遍（用户的原话：「有了红按钮之后这句是不是
+	// 重复了」——是的）。
 	return c
 }
 
@@ -525,7 +517,6 @@ func fallbackAction(g gatewayapi.Gateway) (view.Action, bool) {
 	if g == nil {
 		return view.Action{}, false
 	}
-	on := g.FallbackOn()
 	return view.Action{
 		ID: "fallback",
 		// 名字是**这件东西的名字**，不是一句祈使句（曾经是「只走链头」/「启用 fallback
@@ -535,37 +526,26 @@ func fallbackAction(g gatewayapi.Gateway) (view.Action, bool) {
 		// 代价说清楚：TUI 那边只画 label，于是它看到的是一个不带状态的名字。换到的是
 		// 界面这一侧不必去解析一句会翻译的话来判断「这是禁用还是启用」——见 Action.Tone。
 		Label: func() string { return i18n.T("auto fallback", nil) },
-		// 按下的样子 = 关着。它不是「危险」，但它是**偏离常态**的那一档，而这一格
-		// 唯一要说的事情就是那个偏离。
+		// **开着 = 绿，关着 = 红**（用户的原话：「默认应该是绿色，点击关闭是灰色/红色」）。
+		//
+		// 一开始这里是「开着不着色、关着标红」，理由是「绿是常态、不必说」。那是错的：
+		// 一颗**状态**按钮在两种状态下都该看得出是哪一种，只标异常的话，看的人得先
+		// 知道「不标 = 开」，而那正是他打开这一屏想问的问题。
+		//
+		// # 两个字段都是**闭包**，不是当场取的值
+		//
+		// 这一节的动作在 Start 里登记一次，而快照是**每次请求重算**的——把
+		// `g.FallbackOn()` / `!on` 在登记那一刻取出来，颜色与行为就永远停在
+		// 进程启动时那个状态上（实测踩过：`newgate fallback off` 之后按钮还是绿的、
+		// 点一下还是「关」，而那件事看起来像界面在骗人）。Tone 那条路本来就会在
+		// 每次快照时求值，所以它一改就连着对；错的是 Run 里那个捕获值。
 		Tone: func() string {
-			if on {
-				return ""
+			if g.FallbackOn() {
+				return view.ToneOK
 			}
 			return view.ToneBad
-		}(),
-		Run: func() (string, error) { return "", g.SetFallback(!on) },
-	}, true
-}
-
-// probeAllAction 是右上角那个「全都探一遍」。
-func probeAllAction(cfg configapi.Config, g gatewayapi.Gateway) (view.Action, bool) {
-	if g == nil {
-		return view.Action{}, false
-	}
-	return view.Action{
-		ID:    "probe-all",
-		Label: func() string { return "⚡ " + i18n.T("Test everything", nil) },
-		Run: func() (string, error) {
-			all, err := cfg.AllChains()
-			if err != nil {
-				return "", err
-			}
-			targets := probeAllTargets(all)
-			if len(targets) == 0 {
-				return "", nil
-			}
-			return "", probeSet(g, targets)
 		},
+		Run: func() (string, error) { return "", g.SetFallback(!g.FallbackOn()) },
 	}, true
 }
 
@@ -696,25 +676,6 @@ func probeTargetsOf(chains []configapi.Chain) []probeTarget {
 			}
 			seen[key] = true
 			out = append(out, probeTarget{provider: s.Binding.Provider, model: s.Binding.Model, key: key})
-		}
-	}
-	return out
-}
-
-// probeAllTargets 是这一屏上所有链站的去重目标（右上角那个按钮用）。
-func probeAllTargets(all []*configapi.Chains) []probeTarget {
-	var out []probeTarget
-	seen := map[string]bool{}
-	for _, one := range all {
-		if one == nil {
-			continue
-		}
-		for _, t := range probeTargetsOf(one.Keys) {
-			if seen[t.key] {
-				continue
-			}
-			seen[t.key] = true
-			out = append(out, t)
 		}
 	}
 	return out

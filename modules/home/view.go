@@ -25,12 +25,11 @@ func registerView(v view.Service, cfg configapi.Config, deps overviewDeps) (modu
 	// 标题一起被卷到中间去，而「凭什么它最上面」这个问题就答不上来了——它自己在
 	// 第一位时，位置本身就是那句话，与「不归组的那几栏排最前面」是同一条理由。
 	section := view.Title(func() string { return i18n.T("Home", nil) }).Landing()
-	// 右上角那个「全都探一遍」：它要探的是这一屏**所有** profile 的链站，那个集合
-	// 不属于任何一张卡，所以它长在节上（理由见 overview.go 的 probeAllAction）。
-	// 没装网关时**不挂**——一个按下去必然失败的按钮比没有按钮更糟。
-	if a, ok := probeAllAction(cfg, deps.gateway); ok {
-		section = section.Does(a)
-	}
+	// 这一节上只挂**一颗**动作：fallback 那个状态开关（见 overview.go 的
+	// fallbackAction）。曾经还有一颗「全都探一遍」，2026-09-29 按用户的话去掉了
+	// （原话：「主页全部探一遍那个按钮也是傻啊，直接移除掉吧」）——探某一份是卡片头
+	// 上那颗的事，而「全都探一遍」是一次要打十几个上游、几十秒才有结果的批量操作，
+	// 放在一屏拿来扫的界面上，点它的人多半只想看看某一家的延迟。
 	// fallback 链总开关，与探活并排挂在右上角（判据同：没装网关就不挂——链都没有，
 	// 关一个不存在的开关没有意义）。
 	if a, ok := fallbackAction(deps.gateway); ok {

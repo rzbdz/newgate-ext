@@ -216,7 +216,17 @@
   });
 
   /** 当前这一节：它的名字与它注入的动作（见 api.ts 的 SectionAction）。 */
-  const section = $derived(sections.find((s) => s.source === route.section));
+  /**
+   * 此刻那一栏（完整界面里由 route.section 指，主页模式下就是落点那一节）。
+   *
+   * **主页模式下必须回落到落点那一节**：那时 route.section 是空的，所以 `sections.find`
+   * 找不到任何东西——于是那一栏上的动作（`全部探一遍` / `auto fallback`）的**地址**
+   * 也丢了。按钮照常画（它们直接读 homeSection），点下去却带着空来源发出去，后端回
+   * 一句「没有叫 fallback 的动作」——一个只有点击时才炸的错。
+   */
+  const section = $derived(
+    route.home ? homeSection : sections.find((s) => s.source === route.section),
+  );
   const sectionActions = $derived(section?.actions ?? []);
 
   /** 并排时哪一半在左：控件那一半。 */
@@ -772,20 +782,22 @@
   }
 
   /**
-   * 从主页模式进**完整界面**。
+   * 从主页模式进**完整界面**，落在**配置文件那一页**上。
    *
-   * 落点是「第一节**不是**首屏那一节的栏目」——不写死 `config`：那是模块名，而这一
-   * 层不认识任何模块（同 fileOf 那条）。万一这个发行版只有首屏那一节（骨架配置就是
-   * 那样），退回它自己：那时的完整界面与主页模式只差一圈目录，而目录里那一栏仍然
-   * 点得动。
+   * 用户的原话是「处于主页的时候点击设置，应该跳转到配置文件那一页」。
+   *
+   * 判据是**「有卡、且不是首屏那一节」的栏目里的第一个**，不写死模块名——这一层不
+   * 认识任何模块（同 fileOf 那条）。落在「第一节」上是错的：那一节就是主页自己。
+   * 万一这个发行版只有首屏那一节（骨架配置），退回它自己。
    */
   function toSettings() {
-    const target = sections.find((s) => s.source !== homeSection?.source) ?? homeSection;
+    const target =
+      sections.find((s) => s.source !== homeSection?.source && concepts.some((c) => c.source === s.source)) ??
+      homeSection;
     if (!target) return;
     route = { home: false, section: target.source, card: "", split: true };
     writeHash(route);
   }
-
   function pickCard(id: string) {
     route = { ...route, card: id };
     writeHash(route);
@@ -956,6 +968,20 @@
 {#key lang}
 <div class="shell" class:home={route.home}>
   <header class="top">
+    <!-- 设置那一颗在**最左边**、搜索框左边，而且只在主页模式出现（用户的原话：
+         「设置按钮放页面左边，搜索栏的左边。处于主页才显示」，以及「设置和主页不要
+         用文字，用 icon」）。为什么主页模式下有它、完整界面下没有：完整界面的目录
+         里就有一栏「主页」可以点回来，而主页模式下目录收起来了——两颗按钮各自补
+         对方缺的那条路，不留一对多余的。 -->
+    {#if route.home}
+      <button class="icon" title={t("settings")} aria-label={t("settings")} onclick={toSettings}>
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <circle cx="8" cy="8" r="2.3" />
+          <path d="M8 1.6v1.7M8 12.7v1.7M1.6 8h1.7M12.7 8h1.7M3.5 3.5l1.2 1.2M11.3 11.3l1.2 1.2M12.5 3.5l-1.2 1.2M4.7 11.3l-1.2 1.2" />
+        </svg>
+      </button>
+    {/if}
+
     <strong>newgate</strong>
     {#if !route.home}
       <!-- 过滤框只在完整界面里：主页模式那一屏的卡片是**全部**（它就是一屏看完
@@ -970,18 +996,22 @@
     <span class="spacer"></span>
 
     {#if route.home}
-      <!-- 主页模式就这几颗：这一节的全局开关（全部探一遍 / auto fallback）、
-           皮肤、以及进完整界面的那一颗。没有重载（自动刷新一直在跑）、没有过滤、
-           没有自动刷新那个勾——用户的原话是「尽量减少不常用的控件按钮」。 -->
+      <!-- 主页模式就这几颗：`auto fallback` 那颗状态按钮、皮肤、保存（按需）。
+           没有重载（自动刷新一直在跑）、没有过滤、没有自动刷新那个勾、没有「全部
+           探一遍」——用户的原话是「尽量减少不常用的控件按钮」，「主页全部探一遍那个
+           按钮也是傻啊，直接移除掉吧」。 -->
       {#each homeSection?.actions ?? [] as a (a.id)}
-        <button
-          class="tiny ghost"
-          class:on={a.tone === "bad"}
-          disabled={busy}
-          onclick={() => runAction(a)}
-        >
-          {a.label}
-        </button>
+        {#if a.id === "fallback"}
+          <button
+            class="tiny ghost"
+            class:toned={!!a.tone}
+            data-tone={a.tone}
+            disabled={busy}
+            onclick={() => runAction(a)}
+          >
+            {a.label}
+          </button>
+        {/if}
       {/each}
     {:else}
       {#if note}<span class="dim mono">{t("as of {time}", { time: note })}</span>{/if}
@@ -998,12 +1028,13 @@
         {t("save")} ({dirty.length})
       </button>
     {/if}
-    {#if route.home}
-      <!-- 进完整界面。这一颗是主页模式与完整界面之间**唯一**的两个入口之一（另一
-           个是目录里那一栏「主页」，见 pickSection）。 -->
-      <button onclick={toSettings}>{t("settings")}</button>
-    {:else}
-      <button class="tiny ghost" onclick={toHome}>{t("home mode")}</button>
+    {#if !route.home}
+      <!-- 回主页模式。同样是**图标**（与设置那一颗对称）。 -->
+      <button class="icon" title={t("home mode")} aria-label={t("home mode")} onclick={toHome}>
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M2.6 7.4 8 3l5.4 4.4V13a.6.6 0 0 1-.6.6h-3v-3.4h-3.6v3.4h-3A.6.6 0 0 1 2.6 13z" />
+        </svg>
+      </button>
     {/if}
   </header>
 
@@ -1043,7 +1074,8 @@
         {#each sectionActions as a (a.id)}
           <button
           class="tiny ghost"
-          class:on={a.tone === "bad"}
+          class:toned={!!a.tone}
+          data-tone={a.tone}
           disabled={busy}
           onclick={() => runAction(a)}
         >

@@ -80,14 +80,42 @@ button:disabled { opacity: 0.45; cursor: default; }
 button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 button.ghost { background: transparent; }
 button.tiny { padding: 1px 7px; font-size: 12px; border-radius: 6px; }
-/* 按下的动作（见 api.ts 的 tone）：不是「主按钮」（它不推进什么），而是**一个亮着
-   的状态**——底色淡、边框与字用危险色。用在 `auto fallback` 那颗上：它的名字固定，
-   状态由这里说。 */
-button.tiny.on {
-  color: var(--danger);
-  border-color: color-mix(in srgb, var(--danger) 55%, var(--line));
-  background: color-mix(in srgb, var(--danger) 14%, transparent);
+/* 顶栏上那两颗只有记号没有字的按钮（设置 / 主页）。形状与 ThemePicker 那颗一致——
+   它们并排站着，高矮宽窄不一样会很难看。 */
+button.icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--dim);
 }
+button.icon:hover { color: var(--ink); background: var(--panel-2); }
+button.icon svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* 带语气的动作（见 api.ts 的 tone）：它不是「主按钮」（它不推进什么），而是**一个
+   亮着的状态**——底色淡、边框与字用语义色。用在 `auto fallback` 那颗上：它的名字
+   固定，状态由这里说（绿=开着，红=关着）。
+   三种语气都画，不是只画「坏」那一种：一颗状态按钮在两种状态下都该看得出是哪一种，
+   只标异常的话，看的人得先知道「不标 = 正常」，而那正是他要问的问题。 */
+button.tiny[data-tone] {
+  border-color: color-mix(in srgb, currentColor 50%, var(--line));
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+button.tiny[data-tone="ok"] { color: var(--ok); }
+button.tiny[data-tone="warn"] { color: var(--warn); }
+button.tiny[data-tone="bad"] { color: var(--danger); }
 
 input, select, textarea {
   font: inherit;

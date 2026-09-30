@@ -93,7 +93,6 @@
       ]
     },
     "Routes": {},
-    "Test everything": {},
     "Test this profile": {},
     "The colours of this interface. Saved to state.json and applied at once — no reload. Nothing but tokens changes: a theme cannot move anything around.": {},
     "The model name codex itself sends — copy it out of `codex debug models` (the slug).": {},
@@ -654,7 +653,6 @@
     },
     "the envelope is empty": {},
     "the fable tier (the most expensive); also the marker used to spot a third-party model family falling back automatically": {},
-    "the fallback chain is off — every request stops at its chain head": {},
     "the file does not exist": {},
     "the haiku tier; background features": {},
     "the host declares build {want}, this machine is {got}: this machine can still parse the configuration (unknown fields are ignored, missing ones fall back to defaults), so it was let through. Upgrade newgate to line up exactly.": {
