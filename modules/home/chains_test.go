@@ -66,43 +66,24 @@ func newFixture(t *testing.T) *fixture {
 	return f
 }
 
-// snapshot 重问一遍快照并取出这一节（每次调都是新的结论——产出函数每次重算）。
+// snapshot 重问一遍快照并取出首屏那一张卡（每次调都是新的结论——产出函数每次重算）。
+//
+// 按 `overviewID` 取，不是「取第一张」：这一节今天是**只有一张**卡（`home.chains`
+// 2026-09-29 删了），所以两者此刻等价——而按 ID 取这件事，在下一张卡加回来时仍然
+// 是对的。
 func (f *fixture) snapshot() view.Concept {
 	f.t.Helper()
-	return f.conceptByID(conceptID)
-}
-
-// conceptByID 从一次快照里取一个概念。每次调都是一次**新的**快照（产出函数每次
-// 重算），所以它也是「这一节此刻报了什么」的读法。
-func (f *fixture) conceptByID(id string) view.Concept {
-	f.t.Helper()
-	all, err := f.reg.Snapshot()
+	list, err := f.reg.Snapshot()
 	if err != nil {
-		f.t.Fatalf("快照失败: %v", err)
+		f.t.Fatal(err)
 	}
-	for _, c := range all {
-		if c.ID == id {
+	for _, c := range list {
+		if c.ID == overviewID {
 			return c
 		}
 	}
-	f.t.Fatalf("这一节没报出 %s（快照里有 %d 个概念）", id, len(all))
+	f.t.Fatalf("这一节里没有 %s", overviewID)
 	return view.Concept{}
-}
-
-// chains 取此刻这一节的数据形状。
-func (f *fixture) chains() view.Chains {
-	f.t.Helper()
-	c := f.snapshot()
-	if c.Kind != view.KindChains {
-		f.t.Fatalf("Kind 该是 %q，实际 %q", view.KindChains, c.Kind)
-	}
-	// 断类型而不是断 JSON：形状是**契约**（前端也按 Kind 挑渲染器），转不过去就是
-	// 有人换了 Data 的类型，而那在界面上只表现为「这一节白了」。
-	data, ok := c.Data.(view.Chains)
-	if !ok {
-		f.t.Fatalf("Data 该是 view.Chains，实际 %T", c.Data)
-	}
-	return data
 }
 
 func (f *fixture) seedFile(rel, body string) { f.t.Helper(); seedFile(f.t, rel, body) }
@@ -207,19 +188,6 @@ func TestTheSectionIsTheLanding(t *testing.T) {
 //
 // 这是全新安装的样子（providers.json 刚建、还没写过任何档位文件），而它是这一节
 // 最常见的第一次运行——一个 nil 解引用会在这里白屏，而不是在别的什么地方。
-func TestNoProfilesIsAnEmptyScreen(t *testing.T) {
-	f := newFixture(t)
-
-	ch := f.chains()
-	if len(ch.Cards) != 0 {
-		t.Fatalf("没有任何档位文件时报了 %d 张卡：%+v", len(ch.Cards), ch.Cards)
-	}
-	// 空的是**列表**，不是 Data 本身：前端读 `data?.cards ?? []`（见 Chains.svelte），
-	// 两者都可以，但形状要稳定——今天给的是非 nil 的空切片（Chains() 里 make 出来的）。
-	if ch.Cards == nil {
-		t.Error("空配置该给一个空列表，不是把形状整个省掉")
-	}
-}
 
 // ---------- 一屏：链头、空链、次序 ----------
 
@@ -228,53 +196,6 @@ func TestNoProfilesIsAnEmptyScreen(t *testing.T) {
 // 「一档一行」的第一行是这条测试唯一能锁住的东西里最容易错的那个：链**不截断**
 // （maxAttempts 是执行上限，不是 membership），所以 heavy 那一行后面还得跟着
 // ark/deepseek-lite——只画链头的话，那一站就从屏幕上消失了，而它明明在链上。
-func TestRowsCarryTheHeadOfEachTier(t *testing.T) {
-	f := newFixture(t)
-	f.seedFile("demo.kv", "desc=demo\nheavy=ark/deepseek-v3,ark/deepseek-lite\nlight=ark/deepseek-lite\n")
-	f.setDefault("demo")
-
-	card := cardOf(t, f.chains(), "demo")
-	if card.Default != true {
-		t.Error("demo 是此刻生效的那一份，卡头要自报 default")
-	}
-	if card.File != filepath.Join("mappings", "demo.kv") {
-		t.Errorf("File 该是相对配置根的那份文件（mappings/demo.kv），实际 %q", card.File)
-	}
-
-	heavy := rowIn(t, card, "heavy")
-	if heavy.Head != "ark/deepseek-v3" {
-		t.Errorf("heavy 的链头该是第一个候选 ark/deepseek-v3，实际 %q", heavy.Head)
-	}
-	if len(heavy.Steps) != 2 {
-		t.Fatalf("heavy 该给完整的两站（不按 maxAttempts 截断），实际 %d 站", len(heavy.Steps))
-	}
-	if heavy.Steps[1].Model != "deepseek-lite" {
-		t.Errorf("第二站该是 ark/deepseek-lite，实际 %q/%q", heavy.Steps[1].Provider, heavy.Steps[1].Model)
-	}
-	if heavy.Steps[0].Profile != "demo" {
-		t.Errorf("每一站要写出来自哪份 profile，实际 %q", heavy.Steps[0].Profile)
-	}
-	if heavy.Tone != "" {
-		t.Errorf("有链的时候不着色（Tone 只说有没有可用的链头），实际 %q", heavy.Tone)
-	}
-	if heavy.Note != "" {
-		t.Errorf("一个候选都没跳过时链尾不该有话，实际 %q", heavy.Note)
-	}
-
-	if got := rowIn(t, card, "light").Head; got != "ark/deepseek-lite" {
-		t.Errorf("light 的链头该是 ark/deepseek-lite，实际 %q", got)
-	}
-
-	// 次序是**端口给的**（domain.Roles 的能力序），这一层不重排：按字母序排出来
-	// 会是 h/l/m/n，而终端那边仍是能力序——同一份配置两个屏幕两种排法。
-	var order []string
-	for _, r := range card.Roles {
-		order = append(order, r.Tier)
-	}
-	if strings.Join(order, ",") != "heavy,normal,mid,light,vision" {
-		t.Errorf("档位次序该原样是 port 给的那一串，实际 %v", order)
-	}
-}
 
 // TestAnEmptyChainIsRedAndSaysWhy：所有候选都被跳过时，这一行是空链——没有链头、
 // 语气是 bad、链尾说得清为什么。
@@ -283,34 +204,6 @@ func TestRowsCarryTheHeadOfEachTier(t *testing.T) {
 // 着色、Note 是唯一能告诉用户「去加个 api_key」的东西。少了 Note，用户看到的就是
 // 一条**红的空链**，而不知道该动哪里（这正是 config 那边「跳过只给汇总、但必须给」
 // 的那条取舍在这张卡上的落点）。
-func TestAnEmptyChainIsRedAndSaysWhy(t *testing.T) {
-	f := newFixture(t)
-	// 绑了一家**没定义过**的 provider：候选进不了链，类目是 undefined。
-	f.seedFile("demo.kv", "heavy=ghost/model\n")
-	f.setDefault("demo")
-
-	row := rowIn(t, cardOf(t, f.chains(), "demo"), "heavy")
-	if row.Head != "" {
-		t.Errorf("空链没有链头，实际 %q", row.Head)
-	}
-	if len(row.Steps) != 0 {
-		t.Errorf("空链不该有站，实际 %d 站", len(row.Steps))
-	}
-	if row.Tone != view.ToneBad {
-		t.Errorf("空链该是 bad，实际 %q", row.Tone)
-	}
-	if row.Note == "" {
-		t.Fatal("空链必须说清为什么（没有它，用户看到的就是一条红的空链）")
-	}
-	// 那句话里要有**类目**（哪一种没成功）与**数量**（一个候选）。类目名是这里
-	// 自己的措辞，所以断言的是「那句话说的是 undefined 那一类」，不是整句。
-	if !strings.Contains(row.Note, skipLabel(skipUndefined)) {
-		t.Errorf("链尾该点名那一类（%q）：%q", skipLabel(skipUndefined), row.Note)
-	}
-	if !strings.Contains(row.Note, "1 candidate") {
-		t.Errorf("只有一个候选时该用单数形式，实际 %q", row.Note)
-	}
-}
 
 // TestSkipCategoriesAreAllNamed 是那张类目表的棘轮。
 //
@@ -382,39 +275,6 @@ func TestSkipCategoriesAreAllNamed(t *testing.T) {
 // 档位名单独一个不够用：`heavy` 在十份 profile 里出现十次，而「把这一档换成 X」
 // 要动的是某一份文件里的某一行（见 view.ChainRow.ID）。两份 profile 各有 heavy 时
 // 两个 ID 必须分得开——分不开的那个后果不是显示错，是**点了一个按钮改了另一份文件**。
-func TestRowIDsAreProfileSlashTier(t *testing.T) {
-	f := newFixture(t)
-	f.seedFile("demo.kv", "heavy=ark/deepseek-v3,ark/deepseek-lite\n")
-	f.seedFile("alt.kv", "heavy=zhipu/glm-4,zhipu/glm-4-flash\n")
-	f.setDefault("demo")
-
-	ch := f.chains()
-	if len(ch.Cards) != 2 {
-		t.Fatalf("两份档位文件该是两张卡，实际 %d 张", len(ch.Cards))
-	}
-	if ch.Cards[0].Profile != "demo" {
-		t.Errorf("生效的那一份排在最前（端口给的次序要原样保留），实际首张是 %q", ch.Cards[0].Profile)
-	}
-
-	ids := map[string]string{}
-	for _, card := range ch.Cards {
-		for _, row := range card.Roles {
-			want := card.Profile + "/" + row.Tier
-			if row.ID != want {
-				t.Errorf("%s 的 %s 行 ID 该是 %q，实际 %q", card.Profile, row.Tier, want, row.ID)
-			}
-			if prev, dup := ids[row.ID]; dup {
-				t.Errorf("行 ID %q 出现了两次（%s 与 %s）——"+
-					"点了这一行会改到那一行", row.ID, prev, card.Profile)
-			}
-			ids[row.ID] = card.Profile
-		}
-	}
-	// 两份 profile 都写了 heavy，两个 ID 必须分得开。
-	if ids["demo/heavy"] != "demo" || ids["alt/heavy"] != "alt" {
-		t.Errorf("两份 heavy 的行 ID 没分开：%v", ids)
-	}
-}
 
 // ---------- 动作：原样透传，且真的跑得起来 ----------
 
@@ -429,57 +289,6 @@ func TestRowIDsAreProfileSlashTier(t *testing.T) {
 // 跑那一下走的是 view 给行准备的入口（RunRowAction）：那正是界面点按钮时走的路，
 // 而它按 `(概念 ID, 行 ID, 动作 ID)` 三步定位——行 ID 那一步错了，这里就会报
 // 「这一行没有这个动作」。
-func TestRowActionsArePassedThroughUntouched(t *testing.T) {
-	f := newFixture(t)
-	f.seedFile("demo.kv", "heavy=ark/deepseek-v3,ark/deepseek-lite\n")
-	f.setDefault("demo")
-
-	// 端口给的（这一层的输入）与卡片上的（这一层的输出）必须逐条一致。
-	all, err := f.cfg.AllChains()
-	if err != nil {
-		t.Fatal(err)
-	}
-	var want []view.Action
-	for _, one := range all {
-		if one.Profile != "demo" {
-			continue
-		}
-		for _, chain := range one.Keys {
-			if chain.Key == "heavy" {
-				want = chain.Actions
-			}
-		}
-	}
-	if len(want) != 1 {
-		t.Fatalf("heavy 有两个候选（第一个是链头、不给按钮），端口该给 1 个动作，实际 %d 个", len(want))
-	}
-
-	row := rowIn(t, cardOf(t, f.chains(), "demo"), "heavy")
-	if len(row.Actions) != len(want) {
-		t.Fatalf("动作该原样透传：端口 %d 个，行上 %d 个", len(want), len(row.Actions))
-	}
-	for i := range want {
-		if row.Actions[i].ID != want[i].ID {
-			t.Errorf("第 %d 个动作的 ID 对不上：端口 %q，行上 %q", i, want[i].ID, row.Actions[i].ID)
-		}
-	}
-
-	// 跑一下：**盘上那一档的次序真的换了**，而且换的是这一份文件。
-	if _, err := f.reg.RunRowAction(conceptID, row.ID, row.Actions[0].ID); err != nil {
-		t.Fatalf("跑行上的动作失败: %v", err)
-	}
-	raw, err := store.LoadProfileRaw("demo")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := raw.Roles["heavy"]; len(got) != 2 || got[0].String() != "ark/deepseek-lite" {
-		t.Fatalf("盘上 heavy 的次序没换对: %v", got)
-	}
-	// 换完之后**重问一遍快照**：链头跟着换（这一节每次重算，不需要被通知）。
-	if got := rowIn(t, cardOf(t, f.chains(), "demo"), "heavy").Head; got != "ark/deepseek-lite" {
-		t.Errorf("换链头之后这一行该报新的链头，实际 %q", got)
-	}
-}
 
 // TestRowActionsStayOnTheirOwnCard：另一份 profile 的行上**没有**这一份的动作。
 //
@@ -487,27 +296,3 @@ func TestRowActionsArePassedThroughUntouched(t *testing.T) {
 // 构造某张卡时用了**另一份** profile 的结论，用户点 alt 那一行的按钮，改的是 demo
 // 的文件。所以这里既断言「没有可换的人时不给按钮」，也断言那一次点击**碰不到别的
 // 文件**（界面手里那份快照旧了时，它会拿着一个不存在的动作来问）。
-func TestRowActionsStayOnTheirOwnCard(t *testing.T) {
-	f := newFixture(t)
-	f.seedFile("demo.kv", "heavy=ark/deepseek-v3,ark/deepseek-lite\n")
-	// alt 只有一个候选：它不该有任何按钮（没有可换的人）。
-	f.seedFile("alt.kv", "heavy=zhipu/glm-4\n")
-	f.setDefault("demo")
-
-	ch := f.chains()
-	alt := rowIn(t, cardOf(t, ch, "alt"), "heavy")
-	if len(alt.Actions) != 0 {
-		t.Errorf("alt 的 heavy 只有一个候选，不该有按钮，实际 %d 个", len(alt.Actions))
-	}
-	if _, err := f.reg.RunRowAction(conceptID, "alt/heavy", "head:ark/deepseek-lite"); err == nil {
-		t.Error("alt 那一行上没有 demo 的动作——这一步该报错（界面手里那份快照旧了）")
-	}
-	// demo 的文件一个字节都不该被那一次点击碰到。
-	raw, err := store.LoadProfileRaw("demo")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := raw.Roles["heavy"]; len(got) != 2 || got[0].String() != "ark/deepseek-v3" {
-		t.Errorf("那一次点击碰了别的 profile: %v", got)
-	}
-}

@@ -104,10 +104,6 @@
       "text": "黑",
       "reviewed": true
     },
-    "Chains": {
-      "text": "候选链",
-      "reviewed": true
-    },
     "Classifier config": {
       "text": "分类器配置",
       "reviewed": true
@@ -376,6 +372,10 @@
       "text": "权威变更（{from} → {to}），代数基线重置",
       "reviewed": true
     },
+    "auto fallback": {
+      "text": "auto fallback",
+      "reviewed": true
+    },
     "back to the status recorded at takeover": {
       "text": "已回到接管时的现状",
       "reviewed": true
@@ -590,10 +590,6 @@
     },
     "effective": {
       "text": "生效",
-      "reviewed": true
-    },
-    "enable the fallback chain": {
-      "text": "启用 fallback 链",
       "reviewed": true
     },
     "end it early: newgate naked off": {
@@ -970,10 +966,6 @@
     },
     "status blocks": {
       "text": "状态块",
-      "reviewed": true
-    },
-    "stop at the chain head": {
-      "text": "只走链头（禁用 fallback）",
       "reviewed": true
     },
     "suggested": {

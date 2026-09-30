@@ -31,12 +31,21 @@
   } from "./api";
   import { setLang, t } from "./i18n";
   import { applyTheme } from "./theme";
-  import { emptyRoute, fileOf, parseHash, writeHash, type Action, type Route } from "./nav";
+  import {
+    emptyRoute,
+    fileOf,
+    homeRoute,
+    parseHash,
+    writeHash,
+    type Action,
+    type Route,
+  } from "./nav";
   import ConflictDialog from "./ConflictDialog.svelte";
   import Shortcuts from "./Shortcuts.svelte";
   import Sidebar from "./Sidebar.svelte";
   import SplitView from "./SplitView.svelte";
   import TabStrip from "./TabStrip.svelte";
+  import ThemePicker from "./ThemePicker.svelte";
 
   let concepts = $state<Concept[]>([]);
   let sections = $state<Section[]>([]);
@@ -46,7 +55,17 @@
   let error = $state("");
   let busy = $state(false);
   let filter = $state("");
-  let auto = $state(false);
+  /**
+   * 自动刷新**永远开着**（2026-09-29 去掉那个勾选框）。
+   *
+   * 用户的原话是「自动刷新这个功能也很垃圾啊，不要了吧，直接默认自动刷新得了」，
+   * 以及「尽量减少不常用的控件按钮」。那个框是个只关不用的开关：这一屏是拿来
+   * **放着看**的（探活回来的延迟、命令行那边改过的配置都要落上来），关掉它之后
+   * 唯一的补救是手点「重载」，而那颗按钮也一起去掉了——两颗为同一件事服务的控件。
+   *
+   * 两条节奏见下面那个 effect：会自己变的那几位 3 秒，首屏那一节 15 秒（它贵）。
+   */
+  const auto = true;
   let note = $state("");
   let filterBox = $state<HTMLInputElement | undefined>(undefined);
   /**
@@ -96,6 +115,18 @@
    * 然出现）；这份文件只有一张卡（目录卡、table、log…）照列。不认识的模块照样成立
    * ——本条不 import 任何模块名，判据就是「同一相对路径 + kind 是不是 code」。
    */
+  /**
+   * **首屏那一节**（声明了落点的那一节，见 api.ts 的 Section.default）。
+   *
+   * 主页模式画的就是它，而且只画它的**第一张卡**：那一节今天是只有一张（`home.chains`
+   * 2026-09-29 删了），而就算将来多回来几张，主页模式也不该有标签条——它是「一屏看完」
+   * 的那个模式。要看别的，去完整界面。
+   */
+  const homeSection = $derived(sections.find((s) => s.default) ?? sections[0]);
+  const homeConcept = $derived(
+    concepts.filter((c) => c.source === homeSection?.source)[0],
+  );
+
   const navUnits = $derived.by(() => {
     const byFile = new Map<string, Concept[]>();
     for (const c of concepts) {
@@ -152,7 +183,18 @@
 
   /** 当前这张卡。route.card 为空（或者落在一个已经不在的 id 上）时取第一张——
    *  「一节的第一张」是这一节的默认视图，键盘与 URL 都依赖它是确定的。 */
-  const active = $derived(sectionCards.find((c) => c.id === route.card) ?? sectionCards[0]);
+  /**
+   * 此刻画的是哪一张卡。
+   *
+   * 主页模式下就是**首屏那一节的第一张**，而且不经 `sectionCards`——那一份要过
+   * `matches()`（顶栏那个过滤器），而主页模式里没有过滤器；它也不看 `route.card`
+   * （那一节只有一张卡，见 homeConcept）。
+   */
+  const active = $derived(
+    route.home
+      ? homeConcept
+      : (sectionCards.find((c) => c.id === route.card) ?? sectionCards[0]),
+  );
 
   /**
    * 与当前这张卡**说的是同一份文件**的另一半（见 nav.ts 的 fileOf）。
@@ -278,7 +320,7 @@
     const src =
       (withCards.find((s) => s.default) ?? withCards[0] ?? sections.find((s) => s.default) ?? sections[0])
         ?.source ?? "";
-    return { section: src, card: "", split: route.split };
+    return { home: false, section: src, card: "", split: route.split };
   }
 
   /**
@@ -289,6 +331,13 @@
    * 一个屏幕上没有的东西（刷新一下又跳回来，那才叫费解）。
    */
   function resolveRoute() {
+    // **主页模式不走这条修正**：它的 `section` 本来就是空的（那一屏由落点那一节
+    // 决定，见 homeSection），而这条修正会把「空 section」判成「那一节没了」，随手
+    // 挑一个落点写成完整界面——主页模式于是一开屏就被自己顶掉。实测踩过。
+    if (route.home) {
+      writeHash(route);
+      return;
+    }
     if (sections.some((s) => s.source === route.section)) {
       if (route.card && !concepts.some((c) => c.id === route.card)) {
         route = { ...route, card: "" };
@@ -412,7 +461,7 @@
   function openFile(f: string) {
     const target = controlOf(f) ?? concepts.find((c) => fileOf(c) === f);
     if (!target) return;
-    route = { section: target.source, card: target.id, split: route.split };
+    route = { home: false, section: target.source, card: target.id, split: route.split };
     writeHash(route);
   }
 
@@ -619,7 +668,7 @@
     await load();
     const target = res.focus ? concepts.find((c) => c.id === res.focus) : undefined;
     if (target) {
-      route = { section: target.source, card: target.id, split: route.split };
+      route = { home: false, section: target.source, card: target.id, split: route.split };
       writeHash(route);
     }
   }
@@ -671,7 +720,7 @@
     // 界面**不猜**那个 id：找不到就留在原地（那边刚重读过，新卡就在导航里）。
     const target = res.focus ? concepts.find((c) => c.id === res.focus) : undefined;
     if (target) {
-      route = { section: target.source, card: target.id, split: route.split };
+      route = { home: false, section: target.source, card: target.id, split: route.split };
       writeHash(route);
     }
   }
@@ -703,7 +752,37 @@
   // 导航：三处入口（侧栏、tab、键盘）都只改 route，再由 writeHash 落到地址栏。
   // **只改一处状态**，URL 就不可能与屏幕说的不一样。
   function pickSection(source: string) {
-    route = { ...route, section: source, card: "" };
+    // 点**首屏那一栏** = 回主页模式（目录收起来、只剩卡片）。
+    //
+    // 与顶栏那颗「设置」是一对：那一颗从主页进完整界面，这一颗从完整界面回主页。
+    // 少了这条回路，「主页」在目录里就与别的栏目没有分别了——而它本来就是另一个
+    // 模式，不是另一节。
+    if (source === homeSection?.source) {
+      toHome();
+      return;
+    }
+    route = { home: false, section: source, card: "", split: true };
+    writeHash(route);
+  }
+
+  /** 回主页模式（地址里连 `#/s/…` 都不留，见 nav.ts 的 routeTo）。 */
+  function toHome() {
+    route = { ...homeRoute };
+    writeHash(route);
+  }
+
+  /**
+   * 从主页模式进**完整界面**。
+   *
+   * 落点是「第一节**不是**首屏那一节的栏目」——不写死 `config`：那是模块名，而这一
+   * 层不认识任何模块（同 fileOf 那条）。万一这个发行版只有首屏那一节（骨架配置就是
+   * 那样），退回它自己：那时的完整界面与主页模式只差一圈目录，而目录里那一栏仍然
+   * 点得动。
+   */
+  function toSettings() {
+    const target = sections.find((s) => s.source !== homeSection?.source) ?? homeSection;
+    if (!target) return;
+    route = { home: false, section: target.source, card: "", split: true };
     writeHash(route);
   }
 
@@ -763,7 +842,7 @@
     if (concepts.some((c) => c.source === route.section && matches(c))) return;
     const first = concepts.find(matches);
     if (!first) return;
-    route = { section: first.source, card: first.id, split: route.split };
+    route = { home: false, section: first.source, card: first.id, split: route.split };
     writeHash(route);
   });
 
@@ -875,46 +954,67 @@
      时候发生——正常情况是启动后第一次拿到快照那一下，那时页面还没有任何值得
      保留的状态（草稿、打开的编辑器都还没建，route 在 App 自己身上）。 -->
 {#key lang}
-<div class="shell">
+<div class="shell" class:home={route.home}>
   <header class="top">
     <strong>newgate</strong>
-    <input
-      class="filter"
-      bind:this={filterBox}
-      placeholder={t("filter — id, title, kind")}
-      bind:value={filter}
-    />
-    <span class="spacer"></span>
-    {#if note}<span class="dim mono">{t("as of {time}", { time: note })}</span>{/if}
-    <label class="dim row"><input type="checkbox" bind:checked={auto} /> {t("auto-refresh")}</label>
-    <!-- 皮肤切换：一个下拉，不是一排按钮。皮肤是**装了才知道有几套**的东西
-         （装几个 theme-* 模块就有几套），一排按钮的宽度会跟着装配变；而下拉
-         天然长得下一个可变的集合，也不需要为「选了哪一套」另找地方显示。
-         没有皮肤模块时**整个下拉不出现**——一个只有「跟随系统」一个选项的下拉
-         是个死控件，它占着位置却什么都没得选。 -->
-    {#if themeDoc.themes.length}
-      <select
-        class="dim"
-        value={themeDoc.active}
-        title={t("theme")}
-        aria-label={t("theme")}
-        onchange={(e) => pickTheme(e.currentTarget.value)}
-      >
-        <option value="">{t("follow the system")}</option>
-        {#each themeDoc.themes as th (th.id)}
-          <option value={th.id}>{th.name}</option>
-        {/each}
-      </select>
+    {#if !route.home}
+      <!-- 过滤框只在完整界面里：主页模式那一屏的卡片是**全部**（它就是一屏看完
+           的那一屏），而给一个十来张卡的网格配一个过滤器，是又一件不常用的控件。 -->
+      <input
+        class="filter"
+        bind:this={filterBox}
+        placeholder={t("filter — id, title, kind")}
+        bind:value={filter}
+      />
     {/if}
-    <button onclick={reloadAll} disabled={busy}>{t("reload")}</button>
-    <button class="primary" onclick={saveAll} disabled={busy || !dirty.length}>
-      {t("save")}{dirty.length ? ` (${dirty.length})` : ""}
-    </button>
+    <span class="spacer"></span>
+
+    {#if route.home}
+      <!-- 主页模式就这几颗：这一节的全局开关（全部探一遍 / auto fallback）、
+           皮肤、以及进完整界面的那一颗。没有重载（自动刷新一直在跑）、没有过滤、
+           没有自动刷新那个勾——用户的原话是「尽量减少不常用的控件按钮」。 -->
+      {#each homeSection?.actions ?? [] as a (a.id)}
+        <button
+          class="tiny ghost"
+          class:on={a.tone === "bad"}
+          disabled={busy}
+          onclick={() => runAction(a)}
+        >
+          {a.label}
+        </button>
+      {/each}
+    {:else}
+      {#if note}<span class="dim mono">{t("as of {time}", { time: note })}</span>{/if}
+      <button onclick={reloadAll} disabled={busy}>{t("reload")}</button>
+    {/if}
+
+    {#if themeDoc.themes.length}
+      <ThemePicker doc={themeDoc} onPick={pickTheme} />
+    {/if}
+    <!-- 保存**按需出现**（有东西没存才画）。用户的原话是「只有保存是 dynamic 出现
+         的」——一颗永远挂在那里的保存按钮，在没有改动的时候只是一块占着顶栏的灰。 -->
+    {#if dirty.length}
+      <button class="primary" onclick={saveAll} disabled={busy}>
+        {t("save")} ({dirty.length})
+      </button>
+    {/if}
+    {#if route.home}
+      <!-- 进完整界面。这一颗是主页模式与完整界面之间**唯一**的两个入口之一（另一
+           个是目录里那一栏「主页」，见 pickSection）。 -->
+      <button onclick={toSettings}>{t("settings")}</button>
+    {:else}
+      <button class="tiny ghost" onclick={toHome}>{t("home mode")}</button>
+    {/if}
   </header>
 
-  <Sidebar {sections} active={route.section} {counts} onPick={pickSection} />
+  {#if route.home}
+    <!-- 主页模式：**目录不画**。这一屏是「大部分时候就用它」的那一屏，而目录是
+         一栏常驻的导航——要看别的，右上角那颗进完整界面。 -->
+  {:else}
+    <Sidebar {sections} active={route.section} {counts} onPick={pickSection} />
+  {/if}
 
-  <section class="content" class:subcol={verticalTabs}>
+  <section class="content" class:home={route.home} class:subcol={!route.home && verticalTabs}>
     <div class="errs">
       {#if error}
         <div class="banner">{error}</div>
@@ -936,18 +1036,26 @@
          动作住在**栏目**上而不是某张卡上——新建出来的那一份此刻还没有概念，没有哪张
          卡能挂这个按钮；挂在栏目上它还永远够得着，不管你正看着哪一张卡。
          没有动作就整条不画（空着的一条只会把内容往下推）。 -->
-    {#if sectionActions.length}
+    {#if !route.home && sectionActions.length}
       <div class="secbar">
         <span class="name">{section?.title}</span>
         <span class="spacer"></span>
         {#each sectionActions as a (a.id)}
-          <button class="tiny ghost" disabled={busy} onclick={() => runAction(a)}>{a.label}</button>
+          <button
+          class="tiny ghost"
+          class:on={a.tone === "bad"}
+          disabled={busy}
+          onclick={() => runAction(a)}
+        >
+          {a.label}
+        </button>
         {/each}
       </div>
     {/if}
 
     <!-- 包一层 .nav-slot：TabStrip 是组件，App 的 scoped 样式给不了它根元素的网格
          位置，标在包这一层清楚了（见 app.css 的 .content.subcol）。 -->
+    {#if !route.home}
     <div class="nav-slot">
       <TabStrip
         cards={sectionCards}
@@ -957,6 +1065,7 @@
         onPick={pickCard}
       />
     </div>
+    {/if}
 
     <div class="pane">
       {#if active}
@@ -972,6 +1081,7 @@
           onAction={runCardAction}
           onRowAction={runRow}
           onOpenFile={openFile}
+          bare={route.home}
           onToggleSplit={toggleSplit}
         />
       {:else if concepts.length}

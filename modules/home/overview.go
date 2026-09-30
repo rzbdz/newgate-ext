@@ -322,7 +322,7 @@ func cardActions(agents []view.OverviewAgent, profile string, chains []configapi
 		if targets := probeTargetsOf(chains); len(targets) > 0 {
 			out = append(out, view.Action{
 				ID:    "probe",
-				Label: func() string { return "⚡ " + i18n.T("Test this profile", nil) },
+				Label: func() string { return i18n.T("Test this profile", nil) },
 				Run:   func() (string, error) { return "", probeSet(g, targets) },
 			})
 		}
@@ -455,7 +455,7 @@ func autoCard(agents []view.OverviewAgent, cards []view.OverviewCard, all []*con
 			if targets := probeTargetsOf(one.Keys); len(targets) > 0 {
 				card.Actions = append(card.Actions, view.Action{
 					ID:    "probe-auto",
-					Label: func() string { return "⚡ " + i18n.T("Test this profile", nil) },
+					Label: func() string { return i18n.T("Test this profile", nil) },
 					Run:   func() (string, error) { return "", probeSet(g, targets) },
 				})
 			}
@@ -528,12 +528,21 @@ func fallbackAction(g gatewayapi.Gateway) (view.Action, bool) {
 	on := g.FallbackOn()
 	return view.Action{
 		ID: "fallback",
-		Label: func() string {
+		// 名字是**这件东西的名字**，不是一句祈使句（曾经是「只走链头」/「启用 fallback
+		// 链」，两句都会随状态翻）。用户要的是一颗状态按钮：名字固定、状态由**颜色**
+		// 说（原话：「直接就用 auto fallback 做个状态按钮，默认灰色就是 disable」）。
+		//
+		// 代价说清楚：TUI 那边只画 label，于是它看到的是一个不带状态的名字。换到的是
+		// 界面这一侧不必去解析一句会翻译的话来判断「这是禁用还是启用」——见 Action.Tone。
+		Label: func() string { return i18n.T("auto fallback", nil) },
+		// 按下的样子 = 关着。它不是「危险」，但它是**偏离常态**的那一档，而这一格
+		// 唯一要说的事情就是那个偏离。
+		Tone: func() string {
 			if on {
-				return i18n.T("stop at the chain head", nil)
+				return ""
 			}
-			return i18n.T("enable the fallback chain", nil)
-		},
+			return view.ToneBad
+		}(),
 		Run: func() (string, error) { return "", g.SetFallback(!on) },
 	}, true
 }

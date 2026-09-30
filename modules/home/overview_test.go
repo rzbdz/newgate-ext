@@ -169,43 +169,38 @@ func (f *ovFixture) twoProfiles() {
 
 // ---------- 这一屏的两条路 ----------
 
-// TestOverviewIsTheLandingConcept 首屏那一张要真的挂在这一节上，而且排在链卡前面。
-// 靠的是 Order（不是字母序），见 view.Concept.Order。
-func TestOverviewIsTheLandingConcept(t *testing.T) {
+// TestOverviewIsTheOnlyCardOnTheLandingSection 这一节**只有一张卡**。
+//
+// 曾经有两张：首屏那张总览，外加一张 `home.chains`（逐条读的那一屏）。2026-09-29
+// 按用户的话删掉了后者（原话：「这个 tab、卡片就是没用的，直接删除：候选链」）——
+// 它讲的每一件事，首屏那张的时刻表上都有，而它多买到的只有一个标签条。这一条钉住
+// 「删干净了」：多回来一张，界面上就多一条要点的标签。
+func TestOverviewIsTheOnlyCardOnTheLandingSection(t *testing.T) {
 	f := newOverviewFixture(t)
-	f.seedFile("production.kv", "normal = ark/deepseek-v3\n")
+	f.twoProfiles()
 
 	all, err := f.reg.Snapshot()
 	if err != nil {
-		t.Fatalf("快照失败: %v", err)
+		t.Fatal(err)
 	}
-	byID := map[string]view.Concept{}
-	for _, c := range all {
-		byID[c.ID] = c
-	}
-	ov, ok := byID[overviewID]
-	if !ok {
-		t.Fatalf("快照里没有 %s", overviewID)
-	}
-	ch, ok := byID[conceptID]
-	if !ok {
-		t.Fatalf("快照里没有 %s", conceptID)
-	}
-	if ov.Order >= ch.Order {
-		t.Fatalf("首屏那张该排在链卡前面：overview Order=%d，chains Order=%d", ov.Order, ch.Order)
-	}
-	// 两张卡说的必须是**同一份**链（一次 AllChains 喂两条，见 view.go 的 concepts）。
-	ovData := ov.Data.(view.Overview)
-	chData := ch.Data.(view.Chains)
-	if len(ovData.Cards) != len(chData.Cards) {
-		t.Fatalf("两张卡的 profile 数对不上：overview %d，chains %d",
-			len(ovData.Cards), len(chData.Cards))
-	}
-	for i := range ovData.Cards {
-		if ovData.Cards[i].Profile != chData.Cards[i].Profile {
-			t.Errorf("第 %d 张卡说的不是同一份 profile：%q vs %q",
-				i, ovData.Cards[i].Profile, chData.Cards[i].Profile)
+	if len(all) != 1 {
+		ids := make([]string, 0, len(all))
+		for _, c := range all {
+			ids = append(ids, c.ID)
 		}
+		t.Fatalf("这一节该只有一张卡，实际 %d 张：%v", len(all), ids)
+	}
+	ov := all[0]
+	if ov.ID != overviewID {
+		t.Errorf("那一张该是 %s，实际 %s", overviewID, ov.ID)
+	}
+	if ov.Kind != view.KindOverview {
+		t.Errorf("Kind 该是 %q，实际 %q", view.KindOverview, ov.Kind)
+	}
+	// 它摆的每一份 profile 都得在（少一张就是「某条链在界面上不存在」，而那件事
+	// 没有任何东西会报出来）。
+	if got := len(ov.Data.(view.Overview).Cards); got != 2 {
+		t.Errorf("两张档位都该有一张卡，实际 %d", got)
 	}
 }
 

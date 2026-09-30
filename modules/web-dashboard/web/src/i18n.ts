@@ -26,11 +26,13 @@ const en: Record<string, string> = {
   "{n} concepts": "{n} concepts",
   "filter — id, title, kind": "filter — id, title, kind",
   "as of {time}": "as of {time}",
-  "auto-refresh": "auto-refresh",
   reload: "reload",
   // 皮肤切换那个下拉（见 App.svelte）。选项里除了装着的皮肤，还有一档
   // 「跟随系统」——它不是一个皮肤模块，是**出厂那套令牌**，跟着系统深浅走。
   theme: "theme",
+  // 两个模式之间的两颗按钮（见 App.svelte 的 toHome / toSettings）。
+  settings: "settings",
+  "home mode": "home",
   "follow the system": "follow the system",
   save: "save",
   "no concepts — nothing installed in this process contributes a view.":
@@ -129,9 +131,10 @@ const zhHans: Record<string, string> = {
   "{n} concepts": "{n} 个概念",
   "filter — id, title, kind": "过滤 —— id、标题、类型",
   "as of {time}": "数据时间 {time}",
-  "auto-refresh": "自动刷新",
   reload: "重载",
   theme: "皮肤",
+  settings: "设置",
+  "home mode": "主页",
   "follow the system": "跟随系统",
   save: "保存",
   "no concepts — nothing installed in this process contributes a view.":

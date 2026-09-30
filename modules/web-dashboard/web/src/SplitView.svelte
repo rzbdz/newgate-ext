@@ -24,6 +24,7 @@
     onAction,
     onRowAction,
     onOpenFile,
+    bare,
     onToggleSplit,
   }: {
     left: Concept;
@@ -47,6 +48,8 @@
     // 要去的地方由文件决定，而两张卡说的是同一份文件——带上 id 反而会诱导调用方
     // 按「哪一半」分叉，而那正是这一跳要避免的。
     onOpenFile?: (file: string) => void;
+    /** 见 ConceptCard.bare（主页模式那一屏只有这一张）。 */
+    bare?: boolean;
     onToggleSplit: () => void;
   } = $props();
 
@@ -73,6 +76,7 @@
         onAction={(a) => onAction?.(left.id, a)}
         onRowAction={(row, a) => onRowAction?.(left.id, row, a)}
         {onOpenFile}
+        {bare}
       />
     </div>
     {#if two && right}

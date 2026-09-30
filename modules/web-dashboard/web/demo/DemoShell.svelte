@@ -24,6 +24,7 @@
   // 编辑、切节、切卡、并排都在本地 state 里真生效；点保存 / 动作 / 行上的按钮只弹
   // 一句「这是演示」。**一行都不落盘**——这里没有后端可落。
   import SplitView from "../src/SplitView.svelte";
+  import ThemePicker from "../src/ThemePicker.svelte";
   import { fileOf } from "../src/nav";
   import { t } from "../src/i18n";
   import { d } from "./strings";
@@ -202,18 +203,7 @@
     <span class="spacer"></span>
     <!-- 皮肤切换：与真界面那一格同一个形状，只是它只在这里生效（见 pickTheme）。 -->
     {#if theme.themes.length}
-      <select
-        class="dim"
-        value={theme.active}
-        title={t("theme")}
-        aria-label={t("theme")}
-        onchange={(e) => pickTheme(e.currentTarget.value)}
-      >
-        <option value="">{t("follow the system")}</option>
-        {#each theme.themes as th (th.id)}
-          <option value={th.id}>{th.name}</option>
-        {/each}
-      </select>
+      <ThemePicker doc={theme} onPick={pickTheme} />
     {/if}
     <button class="primary" onclick={onSave} disabled={!dirty}>
       {t("save")}{dirty ? ` (${dirty})` : ""}

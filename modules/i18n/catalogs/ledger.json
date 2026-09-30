@@ -58,7 +58,6 @@
     "Bash classifier: the whole chain is rerouted to light": {},
     "Binding mode": {},
     "Black": {},
-    "Chains": {},
     "Classifier config": {},
     "Classifier override": {},
     "Classifier rerouting": {},
@@ -155,6 +154,7 @@
         "to"
       ]
     },
+    "auto fallback": {},
     "back to the status recorded at takeover": {},
     "backfilled {what} on {n} assistant message: {restored} used the real reasoning text": {
       "args": [
@@ -333,7 +333,6 @@
     "each key follows the recommendation, derived from model build and variant strength": {},
     "each key keeps the status it had at takeover (the default; behaviour unchanged)": {},
     "effective": {},
-    "enable the fallback chain": {},
     "end it early: newgate naked off": {},
     "every intercepted request logs [naked], and newgate status keeps showing a red warning": {},
     "every subagent / agent team / workflow; set it to inherit to hand that back to per-slot resolution": {},
@@ -581,7 +580,6 @@
       ]
     },
     "status blocks": {},
-    "stop at the chain head": {},
     "suggested": {},
     "switch: newgate omo mode current|suggested": {},
     "switched to {name}": {

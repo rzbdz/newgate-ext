@@ -386,8 +386,23 @@
           </span>
         {/if}
         {#each actions(c) as a (a.id)}
-          <button class="tiny ghost" data-nopick data-action={a.id} onclick={() => onAction?.(a)}>
-            {a.label}
+          <!-- 纯图标：这一颗按钮在**每一张卡上**都有一个（十几张卡就是十几颗），
+               带文字时它比卡片名字还显眼，而它做的是一件顺手的事。文字挪进
+               title/aria-label——看得见的地方留记号，说得出话的地方留字。 -->
+          <button
+            class="tiny ghost iconbtn"
+            data-nopick
+            data-action={a.id}
+            title={a.label}
+            aria-label={a.label}
+            onclick={() => onAction?.(a)}
+          >
+            <svg class="net" viewBox="0 0 16 16" aria-hidden="true">
+              <circle cx="3.1" cy="8" r="1.4" />
+              <path d="M6.9 5.7a3.4 3.4 0 0 1 0 4.6" />
+              <path d="M9.7 3.5a6.6 6.6 0 0 1 0 9" />
+              <path d="M12.5 1.3a9.8 9.8 0 0 1 0 13.4" />
+            </svg>
           </button>
         {/each}
       </header>
@@ -561,6 +576,26 @@
     stroke-linecap: round;
     stroke-linejoin: round;
   }
+  /* 探活那颗图标按钮：一个方格子里一颗「信号发散」的记号（网络语义，不指任何
+     一家品牌）。线细一点、端点圆一点——它在十几张卡上各出现一次，粗了整屏都在响。 */
+  .iconbtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 20px;
+    padding: 0;
+  }
+  .net {
+    width: 13px;
+    height: 13px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.3;
+    stroke-linecap: round;
+  }
+  .net circle { fill: currentColor; stroke: none; }
+
   /* 品牌图标与上面那个通用记号**不是一套画法**：lobehub 那一套是填充的
      （`fill="currentColor" fill-rule="evenodd"`），通用记号是描边的。分成两个
      class 而不是在一个 `.ico` 里互相覆盖——两者的 fill/stroke 是互斥取值，

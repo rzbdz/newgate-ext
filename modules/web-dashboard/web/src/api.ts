@@ -77,6 +77,13 @@ export interface Note {
 export interface SectionAction {
   id: string;
   label: string;
+  /**
+   * 这颗动作**此刻是按下的**（`"bad"`），空 = 平时的样子。见内核 view.Action.Tone。
+   *
+   * 界面据此把按钮画成「亮着的状态」而不是「一个可以点的词」——`auto fallback`
+   * 那颗就是这么用的：名字固定，状态由颜色说。
+   */
+  tone?: string;
 }
 
 export interface Section {
@@ -299,6 +306,8 @@ export async function preview(id: string, text: string): Promise<PreviewResult> 
 export interface ConceptAction {
   id: string;
   label: string;
+  /** 见 SectionAction.tone。 */
+  tone?: string;
 }
 
 /**
@@ -324,6 +333,8 @@ export async function runConceptAction(id: string, action: string): Promise<Appl
 export interface RowAction {
   id: string;
   label: string;
+  /** 见 SectionAction.tone。 */
+  tone?: string;
 }
 
 /**

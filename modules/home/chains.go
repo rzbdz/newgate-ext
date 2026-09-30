@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/lib/view"
 	configapi "github.com/rzbdz/newgate/modules/config"
 	"github.com/rzbdz/newgate/modules/config/paths"
 	"github.com/rzbdz/newgate/modules/config/store"
@@ -37,86 +36,6 @@ import (
 // core/CLAUDE.md 明说谁都能直接 import）、以及契约本身（lib/view、lib/i18n）。
 // 链的**结论**一律走端口——这里不 import store/resolve 去自己算一条链，那种依赖会
 // 在内核重构时断在另一个仓库里，而且那里没有测试会红。
-
-// Chains 把每一份 profile 的链摆成一叠卡。
-//
-// 顺序**原样保留**：生效的那一份在最前、其余按名字（那是 AllChains 给的，也是
-// 「一屏」那一屏的读法——第一眼要找的是「我现在站在哪一份上」，见 orderedProfiles）；
-// 卡里的档位次序也原样保留（那是 domain.Roles 的能力序，命令行与 doctor 照同一条）。
-// 这里重排一次就是把同一条产品取舍抄成两份，而抄来的那份会漂移。
-func Chains(all []*configapi.Chains) view.Chains {
-	cards := make([]view.ChainCard, 0, len(all))
-	for _, one := range all {
-		if one == nil {
-			continue
-		}
-		card := view.ChainCard{
-			Profile: one.Profile,
-			File:    profileFile(one.Profile),
-			Default: one.Default,
-			Roles:   make([]view.ChainRow, 0, len(one.Keys)),
-		}
-		for _, chain := range one.Keys {
-			card.Roles = append(card.Roles, rowOf(one.Profile, chain))
-		}
-		cards = append(cards, card)
-	}
-	return view.Chains{Cards: cards}
-}
-
-// rowOf 把一档的结论摆成一行。
-func rowOf(profile string, chain configapi.Chain) view.ChainRow {
-	head := ""
-	if len(chain.Steps) > 0 {
-		head = chain.Steps[0].Binding.String()
-	}
-	row := view.ChainRow{
-		// ID = `profile/tier`：**行 ID 必须在整个概念里唯一**（见 view.ChainRow.ID
-		// 与 view.RunRowAction）。档位名单独一个不够用——十份 profile 就有十个
-		// `heavy`，而「把这一档换成 X」要动的是**某一份文件里的某一行**。
-		ID:   profile + "/" + chain.Key,
-		Tier: chain.Key,
-		Head: head,
-		// Actions **原样透传**：那些闭包由 config 构造（它才知道这一档写在哪份
-		// 文件里、此刻的基线是什么、并发改到了怎么跟用户交代），在这里重造一份
-		// 就是把这套知识抄进发行版。跨包传递是安全的——它们在同一个进程里等着
-		// 被 view.RunRowAction 调（见 configapi.Chain.Actions）。
-		Actions: chain.Actions,
-	}
-	row.Steps = steps(chain.Steps)
-	if len(chain.Steps) == 0 {
-		// 空链是 bad：这一档此刻没得走（与 configapi.Chain 的注释、`newgate tier`
-		// 的「no usable candidate」同一件事）。有链时不着色——这一格只说
-		// 「有没有可用的链头」，**不表达健康度**（那要探活，是另一本账，见
-		// view.ChainRow.Tone）。
-		row.Tone = view.ToneBad
-	}
-	row.Note = skipNote(chain.Skips)
-	return row
-}
-
-// steps 把链上的站摆出来。
-//
-// Note 一律空着：某一站为什么没排更前，属于**整条链**那件事（见 view.ChainRow.Note
-// 与 Step.Note 的分工），而今天 resolve 也没有逐站的说明可给（configapi.Step 上
-// 只有 Profile 与 Binding）。留一个空字段比编一句话好。
-func steps(list []configapi.Step) []view.ChainStep {
-	if len(list) == 0 {
-		return nil
-	}
-	out := make([]view.ChainStep, 0, len(list))
-	for _, s := range list {
-		out = append(out, view.ChainStep{
-			Provider: s.Binding.Provider,
-			Model:    s.Binding.Model,
-			// Profile 要写出来：链会**跨 profile**（本 profile 的候选之后接着别人的），
-			// 不写的话用户会去自己正看着的那份文件里找一个不存在的候选。
-			// 界面拿它与卡头比，同名时不重复画（见 Chains.svelte 的 foreign）。
-			Profile: s.Profile,
-		})
-	}
-	return out
-}
 
 // ---------- 跳过：只给汇总，永不逐条铺开 ----------
 

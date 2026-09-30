@@ -9,9 +9,6 @@ import (
 
 // 本文件是交给界面的那一面：**一屏看到我这些链**。
 
-// conceptID 是这一节的稳定身份（前端排序、草稿、行动作回传都按它走）。
-const conceptID = "home.chains"
-
 // registerView 把这一节挂上去。没有 web 界面时什么都不做（见 module.go）。
 //
 // 登记时**一个文件都不读**：产出函数 `concepts` 要等到真的有人来看界面才跑。
@@ -63,29 +60,12 @@ func concepts(cfg configapi.Config, deps overviewDeps) view.Contributor {
 		if err != nil {
 			return nil, err
 		}
-		return []view.Concept{
-			overviewConcept(all, deps),
-			chainsConcept(all),
-		}, nil
-	}
-}
-
-// chainsConcept 是逐条读的那一屏：每一档此刻解析成什么、谁被跳过、为什么。
-func chainsConcept(all []*configapi.Chains) view.Concept {
-	return view.Concept{
-		ID: conceptID, Kind: view.KindChains,
-		Title: i18n.T("Chains", nil),
-		Data:  Chains(all),
-		// Order 10：同一节里排在首屏那张卡**后面**（Overview 是 0）。两张卡的分工见
-		// KindOverview 的注释：那一张是「拿它做决定」，这一张是「逐条读」。Order 只
-		// 影响这一节里的先后，见 view.Concept.Order。
-		//
-		// 没有 Apply：这一屏上的改动走**行上的动作**（「把这一档换成 X」，
-		// 见 configapi.Chain.Actions）。整张卡级的写回没有意义——链是算出来的
-		// 结论，不是一个可以整份交回来的文档。
-		//
-		// 没有 Live：这一面读盘、不读内存态（见 lib/view 的 Concept.Live——
-		// 声明的判据是「读一次贵不贵」，不是「数据会不会变」）。
-		Order: 10,
+		// **只有一张卡**。曾经这里还有一张 `home.chains`（逐条读的那一屏：每一档
+		// 解析成什么、谁被跳过、为什么），2026-09-29 按用户的话删掉了——原话是
+		// 「这个 tab、卡片就是没用的，直接删除：候选链」。它讲的每一件事，首屏那张
+		// 卡的时刻表上都有一份（摊开那张卡就是同样的结论），而它多买到的只有一个
+		// 标签条。那句话在这一屏上尤其贵：主页要的是「一屏看完」，多一条标签就多
+		// 一层要点。
+		return []view.Concept{overviewConcept(all, deps)}, nil
 	}
 }

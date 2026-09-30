@@ -1,32 +1,34 @@
 /* 设计系统的全部：一层底色、一层卡片、一条分隔线、一个强调色。不引 UI 框架——
    这个界面是给工程师看的，密度和稳定比动效重要（同一份配置看两次，位置要一样）。
 
-   # 色板：一整套暖色，深色为默认（2026-09-22 换）
+   # 出厂这一套是**黑白**
 
-   换之前是「冷灰 + 蓝强调」，那是随手挑的（`#0f1115` / `#5b8def`）——不难看，但
-   它没有任何东西在背后撑着：换一件同类的工具，配色不会让你觉得「这也是它」。
+   用户挑的是「跟随系统」，而那个选择的语义是「不要给我指定一套」——所以出厂这
+   一套必须是最中性的那一套：灰阶不带任何色相（H 全是 0），强调色就是前景色本身
+   （深色下近白、浅色下近黑）。它不与任何一套皮肤争口味。
 
-   现在这一套抄自 cc-switch 的参考界面（`/tmp/ccs/css.css` 里那些 HSL 三元组，
-   不是肉眼看图估的）：**底色是暖米/暖棕，强调是暖橙**。判据是它把「暖」这件
-   事贯彻到底了——边框、静默底、次要文字全都带同一条橙黄色相（H≈30–38），
-   而不是「灰底上盖一个彩色按钮」。本界面里唯一的冷色是 `--ok` 那个绿（语义色
-   不该为了统一色相而变味）。
+   语义色（--ok / --warn / --danger）是唯一保留色相的三格，而这是有意的：一个灰掉
+   的「警告」读不出意思来。
 
-   深浅两套的关系是**对调过的**：那边把暖米色当浅色主题、深色是另一套覆盖；这里
-   深色是默认（工程师大多在深色终端旁边看它），浅色走 `prefers-color-scheme`。
-   两套的 `--accent` 不是同一个亮度——同一支橙压在浅底上要更深、压在深底上要更亮，
-   照抄一个值会让其中一边的对比度掉到读不清。 */
+   # 暖色那一套去哪了
+
+   它成了 `theme-anthropic`（modules/theme-anthropic）——那套暖米 + 陶土的配色本来
+   就是 Anthropic 的品牌语气，而不是这个界面的出厂样子。2026-09-29 按用户的话搬过去
+   （原话：「跟随系统这个主题才是 anthropic 主题吧，跟随系统默认应该是黑白主题」）。
+
+   深浅两套不是同一组灰的两次曝光：浅色那套的 --accent 要压得更深才在白底上读得清，
+   照抄一个值会让其中一边的对比度掉下来。 */
 :root {
-  --bg: hsl(30 12% 11%);
-  --panel: hsl(30 11% 14%);
-  --panel-2: hsl(30 10% 18%);
-  --line: hsl(30 9% 24%);
-  --ink: hsl(35 20% 92%);
-  --dim: hsl(33 10% 62%);
-  --accent: hsl(15 65% 56%);
-  --ok: hsl(142 45% 55%);
-  --warn: hsl(38 82% 58%);
-  --danger: hsl(0 62% 62%);
+  --bg: hsl(0 0% 10%);
+  --panel: hsl(0 0% 13%);
+  --panel-2: hsl(0 0% 17%);
+  --line: hsl(0 0% 24%);
+  --ink: hsl(0 0% 93%);
+  --dim: hsl(0 0% 62%);
+  --accent: hsl(0 0% 88%);
+  --ok: hsl(142 42% 55%);
+  --warn: hsl(38 78% 58%);
+  --danger: hsl(0 58% 62%);
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   /* 两级圆角（cc-switch 同款）：卡片 12px、小件 8px。只有一套的话，要么卡片
      太方（8px 在大块面上几乎看不出圆），要么按钮太圆（12px 在 26px 高的按钮上
@@ -42,16 +44,16 @@
    见 src/theme.ts 的文件头。 */
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) {
-    --bg: hsl(38 28% 91%);
-    --panel: hsl(35 25% 89%);
-    --panel-2: hsl(35 20% 85%);
-    --line: hsl(35 18% 78%);
-    --ink: hsl(30 15% 15%);
-    --dim: hsl(30 12% 40%);
-    --accent: hsl(15 65% 48%);
-    --ok: hsl(142 55% 32%);
-    --warn: hsl(32 75% 40%);
-    --danger: hsl(0 62% 45%);
+    --bg: hsl(0 0% 100%);
+    --panel: hsl(0 0% 98%);
+    --panel-2: hsl(0 0% 95%);
+    --line: hsl(0 0% 88%);
+    --ink: hsl(0 0% 9%);
+    --dim: hsl(0 0% 42%);
+    --accent: hsl(0 0% 15%);
+    --ok: hsl(142 55% 30%);
+    --warn: hsl(32 78% 36%);
+    --danger: hsl(0 62% 44%);
   }
 }
 
@@ -78,6 +80,14 @@ button:disabled { opacity: 0.45; cursor: default; }
 button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 button.ghost { background: transparent; }
 button.tiny { padding: 1px 7px; font-size: 12px; border-radius: 6px; }
+/* 按下的动作（见 api.ts 的 tone）：不是「主按钮」（它不推进什么），而是**一个亮着
+   的状态**——底色淡、边框与字用危险色。用在 `auto fallback` 那颗上：它的名字固定，
+   状态由这里说。 */
+button.tiny.on {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 55%, var(--line));
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+}
 
 input, select, textarea {
   font: inherit;
@@ -196,6 +206,10 @@ a { color: var(--accent); }
   height: 100%;
 }
 .shell > header.top { grid-column: 1 / -1; }
+/* 主页模式（见 App.svelte 的 route.home）：**目录那一栏不画**，内容占满整宽。
+   一栏常驻的导航换成一屏卡片——用户的原话是「大部分时候就是主要用主页」，而目录
+   是给「要去别处」准备的。要进别处，右上角那颗「设置」。 */
+.shell.home { grid-template-columns: minmax(0, 1fr); }
 .content {
   display: grid;
   /* errs / secbar / nav / pane。secbar 没画时那一行是 auto=0，所以不需要为它写

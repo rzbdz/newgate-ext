@@ -26,6 +26,7 @@
     onAction,
     onRowAction,
     onOpenFile,
+    bare,
   }: {
     concept: Concept;
     draft: unknown;
@@ -73,6 +74,8 @@
      * 卡片动作的副作用（它改盘，重读之后基线全过期），而这里什么都没改。
      */
     onOpenFile?: (file: string) => void;
+    /** 这一张是那一屏唯一的东西时，标题与概念 ID 不画（见模板里那一段）。 */
+    bare?: boolean;
   } = $props();
 
   const isDirty = $derived(draft !== undefined);
@@ -108,9 +111,16 @@
   class:locked={!!concept.locked}
   class:fills={concept.kind === "log" && !concept.error}
 >
+  {#if !bare || concept.note}
   <header>
-    <h3>{concept.title}</h3>
-    <span class="meta">{concept.id}</span>
+    <!-- `bare` = 这一张是**那一屏唯一的东西**（主页模式），标题与概念 ID 是废话：
+         它们回答的是「我正在看哪一张卡」，而那里没有第二张可挑。留下来的只有那句
+         状态说明——那句话说的是**数据本身**（fallback 关着、某份档位读不出来），
+         与「有几张卡」无关。 -->
+    {#if !bare}
+      <h3>{concept.title}</h3>
+      <span class="meta">{concept.id}</span>
+    {/if}
     <span class="spacer"></span>
     <!-- 一句状态说明（见 lib/view 的 Concept.Note）。**它不是按钮**：没有 onclick，
          也不该长得像按钮——点了没有任何事发生，而一个点了没反应的按钮比没有按钮
@@ -155,6 +165,7 @@
       </span>
     {/if}
   </header>
+  {/if}
 
   <!-- `{#key concept.id}`：**换一张卡就把渲染器整个重建**。
        MappingEditor / Toggles / Records 都各有一份「我改过没有」的本地状态
