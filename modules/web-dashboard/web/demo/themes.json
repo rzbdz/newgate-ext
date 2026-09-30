@@ -5,7 +5,7 @@
       "id": "anthropic",
       "name": "Anthropic",
       "dark": false,
-      "css": "\n  --bg: #faf9f5;\n  --panel: #f0eee6;\n  --panel-2: #e8e6dc;\n  --line: #d8d4c7;\n  --ink: #141413;\n  --dim: #6f6c64;\n  --accent: #d97757;\n  --ok: #3d7a4e;\n  --warn: #a96a12;\n  --danger: #bc3f36;\n"
+      "css": "\n  --bg: hsl(38 28% 91%);\n  --panel: hsl(35 25% 89%);\n  --panel-2: hsl(35 20% 85%);\n  --line: hsl(35 18% 78%);\n  --ink: hsl(30 15% 15%);\n  --dim: hsl(30 12% 40%);\n  --accent: hsl(15 65% 48%);\n  --ok: hsl(142 55% 32%);\n  --warn: hsl(32 75% 40%);\n  --danger: hsl(0 62% 45%);\n"
     },
     {
       "id": "dark",
