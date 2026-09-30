@@ -265,6 +265,13 @@ type sectionDoc struct {
 	// 首屏落在哪一栏是产品取舍（「先让用户看见一屏全能」），而 BFF/前端都不认识
 	// 任何模块，也就无从判断谁该在那儿。它们只搬这一格。
 	Default bool `json:"default,omitempty"`
+	// Fields 说这一栏**是干什么的**（见 view.SectionInfo.Fields）。界面据它在目录里
+	// 分类——显示的字由界面定（要翻译），归到哪一类由这个机器标记定。
+	//
+	// 这一格是**手工搬运**的（本文件在好几个地方逐字段抄账本），所以它漏过一次：
+	// 2026-09-29 加上 Fields 之后这里没跟上，症状是侧栏的分组一直没变——而账本、
+	// 内核、各个模块全是对的。
+	Fields string `json:"fields,omitempty"`
 }
 
 // snapshot 问一遍贡献者要这一刻的样子。
@@ -287,7 +294,7 @@ func (h *Handler) snapshot(sources ...string) (snapshotDoc, error) {
 	for _, s := range h.views.Sections() {
 		doc.Sections = append(doc.Sections, sectionDoc{
 			Source: s.Source, Title: s.Title, Group: s.Group,
-			Actions: s.Actions, Default: s.Default,
+			Actions: s.Actions, Default: s.Default, Fields: s.Fields,
 		})
 	}
 	if doc.Sections == nil {

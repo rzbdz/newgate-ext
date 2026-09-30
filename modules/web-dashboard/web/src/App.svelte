@@ -791,9 +791,20 @@
    * 万一这个发行版只有首屏那一节（骨架配置），退回它自己。
    */
   function toSettings() {
+    // 判据是**那一栏自己声明的用途**（`Section.fields === "settings"`，见内核
+    // view.SectionInfo.Fields），而且是第一个有卡的那种。
+    //
+    // 先后试过两条都不行的路：「第一个有卡的节」落在熔断上（它按 source 排得更前），
+    // 「第一个有可编辑文件的节」落在 Claude Code 上（它也有 mappings 那种卡）。
+    // 用户要的是**配置文件那一页**——而「这一栏是设置」正是后端已经声明过的机器标记，
+    // 用它可以判，且不引入任何模块名。
     const target =
-      sections.find((s) => s.source !== homeSection?.source && concepts.some((c) => c.source === s.source)) ??
-      homeSection;
+      sections.find(
+        (s) =>
+          s.fields === "settings" &&
+          s.source !== homeSection?.source &&
+          concepts.some((c) => c.source === s.source),
+      ) ?? homeSection;
     if (!target) return;
     route = { home: false, section: target.source, card: "", split: true };
     writeHash(route);
@@ -975,9 +986,15 @@
          对方缺的那条路，不留一对多余的。 -->
     {#if route.home}
       <button class="icon" title={t("settings")} aria-label={t("settings")} onclick={toSettings}>
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <circle cx="8" cy="8" r="2.3" />
-          <path d="M8 1.6v1.7M8 12.7v1.7M1.6 8h1.7M12.7 8h1.7M3.5 3.5l1.2 1.2M11.3 11.3l1.2 1.2M12.5 3.5l-1.2 1.2M4.7 11.3l-1.2 1.2" />
+        <!-- 齿轮。**上一版画错了**：一个圆加八根短射线，读起来是太阳（用户的原话：
+             「你这个设置的icon为什么是个太阳不应该是个齿轮吗」）。齿得是**从轮体上
+             长出来的块**，不是飘在外面的线——所以这里用一整条轮廓路径（Feather 那只，
+             MIT），而不是圆 + 描边。 -->
+        <svg class="gear" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="3.1" />
+          <path
+            d="M19.5 14.6a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.9 2.9l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5v.2a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.9-2.9l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.9-2.9l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.9 2.9l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1h.2a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"
+          />
         </svg>
       </button>
     {/if}

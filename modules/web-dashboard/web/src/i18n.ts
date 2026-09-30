@@ -33,6 +33,15 @@ const en: Record<string, string> = {
   // 两个模式之间的两颗按钮（见 App.svelte 的 toHome / toSettings）。
   settings: "settings",
   "home mode": "home",
+  // 目录里的三档标题（见 Sidebar.svelte 的 HEAD）。分到哪一档由后端给的机器标记
+  // 决定，显示的字在这里——它要能翻译、能改措辞。
+  // 客户端的那个分组标题**是后端报的**（各客户端模块自己 `In("Clients")`），
+  // 所以它本来就该在字典里——之前只有后端那一侧有译文，前端这一侧漏了，
+  // 于是中文界面里它是英文。其余两个（路由 / 设置）是界面自己的标题。
+  Clients: "Clients",
+  Routes: "Routes",
+  Settings: "Settings",
+  Other: "Other",
   "follow the system": "follow the system",
   save: "save",
   "no concepts — nothing installed in this process contributes a view.":
@@ -135,6 +144,10 @@ const zhHans: Record<string, string> = {
   theme: "皮肤",
   settings: "设置",
   "home mode": "主页",
+  Clients: "客户端",
+  Routes: "路由",
+  Settings: "设置",
+  Other: "其他",
   "follow the system": "跟随系统",
   save: "保存",
   "no concepts — nothing installed in this process contributes a view.":

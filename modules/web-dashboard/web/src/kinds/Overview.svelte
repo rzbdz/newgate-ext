@@ -174,6 +174,44 @@
   }
 
   /**
+   * 正在探的那几张卡（键是 keyOf）。
+   *
+   * 探活是一次**要等几秒**的动作，而它返回的正是这一屏上那些延迟数字——等的时候
+   * 如果还挂着旧数字，用户看到的是「点了没反应」，然后那几个数字**突然**跳一下。
+   * 用户的原话：「探测的时候，记得要把当前的延迟给盖掉（显示为...）。更新结果再刷新」。
+   * 所以探的期间把那几格盖成「…」，等重读回来自然换成新值。
+   */
+  let probing = $state<Record<string, boolean>>({});
+
+  /** 这一张卡此刻在探吗。 */
+  function isProbing(c: Card): boolean {
+    return !!probing[keyOf(c)];
+  }
+
+  /**
+   * 跑一颗动作；是探活的话，期间把这张卡标成「在探」。
+   *
+   * 只对**探活**那一族这样做：别的动作（换链头那种）不产出延迟数字，给它们盖一层
+   * 「…」是在说一件不存在的事。判据是动作 id 那一族（`probe` / `probe-auto`）——
+   * 它是「跑完会重读快照」的唯一一支。
+   */
+  async function run(a: Act, c: Card) {
+    if (!a.id.startsWith("probe")) {
+      await onAction?.(a);
+      return;
+    }
+    const k = keyOf(c);
+    probing = { ...probing, [k]: true };
+    try {
+      await onAction?.(a);
+    } finally {
+      const next = { ...probing };
+      delete next[k];
+      probing = next;
+    }
+  }
+
+  /**
    * 网格里摆的几张卡。
    *
    * 客户端那一档：「自动」在最前（它的内容 = 自动此刻 resolve 到的那一份），后面是
@@ -395,7 +433,7 @@
             data-action={a.id}
             title={a.label}
             aria-label={a.label}
-            onclick={() => onAction?.(a)}
+            onclick={() => run(a, c)}
           >
             <svg class="net" viewBox="0 0 16 16" aria-hidden="true">
               <circle cx="3.1" cy="8" r="1.4" />
@@ -457,7 +495,11 @@
                   {#if r.note}<span class="dim note" title={r.note}>{r.note}</span>{/if}
                 {/if}
               </span>
-              {#if r.steps?.[0]?.latency_ms}
+              {#if isProbing(c)}
+                <!-- 正在探：把旧数字盖掉（见 isProbing）。留着旧值的话，用户点完
+                     看到的是「没反应」，几秒后数字突然一跳。 -->
+                <span class="ms mono dim">…</span>
+              {:else if r.steps?.[0]?.latency_ms}
                 <span
                   class="ms mono {toneClass(r.steps[0].latency_tone)}"
                   title={msTitle(r.steps[0])}
@@ -482,7 +524,9 @@
                 <!-- 延迟单独占一列、右对齐：这一列是**拿来竖着比**的（同一张卡里哪一档
                      快、两张卡之间谁快），所以它得像表格里的数字列那样对齐。跟在链头
                      后面会随名字长短左右横跳，也就没法比了。 -->
-                {#if r.steps?.[0]?.latency_ms}
+                {#if isProbing(c)}
+                  <span class="ms mono dim">…</span>
+                {:else if r.steps?.[0]?.latency_ms}
                   <span class="ms mono {toneClass(r.steps[0].latency_tone)}" title={msTitle(r.steps[0])}>
                     {r.steps[0].latency_ms}{t("ms")}
                   </span>

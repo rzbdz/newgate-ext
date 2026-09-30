@@ -104,7 +104,7 @@ func New() modules.Component {
 			if _, err := views.Register(Name,
 				// 消息必须是**字面量**（i18n 的扫描器只认它——拼接出来的句子没法
 				// 翻译，见那条错误的原文）。所以这里不抽常量。
-				viewapi.Title(func() string { return i18n.T("Interface", nil) }),
+				viewapi.Title(func() string { return i18n.T("Interface", nil) }).Of(viewapi.FieldSettings),
 				func() ([]viewapi.Concept, error) {
 					return []viewapi.Concept{themeConcept(themes)}, nil
 				}); err != nil {

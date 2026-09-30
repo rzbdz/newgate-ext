@@ -91,7 +91,8 @@ func New() modules.Component {
 			if v, ok := modules.Get(ctx, viewapi.Capability); ok {
 				viewRelease, err := v.Register("opencode-omo",
 					viewapi.Title(func() string { return i18n.T("opencode", nil) }).
-						In(func() string { return i18n.T("Clients", nil) }),
+						In(func() string { return i18n.T("Clients", nil) }).
+						Of(viewapi.FieldClients),
 					func() ([]viewapi.Concept, error) { return omoConcepts(lock) })
 				if err != nil {
 					return err

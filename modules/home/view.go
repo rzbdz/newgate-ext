@@ -24,7 +24,7 @@ func registerView(v view.Service, cfg configapi.Config, deps overviewDeps) (modu
 	// 第一位、且不给它画分组标题（见 Sidebar.svelte 的 rows）。归组的话它会连同
 	// 标题一起被卷到中间去，而「凭什么它最上面」这个问题就答不上来了——它自己在
 	// 第一位时，位置本身就是那句话，与「不归组的那几栏排最前面」是同一条理由。
-	section := view.Title(func() string { return i18n.T("Home", nil) }).Landing()
+	section := view.Title(func() string { return i18n.T("Home", nil) }).Landing().Of(view.FieldRoutes)
 	// 这一节上只挂**一颗**动作：fallback 那个状态开关（见 overview.go 的
 	// fallbackAction）。曾经还有一颗「全都探一遍」，2026-09-29 按用户的话去掉了
 	// （原话：「主页全部探一遍那个按钮也是傻啊，直接移除掉吧」）——探某一份是卡片头

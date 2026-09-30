@@ -88,6 +88,13 @@ export interface SectionAction {
 
 export interface Section {
   source: string;
+  /**
+   * 这一栏**是干什么的**（内核 view.SectionInfo.Fields）。界面据它在目录里分类。
+   *
+   * 取值与内核那几个常量对齐：`routes`（请求走哪条路）、`config`（能改的东西）、
+   * `clients`（客户端的设置）；空 = 那一栏还没归类，排在最后。
+   */
+  fields?: string;
   title: string;
   /** 这一栏上的动作（「再建一份档位文件」这类）。**由贡献者注入**——新建出来的
       东西此刻还没有概念，所以它不属于任何一张卡；界面也不知道那一节能长出什么。 */

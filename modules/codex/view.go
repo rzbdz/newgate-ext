@@ -49,7 +49,8 @@ func profileOf() agentapi.AgentProfile { return agentapi.AgentProfile{AgentID: I
 func registerView(v view.Service) (modules.Release, error) {
 	return v.Register("codex",
 		view.Title(func() string { return i18n.T("Codex", nil) }).
-			In(func() string { return i18n.T("Clients", nil) }),
+			In(func() string { return i18n.T("Clients", nil) }).
+			Of(view.FieldClients),
 		concepts)
 }
 

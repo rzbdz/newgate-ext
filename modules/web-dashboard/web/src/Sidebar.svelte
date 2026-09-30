@@ -39,6 +39,25 @@
    * 位置跟着人数变，那比多一行小字糟得多。
    */
   type Row = { kind: "head"; name: string } | { kind: "sec"; s: Section };
+
+  /**
+   * 目录里的三档标题，以及它们的先后。
+   *
+   * 判据是**栏目自己声明的用途**（`Section.fields`，见内核 view.SectionInfo.Fields），
+   * 不是贡献者写的分组名——那是自由文本（`In("Clients")` / `In("数据面")`），两个
+   * 模块写不一样就分不到一起。所以显示的**字**由这里定（它要翻译、要能改措辞），
+   * 而**分到哪一档**由后端给的机器标记定。
+   *
+   * 没声明用途的栏目（今天没有）排最后一档，不藏起来：一栏在目录里消失，比它出现在
+   * 一个不精确的标题底下糟得多。
+   */
+  const ORDER = ["clients", "routes", "settings"] as const;
+  // 标题的字**每次渲染再查**（不是模块加载时查一次）：`t()` 读的语言住在
+  // i18n.ts 的模块级变量里，而它在快照回来之后才设——在顶层查一遍，中文界面下
+  // 这三个标题会永远是英文（实测：Clients 是英文，而它底下的 Claude Code 是中文）。
+  const head = (f: string): string =>
+    f === "clients" ? t("Clients") : f === "routes" ? t("Routes") : t("Settings");
+
   const rows = $derived.by<Row[]>(() => {
     const out: Row[] = [];
 
@@ -48,38 +67,28 @@
     // 的那个「用户第一眼该看哪儿」（见 lib/view 的 Section.Default），而目录的第一
     // 项说的也正是这件事——同一个问题的两个说法，用同一个事实答。加第二个字段就有
     // 「落点在一处、排位在另一处，两处不一致」的余地。
-    //
-    // 为什么它不跟着分组走：分组标题说的是「下面这几栏是一类」，把它插进某一组的
-    // 中间（或者把整组提到最前）都会让「凭什么它最上面」这个问题更难答。它自己在
-    // 最上面时**位置本身就是那句话**——与「不归组的那几栏排最前面」是同一条理由。
     const landing = sections.find((s) => s.default);
     if (landing) out.push({ kind: "sec", s: landing });
 
-    for (const s of sections) {
-      if (!s.group && s !== landing) out.push({ kind: "sec", s });
-    }
-
-    // 每一组**聚在一起**：先按组名第一次出现的次序定组的先后，再把整组成员一次
-    // 列完。
+    // 每一档**聚在一起**：先按 ORDER 定档的先后，再把整档成员一次列完。
     //
     // 不能「边走边插标题」——那一版是那么写的，而它是错的：成员按来源序来，于是
-    // 一组的第二栏会被别组的标题拦在后面（实测：`gateway` 排在 `claudecode` 之后，
-    // 结果「数据面」标题底下只有「熔断」，而「网关」跑到了 Clients 底下）。标题
-    // 说的是「下面这几栏是一类」，底下就必须真的是那一类。
-    const order: string[] = [];
-    const byGroup = new Map<string, Section[]>();
+    // 一档的第二栏会被别档的标题拦在后面（实测：`gateway` 排在 `claudecode` 之后，
+    // 结果标题底下只有一半成员）。标题说的是「下面这几栏是一类」，底下就必须真的是
+    // 那一类。
+    const byField = new Map<string, Section[]>();
     for (const s of sections) {
-      if (!s.group || s === landing) continue;
-      const g = byGroup.get(s.group);
+      if (s === landing) continue;
+      const f = s.fields || "_other";
+      const g = byField.get(f);
       if (g) g.push(s);
-      else {
-        byGroup.set(s.group, [s]);
-        order.push(s.group);
-      }
+      else byField.set(f, [s]);
     }
-    for (const g of order) {
-      out.push({ kind: "head", name: g });
-      for (const s of byGroup.get(g)!) out.push({ kind: "sec", s });
+    for (const f of [...ORDER, "_other"]) {
+      const members = byField.get(f);
+      if (!members?.length) continue;
+      out.push({ kind: "head", name: f === "_other" ? t("Other") : head(f) });
+      for (const s of members) out.push({ kind: "sec", s });
     }
     return out;
   });
