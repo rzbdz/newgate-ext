@@ -752,7 +752,13 @@
   .pc:has(.surface:hover) { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
   .pc:has(.surface:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
   .pc > :not(.surface) { position: relative; z-index: 1; pointer-events: none; }
-  .pc > :not(.surface) button { pointer-events: auto; }
+  .pc > :not(.surface) button,
+  /* 自己就是按钮、且直接挂在卡片上的那些（文件路径那一格）也**要单独放开**：
+     上面那条 `:not(.surface) button` 说的是「某个非按钮子元素**里面**的按钮」，
+     而 `.meta.link` 自己就是那个直接子元素——不补这一条，它会被判成
+     `pointer-events: none`，点不动（实测：鼠标停在上面没有任何反应，看起来像
+     那行字本来就是死的）。 */
+  .pc > button:not(.surface) { pointer-events: auto; }
 
   .roles { list-style: none; margin: 0; padding: 0; }
   .roles > li + li { margin-top: 8px; }
