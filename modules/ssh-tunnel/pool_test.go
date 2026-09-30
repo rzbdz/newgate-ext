@@ -440,3 +440,49 @@ func closePool(t *testing.T, p *pool) {
 	defer cancel()
 	_ = p.Close(ctx)
 }
+
+func TestABusyForwardingPortIsRetried(t *testing.T) {
+	// 最常见的那次 `net.Listen` 失败恰好发生在**优雅交接**之后：老进程还占着那个
+	// 端口在排空，新进程一上来绑当然绑不上。老进程几秒后就走了，所以一次失败必须
+	// 是**可恢复**的——不重试的话，症状是「升级完之后转发端口一直是死的，而 route
+	// 那条好好的」，看起来像只有那一条配置坏了（实机踩过）。
+	busy, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := busy.Addr().(*net.TCPAddr).Port
+
+	d := newFakeDialer("127.0.0.1:1")
+	p := newPool(d)
+	defer closePool(t, p)
+
+	tt := target("ds")
+	tt.LocalPort = port
+	loaded := Loaded{Targets: []Target{tt}}
+	m := newManager(p, func() Loaded { return loaded })
+	defer m.shutdown()
+
+	m.sync()
+	if got := m.Status()[0].ForwardErr; got == "" {
+		t.Fatal("端口被占时该报出来")
+	}
+
+	// 「老进程走了」：端口空出来了，而重试的窗口还没到——这一步必须**还是**失败，
+	// 否则下面的断言等于没验到重试（它只是碰巧成功了）。
+	_ = busy.Close()
+	m.sync()
+	if got := m.Status()[0].ForwardErr; got == "" {
+		t.Fatal("重试得太急：端口刚空出来就又绑上了（退避没生效）")
+	}
+
+	// 等过退避窗口，下一次 sync 该把它接上。
+	time.Sleep(forwardRetry + 100*time.Millisecond)
+	m.sync()
+	st := m.Status()[0]
+	if st.ForwardErr != "" {
+		t.Fatalf("退避之后还是没绑上：%s", st.ForwardErr)
+	}
+	if st.Forward.Addr == "" {
+		t.Fatal("绑上了但地址是空的")
+	}
+}

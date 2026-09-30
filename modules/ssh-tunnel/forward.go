@@ -44,11 +44,35 @@ type forwarder struct {
 	// accepted / failed 是两个计数器，界面上「这条通道有没有在用」全靠它。
 	accepted atomic.Int64
 	failed   atomic.Int64
+	// nextTry 只对**没起来**的那些有意义（见 failedForward）。
+	nextTry time.Time
 }
 
 // failedForward 是「这个端口没起来」的那一行。
+//
+// nextTry 是**什么时候再试一次**。为什么不一次失败就永远放弃：最常见的那次失败
+// 恰恰发生在**优雅交接**之后——老进程还占着那个端口在排空，新进程一上来绑当然
+// 绑不上（实机踩过：升级完 9401 一直是死的，而 route 那条好好的，看起来像
+// 「只有转发端口坏了」）。老进程几秒后就走了，重试一次就好了。
 func failedForward(t Target, why string) *forwarder {
-	return &forwarder{target: t, err: why, closed: *new(atomic.Bool)}
+	return &forwarder{target: t, err: why, closed: *new(atomic.Bool),
+		nextTry: time.Now().Add(forwardRetry)}
+}
+
+// forwardRetry 是端口没绑上之后多久再试一次。
+//
+// 2 秒：短到「交接完就自己好了」在一两次重试内发生，长到被别的程序长期占着时
+// 日志里两秒一行还不算刷屏（而那一行是用户唯一能看到的「你配的端口没生效」）。
+const forwardRetry = 2 * time.Second
+
+// due 报告这一条是不是该再试一次了。
+func (f *forwarder) due(now time.Time) bool {
+	if f == nil || f.ln != nil {
+		return false
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return !now.Before(f.nextTry)
 }
 
 // startForward 起一个转发端口。

@@ -3,6 +3,7 @@ package sshtunnel
 import (
 	"bytes"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -79,6 +80,24 @@ func TestOnlyTheAbsolutePrefixIsRewritten(t *testing.T) {
 	}
 }
 
+// TestTheApiBaseInsideTheBundleIsRewritten：这条是**用户实际撞上的那个 bug**。
+//
+// 现象：打开隧道里的界面，它渲染得好好的，但数据全是**本机**的。原因是产物里
+// `import.meta.env.BASE_URL + "api"` 在构建期被折成了一个字面量
+// `const Fn="/ui/api"`，而这条 route 当时只改写 text/html——JS 原样过去，于是
+// 那个页面照着本机的 /ui/api 发请求。
+//
+// 断言的是**那段真实的产物片段**：拿一段长得像 bundle 的文本，确认里面的 API 基址
+// 被搬到了这条 route 上。
+func TestTheApiBaseInsideTheBundleIsRewritten(t *testing.T) {
+	local := LocalPrefix("snode1")
+	bundle := `const Zc=1,Fn="/ui/api";function ec(n){return fetch(Fn+"/snapshot")}`
+	got := string(rewritePrefix([]byte(bundle), local))
+	if !strings.Contains(got, `Fn="/ui/remote/snode1/api"`) {
+		t.Fatalf("产物里的 API 基址没被改写，那个页面会去打本机自己的 API：\n%s", got)
+	}
+}
+
 func TestRewriteLeavesUntouchedBodiesAlone(t *testing.T) {
 	// 绝大多数响应都不含那个前缀（JSON、图片、404 的那一句话）。这条锁的是
 	// 「没命中就原样返回同一个切片」——不是为了省一次分配，而是为了让
@@ -134,11 +153,14 @@ func TestOnlyHTMLIsRewritten(t *testing.T) {
 	}{
 		{"index.html", resp(200, "text/html; charset=utf-8", ""), true},
 		{"错误页也是它自己那套 HTML", resp(404, "text/html", ""), true},
-		// CSS 与 JS 是从 HTML 里引来的，地址在 HTML 那一遍已经改过；动它们的正文
-		// 只会改坏（JS 里本来就有一堆长得像路径的字符串）。
-		{"JS 不改", resp(200, "application/javascript", ""), false},
-		{"CSS 不改", resp(200, "text/css", ""), false},
-		{"JSON 不改", resp(200, "application/json", ""), false},
+		// **JS 必须改**：那个 /ui/ 不是资源地址，是 vite 把 BASE_URL 烘进产物的
+		// 结果，运行期被用来拼 API——产品里就是 `const Fn="/ui/api"`。不改它，
+		// 隧道里那页会照着**本机自己**的 API 发请求：界面照常渲染，数据全是本机的。
+		{"JS 要改（API 基址烘在里面）", resp(200, "text/javascript; charset=utf-8", ""), true},
+		{"application/javascript 也要改", resp(200, "application/javascript", ""), true},
+		{"CSS 要改（url() 里的绝对前缀）", resp(200, "text/css", ""), true},
+		{"JSON 不改（它是数据，不是地址）", resp(200, "application/json", ""), false},
+		{"图片不改", resp(200, "image/svg+xml", ""), false},
 		// 压缩过的正文里没有明文路径，改了就是毁掉这份响应。
 		{"压缩过的不改", resp(200, "text/html", "gzip"), false},
 		// 5xx 通常是代理/网关自己生成的，不是远端那套界面。

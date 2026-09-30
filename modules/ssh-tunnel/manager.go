@@ -113,21 +113,31 @@ func (m *manager) sync() {
 	}
 	m.mu.Unlock()
 
-	// 起那些还没有的。
+	// 起那些还没有的，以及**之前没起来、现在该再试一次**的。
+	now := time.Now()
 	for id, t := range want {
 		m.mu.Lock()
-		_, exists := m.forwards[id]
+		cur, exists := m.forwards[id]
 		m.mu.Unlock()
-		if exists {
+		if exists && !cur.due(now) {
 			continue
+		}
+		if exists {
+			// 重试：先把那一条失败记录丢掉（它没有监听器，close 是空操作）。
+			m.mu.Lock()
+			delete(m.forwards, id)
+			m.mu.Unlock()
 		}
 		f, err := startForward(t, m.pool)
 		if err != nil {
 			// **不静默**：这条错误说的是「你配的那个端口没生效」，而它唯一的
 			// 出口就是日志与界面上的状态（见 view.go 那一行）。其余 target 照常。
+			// 记下来并**排下一次重试**：不重试的话，优雅交接那一刻的失败会
+			// 一直留着——而「升级完之后转发端口是死的、route 却是好的」正是
+			// 那个样子（实机踩过）。
 			log.Printf("[tunnel] %s", err.Error())
 			m.mu.Lock()
-			m.forwards[id] = &forwarder{target: t, err: err.Error()}
+			m.forwards[id] = failedForward(t, err.Error())
 			m.mu.Unlock()
 			continue
 		}

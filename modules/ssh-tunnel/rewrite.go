@@ -29,21 +29,47 @@ func LocalPrefix(id string) string {
 	return Prefix + "/" + id + "/"
 }
 
+// textBodies 是会被改写的那些内容类型。
+//
+// # 为什么 JS 和 CSS 也在里面（这一条是踩出来的）
+//
+// 最初的判断是「只动 text/html，因为 CSS 与 JS 是从 HTML 里引来的，它们的**地址**
+// 在 HTML 那一遍已经改写过」。前半句对，后半句错：JS 里那个 `/ui/` 不是资源地址，
+// 它是 **vite 把 import.meta.env.BASE_URL 烘进产物的结果**，而这个值在运行期被用来
+// 拼 API 地址——
+//
+//	const Fn="/ui/api";   // ← 产物里就长这样
+//
+// 于是不改它的后果是：隧道里那个页面照着**本机自己的** `/ui/api` 发请求，界面正常
+// 渲染，数据全是本机的。用户看到的是一个「能用的界面」——比白屏糟得多，他得先
+// 意识到数据不对才可能来查（实测：装配出来的第一天就被抓到）。
+//
+// CSS 一并放进来是同一条：vite 写进 url() 的也是绝对前缀，虽然它今天只出现在
+// 资源地址上（那一条 HTML 里已经改过），但把这个文件的规则写成「按内容类型」
+// 而不是「按我心里想的那几种情况」少一次判断。
+//
+// 判据仍然是**前缀本身**：没含 "/ui/" 的正文一个字节都不动（见 rewritePrefix 的
+// 快速返回），所以把 JS 放进来不代表每个 bundle 都要过一遍替换。
+var textBodies = map[string]bool{
+	"text/html":                true,
+	"text/css":                 true,
+	"text/javascript":          true,
+	"application/javascript":   true,
+	"application/x-javascript": true, // 老一点的服务器还在发这个
+}
+
 // shouldRewrite 说这份响应该不该改写。
 //
 // 三条判据，各自防一种具体的错：
 //
-//   - **只动 text/html**。CSS 与 JS 是**从 HTML 里引来的**，而它们的地址在 HTML
-//     那一遍已经被改写过了——HTML 里那句 `<script src="/ui/assets/x.js">` 改成
-//     `/ui/remote/ds/ui/assets/x.js` 之后，浏览器去取的就是我们这条 route，我们
-//     再把前缀剥掉转给远端。所以**没有必要**去动 JS 正文，而动了反而会改坏
-//     （JS 里本来就有一堆长得像路径的字符串）。
+//   - **内容类型在 textBodies 里**。别的（JSON、图片、字体）一律不动：它们要么是
+//     数据而不是地址，要么根本不该被文本替换碰。
 //   - **没有 Content-Encoding**。压缩过的正文里没有明文路径可改；改了就毁掉这份
 //     响应。调用方已经把 Accept-Encoding 摘掉了（见 proxy.go），所以这条路正常
 //     到不了——留着它是为了「远端无论如何都压缩」那种情况：那时宁可**不改**，
 //     因为不改的后果是资源 404（看得见、能解释），改坏的后果是一个乱码页面。
-//   - **2xx / 3xx / 4xx**。远端的错误页也是它自己那套 HTML，同样需要改写才能
-//     正常显示——不改的话，用户在「远端报了个错」时看到的会是一个白屏，而白屏与
+//   - **2xx / 3xx / 4xx**。远端的错误页也是它自己那套 HTML，同样需要改写才能正常
+//     显示——不改的话，用户在「远端报了个错」时看到的会是一个白屏，而白屏与
 //     「route 坏了」长得一模一样。5xx 不动：那种正文通常是代理/网关自己生成的。
 func shouldRewrite(resp *http.Response) bool {
 	if resp.StatusCode >= 500 {
@@ -56,7 +82,7 @@ func shouldRewrite(resp *http.Response) bool {
 	if i := strings.IndexByte(ct, ';'); i >= 0 {
 		ct = ct[:i]
 	}
-	return strings.EqualFold(strings.TrimSpace(ct), "text/html")
+	return textBodies[strings.ToLower(strings.TrimSpace(ct))]
 }
 
 // urlDelims 是「一个地址字面量到哪里为止」。
