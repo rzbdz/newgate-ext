@@ -15,6 +15,7 @@
 | 让 Claude Code / Codex / OpenCode 走这条网关 | [接管客户端](/docs/clients/) |
 | 在 codex 里换模型（而不是换配置） | [Codex 模式](/docs/codex/) |
 | 配置文件的形状、常用命令 | [配置与命令](/docs/config/) |
+| 让一台只开 SSH 的机器上的界面出现在本机 | [穿过 SSH 看远端界面](/docs/tunnel/) |
 | 出问题了 | [排障](/docs/troubleshooting/) |
 | 写一个自己的模块 | [写一个模块](/docs/modules/) |
 | fork 一份属于你的发行版 | [fork 一份发行版](/docs/fork/) |

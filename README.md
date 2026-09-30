@@ -112,17 +112,32 @@ http://127.0.0.1:9401/ui/                  byte-for-byte — the remote interfac
 http://127.0.0.1:8899/ui/remote/snode1/    the same thing, no extra port, paths rewritten
 ```
 
-Both are live at once, backed by one SSH connection that is dialled on first use and
-let go when idle (mark a target `--persistent` to keep it up instead). Keys and
-`ssh-agent` only — **never a password**, which is why the target list can sit in
-`state.json` and be edited from the interface like anything else. Understood keys in `~/.ssh/config` are honoured;
-`ProxyJump` is not, and says so rather than silently connecting directly.
+Both are live at once, off one SSH connection that is dialled on first use and let go
+when idle (mark a target `--persistent` to keep it up instead). `newgate tunnel ls`
+lists them, `newgate tunnel test <id>` dials for real and says which step failed, and
+the web interface has the same list with connect/disconnect buttons. Keys and
+`ssh-agent` only — **never a password**, which is why the target list can live in
+`state.json` and be edited from the interface like anything else. Keys understood in
+`~/.ssh/config` are honoured; `ProxyJump` is not, and says so rather than silently
+connecting directly. Host keys are checked strictly by default, and `accept-new`
+records the first one *and logs it*, because trusting a machine is an event.
 
 **The forwarding port is the honest one.** The route has to rewrite the remote
-page's paths (its bundle hardcodes `/ui/assets`, `/ui/api`), and a rewrite is
-best-effort by nature: it also fixes the redirects, and it leaves external URLs
-alone, but an interface that builds absolute URLs at runtime will not survive the
-trip. When something looks wrong over the route, use the port.
+page's paths, and that includes something easy to miss: `import.meta.env.BASE_URL`
+is folded into the JS bundle at build time (`const Fn="/ui/api"`), so leaving the
+bundle alone makes the page ask *your* gateway for its data — it renders perfectly
+and every number in it belongs to the wrong machine. HTML, CSS and JS are all
+rewritten, external URLs are left alone, and redirects are rewritten too (missing
+those sends you to your own interface, which looks nearly identical). It is
+still best-effort by nature: an interface that builds absolute URLs at runtime will
+not survive the trip. When something looks wrong over the route, use the port.
+
+Two boundaries are fixed rather than configurable. The forwarding port binds
+`127.0.0.1` and nothing else — what sits behind it is a remote interface with no host
+check of its own, so binding it wider would hand that console to the LAN. And the
+route reaches the remote's `/ui` subtree **and nothing else**: paths that climb out
+of it are refused, so the remote's `/__newgate` control plane and its `/v1` are not
+reachable through here.
 
 ## Install
 

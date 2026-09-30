@@ -8,7 +8,7 @@
 ```text
 providers.json       上游是谁、怎么认证
 mappings/*.kv        profile 的档位绑定（.json 也认）
-state.json           当前 profile、接管状态、控制 token
+state.json           当前 profile、接管状态、控制 token、各模块自己的配置
 newgate.log          daemon 日志
 thinkcache.bin       reasoning cache 的冷层
 dump/                请求级取证（开了 debug 才有）
@@ -75,6 +75,17 @@ newgate probe              # 主动验证 provider 连接、方言与已知怪�
 ```bash
 newgate on claude          # / codex / opencode
 newgate off claude
+```
+
+远端界面（只开 SSH 的机器，见[穿过 SSH 看远端界面](/docs/tunnel/)）：
+
+```bash
+newgate tunnel                          # = ls：配了哪些目标、两条路的地址
+newgate tunnel add snode1 --host 10.0.50.11 --user me --remote-port 8899 --local-port 9401
+newgate tunnel rm snode1
+newgate tunnel up snode1                # 常驻（默认是按需拨号、空闲释放）
+newgate tunnel down snode1
+newgate tunnel test snode1              # 真拨一次，说清卡在哪一步
 ```
 
 观测：
