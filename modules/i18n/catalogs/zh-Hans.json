@@ -60,6 +60,10 @@
       "text": "，建议 {tier}",
       "reviewed": true
     },
+    "--host is required (a name from ~/.ssh/config works)": {
+      "text": "--host 为必填（~/.ssh/config 中的名称即可）",
+      "machine": true
+    },
     ": {names}": {
       "text": "：{names}",
       "reviewed": true
@@ -172,6 +176,10 @@
       "text": "Codex 把工具定义放在 input[0]（additional_tools）里，而 DeepSeek 只从顶层 tools 读工具；不抬上去模型一个工具都看不见，会用它自己的文本格式作答，客户端因此一个 tool_result 都拿不到",
       "reviewed": true
     },
+    "Connections": {
+      "text": "连接",
+      "machine": true
+    },
     "DeepSeek thinking mode wants reasoning passed back verbatim, but the client strips it → 400\nso we put it back (the original the client carries → thinkcache; **no original means skip it, never invent one**); only the Claude Code path turns thinking off outright (it strips the blocks, so thinking would be spent for nothing); a foreign unclosed tool loop is first lossily rebuilt from the visible tool results, then DeepSeek takes over": {
       "text": "DeepSeek 思考模式要求逐字回传推理内容，客户端却会把它剥掉 → 400\n套着就补回去（客户端带回的原文 → thinkcache；**没有原文就跳过，绝不编**）；只有 Claude Code 那条路干脆显式关掉思考（它剥块，想了也白想）；外来未闭合 tool loop 先从可见工具结果有损重建，再由 DeepSeek 接手",
       "reviewed": true
@@ -212,6 +220,10 @@
       "text": "裸奔",
       "reviewed": true
     },
+    "Remote": {
+      "text": "远端",
+      "machine": true
+    },
     "Repair the Responses tail shape (hand 5)": {
       "text": "修 Responses 尾部形状（第 5 手）",
       "reviewed": true
@@ -227,6 +239,22 @@
     "Routes": {
       "text": "路由",
       "reviewed": true
+    },
+    "Routing": {
+      "text": "路由",
+      "machine": true
+    },
+    "SSH handshake with {addr} failed: {err}": {
+      "text": "与 {addr} 的 SSH 握手失败：{err}",
+      "machine": true
+    },
+    "SSH is fine, but {remote} refuses connections from this side: {err}": {
+      "text": "SSH 正常，但 {remote} 拒绝来自本侧的连接：{err}",
+      "machine": true
+    },
+    "Targets": {
+      "text": "目标",
+      "machine": true
     },
     "Test this profile": {
       "text": "探这一份",
@@ -245,19 +273,19 @@
       "reviewed": true
     },
     "Usage: newgate omo [ls | use <key> <binding> | unset <key> | mode current|suggested | explain <key>]": {
-      "text": "用法：newgate omo [ls | use <键> <归属> | unset <键> | mode current|suggested | explain <键>]",
+      "text": "用法：newgate omo [ls | use \u003c键\u003e \u003c归属\u003e | unset \u003c键\u003e | mode current|suggested | explain \u003c键\u003e]",
       "reviewed": true
     },
     "Usage: newgate omo explain <slot key>": {
-      "text": "用法：newgate omo explain <槽位键>",
+      "text": "用法：newgate omo explain \u003c槽位键\u003e",
       "reviewed": true
     },
     "Usage: newgate omo unset <slot key>": {
-      "text": "用法：newgate omo unset <槽位键>",
+      "text": "用法：newgate omo unset \u003c槽位键\u003e",
       "reviewed": true
     },
     "Usage: newgate omo use <slot key> <@other-key|tier|provider/model>": {
-      "text": "用法：newgate omo use <槽位键> <@别的键|档位|provider/模型>",
+      "text": "用法：newgate omo use \u003c槽位键\u003e \u003c@别的键|档位|provider/模型\u003e",
       "reviewed": true
     },
     "Which tier a request naming that model resolves to. Required — a row without one is rejected on save.": {
@@ -288,6 +316,10 @@
       "text": "命令不能为 nil",
       "reviewed": true
     },
+    "a loopback port forwarded byte-for-byte; empty means this target is reachable only through the rewritten route": {
+      "text": "逐字节转发的回环端口；为空表示该目标只能通过重写后的路由到达",
+      "machine": true
+    },
     "a lossy rebuild happened before taking over a foreign unclosed tool loop": {
       "text": "接手外来未闭合 tool loop 前做了有损重建",
       "reviewed": true
@@ -295,6 +327,14 @@
     "a menuconfig-style terminal interface": {
       "text": "menuconfig 风格的终端界面",
       "reviewed": true
+    },
+    "a name from ~/.ssh/config, or an address": {
+      "text": "~/.ssh/config 中的名称，或一个地址",
+      "machine": true
+    },
+    "a path, never key material. Leave empty to use the usual files and ssh-agent": {
+      "text": "一个路径，绝不是密钥内容。留空则使用常规文件和 ssh-agent",
+      "machine": true
     },
     "a reference is written as @key (e.g. @normal), got {value}": {
       "text": "引用写成 @键名（如 @normal），得到 {value}",
@@ -328,6 +368,10 @@
       "text": "收下但未渲染",
       "reviewed": true
     },
+    "add a target": {
+      "text": "添加目标",
+      "machine": true
+    },
     "adopt them all": {
       "text": "全部采纳",
       "reviewed": true
@@ -335,6 +379,10 @@
     "already on the chain": {
       "text": "已经在链上",
       "reviewed": true
+    },
+    "always": {
+      "text": "始终",
+      "machine": true
     },
     "and {n} more": {
       "other": "还有 {n} 条",
@@ -351,6 +399,14 @@
     "arch": {
       "text": "arch",
       "reviewed": true
+    },
+    "as seen from the far side": {
+      "text": "从远端看到的",
+      "machine": true
+    },
+    "asked from the interface": {
+      "text": "从接口请求的",
+      "machine": true
     },
     "assistant messages in the history no longer get their reasoning text backfilled, and OpenAI-dialect DeepSeek answers 400 to \"reasoning_content must be passed back\" (the chain then advances on its own; the symptom is a silent provider switch)": {
       "text": "历史里的 assistant 消息不再补推理原文，OpenAI 方言的 DeepSeek 会对「reasoning_content 必须回传」回 400（自动沿链转移，症状是悄悄换 provider）",
@@ -381,7 +437,7 @@
       "reviewed": true
     },
     "background sync did not start: {err} (on the host run newgate config secrets init to get the blob, then on this machine run newgate config trust <blob>)": {
-      "text": "后台同步未启动：{err}（在宿主机上 newgate config secrets init 拿 blob，在这台机器上 newgate config trust <blob>）",
+      "text": "后台同步未启动：{err}（在宿主机上 newgate config secrets init 拿 blob，在这台机器上 newgate config trust \u003cblob\u003e）",
       "reviewed": true
     },
     "background sync started (replica): {endpoint}, one round every {interval}, root key fingerprint {fingerprint}": {
@@ -411,6 +467,10 @@
     "cannot fix the permissions of {path}: {err}": {
       "text": "修正 {path} 权限失败: {err}",
       "reviewed": true
+    },
+    "cannot listen on {addr}: {err}": {
+      "text": "无法在 {addr} 上监听：{err}",
+      "machine": true
     },
     "cannot open the configuration directory {dir}: {err}": {
       "text": "打不开配置目录 {dir}: {err}",
@@ -448,6 +508,10 @@
       "text": "{path} 解析失败: {err}",
       "reviewed": true
     },
+    "cannot reach {addr}: {err}": {
+      "text": "无法到达 {addr}：{err}",
+      "machine": true
+    },
     "cannot reach {url}: {err}": {
       "text": "连不上 {url}: {err}",
       "reviewed": true
@@ -455,6 +519,10 @@
     "cannot read random bytes: {err}": {
       "text": "取随机数失败: {err}",
       "reviewed": true
+    },
+    "cannot read {path}: {err}": {
+      "text": "无法读取 {path}：{err}",
+      "machine": true
     },
     "cannot remove the retired {path}: {err}": {
       "text": "删除已下线的 {path} 失败: {err}",
@@ -467,6 +535,18 @@
     "cannot replace {path} (the configuration may be half old and half new; the next sync will retry): {err}": {
       "text": "替换 {path} 失败（配置可能处于新旧混合状态，下一次同步会重试）: {err}",
       "reviewed": true
+    },
+    "cannot resolve {host}: {err}": {
+      "text": "无法解析 {host}：{err}",
+      "machine": true
+    },
+    "cannot save: {err}": {
+      "text": "无法保存：{err}",
+      "machine": true
+    },
+    "cannot use the private key {path}: {err}": {
+      "text": "无法使用私钥 {path}：{err}",
+      "machine": true
     },
     "cannot write the bookkeeping: {err}": {
       "text": "写记账失败: {err}",
@@ -512,6 +592,10 @@
       "text": "classifier_override 无效：{err}",
       "reviewed": true
     },
+    "closing the SSH connections: {err}": {
+      "text": "关闭 SSH 连接：{err}",
+      "machine": true
+    },
     "codex model": {
       "text": "codex 模型名",
       "reviewed": true
@@ -528,6 +612,26 @@
       "text": "已更新配置（gen {from} → {to}，{n} 个文件）{files}",
       "reviewed": true
     },
+    "configured: {list}": {
+      "text": "已配置：{list}",
+      "machine": true
+    },
+    "connect": {
+      "text": "连接",
+      "machine": true
+    },
+    "connected for {d}": {
+      "text": "已连接 {d}",
+      "machine": true
+    },
+    "connecting": {
+      "text": "连接中",
+      "machine": true
+    },
+    "connection": {
+      "text": "连接",
+      "machine": true
+    },
     "content left untouched ({err})": {
       "text": "content 未改动（{err}）",
       "reviewed": true
@@ -537,7 +641,7 @@
       "reviewed": true
     },
     "current=takeover status · suggested=recommendation · switch: newgate omo mode <mode>": {
-      "text": "current=接管现状 · suggested=建议 · 切换：newgate omo mode <模式>",
+      "text": "current=接管现状 · suggested=建议 · 切换：newgate omo mode \u003c模式\u003e",
       "reviewed": true
     },
     "decided by the model build; no variant was recorded before takeover": {
@@ -567,6 +671,10 @@
     "disabled": {
       "text": "已关闭",
       "reviewed": true
+    },
+    "disconnect": {
+      "text": "断开连接",
+      "machine": true
     },
     "dump material": {
       "text": "诊断素材",
@@ -604,6 +712,10 @@
       "text": "注入 thinking 失败: {err}",
       "reviewed": true
     },
+    "failed: {err}": {
+      "text": "失败：{err}",
+      "machine": true
+    },
     "field": {
       "text": "字段",
       "reviewed": true
@@ -611,6 +723,14 @@
     "follow the system": {
       "text": "跟随系统",
       "reviewed": true
+    },
+    "forwarding": {
+      "text": "转发中",
+      "machine": true
+    },
+    "forwarding port": {
+      "text": "转发端口",
+      "machine": true
     },
     "generated by one takeover: newgate on opencode": {
       "text": "接管一次即生成：newgate on opencode",
@@ -620,6 +740,10 @@
       "text": "术语",
       "reviewed": true
     },
+    "handshake and authentication succeeded": {
+      "text": "握手与认证成功",
+      "machine": true
+    },
     "hello from newgate-ext": {
       "text": "来自 newgate-ext 的问候",
       "reviewed": true
@@ -627,6 +751,34 @@
     "hello world — {argv0} ({version})": {
       "text": "你好，世界 — {argv0}（{version}）",
       "reviewed": true
+    },
+    "host key": {
+      "text": "主机密钥",
+      "machine": true
+    },
+    "how to reach it": {
+      "text": "如何访问",
+      "machine": true
+    },
+    "id": {
+      "text": "id",
+      "machine": true
+    },
+    "idle": {
+      "text": "空闲",
+      "machine": true
+    },
+    "idle for {n}s": {
+      "text": "空闲 {n}s",
+      "machine": true
+    },
+    "idle timeout": {
+      "text": "空闲超时",
+      "machine": true
+    },
+    "ignored a broken target": {
+      "text": "已忽略失效的目标",
+      "machine": true
     },
     "imports are scanned from {root}": {
       "text": "import 从 {root} 扫描",
@@ -644,9 +796,37 @@
       "text": "注入 {patch}（GLM 把缺省当默认思考）",
       "reviewed": true
     },
+    "it is protected by a passphrase; add it to ssh-agent (`ssh-add {path}`) and leave identity empty": {
+      "text": "受密码短语保护；将其加入 ssh-agent（`ssh-add {path}`），identity 留空",
+      "machine": true
+    },
+    "it stopped answering: {err}": {
+      "text": "已停止响应：{err}",
+      "machine": true
+    },
     "keeping the tier an older takeover wrote": {
       "text": "沿用老版本接管写下的档位",
       "reviewed": true
+    },
+    "key file {path}": {
+      "text": "密钥文件 {path}",
+      "machine": true
+    },
+    "keys {list}": {
+      "text": "密钥 {list}",
+      "machine": true
+    },
+    "label": {
+      "text": "标签",
+      "machine": true
+    },
+    "lazy": {
+      "text": "lazy",
+      "machine": true
+    },
+    "lazy dials on the first request and lets go when idle; persistent keeps it open": {
+      "text": "lazy 在首次请求时拨号，空闲即释放；persistent 保持常开",
+      "machine": true
     },
     "lift Codex tools from input[0] to the top level": {
       "text": "把 Codex 的工具从 input[0] 抬到顶层",
@@ -667,6 +847,10 @@
     "lossily rebuilt a foreign tool loop: kept the tool results and appended a plain user instruction to continue": {
       "text": "有损重建外来 tool loop：保留工具结果并追加普通用户继续指令",
       "reviewed": true
+    },
+    "machine name: it is the URL segment (/ui/remote/<id>/) and cannot contain / ? # or spaces": {
+      "text": "机器名：它是 URL 路径段（/ui/remote/\u003cid\u003e/），不能包含 / ? # 或空格",
+      "machine": true
     },
     "meaning": {
       "text": "含义",
@@ -725,7 +909,7 @@
       "reviewed": true
     },
     "naked on|forever|off|<duration>": {
-      "text": "naked on|forever|off|<时长>",
+      "text": "naked on|forever|off|\u003c时长\u003e",
       "reviewed": true
     },
     "naked: the classifier request is approved directly, the upstream is not called": {
@@ -747,6 +931,10 @@
     "no available candidate": {
       "text": "无可用候选",
       "reviewed": true
+    },
+    "no key file found in {dir} — relying on ssh-agent": {
+      "text": "在 {dir} 中未找到密钥文件 — 依赖 ssh-agent",
+      "machine": true
     },
     "no omo slot registry; run newgate on opencode first": {
       "text": "没有 omo 槽位登记表；先 newgate on opencode",
@@ -784,6 +972,26 @@
       "text": "没有这个槽位键 {key}（newgate omo 看列表）",
       "reviewed": true
     },
+    "no targets are configured": {
+      "text": "没有配置任何目标",
+      "machine": true
+    },
+    "no targets yet — add one with `newgate tunnel add <id> --host <host>`": {
+      "text": "尚无目标 — 用 `newgate tunnel add \u003cid\u003e --host \u003chost\u003e` 添加一个",
+      "machine": true
+    },
+    "no usable key for {host}: look in {dir} or start ssh-agent (passwords are not supported — this module only does keys and the agent)": {
+      "text": "{host} 没有可用的密钥：查看 {dir}，或启动 ssh-agent（不支持密码 — 本模块只处理密钥和 agent）",
+      "machine": true
+    },
+    "none": {
+      "text": "无",
+      "machine": true
+    },
+    "none are configured yet": {
+      "text": "尚未配置任何一项",
+      "machine": true
+    },
     "not bound": {
       "text": "未绑定",
       "reviewed": true
@@ -791,6 +999,10 @@
     "not defined": {
       "text": "没有定义",
       "reviewed": true
+    },
+    "not listening: {err}": {
+      "text": "未在监听：{err}",
+      "machine": true
     },
     "note: {msg}": {
       "text": "注意: {msg}",
@@ -836,6 +1048,10 @@
       "text": "这台机器上没有装 opencode —— 这张卡上的设置暂时都不会生效。用 `newgate opencode -y` 装上它。",
       "reviewed": true
     },
+    "or byte-for-byte at http://127.0.0.1:{port}/ui/ (started by the daemon)": {
+      "text": "或完全一致的 http://127.0.0.1:{port}/ui/（由 daemon 启动）",
+      "machine": true
+    },
     "other": {
       "text": "其他",
       "reviewed": true
@@ -844,6 +1060,10 @@
       "text": "超出尝试上限",
       "reviewed": true
     },
+    "port http://127.0.0.1:{port}/ui/": {
+      "text": "转发到 http://127.0.0.1:{port}/ui/",
+      "machine": true
+    },
     "previewing needs Content-Type: application/json (got {ct})": {
       "text": "预览需要 Content-Type: application/json（实际 {ct}）",
       "reviewed": true
@@ -851,6 +1071,10 @@
     "previewing uses POST": {
       "text": "预览用 POST",
       "reviewed": true
+    },
+    "private key": {
+      "text": "私钥",
+      "machine": true
     },
     "probed {n} binding": {
       "other": "探了 {n} 条",
@@ -888,6 +1112,42 @@
       "text": "provider/model，或 @键名 跟别的档位走。留空 = Bash 分类器走 light 档。",
       "reviewed": true
     },
+    "reach a remote machine's web interface over SSH": {
+      "text": "通过 SSH 访问远程机器的 web 界面",
+      "machine": true
+    },
+    "reach it at {url}": {
+      "text": "在 {url} 访问",
+      "machine": true
+    },
+    "reaches a remote machine's newgate interface over SSH": {
+      "text": "通过 SSH 访问远程机器的 newgate 界面",
+      "machine": true
+    },
+    "recorded the host key of {host} in {path} ({fp})": {
+      "text": "已记录 {host} 的主机密钥到 {path}（{fp}）",
+      "machine": true
+    },
+    "remote": {
+      "text": "remote",
+      "machine": true
+    },
+    "remote host": {
+      "text": "远程主机",
+      "machine": true
+    },
+    "remote interfaces": {
+      "text": "远程接口",
+      "machine": true
+    },
+    "remote interfaces reached over SSH": {
+      "text": "通过 SSH 访问的远程接口",
+      "machine": true
+    },
+    "remote port": {
+      "text": "远程端口",
+      "machine": true
+    },
     "rename mode": {
       "text": "改名模式",
       "reviewed": true
@@ -904,6 +1164,14 @@
       "text": "还原 {file} 失败: {err}",
       "reviewed": true
     },
+    "route": {
+      "text": "路由",
+      "machine": true
+    },
+    "route {path}": {
+      "text": "路由 {path}",
+      "machine": true
+    },
     "row actions need Content-Type: application/json (got {ct})": {
       "text": "行上的动作需要 Content-Type: application/json（收到的是 {ct}）",
       "reviewed": true
@@ -911,6 +1179,10 @@
     "row actions use POST": {
       "text": "行上的动作要用 POST",
       "reviewed": true
+    },
+    "run `newgate tunnel test {id}` for a step-by-step answer": {
+      "text": "运行 `newgate tunnel test {id}` 逐步排查",
+      "machine": true
     },
     "saving needs Content-Type: application/json (got {ct})": {
       "text": "保存要求 Content-Type: application/json（这次是 {ct}）",
@@ -956,6 +1228,38 @@
       "text": "槽位由配置扩展模块发现",
       "reviewed": true
     },
+    "some targets were ignored: {list}": {
+      "text": "部分目标被忽略：{list}",
+      "machine": true
+    },
+    "ssh": {
+      "text": "ssh",
+      "machine": true
+    },
+    "ssh host": {
+      "text": "ssh 主机",
+      "machine": true
+    },
+    "ssh port": {
+      "text": "ssh 端口",
+      "machine": true
+    },
+    "ssh tunnel {id}": {
+      "text": "ssh 隧道 {id}",
+      "machine": true
+    },
+    "ssh tunnels": {
+      "text": "ssh 隧道",
+      "machine": true
+    },
+    "ssh_config sets {key} for this host, but this module only makes direct connections — that setting is being ignored": {
+      "text": "ssh_config 为此主机设置了 {key}，但本模块只建立直接连接 —— 该设置被忽略",
+      "machine": true
+    },
+    "state": {
+      "text": "状态",
+      "machine": true
+    },
     "state.json — {key} could not be read, the defaults are in use": {
       "text": "state.json — {key} 读不出来，现在用的是缺省值",
       "reviewed": true
@@ -963,6 +1267,10 @@
     "status blocks": {
       "text": "状态块",
       "reviewed": true
+    },
+    "strict refuses an unknown machine; accept-new records it the first time and still refuses if it later changes": {
+      "text": "strict 拒绝未知主机；accept-new 首次记录，之后若发生变化仍会拒绝",
+      "machine": true
     },
     "suggested": {
       "text": "建议",
@@ -1012,6 +1320,14 @@
       "text": "接管 {file} 失败: {err}",
       "reviewed": true
     },
+    "target": {
+      "text": "目标",
+      "machine": true
+    },
+    "target {id}: {why}": {
+      "text": "目标 {id}：{why}",
+      "machine": true
+    },
     "the AES key is unusable: {err}": {
       "text": "AES 密钥不可用: {err}",
       "reviewed": true
@@ -1056,6 +1372,10 @@
       "text": "configshare 记账文件损坏，已按初始状态重来: {err}",
       "reviewed": true
     },
+    "the daemon closes its connection within a couple of seconds": {
+      "text": "daemon 会在几秒内关闭连接",
+      "machine": true
+    },
     "the daemon is not running — the dashboard is served by it, so start it first: newgate start": {
       "text": "守护进程没在跑 —— 界面是它发出来的，先起它：newgate start",
       "reviewed": true
@@ -1064,12 +1384,24 @@
       "text": "daemon 没在跑——这张图由它服务，先把它启起来：newgate start",
       "reviewed": true
     },
+    "the daemon is not running — this takes effect when it starts": {
+      "text": "daemon 未运行 — 此项在它启动时生效",
+      "machine": true
+    },
+    "the daemon is not running: forwarding ports and background reconnection only happen there": {
+      "text": "daemon 未运行：端口转发和后台重连都只在那里进行",
+      "machine": true
+    },
+    "the daemon picks this up within a couple of seconds": {
+      "text": "daemon 会在几秒内读取到此改动",
+      "machine": true
+    },
     "the diagram is read-only": {
       "text": "这张图只读",
       "reviewed": true
     },
     "the endpoint is empty (run newgate config join <endpoint> first)": {
-      "text": "endpoint 是空的（先 newgate config join <endpoint>）",
+      "text": "endpoint 是空的（先 newgate config join \u003cendpoint\u003e）",
       "reviewed": true
     },
     "the envelope claims to be the {got} channel, but {want} was expected": {
@@ -1107,6 +1439,18 @@
     "the host declares build {want}, this machine is {got}: this machine can still parse the configuration (unknown fields are ignored, missing ones fall back to defaults), so it was let through. Upgrade newgate to line up exactly.": {
       "text": "宿主声明的构建是 {want}，本机是 {got}：本机仍能解析这份配置（未知字段忽略/缺席走默认），已放行。要完全对齐就升级 newgate。",
       "reviewed": true
+    },
+    "the host key of {host} does not match the one recorded in {path} — that is either a rebuilt machine or somebody in the middle": {
+      "text": "{host} 的 host key 与 {path} 中记录的不一致 — 要么是机器重装过，要么是有人在中间",
+      "machine": true
+    },
+    "the host key of {host} is new and {path} is not writable: {err}": {
+      "text": "{host} 的 host key 是新的，而 {path} 不可写：{err}",
+      "machine": true
+    },
+    "the host key of {host} is not in {path} — connect once from a terminal (`ssh {host}`) and answer yes, or set host_key to \"accept-new\" on this target": {
+      "text": "{host} 的 host key 不在 {path} 中 — 先从终端连接一次（`ssh {host}`）并回答 yes，或在此目标上把 host_key 设为 \"accept-new\"",
+      "machine": true
     },
     "the interface is on loopback only; nothing listens on other interfaces": {
       "text": "界面只监听 loopback，其他网卡上没有监听",
@@ -1168,6 +1512,14 @@
       "text": "根密钥只有 {n} 字节，至少要 {min}（config trust 给的那串）",
       "reviewed": true
     },
+    "the route lives on the shared port: http://127.0.0.1:{port}{prefix}/<id>/": {
+      "text": "路由位于共享端口上：http://127.0.0.1:{port}{prefix}/\u003cid\u003e/",
+      "machine": true
+    },
+    "the route rewrites the remote page's paths; the forwarding port does not — when something looks broken over the route, the port is the faithful one": {
+      "text": "路由会重写远程页面的路径；转发端口不会 — 当某处经由路由看起来坏了时，端口才是忠实的那个",
+      "machine": true
+    },
     "the row for {slug} has no tier — pick one, or remove the row": {
       "text": "{slug} 那一行没有档位——选一个，或者把那一行删掉",
       "reviewed": true
@@ -1196,6 +1548,10 @@
       "text": "这次请求里的那张表读不出来：{err}",
       "reviewed": true
     },
+    "the targets in this request are not readable: {err}": {
+      "text": "此请求中的目标不可读：{err}",
+      "machine": true
+    },
     "the theme in this request is not readable: {err}": {
       "text": "这次请求里的皮肤读不出来：{err}",
       "reviewed": true
@@ -1219,6 +1575,10 @@
     "theme {id} is already registered": {
       "text": "皮肤 {id} 已经被登记过了",
       "reviewed": true
+    },
+    "there is no target called {id}": {
+      "text": "没有叫 {id} 的目标",
+      "machine": true
     },
     "there is no theme {id} in this build": {
       "text": "这次装配里没有 {id} 这套皮肤",
@@ -1264,6 +1624,10 @@
       "text": "本机的 {name} 被本地改过（不会覆盖你的改动）",
       "reviewed": true
     },
+    "this page is a best-effort copy of the remote interface: paths inside it are rewritten. if something looks broken, use the forwarding port instead — that one is byte-for-byte.": {
+      "text": "此页面是远程界面的尽力而为副本：其中的路径会被重写。如果某处看起来坏了，改用转发端口 — 那个是逐字节一致的。",
+      "machine": true
+    },
     "this process": {
       "text": "这个进程",
       "reviewed": true
@@ -1277,12 +1641,24 @@
       "reviewed": true
     },
     "this terminal does not support the TUI ({err}); use `newgate --set-profile <name>` instead": {
-      "text": "这个终端不支持 TUI（{err}）。用 `newgate --set-profile <name>` 代替",
+      "text": "这个终端不支持 TUI（{err}）。用 `newgate --set-profile \u003cname\u003e` 代替",
       "reviewed": true
+    },
+    "this tunnel answers on loopback only; open it as http://127.0.0.1:{port}{prefix}/": {
+      "text": "此隧道只在回环地址上应答；以 http://127.0.0.1:{port}{prefix}/ 打开",
+      "machine": true
     },
     "tier": {
       "text": "档位",
       "reviewed": true
+    },
+    "traffic": {
+      "text": "流量",
+      "machine": true
+    },
+    "tunnel [ls|add|rm|up|down|test] [id]": {
+      "text": "tunnel [ls|add|rm|up|down|test] [id]",
+      "machine": true
     },
     "turn it off: newgate naked off": {
       "text": "关闭：newgate naked off",
@@ -1292,6 +1668,10 @@
       "text": "有两行都叫「{slug}」——只会有一行真的匹配得上",
       "reviewed": true
     },
+    "two targets are both called \"{id}\"": {
+      "text": "两个目标都叫 \"{id}\"",
+      "machine": true
+    },
     "unavailable": {
       "text": "不可用",
       "reviewed": true
@@ -1300,9 +1680,33 @@
       "text": "不认识 \"{cmd}\"（newgate status 看清单）",
       "reviewed": true
     },
+    "unknown tunnel subcommand {verb} — try ls, add, rm, up, down or test": {
+      "text": "未知的 tunnel 子命令 {verb} — 试试 ls、add、rm、up、down 或 test",
+      "machine": true
+    },
+    "unusable": {
+      "text": "不可用",
+      "machine": true
+    },
+    "usage: newgate tunnel add <id> --host <host> [--user u] [--port 22] [--remote-port 8899] [--local-port 0] [--identity path] [--persistent] [--host-key strict|accept-new]": {
+      "text": "用法：newgate tunnel add \u003cid\u003e --host \u003chost\u003e [--user u] [--port 22] [--remote-port 8899] [--local-port 0] [--identity path] [--persistent] [--host-key strict|accept-new]",
+      "machine": true
+    },
+    "usage: newgate tunnel rm <id>": {
+      "text": "用法：newgate tunnel rm \u003cid\u003e",
+      "machine": true
+    },
+    "usage: newgate tunnel {verb} <id>": {
+      "text": "用法：newgate tunnel {verb} \u003cid\u003e",
+      "machine": true
+    },
     "use for {client}": {
       "text": "给 {client} 用",
       "reviewed": true
+    },
+    "user": {
+      "text": "用户",
+      "machine": true
     },
     "value": {
       "text": "值",
@@ -1340,6 +1744,10 @@
       "text": "浏览器界面在哪儿、怎么打开",
       "reviewed": true
     },
+    "whether a target is currently connected is the daemon's business — this command runs in its own process and cannot see it (the web interface can)": {
+      "text": "目标当前是否连接由 daemon 负责——本命令运行在自己的进程中，看不到它（Web 界面可以）",
+      "machine": true
+    },
     "why: {why}": {
       "text": "建议依据 {why}",
       "reviewed": true
@@ -1375,6 +1783,66 @@
     "{head} · the highest priority globally, ahead of any profile": {
       "text": "{head} · 全局最高优先，先于任何 profile",
       "reviewed": true
+    },
+    "{host} resolves": {
+      "text": "{host} 可解析",
+      "machine": true
+    },
+    "{host}:{port} as {user}": {
+      "text": "{host}:{port}，以 {user} 身份",
+      "machine": true
+    },
+    "{id}: SSH is up but {remote} refuses the connection: {err}": {
+      "text": "{id}：SSH 已通，但 {remote} 拒绝连接：{err}",
+      "machine": true
+    },
+    "{id}: added": {
+      "text": "{id}：已添加",
+      "machine": true
+    },
+    "{id}: cannot keep the connection open, retrying in {n}s: {err}": {
+      "text": "{id}：连接无法保持，{n} 秒后重试：{err}",
+      "machine": true
+    },
+    "{id}: cannot reach {remote}: {err}": {
+      "text": "{id}：无法连到 {remote}：{err}",
+      "machine": true
+    },
+    "{id}: closed the connection ({why})": {
+      "text": "{id}：已关闭连接（{why}）",
+      "machine": true
+    },
+    "{id}: closing {n} connection(s) that were still open": {
+      "text": "{id}：正在关闭 {n} 个仍然打开的连接",
+      "machine": true
+    },
+    "{id}: dials on demand only": {
+      "text": "{id}：仅按需拨号",
+      "machine": true
+    },
+    "{id}: forwarding http://{addr}/ui/ to {remote} over {ssh}": {
+      "text": "{id}：经 {ssh} 将 http://{addr}/ui/ 转发到 {remote}",
+      "machine": true
+    },
+    "{id}: removed": {
+      "text": "{id}：已移除",
+      "machine": true
+    },
+    "{id}: the forwarding port stopped accepting: {err}": {
+      "text": "{id}：转发端口不再接受连接：{err}",
+      "machine": true
+    },
+    "{id}: updated": {
+      "text": "{id}：已更新",
+      "machine": true
+    },
+    "{id}: will stay connected": {
+      "text": "{id}：将保持连接",
+      "machine": true
+    },
+    "{id}: {err}": {
+      "text": "{id}：{err}",
+      "machine": true
     },
     "{key} default binding → {value}": {
       "text": "{key} 缺省归属 → {value}",
@@ -1412,6 +1880,18 @@
       "text": "命令（{n} 条）",
       "reviewed": true
     },
+    "{n} configured": {
+      "text": "已配置 {n} 个",
+      "machine": true
+    },
+    "{n} connections": {
+      "text": "{n} 个连接",
+      "machine": true
+    },
+    "{n} dialling on start": {
+      "text": "启动时拨号 {n} 个",
+      "machine": true
+    },
     "{n} key has a suggested tier (see newgate omo ls)": {
       "text": "{n} 个键有建议档位（newgate omo ls 查看）",
       "reviewed": true
@@ -1444,9 +1924,25 @@
       "other": "还有 {n} 条在飞，稍后刷新",
       "reviewed": true
     },
+    "{n} targets": {
+      "text": "{n} 个目标",
+      "machine": true
+    },
+    "{n} unreadable": {
+      "text": "{n} 个无法读取",
+      "machine": true
+    },
+    "{n} with a forwarding port": {
+      "text": "{n} 个有转发端口",
+      "machine": true
+    },
     "{providers} carries an inline api_key for {names}: a secret may only travel over the secrets channel (newgate config secrets on the host); the config channel never carries one — on the host it is managed by git, so a single commit puts it in history forever": {
       "text": "{providers} 里 {names} 带了内联 api_key：密钥只能走密钥通道（在宿主上 newgate config secrets），配置通道不含密——它在宿主侧是 git 管的，提交一次就永久进历史",
       "reviewed": true
+    },
+    "{remote} accepts connections": {
+      "text": "{remote} 接受连接",
+      "machine": true
     },
     "{report}": {
       "text": "{report}",

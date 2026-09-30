@@ -17,7 +17,8 @@
     "theme-anthropic",
     "codex",
     "codex_deepseek",
-    "arch-diagram"
+    "arch-diagram",
+    "ssh-tunnel"
   ],
   "disable": []
 }

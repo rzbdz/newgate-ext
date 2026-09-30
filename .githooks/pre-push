@@ -75,4 +75,14 @@ bash mock/e2e_codex_modes.sh
 # 200、正文看着也像模像样，只有一个 tool_result 都拿不到。
 bash mock/e2e_codex_tools.sh
 
+# ssh-tunnel：**真 sshd、真密钥**。这一条与上面几条不同——它要本机的 sshd，
+# 而 CI 里没有（所以它不进 CI，与 e2e_reasoning_affinity.sh 同一条理由）。
+# 没有 sshd 就**跳过并说明**，不是静默略过：静默略过的话，「这条到底跑没跑」
+# 在输出里看不出来，而它下一次说话就是在别人机器上红。
+if command -v sshd >/dev/null 2>&1; then
+  bash mock/e2e_tunnel.sh
+else
+  echo "· 跳过 e2e_tunnel.sh（这台机器上没有 sshd）"
+fi
+
 printf '\n✓ pre-push 全绿（core-test / dist-test / gitlink / 端到端）\n'

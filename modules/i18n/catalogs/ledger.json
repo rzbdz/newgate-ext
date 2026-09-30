@@ -38,6 +38,7 @@
         "tier"
       ]
     },
+    "--host is required (a name from ~/.ssh/config works)": {},
     ": {names}": {
       "args": [
         "names"
@@ -75,6 +76,7 @@
     "Codex model": {},
     "Codex model names": {},
     "Codex puts its tool definitions in input[0] (additional_tools) while DeepSeek reads tools from the top level; without the lift the model sees no tools at all and answers in its own text format, so the client never gets a tool_result": {},
+    "Connections": {},
     "DeepSeek thinking mode wants reasoning passed back verbatim, but the client strips it → 400\nso we put it back (the original the client carries → thinkcache; **no original means skip it, never invent one**); only the Claude Code path turns thinking off outright (it strips the blocks, so thinking would be spent for nothing); a foreign unclosed tool loop is first lossily rebuilt from the visible tool results, then DeepSeek takes over": {},
     "DeepSeek upstream quirk patches": {},
     "DeepSeek's /responses accepts `custom` tools only for apply_patch and answers 400 for every other one (the message inside a namespace is a different one); with the degrade off a Codex request carrying any other custom tool is rejected outright": {},
@@ -85,6 +87,7 @@
     "Home": {},
     "Interface": {},
     "Naked": {},
+    "Remote": {},
     "Repair the Responses tail shape (hand 5)": {},
     "Repair the tail shape (hand 4)": {},
     "Responses input left untouched ({err})": {
@@ -93,6 +96,20 @@
       ]
     },
     "Routes": {},
+    "Routing": {},
+    "SSH handshake with {addr} failed: {err}": {
+      "args": [
+        "addr",
+        "err"
+      ]
+    },
+    "SSH is fine, but {remote} refuses connections from this side: {err}": {
+      "args": [
+        "err",
+        "remote"
+      ]
+    },
+    "Targets": {},
     "Test this profile": {},
     "The colours of this interface. Saved to state.json and applied at once — no reload. Nothing but tokens changes: a theme cannot move anything around.": {},
     "The model name codex itself sends — copy it out of `codex debug models` (the slug).": {},
@@ -112,8 +129,11 @@
       ]
     },
     "a command cannot be nil": {},
+    "a loopback port forwarded byte-for-byte; empty means this target is reachable only through the rewritten route": {},
     "a lossy rebuild happened before taking over a foreign unclosed tool loop": {},
     "a menuconfig-style terminal interface": {},
+    "a name from ~/.ssh/config, or an address": {},
+    "a path, never key material. Leave empty to use the usual files and ssh-agent": {},
     "a reference is written as @key (e.g. @normal), got {value}": {
       "args": [
         "value"
@@ -126,8 +146,10 @@
     "a true-black theme for the web interface": {},
     "a white theme for the web interface": {},
     "accepted but not rendered": {},
+    "add a target": {},
     "adopt them all": {},
     "already on the chain": {},
+    "always": {},
     "and {n} more": {
       "args": [
         "n"
@@ -137,6 +159,8 @@
     "another sync round is already running; this round was skipped": {},
     "api_key missing": {},
     "arch": {},
+    "as seen from the far side": {},
+    "asked from the interface": {},
     "assistant messages in the history no longer get their reasoning text backfilled, and OpenAI-dialect DeepSeek answers 400 to \"reasoning_content must be passed back\" (the chain then advances on its own; the symptom is a silent provider switch)": {},
     "assistant messages: {total} in all, {real} with reasoning text, {missing} without\n(the ones without are **what the upstream never gave us that round**, not something we lost — see the tool id below,\n  grep the log for \"bytes of reasoning\" and you will see) one by one:\n{listing}": {
       "args": [
@@ -192,6 +216,12 @@
         "path"
       ]
     },
+    "cannot listen on {addr}: {err}": {
+      "args": [
+        "addr",
+        "err"
+      ]
+    },
     "cannot open the configuration directory {dir}: {err}": {
       "args": [
         "dir"
@@ -225,12 +255,24 @@
         "path"
       ]
     },
+    "cannot reach {addr}: {err}": {
+      "args": [
+        "addr",
+        "err"
+      ]
+    },
     "cannot reach {url}: {err}": {
       "args": [
         "url"
       ]
     },
     "cannot read random bytes: {err}": {},
+    "cannot read {path}: {err}": {
+      "args": [
+        "err",
+        "path"
+      ]
+    },
     "cannot remove the retired {path}: {err}": {
       "args": [
         "path"
@@ -243,6 +285,23 @@
     },
     "cannot replace {path} (the configuration may be half old and half new; the next sync will retry): {err}": {
       "args": [
+        "path"
+      ]
+    },
+    "cannot resolve {host}: {err}": {
+      "args": [
+        "err",
+        "host"
+      ]
+    },
+    "cannot save: {err}": {
+      "args": [
+        "err"
+      ]
+    },
+    "cannot use the private key {path}: {err}": {
+      "args": [
+        "err",
         "path"
       ]
     },
@@ -289,6 +348,11 @@
         "err"
       ]
     },
+    "closing the SSH connections: {err}": {
+      "args": [
+        "err"
+      ]
+    },
     "codex model": {},
     "concept actions need Content-Type: application/json (got {ct})": {
       "args": [
@@ -304,6 +368,19 @@
       ],
       "other": "configuration updated (gen {from} → {to}, {n} files){files}"
     },
+    "configured: {list}": {
+      "args": [
+        "list"
+      ]
+    },
+    "connect": {},
+    "connected for {d}": {
+      "args": [
+        "d"
+      ]
+    },
+    "connecting": {},
+    "connection": {},
     "content left untouched ({err})": {
       "args": [
         "err"
@@ -327,6 +404,7 @@
     },
     "diagnostics": {},
     "disabled": {},
+    "disconnect": {},
     "dump material": {},
     "e.g. gpt-5.6-luna": {},
     "each key follows the recommendation, derived from model build and variant strength": {},
@@ -336,10 +414,18 @@
     "every intercepted request logs [naked], and newgate status keeps showing a red warning": {},
     "every subagent / agent team / workflow; set it to inherit to hand that back to per-slot resolution": {},
     "failed to inject thinking: {err}": {},
+    "failed: {err}": {
+      "args": [
+        "err"
+      ]
+    },
     "field": {},
     "follow the system": {},
+    "forwarding": {},
+    "forwarding port": {},
     "generated by one takeover: newgate on opencode": {},
     "glossary": {},
+    "handshake and authentication succeeded": {},
     "hello from newgate-ext": {},
     "hello world — {argv0} ({version})": {
       "args": [
@@ -347,6 +433,17 @@
         "version"
       ]
     },
+    "host key": {},
+    "how to reach it": {},
+    "id": {},
+    "idle": {},
+    "idle for {n}s": {
+      "args": [
+        "n"
+      ]
+    },
+    "idle timeout": {},
+    "ignored a broken target": {},
     "imports are scanned from {root}": {
       "args": [
         "root"
@@ -363,7 +460,30 @@
         "patch"
       ]
     },
+    "it is protected by a passphrase; add it to ssh-agent (`ssh-add {path}`) and leave identity empty": {
+      "args": [
+        "path"
+      ]
+    },
+    "it stopped answering: {err}": {
+      "args": [
+        "err"
+      ]
+    },
     "keeping the tier an older takeover wrote": {},
+    "key file {path}": {
+      "args": [
+        "path"
+      ]
+    },
+    "keys {list}": {
+      "args": [
+        "list"
+      ]
+    },
+    "label": {},
+    "lazy": {},
+    "lazy dials on the first request and lets go when idle; persistent keeps it open": {},
     "lift Codex tools from input[0] to the top level": {},
     "lifted {n} tool declaration from input[0] to the top level (DeepSeek reads tools only there)": {
       "args": [
@@ -383,6 +503,7 @@
       ]
     },
     "lossily rebuilt a foreign tool loop: kept the tool results and appended a plain user instruction to continue": {},
+    "machine name: it is the URL segment (/ui/remote/<id>/) and cannot contain / ? # or spaces": {},
     "meaning": {},
     "menuconfig-style UI": {},
     "messages left untouched ({err})": {
@@ -436,6 +557,11 @@
     "newgate (simple-cli) — a minimal UI. Available: status": {},
     "no api_key": {},
     "no available candidate": {},
+    "no key file found in {dir} — relying on ssh-agent": {
+      "args": [
+        "dir"
+      ]
+    },
     "no omo slot registry; run newgate on opencode first": {},
     "no profiles yet; run `newgate init` first": {},
     "no registry (oh-my-openagent has never been taken over)": {},
@@ -465,8 +591,23 @@
         "key"
       ]
     },
+    "no targets are configured": {},
+    "no targets yet — add one with `newgate tunnel add <id> --host <host>`": {},
+    "no usable key for {host}: look in {dir} or start ssh-agent (passwords are not supported — this module only does keys and the agent)": {
+      "args": [
+        "dir",
+        "host"
+      ]
+    },
+    "none": {},
+    "none are configured yet": {},
     "not bound": {},
     "not defined": {},
+    "not listening: {err}": {
+      "args": [
+        "err"
+      ]
+    },
     "note: {msg}": {
       "args": [
         "msg"
@@ -490,14 +631,25 @@
     },
     "opencode": {},
     "opencode is not installed on this machine — nothing on this card takes effect yet. Install it with `newgate opencode -y`.": {},
+    "or byte-for-byte at http://127.0.0.1:{port}/ui/ (started by the daemon)": {
+      "args": [
+        "port"
+      ]
+    },
     "other": {},
     "past max attempts": {},
+    "port http://127.0.0.1:{port}/ui/": {
+      "args": [
+        "port"
+      ]
+    },
     "previewing needs Content-Type: application/json (got {ct})": {
       "args": [
         "ct"
       ]
     },
     "previewing uses POST": {},
+    "private key": {},
     "probed {n} binding": {
       "args": [
         "n"
@@ -530,6 +682,25 @@
       ]
     },
     "provider/model, or @key to follow another tier. Empty = the Bash classifier rides the light tier.": {},
+    "reach a remote machine's web interface over SSH": {},
+    "reach it at {url}": {
+      "args": [
+        "url"
+      ]
+    },
+    "reaches a remote machine's newgate interface over SSH": {},
+    "recorded the host key of {host} in {path} ({fp})": {
+      "args": [
+        "fp",
+        "host",
+        "path"
+      ]
+    },
+    "remote": {},
+    "remote host": {},
+    "remote interfaces": {},
+    "remote interfaces reached over SSH": {},
+    "remote port": {},
     "rename mode": {},
     "rename mode: codex's own model names map to tiers": {},
     "restore finished, but the slot table was not cleared (the next takeover will reuse the old assignment): {err}": {},
@@ -538,12 +709,23 @@
         "file"
       ]
     },
+    "route": {},
+    "route {path}": {
+      "args": [
+        "path"
+      ]
+    },
     "row actions need Content-Type: application/json (got {ct})": {
       "args": [
         "ct"
       ]
     },
     "row actions use POST": {},
+    "run `newgate tunnel test {id}` for a step-by-step answer": {
+      "args": [
+        "id"
+      ]
+    },
     "saving needs Content-Type: application/json (got {ct})": {
       "args": [
         "ct"
@@ -573,12 +755,33 @@
       "other": "slot registry → {file} ({n} keys; default decides which tier each key follows)"
     },
     "slots are discovered by the config extension module": {},
+    "some targets were ignored: {list}": {
+      "args": [
+        "list"
+      ]
+    },
+    "ssh": {},
+    "ssh host": {},
+    "ssh port": {},
+    "ssh tunnel {id}": {
+      "args": [
+        "id"
+      ]
+    },
+    "ssh tunnels": {},
+    "ssh_config sets {key} for this host, but this module only makes direct connections — that setting is being ignored": {
+      "args": [
+        "key"
+      ]
+    },
+    "state": {},
     "state.json — {key} could not be read, the defaults are in use": {
       "args": [
         "key"
       ]
     },
     "status blocks": {},
+    "strict refuses an unknown machine; accept-new records it the first time and still refuses if it later changes": {},
     "suggested": {},
     "switch: newgate omo mode current|suggested": {},
     "switched to {name}": {
@@ -613,6 +816,13 @@
         "file"
       ]
     },
+    "target": {},
+    "target {id}: {why}": {
+      "args": [
+        "id",
+        "why"
+      ]
+    },
     "the AES key is unusable: {err}": {},
     "the Anthropic brand palette for the web interface": {},
     "the Claude Code client": {},
@@ -628,8 +838,12 @@
       ]
     },
     "the configshare bookkeeping file is corrupt; starting over from the initial state: {err}": {},
+    "the daemon closes its connection within a couple of seconds": {},
     "the daemon is not running — the dashboard is served by it, so start it first: newgate start": {},
     "the daemon is not running — this diagram is served by it, so start it first: newgate start": {},
+    "the daemon is not running — this takes effect when it starts": {},
+    "the daemon is not running: forwarding ports and background reconnection only happen there": {},
+    "the daemon picks this up within a couple of seconds": {},
     "the diagram is read-only": {},
     "the endpoint is empty (run newgate config join <endpoint> first)": {},
     "the envelope claims to be the {got} channel, but {want} was expected": {
@@ -659,6 +873,25 @@
       "args": [
         "got",
         "want"
+      ]
+    },
+    "the host key of {host} does not match the one recorded in {path} — that is either a rebuilt machine or somebody in the middle": {
+      "args": [
+        "host",
+        "path"
+      ]
+    },
+    "the host key of {host} is new and {path} is not writable: {err}": {
+      "args": [
+        "err",
+        "host",
+        "path"
+      ]
+    },
+    "the host key of {host} is not in {path} — connect once from a terminal (`ssh {host}`) and answer yes, or set host_key to \"accept-new\" on this target": {
+      "args": [
+        "host",
+        "path"
       ]
     },
     "the interface is on loopback only; nothing listens on other interfaces": {},
@@ -694,6 +927,13 @@
         "n"
       ]
     },
+    "the route lives on the shared port: http://127.0.0.1:{port}{prefix}/<id>/": {
+      "args": [
+        "port",
+        "prefix"
+      ]
+    },
+    "the route rewrites the remote page's paths; the forwarding port does not — when something looks broken over the route, the port is the faithful one": {},
     "the row for {slug} has no tier — pick one, or remove the row": {
       "args": [
         "slug"
@@ -725,6 +965,11 @@
         "err"
       ]
     },
+    "the targets in this request are not readable: {err}": {
+      "args": [
+        "err"
+      ]
+    },
     "the theme in this request is not readable: {err}": {
       "args": [
         "err"
@@ -739,6 +984,11 @@
       ]
     },
     "theme {id} is already registered": {
+      "args": [
+        "id"
+      ]
+    },
+    "there is no target called {id}": {
       "args": [
         "id"
       ]
@@ -777,6 +1027,7 @@
         "name"
       ]
     },
+    "this page is a best-effort copy of the remote interface: paths inside it are rewritten. if something looks broken, use the forwarding port instead — that one is byte-for-byte.": {},
     "this process": {},
     "this string is neither hex ({n} bytes) nor long enough as a raw key ({min} bytes) — was it copied in full?": {
       "args": [
@@ -792,11 +1043,24 @@
       ]
     },
     "this terminal does not support the TUI ({err}); use `newgate --set-profile <name>` instead": {},
+    "this tunnel answers on loopback only; open it as http://127.0.0.1:{port}{prefix}/": {
+      "args": [
+        "port",
+        "prefix"
+      ]
+    },
     "tier": {},
+    "traffic": {},
+    "tunnel [ls|add|rm|up|down|test] [id]": {},
     "turn it off: newgate naked off": {},
     "two rows are both named \"{slug}\" — only one of them could ever match": {
       "args": [
         "slug"
+      ]
+    },
+    "two targets are both called \"{id}\"": {
+      "args": [
+        "id"
       ]
     },
     "unavailable": {},
@@ -805,11 +1069,25 @@
         "cmd"
       ]
     },
+    "unknown tunnel subcommand {verb} — try ls, add, rm, up, down or test": {
+      "args": [
+        "verb"
+      ]
+    },
+    "unusable": {},
+    "usage: newgate tunnel add <id> --host <host> [--user u] [--port 22] [--remote-port 8899] [--local-port 0] [--identity path] [--persistent] [--host-key strict|accept-new]": {},
+    "usage: newgate tunnel rm <id>": {},
+    "usage: newgate tunnel {verb} <id>": {
+      "args": [
+        "verb"
+      ]
+    },
     "use for {client}": {
       "args": [
         "client"
       ]
     },
+    "user": {},
     "value": {},
     "variant={variant} shifts down one step ({from} → {to})": {
       "args": [
@@ -836,6 +1114,7 @@
     "when the user explicitly runs newgate naked on/forever, Bash classifier requests are short-circuited into an approval without a single LLM call — no more 15-30s classifier latency and no more sessions wedged by a wrong block\non = a 60-second self-limiting window; forever = always on (every request is logged, status warns)\nonly the Claude Code security-monitor marker is recognised; newgate naked off / st off both end it": {},
     "where the architecture diagram is served (dev builds)": {},
     "where the browser interface is served, and how to reach it": {},
+    "whether a target is currently connected is the daemon's business — this command runs in its own process and cannot see it (the web interface can)": {},
     "why: {why}": {
       "args": [
         "why"
@@ -874,6 +1153,96 @@
     "{head} · the highest priority globally, ahead of any profile": {
       "args": [
         "head"
+      ]
+    },
+    "{host} resolves": {
+      "args": [
+        "host"
+      ]
+    },
+    "{host}:{port} as {user}": {
+      "args": [
+        "host",
+        "port",
+        "user"
+      ]
+    },
+    "{id}: SSH is up but {remote} refuses the connection: {err}": {
+      "args": [
+        "err",
+        "id",
+        "remote"
+      ]
+    },
+    "{id}: added": {
+      "args": [
+        "id"
+      ]
+    },
+    "{id}: cannot keep the connection open, retrying in {n}s: {err}": {
+      "args": [
+        "err",
+        "id",
+        "n"
+      ]
+    },
+    "{id}: cannot reach {remote}: {err}": {
+      "args": [
+        "err",
+        "id",
+        "remote"
+      ]
+    },
+    "{id}: closed the connection ({why})": {
+      "args": [
+        "id",
+        "why"
+      ]
+    },
+    "{id}: closing {n} connection(s) that were still open": {
+      "args": [
+        "id",
+        "n"
+      ]
+    },
+    "{id}: dials on demand only": {
+      "args": [
+        "id"
+      ]
+    },
+    "{id}: forwarding http://{addr}/ui/ to {remote} over {ssh}": {
+      "args": [
+        "addr",
+        "id",
+        "remote",
+        "ssh"
+      ]
+    },
+    "{id}: removed": {
+      "args": [
+        "id"
+      ]
+    },
+    "{id}: the forwarding port stopped accepting: {err}": {
+      "args": [
+        "err",
+        "id"
+      ]
+    },
+    "{id}: updated": {
+      "args": [
+        "id"
+      ]
+    },
+    "{id}: will stay connected": {
+      "args": [
+        "id"
+      ]
+    },
+    "{id}: {err}": {
+      "args": [
+        "err",
+        "id"
       ]
     },
     "{key} default binding → {value}": {
@@ -926,6 +1295,21 @@
       ],
       "other": "{n} commands"
     },
+    "{n} configured": {
+      "args": [
+        "n"
+      ]
+    },
+    "{n} connections": {
+      "args": [
+        "n"
+      ]
+    },
+    "{n} dialling on start": {
+      "args": [
+        "n"
+      ]
+    },
     "{n} key has a suggested tier (see newgate omo ls)": {
       "args": [
         "n"
@@ -976,10 +1360,30 @@
       ],
       "other": "{n} still in flight — refresh in a moment"
     },
+    "{n} targets": {
+      "args": [
+        "n"
+      ]
+    },
+    "{n} unreadable": {
+      "args": [
+        "n"
+      ]
+    },
+    "{n} with a forwarding port": {
+      "args": [
+        "n"
+      ]
+    },
     "{providers} carries an inline api_key for {names}: a secret may only travel over the secrets channel (newgate config secrets on the host); the config channel never carries one — on the host it is managed by git, so a single commit puts it in history forever": {
       "args": [
         "names",
         "providers"
+      ]
+    },
+    "{remote} accepts connections": {
+      "args": [
+        "remote"
       ]
     },
     "{report}": {

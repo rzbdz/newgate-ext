@@ -83,7 +83,30 @@ fork 里那个 `modules/deepseek` 满足同一份契约、声明同样的 `Requi
 由同一个组装器排序。`newgate restart` 负责把 socket 交出去，所以你发自己的版本不会打断任何人，
 包括会话中的你自己。想从近乎空白开始，就拿 `dist-hello.json`（框架 + 一个 `hello`）。
 
-## 安装
+## 穿过 SSH 看远端那个界面
+
+有些机器只开 SSH——它们的 newgate 网页界面在那边只监听 `localhost`，别的都出不来。
+`modules/ssh-tunnel` 去把它取回来：
+
+```bash
+newgate tunnel add snode1 --host 10.0.50.11 --user me --remote-port 8899 --local-port 9401
+```
+
+```text
+http://127.0.0.1:9401/ui/                  一个字节都不动——远端界面原样
+http://127.0.0.1:8899/ui/remote/snode1/    同一个东西，不占端口，路径被改写
+```
+
+两条同时可用，背后是同一条 SSH 连接：第一次用到才拨，空闲了自己断（`--persistent`
+的 target 则一直连着）。**只认密钥与 ssh-agent，永远不要密码**——所以那份 target
+列表可以住在 `state.json` 里、跟别的东西一样在界面上改。`~/.ssh/config` 里认得的那
+几个键会生效；`ProxyJump` 不生效，而且会**明说**，不会假装直连成功。
+
+**转发端口那条才是诚实的。** route 必须改写远端页面的路径（它的产物里写死了
+`/ui/assets`、`/ui/api`），而改写天然只能尽力而为：重定向也一起改了、外链不去碰，
+但一个**运行期才拼出绝对地址**的界面过不来。route 上看着不对时，用端口。
+
+## Install
 
 ```bash
 gh release download --repo rzbdz/newgate-ext -p '*linux-amd64'

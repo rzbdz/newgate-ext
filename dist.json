@@ -16,7 +16,8 @@
     "theme-light",
     "theme-anthropic",
     "codex",
-    "codex_deepseek"
+    "codex_deepseek",
+    "ssh-tunnel"
   ],
   "disable": []
 }

@@ -117,7 +117,7 @@ var landingTmpl = template.Must(template.New("landing").Parse(`<!doctype html>
   <ul class="chips">
     <li>一个静态二进制</li>
     <li>PATH shim 接管，配置就地改写</li>
-    <li>零第三方依赖</li>
+    <li>只有一个第三方依赖（SSH）</li>
     <li>换版本不打断在途的会话</li>
     <li>MIT · 可 fork</li>
   </ul>

@@ -34,9 +34,10 @@ jobs:
         with:
           # 跟 go.mod 走，不写死版本——否则升级 toolchain 时这里会静默落后。
           go-version-file: go.mod
-          # 指 go.mod 而不是 go.sum：这个 module **没有第三方依赖**（内核也没有），
-          # 仓库里没有 go.sum，指着一个不存在的文件算不出缓存键。
-          cache-dependency-path: go.mod
+          # 指 go.sum：发行版**有**第三方依赖（modules/ssh-tunnel 用 golang.org/x/crypto），
+          # 而 go.sum 才是那份依赖集合的指纹。内核仍然零依赖（它的 go.mod 只有三行），
+          # 但那与这个 job 无关——这里编的是发行版。
+          cache-dependency-path: go.sum
 
       # 只发**重点那份**（发行版的主配置）：骨架配置（dist-hello.json）是给人 fork
       # 的样板，不是产品，不需要挂在 Release 上。要发哪几份由这里的 NEWGATE_DISTS

@@ -55,8 +55,10 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          # 指 go.mod 而不是 go.sum：这个 module 没有第三方依赖（见 go.mod）。
-          cache-dependency-path: go.mod
+          # 指 go.sum：发行版**有**第三方依赖了（modules/ssh-tunnel 要 x/crypto），
+          # 而 go.sum 才是那份依赖集合的指纹——go.mod 在只改版本不改依赖时不变。
+          # 内核那边仍然指 core/go.mod（它零依赖，没有 go.sum）。
+          cache-dependency-path: go.sum
 
       - uses: actions/setup-node@v4
         with:

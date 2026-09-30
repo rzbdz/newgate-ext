@@ -71,6 +71,7 @@ var startOrder = map[string][]string{
 		"codex",
 		"codex-deepseek",
 		"arch-diagram",
+		"ssh-tunnel",
 	},
 	"dist-hello.json": {
 		"entry",
@@ -132,5 +133,6 @@ var startOrder = map[string][]string{
 		"theme-anthropic",
 		"codex",
 		"codex-deepseek",
+		"ssh-tunnel",
 	},
 }

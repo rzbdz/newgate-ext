@@ -75,7 +75,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          cache-dependency-path: go.mod
+          # 发行版有第三方依赖（modules/ssh-tunnel → golang.org/x/crypto），所以
+          # 缓存键指 go.sum。**上面那个 core-test job 不动**：内核仍然零依赖。
+          cache-dependency-path: go.sum
 
       - name: 格式与 vet
         run: |
@@ -121,7 +123,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          cache-dependency-path: go.mod
+          # 发行版有第三方依赖（modules/ssh-tunnel → golang.org/x/crypto），所以
+          # 缓存键指 go.sum。**上面那个 core-test job 不动**：内核仍然零依赖。
+          cache-dependency-path: go.sum
 
       # 脚本的依赖：python3（内核的假上游）、curl（打代理）、coreutils（md5sum）。
       - name: 装依赖

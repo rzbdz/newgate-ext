@@ -4,6 +4,8 @@ go 1.27
 
 require github.com/rzbdz/newgate v0.0.0
 
+require golang.org/x/crypto v0.57.0 // indirect
+
 // 内核是**这个仓库里的一份普通依赖**，钉在 core/ 这个 submodule 的提交上。
 //
 // 为什么是 replace 而不是让 Go 去下载一个版本号：submodule 的 gitlink 已经是

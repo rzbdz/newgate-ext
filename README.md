@@ -98,6 +98,32 @@ restart` hands the socket over, so shipping your version doesn't interrupt
 anyone, including yourself mid-session. Start from `dist-hello.json` (the
 framework plus one `hello`) if you would rather begin at almost nothing.
 
+## Reach a remote interface over SSH
+
+Some machines only expose SSH — their newgate web interface listens on `localhost`
+over there and nothing else gets through. `modules/ssh-tunnel` goes and gets it:
+
+```bash
+newgate tunnel add snode1 --host 10.0.50.11 --user me --remote-port 8899 --local-port 9401
+```
+
+```text
+http://127.0.0.1:9401/ui/                  byte-for-byte — the remote interface as it is
+http://127.0.0.1:8899/ui/remote/snode1/    the same thing, no extra port, paths rewritten
+```
+
+Both are live at once, backed by one SSH connection that is dialled on first use and
+let go when idle (mark a target `--persistent` to keep it up instead). Keys and
+`ssh-agent` only — **never a password**, which is why the target list can sit in
+`state.json` and be edited from the interface like anything else. Understood keys in `~/.ssh/config` are honoured;
+`ProxyJump` is not, and says so rather than silently connecting directly.
+
+**The forwarding port is the honest one.** The route has to rewrite the remote
+page's paths (its bundle hardcodes `/ui/assets`, `/ui/api`), and a rewrite is
+best-effort by nature: it also fixes the redirects, and it leaves external URLs
+alone, but an interface that builds absolute URLs at runtime will not survive the
+trip. When something looks wrong over the route, use the port.
+
 ## Install
 
 ```bash
