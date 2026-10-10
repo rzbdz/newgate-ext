@@ -64,14 +64,48 @@ func Treatments(thinking thinkingapi.Service) []special.Plugin {
 //   - 只认 Agent=="claude"（opencode 等其他客户端不受影响）。
 type background struct{ thinking thinkingapi.Service }
 
-// classifierMarker 分类器系统提示词的开头（cc 2.1.263 实抓，4/4 命中）。
-// 出现在 system 里 = 这条非流式请求是 Bash 安全分类器本体。
+// classifierMarker 是分类器 system 的自报家门（cc 2.1.263 实抓 4/4 命中；
+// 2.1.295 反混淆核对仍在）。**四个 gate 共用同一份 system**：2026-10-10 在
+// 2.1.295 里读出来，gate（Bash）/ sandboxNetwork / workflowGate / handoff
+// 都走 xio()→GNe() 拼出的这一句，flavour 只改**消息里**追加的尾巴。
 const classifierMarker = "You are a security monitor"
 
-// isClassifier 用实抓特征认分类器：只看 system 里有没有那句自报家门。
+// classifierStopSequences 是分类器的两个终止符。**整个客户端里只有 auto_mode
+// 分类器会设顶层 stop_sequences**（2026-10-10 反混淆核对：设置点唯一，就是
+// tao() 里那句 `…V!=="fast"&&{stop_sequences:[_e?"</severity>":"</block>"]}`；
+// 另两处是通用透传，得调用方先给，还有一处是源码表）。所以「顶层有
+// stop_sequences」是一条**与提示词措辞无关**的结构判据。
+var classifierStopSequences = []string{"</block>", "</severity>"}
+
+// isClassifier 认「这条非流式请求是 Claude Code 的安全分类器」。两条判据是
+// **或**的关系，任一条成立即认：
+//
+//  1. system 里出现分类器的自报家门（四个 gate 共用，见 classifierMarker）；
+//  2. 顶层 stop_sequences 带着分类器的终止符（结构判据，措辞改了也还在）。
+//
+// 为什么要在标记之外再要一条结构判据：标记是**提示词**，措辞是客户端的事，
+// 一次改版就可能把它挪走或改写；而漏认的代价不是「少省一次上游调用」，是
+// **这一发被送去上游、上游回不出分类器形状 → 客户端判「无法评估」并把动作
+// 拦下来**（见 classifier-naked.go 里 classifierAnswer 的注释）。多认的代价
+// 只是一个后台小调用被短路，所以宁可宽。
+//
+// **为什么不连消息正文一起认**：分类器的 flavour 尾巴（stage 1/2 的说明）确实
+// 落在消息里，但 compact 总结请求**带着整段会话**从这条路过去——会话里只要有人
+// 引用过那几句话（本仓库的文档与注释里就有），compact 就会被当成分类器短路掉，
+// 而它的答复是要**替换整段历史**的：那是一次会话级损坏，比漏认贵得多。system
+// 与 stop_sequences 都长在「客户端自己组装的壳」上，会话正文碰不到。
 func isClassifier(body []byte) bool {
-	raw, ok := rewrite.TopLevelRaw(body, "system")
-	return ok && bytes.Contains(raw, []byte(classifierMarker))
+	if raw, ok := rewrite.TopLevelRaw(body, "system"); ok && bytes.Contains(raw, []byte(classifierMarker)) {
+		return true
+	}
+	if raw, ok := rewrite.TopLevelRaw(body, "stop_sequences"); ok {
+		for _, end := range classifierStopSequences {
+			if bytes.Contains(raw, []byte(end)) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (background) Name() string { return "claude-bg" }

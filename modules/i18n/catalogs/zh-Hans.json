@@ -1,1992 +1,1992 @@
 {
-  "meta": {
-    "language": "zh-Hans",
-    "source": "en"
-  },
   "messages": {
     " and {n} in all": {
-      "text": " 等 {n} 个",
-      "reviewed": true
+      "reviewed": true,
+      "text": " 等 {n} 个"
     },
     "\"the Responses input[] ends on a function_call_output whose call_id is not ours\" is no longer repaired (no \"continue\" appended), and the upstream misreports such an instruction-less tail as a missing reasoning_text and answers 400": {
-      "text": "「Responses 的 input[] 以别家产的 call_id 的 function_call_output 收尾」不再被修（不再追加「continue」），上游会把这种空指令尾部误报成 reasoning_text 缺失而 400",
-      "reviewed": true
+      "reviewed": true,
+      "text": "「Responses 的 input[] 以别家产的 call_id 的 function_call_output 收尾」不再被修（不再追加「continue」），上游会把这种空指令尾部误报成 reasoning_text 缺失而 400"
     },
     "\"the last user message holds only tool_result\" is no longer repaired (no \"continue\" appended), and the upstream misreports such an instruction-less tail as a missing reasoning_content and answers 400": {
-      "text": "「最后一条 user 消息只有 tool_result」不再被修（不再追加「继续」），上游会把这种空指令尾部误报成 reasoning_content 缺失而 400",
-      "reviewed": true
+      "reviewed": true,
+      "text": "「最后一条 user 消息只有 tool_result」不再被修（不再追加「继续」），上游会把这种空指令尾部误报成 reasoning_content 缺失而 400"
     },
     "(messages is not an array, cannot audit)\n": {
-      "text": "（messages 不是数组，无法审计）\n",
-      "reviewed": true
+      "reviewed": true,
+      "text": "（messages 不是数组，无法审计）\n"
     },
     "(no messages field, cannot audit)\n": {
-      "text": "（没有 messages 字段，无法审计）\n",
-      "reviewed": true
+      "reviewed": true,
+      "text": "（没有 messages 字段，无法审计）\n"
     },
     "(none)": {
-      "text": "(无)",
-      "reviewed": true
+      "reviewed": true,
+      "text": "(无)"
     },
     "(plain text turn, no tool_use)": {
-      "text": "（纯文本轮，无 tool_use）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "（纯文本轮，无 tool_use）"
     },
     "({items}; skipped messages have no tool id (plain text turns))": {
-      "text": "（{items}；跳过消息没有 tool id（纯文本轮））",
-      "reviewed": true
+      "reviewed": true,
+      "text": "（{items}；跳过消息没有 tool id（纯文本轮））"
     },
     "({items}; tool ids of skipped messages: {ids}{more})": {
-      "text": "（{items}；跳过消息的 tool id: {ids}{more}）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "（{items}；跳过消息的 tool id: {ids}{more}）"
     },
     "* has an override (written by newgate omo use), highest priority": {
-      "text": "* 有覆盖（newgate omo use 写入），优先级最高",
-      "reviewed": true
+      "reviewed": true,
+      "text": "* 有覆盖（newgate omo use 写入），优先级最高"
     },
     "+ model": {
-      "text": "+ 模型",
-      "reviewed": true
+      "reviewed": true,
+      "text": "+ 模型"
     },
     ", ": {
-      "text": "、",
-      "reviewed": true
+      "reviewed": true,
+      "text": "、"
     },
     ", {n} had no original text to backfill and were **left untouched**{detail} — those rounds the model cannot see its own reasoning": {
-      "text": "，{n} 条没有原文可补、**跳过不动**{detail}——这几轮模型看不到自己的推理",
-      "reviewed": true
+      "reviewed": true,
+      "text": "，{n} 条没有原文可补、**跳过不动**{detail}——这几轮模型看不到自己的推理"
     },
     ", {tier} suggested": {
-      "text": "，建议 {tier}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "，建议 {tier}"
     },
     "--host is required (a name from ~/.ssh/config works)": {
-      "text": "--host 为必填（~/.ssh/config 中的名称即可）",
-      "machine": true
+      "machine": true,
+      "text": "--host 为必填（~/.ssh/config 中的名称即可）"
     },
     ": {names}": {
-      "text": "：{names}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "：{names}"
     },
     ": {names} and {n} in total": {
-      "text": "：{names} 等 {n} 个",
-      "reviewed": true
+      "reviewed": true,
+      "text": "：{names} 等 {n} 个"
     },
     "; ": {
-      "text": "；",
-      "reviewed": true
+      "reviewed": true,
+      "text": "；"
     },
     "Anthropic": {
-      "text": "Anthropic",
-      "reviewed": true
+      "reviewed": true,
+      "text": "Anthropic"
     },
     "Anthropic-dialect requests no longer get a thinking block prepended to content[], which triggers the same \"content[].thinking must be passed back\" 400": {
-      "text": "Anthropic 方言下不再给 content[] 开头补 thinking 块，同样触发「content[].thinking 必须回传」400",
-      "reviewed": true
+      "reviewed": true,
+      "text": "Anthropic 方言下不再给 content[] 开头补 thinking 块，同样触发「content[].thinking 必须回传」400"
     },
     "Auto": {
-      "text": "自动",
-      "reviewed": true
+      "reviewed": true,
+      "text": "自动"
     },
     "Backfill reasoning_content (hand 2)": {
-      "text": "补 reasoning_content（第 2 手）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "补 reasoning_content（第 2 手）"
     },
     "Backfill the thinking block (hand 3)": {
-      "text": "补 thinking 块（第 3 手）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "补 thinking 块（第 3 手）"
     },
     "Bash classifier: the whole chain is rerouted to light": {
-      "text": "Bash 分类器，整条链改走 light",
-      "reviewed": true
+      "reviewed": true,
+      "text": "Bash 分类器，整条链改走 light"
     },
     "Binding mode": {
-      "text": "绑定方式",
-      "reviewed": true
+      "reviewed": true,
+      "text": "绑定方式"
     },
     "Black": {
-      "text": "黑",
-      "reviewed": true
+      "reviewed": true,
+      "text": "黑"
     },
     "Classifier config": {
-      "text": "分类器配置",
-      "reviewed": true
+      "reviewed": true,
+      "text": "分类器配置"
     },
     "Classifier override": {
-      "text": "分类器覆盖",
-      "reviewed": true
+      "reviewed": true,
+      "text": "分类器覆盖"
     },
     "Classifier rerouting": {
-      "text": "分类器改道",
-      "reviewed": true
+      "reviewed": true,
+      "text": "分类器改道"
     },
     "Claude Code": {
-      "text": "Claude Code",
-      "reviewed": true
+      "reviewed": true,
+      "text": "Claude Code"
     },
     "Claude Code Bash classifier": {
-      "text": "Claude Code 的 Bash 分类器",
-      "reviewed": true
+      "reviewed": true,
+      "text": "Claude Code 的 Bash 分类器"
     },
     "Claude Code Bash classifier → the light-tier chain": {
-      "text": "Claude Code Bash 分类器 → light 档链",
-      "reviewed": true
+      "reviewed": true,
+      "text": "Claude Code Bash 分类器 → light 档链"
     },
     "Claude Code slots": {
-      "text": "Claude Code 槽位",
-      "reviewed": true
+      "reviewed": true,
+      "text": "Claude Code 槽位"
     },
     "Claude Code strips third-party DeepSeek thinking blocks; turn DeepSeek thinking off unless it was explicitly asked for, so the next round does not 400 for a block that must be passed back": {
-      "text": "Claude Code 会剥掉第三方 DeepSeek 的 thinking 块；未显式要求思考时关闭 DeepSeek thinking，避免下一轮要求回传而 400",
-      "reviewed": true
+      "reviewed": true,
+      "text": "Claude Code 会剥掉第三方 DeepSeek 的 thinking 块；未显式要求思考时关闭 DeepSeek thinking，避免下一轮要求回传而 400"
     },
     "Claude Code's background non-streaming requests (the Bash classifier, etc.) carry no thinking, yet Chinese models think by default → 15-30 seconds, waves of timeouts, a wedged session\nthe classifier (the system prompt says \"security monitor\") takes the whole chain to the light tier (fallback included); other background calls only get thinking disabled (the streaming main loop is unaffected)": {
-      "text": "Claude Code 的后台非流式请求（Bash 分类器等）不带 thinking，国模却默认思考 → 15-30 秒、成波超时卡死会话\n分类器（system 自报 \"security monitor\"）整条链走 light 档（含 fallback），其余后台调用只禁思考（主循环的流式请求不受影响）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "Claude Code 的后台非流式请求（Bash 分类器等）不带 thinking，国模却默认思考 → 15-30 秒、成波超时卡死会话\n分类器（system 自报 \"security monitor\"）整条链走 light 档（含 fallback），其余后台调用只禁思考（主循环的流式请求不受影响）"
     },
     "Claude Code's requests fall into DeepSeek thinking mode by default, but it does not carry third-party thinking blocks into the next round — so every call hits the 400 that says thinking must be passed back": {
-      "text": "Claude Code 的请求按缺省进 DeepSeek 思考模式，而它不会把第三方 thinking 块带回下一轮——于是每一发都会撞「thinking 必须回传」的 400",
-      "reviewed": true
+      "reviewed": true,
+      "text": "Claude Code 的请求按缺省进 DeepSeek 思考模式，而它不会把第三方 thinking 块带回下一轮——于是每一发都会撞「thinking 必须回传」的 400"
     },
     "Clients": {
-      "text": "客户端",
-      "reviewed": true
+      "reviewed": true,
+      "text": "客户端"
     },
     "Codex": {
-      "text": "Codex",
-      "reviewed": true
+      "reviewed": true,
+      "text": "Codex"
     },
     "Codex 0.155 puts tool definitions in `input[0]` (type=additional_tools) and every upstream we ship reads tools from the top level only: with the lift off the model sees no tools at all, answers in its own text format, and Codex never gets a tool_result back": {
-      "text": "Codex 0.155 把工具定义放在 `input[0]`（type=additional_tools）里，而我们装的每一个上游都只从顶层读工具：关掉这一手，模型一个工具都看不见，退回自己的文本格式去「调工具」，于是客户端永远拿不到 tool_result",
-      "reviewed": true
+      "reviewed": true,
+      "text": "Codex 0.155 把工具定义放在 `input[0]`（type=additional_tools）里，而我们装的每一个上游都只从顶层读工具：关掉这一手，模型一个工具都看不见，退回自己的文本格式去「调工具」，于是客户端永远拿不到 tool_result"
     },
     "Codex 0.155 puts tool definitions in `input[0]` (type=additional_tools) while every upstream we ship (Ark, DeepSeek, Claude, Gemini, GPT, Kimi, MiniMax, ...) reads tools from the top level only; without the lift the model sees no tools, answers in text, and the client never gets a tool_result. Switch off and every Codex call loses its tools.": {
-      "text": "Codex 0.155 把工具定义放在 `input[0]` 里（type=additional_tools），而我们装的每一家上游（Ark、DeepSeek、Claude、Gemini、GPT、Kimi、MiniMax …）都只从顶层 `tools` 读。不抬上去，模型一个工具都看不见，只能拿正文去「调工具」，客户端永远收不到 tool_result。关掉它 = 每一次 Codex 调用都没有工具。",
-      "reviewed": true
+      "reviewed": true,
+      "text": "Codex 0.155 把工具定义放在 `input[0]` 里（type=additional_tools），而我们装的每一家上游（Ark、DeepSeek、Claude、Gemini、GPT、Kimi、MiniMax …）都只从顶层 `tools` 读。不抬上去，模型一个工具都看不见，只能拿正文去「调工具」，客户端永远收不到 tool_result。关掉它 = 每一次 Codex 调用都没有工具。"
     },
     "Codex model": {
-      "text": "Codex 档位",
-      "reviewed": true
+      "reviewed": true,
+      "text": "Codex 档位"
     },
     "Codex model names": {
-      "text": "Codex 模型名",
-      "reviewed": true
+      "reviewed": true,
+      "text": "Codex 模型名"
     },
     "Codex puts its tool definitions in input[0] (additional_tools) while DeepSeek reads tools from the top level; without the lift the model sees no tools at all and answers in its own text format, so the client never gets a tool_result": {
-      "text": "Codex 把工具定义放在 input[0]（additional_tools）里，而 DeepSeek 只从顶层 tools 读工具；不抬上去模型一个工具都看不见，会用它自己的文本格式作答，客户端因此一个 tool_result 都拿不到",
-      "reviewed": true
+      "reviewed": true,
+      "text": "Codex 把工具定义放在 input[0]（additional_tools）里，而 DeepSeek 只从顶层 tools 读工具；不抬上去模型一个工具都看不见，会用它自己的文本格式作答，客户端因此一个 tool_result 都拿不到"
     },
     "Connections": {
-      "text": "连接",
-      "machine": true
+      "machine": true,
+      "text": "连接"
     },
     "DeepSeek thinking mode wants reasoning passed back verbatim, but the client strips it → 400\nso we put it back (the original the client carries → thinkcache; **no original means skip it, never invent one**); only the Claude Code path turns thinking off outright (it strips the blocks, so thinking would be spent for nothing); a foreign unclosed tool loop is first lossily rebuilt from the visible tool results, then DeepSeek takes over": {
-      "text": "DeepSeek 思考模式要求逐字回传推理内容，客户端却会把它剥掉 → 400\n套着就补回去（客户端带回的原文 → thinkcache；**没有原文就跳过，绝不编**）；只有 Claude Code 那条路干脆显式关掉思考（它剥块，想了也白想）；外来未闭合 tool loop 先从可见工具结果有损重建，再由 DeepSeek 接手",
-      "reviewed": true
+      "reviewed": true,
+      "text": "DeepSeek 思考模式要求逐字回传推理内容，客户端却会把它剥掉 → 400\n套着就补回去（客户端带回的原文 → thinkcache；**没有原文就跳过，绝不编**）；只有 Claude Code 那条路干脆显式关掉思考（它剥块，想了也白想）；外来未闭合 tool loop 先从可见工具结果有损重建，再由 DeepSeek 接手"
     },
     "DeepSeek upstream quirk patches": {
-      "text": "DeepSeek 上游怪癖修补",
-      "reviewed": true
+      "reviewed": true,
+      "text": "DeepSeek 上游怪癖修补"
     },
     "DeepSeek's /responses accepts `custom` tools only for apply_patch and answers 400 for every other one (the message inside a namespace is a different one); with the degrade off a Codex request carrying any other custom tool is rejected outright": {
-      "text": "DeepSeek 的 /responses 只认 apply_patch 一个 custom 工具，其余一律 400（藏在 namespace 里时换一句）；关掉降级，任何带别的 custom 工具的 Codex 请求都会被直接拒掉",
-      "reviewed": true
+      "reviewed": true,
+      "text": "DeepSeek 的 /responses 只认 apply_patch 一个 custom 工具，其余一律 400（藏在 namespace 里时换一句）；关掉降级，任何带别的 custom 工具的 Codex 请求都会被直接拒掉"
     },
     "GCM is unusable: {err}": {
-      "text": "GCM 不可用: {err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "GCM 不可用: {err}"
     },
     "GLM models treat a missing thinking field as thinking on (Anthropic semantics say off) → requests that never asked to think get dragged into ten-plus seconds\non the Claude Code path an explicit disabled is filled in when it is absent (present is left alone); OpenAI-dialect clients (opencode) have no such field to write, so they are not touched": {
-      "text": "GLM 系模型把「没写 thinking」当默认开思考（Anthropic 语义是关）→ 没要求思考的请求被拖进十几秒\nClaude Code 那条路没写就补显式 disabled（写了不动）；OpenAI 方言的客户端（opencode）没有这个字段可写，不碰",
-      "reviewed": true
+      "reviewed": true,
+      "text": "GLM 系模型把「没写 thinking」当默认开思考（Anthropic 语义是关）→ 没要求思考的请求被拖进十几秒\nClaude Code 那条路没写就补显式 disabled（写了不动）；OpenAI 方言的客户端（opencode）没有这个字段可写，不碰"
     },
     "GLM upstream quirk patches": {
-      "text": "GLM 上游怪癖修补",
-      "reviewed": true
+      "reviewed": true,
+      "text": "GLM 上游怪癖修补"
     },
     "Generated automatically when oh-my-openagent is taken over. default is the binding this key falls back to when the profile does not spell it out; to move a slot to another tier, edit overrides (it accepts \"@other-key\" / \"tier name\" / \"provider/model\"), or write this key directly in the profile.": {
-      "text": "接管 oh-my-openagent 时自动生成。default 是这个键在 profile 里没写时的缺省归属；想让某个槽位换档位，改 overrides（支持 \"@别的键\" / \"档位名\" / \"provider/模型\"），或在 profile 里直接写这个键。",
-      "reviewed": true
+      "reviewed": true,
+      "text": "接管 oh-my-openagent 时自动生成。default 是这个键在 profile 里没写时的缺省归属；想让某个槽位换档位，改 overrides（支持 \"@别的键\" / \"档位名\" / \"provider/模型\"），或在 profile 里直接写这个键。"
     },
     "Home": {
-      "text": "主页",
-      "reviewed": true
+      "reviewed": true,
+      "text": "主页"
     },
     "Interface": {
-      "text": "界面",
-      "reviewed": true
+      "reviewed": true,
+      "text": "界面"
     },
     "Naked": {
-      "text": "裸奔",
-      "reviewed": true
+      "reviewed": true,
+      "text": "裸奔"
     },
     "Remote": {
-      "text": "远端",
-      "machine": true
+      "machine": true,
+      "text": "远端"
     },
     "Repair the Responses tail shape (hand 5)": {
-      "text": "修 Responses 尾部形状（第 5 手）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "修 Responses 尾部形状（第 5 手）"
     },
     "Repair the tail shape (hand 4)": {
-      "text": "修尾部形状（第 4 手）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "修尾部形状（第 4 手）"
     },
     "Responses input left untouched ({err})": {
-      "text": "Responses input 未改动（{err}）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "Responses input 未改动（{err}）"
     },
     "Routes": {
-      "text": "路由",
-      "reviewed": true
+      "reviewed": true,
+      "text": "路由"
     },
     "Routing": {
-      "text": "路由",
-      "machine": true
+      "machine": true,
+      "text": "路由"
     },
     "SSH handshake with {addr} failed: {err}": {
-      "text": "与 {addr} 的 SSH 握手失败：{err}",
-      "machine": true
+      "machine": true,
+      "text": "与 {addr} 的 SSH 握手失败：{err}"
     },
     "SSH is fine, but {remote} refuses connections from this side: {err}": {
-      "text": "SSH 正常，但 {remote} 拒绝来自本侧的连接：{err}",
-      "machine": true
+      "machine": true,
+      "text": "SSH 正常，但 {remote} 拒绝来自本侧的连接：{err}"
     },
     "Targets": {
-      "text": "目标",
-      "machine": true
+      "machine": true,
+      "text": "目标"
     },
     "Test this profile": {
-      "text": "探这一份",
-      "reviewed": true
+      "reviewed": true,
+      "text": "探这一份"
     },
     "The colours of this interface. Saved to state.json and applied at once — no reload. Nothing but tokens changes: a theme cannot move anything around.": {
-      "text": "这块界面的配色。存进 state.json，当场生效，不用刷新。一套皮肤能改的只有那一组颜色令牌——它动不了版面。",
-      "reviewed": true
+      "reviewed": true,
+      "text": "这块界面的配色。存进 state.json，当场生效，不用刷新。一套皮肤能改的只有那一组颜色令牌——它动不了版面。"
     },
     "The model name codex itself sends — copy it out of `codex debug models` (the slug).": {
-      "text": "codex 自己发出来的那个模型名——从 `codex debug models` 里抄（抄 slug 那一栏）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "codex 自己发出来的那个模型名——从 `codex debug models` 里抄（抄 slug 那一栏）"
     },
     "Theme": {
-      "text": "皮肤",
-      "reviewed": true
+      "reviewed": true,
+      "text": "皮肤"
     },
     "Usage: newgate omo [ls | use <key> <binding> | unset <key> | mode current|suggested | explain <key>]": {
-      "text": "用法：newgate omo [ls | use \u003c键\u003e \u003c归属\u003e | unset \u003c键\u003e | mode current|suggested | explain \u003c键\u003e]",
-      "reviewed": true
+      "reviewed": true,
+      "text": "用法：newgate omo [ls | use <键> <归属> | unset <键> | mode current|suggested | explain <键>]"
     },
     "Usage: newgate omo explain <slot key>": {
-      "text": "用法：newgate omo explain \u003c槽位键\u003e",
-      "reviewed": true
+      "reviewed": true,
+      "text": "用法：newgate omo explain <槽位键>"
     },
     "Usage: newgate omo unset <slot key>": {
-      "text": "用法：newgate omo unset \u003c槽位键\u003e",
-      "reviewed": true
+      "reviewed": true,
+      "text": "用法：newgate omo unset <槽位键>"
     },
     "Usage: newgate omo use <slot key> <@other-key|tier|provider/model>": {
-      "text": "用法：newgate omo use \u003c槽位键\u003e \u003c@别的键|档位|provider/模型\u003e",
-      "reviewed": true
+      "reviewed": true,
+      "text": "用法：newgate omo use <槽位键> <@别的键|档位|provider/模型>"
     },
     "Which tier a request naming that model resolves to. Required — a row without one is rejected on save.": {
-      "text": "点名这个模型的请求落到哪一档。必填——没有档位的那一行保存会被拒",
-      "reviewed": true
+      "reviewed": true,
+      "text": "点名这个模型的请求落到哪一档。必填——没有档位的那一行保存会被拒"
     },
     "White": {
-      "text": "白",
-      "reviewed": true
+      "reviewed": true,
+      "text": "白"
     },
     "[naked] forever mode: the classifier request was approved directly, the upstream was not called": {
-      "text": "[naked] forever 模式：分类器请求被直接批准，未调用上游",
-      "reviewed": true
+      "reviewed": true,
+      "text": "[naked] forever 模式：分类器请求被直接批准，未调用上游"
     },
     "[naked] the classifier request was approved directly, the upstream was not called (the configuration is no longer valid)": {
-      "text": "[naked] 分类器请求被直接批准，未调用上游（配置已失效）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "[naked] 分类器请求被直接批准，未调用上游（配置已失效）"
     },
     "[naked] the classifier request was approved directly, the upstream was not called (the window expired right after the interception)": {
-      "text": "[naked] 分类器请求被直接批准，未调用上游（窗口在拦截后立即到期）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "[naked] 分类器请求被直接批准，未调用上游（窗口在拦截后立即到期）"
     },
     "[naked] the classifier request was approved directly, the upstream was not called (the window has {left} left)": {
-      "text": "[naked] 分类器请求被直接批准，未调用上游（窗口还剩 {left}）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "[naked] 分类器请求被直接批准，未调用上游（窗口还剩 {left}）"
     },
     "a command cannot be nil": {
-      "text": "命令不能为 nil",
-      "reviewed": true
+      "reviewed": true,
+      "text": "命令不能为 nil"
     },
     "a loopback port forwarded byte-for-byte; empty means this target is reachable only through the rewritten route": {
-      "text": "逐字节转发的回环端口；为空表示该目标只能通过重写后的路由到达",
-      "machine": true
+      "machine": true,
+      "text": "逐字节转发的回环端口；为空表示该目标只能通过重写后的路由到达"
     },
     "a lossy rebuild happened before taking over a foreign unclosed tool loop": {
-      "text": "接手外来未闭合 tool loop 前做了有损重建",
-      "reviewed": true
+      "reviewed": true,
+      "text": "接手外来未闭合 tool loop 前做了有损重建"
     },
     "a menuconfig-style terminal interface": {
-      "text": "menuconfig 风格的终端界面",
-      "reviewed": true
+      "reviewed": true,
+      "text": "menuconfig 风格的终端界面"
     },
     "a name from ~/.ssh/config, or an address": {
-      "text": "~/.ssh/config 中的名称，或一个地址",
-      "machine": true
+      "machine": true,
+      "text": "~/.ssh/config 中的名称，或一个地址"
     },
     "a path, never key material. Leave empty to use the usual files and ssh-agent": {
-      "text": "一个路径，绝不是密钥内容。留空则使用常规文件和 ssh-agent",
-      "machine": true
+      "machine": true,
+      "text": "一个路径，绝不是密钥内容。留空则使用常规文件和 ssh-agent"
     },
     "a reference is written as @key (e.g. @normal), got {value}": {
-      "text": "引用写成 @键名（如 @normal），得到 {value}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "引用写成 @键名（如 @normal），得到 {value}"
     },
     "a reference loop": {
-      "text": "引用成了环",
-      "reviewed": true
+      "reviewed": true,
+      "text": "引用成了环"
     },
     "a row has no model name — nothing would ever match it": {
-      "text": "有一行没写模型名——那一行谁也匹配不上",
-      "reviewed": true
+      "reviewed": true,
+      "text": "有一行没写模型名——那一行谁也匹配不上"
     },
     "a status provider cannot be nil": {
-      "text": "状态提供者不能为 nil",
-      "reviewed": true
+      "reviewed": true,
+      "text": "状态提供者不能为 nil"
     },
     "a theme needs an id": {
-      "text": "一套皮肤必须有 id",
-      "reviewed": true
+      "reviewed": true,
+      "text": "一套皮肤必须有 id"
     },
     "a true-black theme for the web interface": {
-      "text": "网页界面的真黑皮肤",
-      "reviewed": true
+      "reviewed": true,
+      "text": "网页界面的真黑皮肤"
     },
     "a white theme for the web interface": {
-      "text": "网页界面的白色皮肤",
-      "reviewed": true
+      "reviewed": true,
+      "text": "网页界面的白色皮肤"
     },
     "accepted but not rendered": {
-      "text": "收下但未渲染",
-      "reviewed": true
+      "reviewed": true,
+      "text": "收下但未渲染"
     },
     "add a target": {
-      "text": "添加目标",
-      "machine": true
+      "machine": true,
+      "text": "添加目标"
     },
     "adopt them all": {
-      "text": "全部采纳",
-      "reviewed": true
+      "reviewed": true,
+      "text": "全部采纳"
     },
     "already on the chain": {
-      "text": "已经在链上",
-      "reviewed": true
+      "reviewed": true,
+      "text": "已经在链上"
     },
     "always": {
-      "text": "始终",
-      "machine": true
+      "machine": true,
+      "text": "始终"
     },
     "and {n} more": {
       "other": "还有 {n} 条",
       "reviewed": true
     },
     "another sync round is already running; this round was skipped": {
-      "text": "另一轮同步正在进行，这一轮跳过了",
-      "reviewed": true
+      "reviewed": true,
+      "text": "另一轮同步正在进行，这一轮跳过了"
     },
     "api_key missing": {
-      "text": "缺 api_key",
-      "reviewed": true
+      "reviewed": true,
+      "text": "缺 api_key"
     },
     "arch": {
-      "text": "arch",
-      "reviewed": true
+      "reviewed": true,
+      "text": "arch"
     },
     "as seen from the far side": {
-      "text": "从远端看到的",
-      "machine": true
+      "machine": true,
+      "text": "从远端看到的"
     },
     "asked from the interface": {
-      "text": "从接口请求的",
-      "machine": true
+      "machine": true,
+      "text": "从接口请求的"
     },
     "assistant messages in the history no longer get their reasoning text backfilled, and OpenAI-dialect DeepSeek answers 400 to \"reasoning_content must be passed back\" (the chain then advances on its own; the symptom is a silent provider switch)": {
-      "text": "历史里的 assistant 消息不再补推理原文，OpenAI 方言的 DeepSeek 会对「reasoning_content 必须回传」回 400（自动沿链转移，症状是悄悄换 provider）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "历史里的 assistant 消息不再补推理原文，OpenAI 方言的 DeepSeek 会对「reasoning_content 必须回传」回 400（自动沿链转移，症状是悄悄换 provider）"
     },
     "assistant messages: {total} in all, {real} with reasoning text, {missing} without\n(the ones without are **what the upstream never gave us that round**, not something we lost — see the tool id below,\n  grep the log for \"bytes of reasoning\" and you will see) one by one:\n{listing}": {
-      "text": "assistant 共 {total} 条：带推理原文 {real}，没有 {missing}\n（没有的那些是**上游那一轮本来就没给**，不是被我们弄丢的——见下面的 tool id，\n  拿它去 grep 日志里的 \"bytes of reasoning\" 就能确认）逐条：\n{listing}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "assistant 共 {total} 条：带推理原文 {real}，没有 {missing}\n（没有的那些是**上游那一轮本来就没给**，不是被我们弄丢的——见下面的 tool id，\n  拿它去 grep 日志里的 \"bytes of reasoning\" 就能确认）逐条：\n{listing}"
     },
     "authentication refused: this machine's root key differs from the host's (the config trust blob was copied wrong or not at all)": {
-      "text": "鉴权被拒：本机的根密钥与宿主不是同一把（config trust 那个 blob 拷错或没拷）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "鉴权被拒：本机的根密钥与宿主不是同一把（config trust 那个 blob 拷错或没拷）"
     },
     "authority changed ({from} → {to}); the generation baseline was reset": {
-      "text": "权威变更（{from} → {to}），代数基线重置",
-      "reviewed": true
+      "reviewed": true,
+      "text": "权威变更（{from} → {to}），代数基线重置"
     },
     "auto fallback": {
-      "text": "auto fallback",
-      "reviewed": true
+      "reviewed": true,
+      "text": "auto fallback"
     },
     "back to the status recorded at takeover": {
-      "text": "已回到接管时的现状",
-      "reviewed": true
+      "reviewed": true,
+      "text": "已回到接管时的现状"
     },
     "backfilled {what} on {n} assistant message: {restored} used the real reasoning text": {
-      "text": "给 {n} 条 assistant 消息补 {what}：{restored} 条用了真实的推理原文",
-      "reviewed": true
+      "reviewed": true,
+      "text": "给 {n} 条 assistant 消息补 {what}：{restored} 条用了真实的推理原文"
     },
     "background sync did not start: {err} (on the host run newgate config secrets init to get the blob, then on this machine run newgate config trust <blob>)": {
-      "text": "后台同步未启动：{err}（在宿主机上 newgate config secrets init 拿 blob，在这台机器上 newgate config trust \u003cblob\u003e）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "后台同步未启动：{err}（在宿主机上 newgate config secrets init 拿 blob，在这台机器上 newgate config trust <blob>）"
     },
     "background sync started (replica): {endpoint}, one round every {interval}, root key fingerprint {fingerprint}": {
-      "text": "后台同步已启动（副本）：{endpoint}，每 {interval} 一轮，根密钥指纹 {fingerprint}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "后台同步已启动（副本）：{endpoint}，每 {interval} 一轮，根密钥指纹 {fingerprint}"
     },
     "before takeover": {
-      "text": "接管前",
-      "reviewed": true
+      "reviewed": true,
+      "text": "接管前"
     },
     "binding mode must be current or suggested, got {value}": {
-      "text": "绑定方式只能是 current 或 suggested，收到 {value}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "绑定方式只能是 current 或 suggested，收到 {value}"
     },
     "cannot archive {path}: {err}": {
-      "text": "归档 {path} 失败: {err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "归档 {path} 失败: {err}"
     },
     "cannot derive the auth token: {err}": {
-      "text": "派生鉴权令牌失败: {err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "派生鉴权令牌失败: {err}"
     },
     "cannot derive the encryption key: {err}": {
-      "text": "派生加密密钥失败: {err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "派生加密密钥失败: {err}"
     },
     "cannot fix the permissions of {path}: {err}": {
-      "text": "修正 {path} 权限失败: {err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "修正 {path} 权限失败: {err}"
     },
     "cannot listen on {addr}: {err}": {
-      "text": "无法在 {addr} 上监听：{err}",
-      "machine": true
+      "machine": true,
+      "text": "无法在 {addr} 上监听：{err}"
     },
     "cannot open the configuration directory {dir}: {err}": {
-      "text": "打不开配置目录 {dir}: {err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "打不开配置目录 {dir}: {err}"
     },
     "cannot parse profile {path}: {err}": {
-      "text": "档位 {path} 解析失败: {err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "档位 {path} 解析失败: {err}"
     },
     "cannot parse state.json: {err}": {
-      "text": "state.json 解析失败: {err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "state.json 解析失败: {err}"
     },
     "cannot parse the secret set: {err}": {
-      "text": "密钥集合解析失败: {err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "密钥集合解析失败: {err}"
     },
     "cannot parse the snapshot: {err}": {
-      "text": "快照解析失败: {err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "快照解析失败: {err}"
     },
     "cannot parse {file}: {err}": {
-      "text": "{file} 解析失败: {err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "{file} 解析失败: {err}"
     },
     "cannot parse {key} in state.json: {err}": {
-      "text": "state.json 的 {key} 解析失败: {err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "state.json 的 {key} 解析失败: {err}"
     },
     "cannot parse {path} (not a valid provider table): {err}": {
-      "text": "{path} 解析失败（不是合法的 provider 表）: {err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "{path} 解析失败（不是合法的 provider 表）: {err}"
     },
     "cannot parse {path}: {err}": {
-      "text": "{path} 解析失败: {err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "{path} 解析失败: {err}"
     },
     "cannot reach {addr}: {err}": {
-      "text": "无法到达 {addr}：{err}",
-      "machine": true
+      "machine": true,
+      "text": "无法到达 {addr}：{err}"
     },
     "cannot reach {url}: {err}": {
-      "text": "连不上 {url}: {err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "连不上 {url}: {err}"
     },
     "cannot read random bytes: {err}": {
-      "text": "取随机数失败: {err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "取随机数失败: {err}"
     },
     "cannot read {path}: {err}": {
-      "text": "无法读取 {path}：{err}",
-      "machine": true
+      "machine": true,
+      "text": "无法读取 {path}：{err}"
     },
     "cannot remove the retired {path}: {err}": {
-      "text": "删除已下线的 {path} 失败: {err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "删除已下线的 {path} 失败: {err}"
     },
     "cannot render the architecture report: {err}": {
-      "text": "渲染架构报告失败：{err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "渲染架构报告失败：{err}"
     },
     "cannot replace {path} (the configuration may be half old and half new; the next sync will retry): {err}": {
-      "text": "替换 {path} 失败（配置可能处于新旧混合状态，下一次同步会重试）: {err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "替换 {path} 失败（配置可能处于新旧混合状态，下一次同步会重试）: {err}"
     },
     "cannot resolve {host}: {err}": {
-      "text": "无法解析 {host}：{err}",
-      "machine": true
+      "machine": true,
+      "text": "无法解析 {host}：{err}"
     },
     "cannot save: {err}": {
-      "text": "无法保存：{err}",
-      "machine": true
+      "machine": true,
+      "text": "无法保存：{err}"
     },
     "cannot use the private key {path}: {err}": {
-      "text": "无法使用私钥 {path}：{err}",
-      "machine": true
+      "machine": true,
+      "text": "无法使用私钥 {path}：{err}"
     },
     "cannot write the bookkeeping: {err}": {
-      "text": "写记账失败: {err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "写记账失败: {err}"
     },
     "cannot write the registry: {err}": {
-      "text": "写注册表失败: {err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "写注册表失败: {err}"
     },
     "cannot write the slot registry: {err}": {
-      "text": "写槽位注册表失败: {err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "写槽位注册表失败: {err}"
     },
     "cannot write {file}: {err}": {
-      "text": "写不进 {file}：{err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "写不进 {file}：{err}"
     },
     "cannot write {path}: {err}": {
-      "text": "写 {path} 失败: {err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "写 {path} 失败: {err}"
     },
     "chain head {head}": {
-      "text": "链头 {head}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "链头 {head}"
     },
     "choosing a theme needs Content-Type: application/json (got {ct})": {
-      "text": "换皮肤要 Content-Type: application/json（现在是 {ct}）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "换皮肤要 Content-Type: application/json（现在是 {ct}）"
     },
     "classifier override {head} did not take effect; falling back to the light-tier chain": {
-      "text": "分类器覆盖 {head} 未生效，回落 light 档链",
-      "reviewed": true
+      "reviewed": true,
+      "text": "分类器覆盖 {head} 未生效，回落 light 档链"
     },
     "classifier override → {head} (the highest priority globally, ahead of any profile)": {
-      "text": "分类器覆盖 → {head}（全局最高优先，先于任何 profile）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "分类器覆盖 → {head}（全局最高优先，先于任何 profile）"
     },
     "classifier rerouted → the light-tier chain (fallback included)": {
-      "text": "分类器改道 → light 档链（含 fallback）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "分类器改道 → light 档链（含 fallback）"
     },
     "classifier_override is not valid: {err}": {
-      "text": "classifier_override 无效：{err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "classifier_override 无效：{err}"
     },
     "closing the SSH connections: {err}": {
-      "text": "关闭 SSH 连接：{err}",
-      "machine": true
+      "machine": true,
+      "text": "关闭 SSH 连接：{err}"
     },
     "codex model": {
-      "text": "codex 模型名",
-      "reviewed": true
+      "reviewed": true,
+      "text": "codex 模型名"
     },
     "concept actions need Content-Type: application/json (got {ct})": {
-      "text": "卡内动作需要 Content-Type: application/json（实际是 {ct}）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "卡内动作需要 Content-Type: application/json（实际是 {ct}）"
     },
     "concept actions use POST": {
-      "text": "卡内动作要用 POST",
-      "reviewed": true
+      "reviewed": true,
+      "text": "卡内动作要用 POST"
     },
     "configuration updated (gen {from} → {to}, {n} file){files}": {
-      "text": "已更新配置（gen {from} → {to}，{n} 个文件）{files}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "已更新配置（gen {from} → {to}，{n} 个文件）{files}"
     },
     "configured: {list}": {
-      "text": "已配置：{list}",
-      "machine": true
+      "machine": true,
+      "text": "已配置：{list}"
     },
     "connect": {
-      "text": "连接",
-      "machine": true
+      "machine": true,
+      "text": "连接"
     },
     "connected for {d}": {
-      "text": "已连接 {d}",
-      "machine": true
+      "machine": true,
+      "text": "已连接 {d}"
     },
     "connecting": {
-      "text": "连接中",
-      "machine": true
+      "machine": true,
+      "text": "连接中"
     },
     "connection": {
-      "text": "连接",
-      "machine": true
+      "machine": true,
+      "text": "连接"
     },
     "content left untouched ({err})": {
-      "text": "content 未改动（{err}）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "content 未改动（{err}）"
     },
     "current = keep what each slot used before takeover; suggested = move each slot to the tier its model build implies.": {
-      "text": "current = 保持各槽位接管前的体格；suggested = 按模型的体格把它们挪到建议的档位。",
-      "reviewed": true
+      "reviewed": true,
+      "text": "current = 保持各槽位接管前的体格；suggested = 按模型的体格把它们挪到建议的档位。"
     },
     "current=takeover status · suggested=recommendation · switch: newgate omo mode <mode>": {
-      "text": "current=接管现状 · suggested=建议 · 切换：newgate omo mode \u003c模式\u003e",
-      "reviewed": true
+      "reviewed": true,
+      "text": "current=接管现状 · suggested=建议 · 切换：newgate omo mode <模式>"
     },
     "decided by the model build; no variant was recorded before takeover": {
-      "text": "按模型体格判定，接管前没记 variant",
-      "reviewed": true
+      "reviewed": true,
+      "text": "按模型体格判定，接管前没记 variant"
     },
     "decided by the model build; variant={variant} does not change the tier": {
-      "text": "按模型体格判定，variant={variant} 不改变档位",
-      "reviewed": true
+      "reviewed": true,
+      "text": "按模型体格判定，variant={variant} 不改变档位"
     },
     "default": {
-      "text": "默认",
-      "reviewed": true
+      "reviewed": true,
+      "text": "默认"
     },
     "degrade Codex custom tools for DeepSeek": {
-      "text": "把 Codex 的 custom 工具降级给 DeepSeek 用",
-      "reviewed": true
+      "reviewed": true,
+      "text": "把 Codex 的 custom 工具降级给 DeepSeek 用"
     },
     "degraded {n} custom tool to a standard function (DeepSeek rejects any custom tool other than apply_patch with 400)": {
       "other": "把 {n} 条 custom 工具降级成了普通 function（DeepSeek 除 apply_patch 外不认任何 custom，一律 400）",
       "reviewed": true
     },
     "diagnostics": {
-      "text": "诊断",
-      "reviewed": true
+      "reviewed": true,
+      "text": "诊断"
     },
     "disabled": {
-      "text": "已关闭",
-      "reviewed": true
+      "reviewed": true,
+      "text": "已关闭"
     },
     "disconnect": {
-      "text": "断开连接",
-      "machine": true
+      "machine": true,
+      "text": "断开连接"
     },
     "dump material": {
-      "text": "诊断素材",
-      "reviewed": true
+      "reviewed": true,
+      "text": "诊断素材"
     },
     "e.g. gpt-5.6-luna": {
-      "text": "例如 gpt-5.6-luna",
-      "reviewed": true
+      "reviewed": true,
+      "text": "例如 gpt-5.6-luna"
     },
     "each key follows the recommendation, derived from model build and variant strength": {
-      "text": "每个键按建议，由模型体格与 variant 强度推出",
-      "reviewed": true
+      "reviewed": true,
+      "text": "每个键按建议，由模型体格与 variant 强度推出"
     },
     "each key keeps the status it had at takeover (the default; behaviour unchanged)": {
-      "text": "每个键按接管时的现状（默认，行为不变）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "每个键按接管时的现状（默认，行为不变）"
     },
     "effective": {
-      "text": "生效",
-      "reviewed": true
+      "reviewed": true,
+      "text": "生效"
     },
     "end it early: newgate naked off": {
-      "text": "提前关闭：newgate naked off",
-      "reviewed": true
+      "reviewed": true,
+      "text": "提前关闭：newgate naked off"
     },
     "every intercepted request logs [naked], and newgate status keeps showing a red warning": {
-      "text": "每一个被拦截的请求都打 [naked] 日志，newgate status 持续显示红色警告",
-      "reviewed": true
+      "reviewed": true,
+      "text": "每一个被拦截的请求都打 [naked] 日志，newgate status 持续显示红色警告"
     },
     "every subagent / agent team / workflow; set it to inherit to hand that back to per-slot resolution": {
-      "text": "所有 subagent / agent team / workflow；设 inherit 可交还给各自解析",
-      "reviewed": true
+      "reviewed": true,
+      "text": "所有 subagent / agent team / workflow；设 inherit 可交还给各自解析"
     },
     "failed to inject thinking: {err}": {
-      "text": "注入 thinking 失败: {err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "注入 thinking 失败: {err}"
     },
     "failed: {err}": {
-      "text": "失败：{err}",
-      "machine": true
+      "machine": true,
+      "text": "失败：{err}"
     },
     "field": {
-      "text": "字段",
-      "reviewed": true
+      "reviewed": true,
+      "text": "字段"
     },
     "follow the system": {
-      "text": "跟随系统",
-      "reviewed": true
+      "reviewed": true,
+      "text": "跟随系统"
     },
     "forwarding": {
-      "text": "转发中",
-      "machine": true
+      "machine": true,
+      "text": "转发中"
     },
     "forwarding port": {
-      "text": "转发端口",
-      "machine": true
+      "machine": true,
+      "text": "转发端口"
     },
     "generated by one takeover: newgate on opencode": {
-      "text": "接管一次即生成：newgate on opencode",
-      "reviewed": true
+      "reviewed": true,
+      "text": "接管一次即生成：newgate on opencode"
     },
     "glossary": {
-      "text": "术语",
-      "reviewed": true
+      "reviewed": true,
+      "text": "术语"
     },
     "handshake and authentication succeeded": {
-      "text": "握手与认证成功",
-      "machine": true
+      "machine": true,
+      "text": "握手与认证成功"
     },
     "hello from newgate-ext": {
-      "text": "来自 newgate-ext 的问候",
-      "reviewed": true
+      "reviewed": true,
+      "text": "来自 newgate-ext 的问候"
     },
     "hello world — {argv0} ({version})": {
-      "text": "你好，世界 — {argv0}（{version}）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "你好，世界 — {argv0}（{version}）"
     },
     "host key": {
-      "text": "主机密钥",
-      "machine": true
+      "machine": true,
+      "text": "主机密钥"
     },
     "how to reach it": {
-      "text": "如何访问",
-      "machine": true
+      "machine": true,
+      "text": "如何访问"
     },
     "id": {
-      "text": "id",
-      "machine": true
+      "machine": true,
+      "text": "id"
     },
     "idle": {
-      "text": "空闲",
-      "machine": true
+      "machine": true,
+      "text": "空闲"
     },
     "idle for {n}s": {
-      "text": "空闲 {n}s",
-      "machine": true
+      "machine": true,
+      "text": "空闲 {n}s"
     },
     "idle timeout": {
-      "text": "空闲超时",
-      "machine": true
+      "machine": true,
+      "text": "空闲超时"
     },
     "ignored a broken target": {
-      "text": "已忽略失效的目标",
-      "machine": true
+      "machine": true,
+      "text": "已忽略失效的目标"
     },
     "imports are scanned from {root}": {
-      "text": "import 从 {root} 扫描",
-      "reviewed": true
+      "reviewed": true,
+      "text": "import 从 {root} 扫描"
     },
     "inject thinking:disabled (the first step)": {
-      "text": "注入 thinking:disabled（第 1 手）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "注入 thinking:disabled（第 1 手）"
     },
     "injected {patch} (Claude Code will not pass DeepSeek thinking blocks back)": {
-      "text": "注入 {patch}（Claude Code 不会回传 DeepSeek 思考块）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "注入 {patch}（Claude Code 不会回传 DeepSeek 思考块）"
     },
     "injected {patch} (GLM treats an absent field as thinking on)": {
-      "text": "注入 {patch}（GLM 把缺省当默认思考）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "注入 {patch}（GLM 把缺省当默认思考）"
     },
     "it is protected by a passphrase; add it to ssh-agent (`ssh-add {path}`) and leave identity empty": {
-      "text": "受密码短语保护；将其加入 ssh-agent（`ssh-add {path}`），identity 留空",
-      "machine": true
+      "machine": true,
+      "text": "受密码短语保护；将其加入 ssh-agent（`ssh-add {path}`），identity 留空"
     },
     "it stopped answering: {err}": {
-      "text": "已停止响应：{err}",
-      "machine": true
+      "machine": true,
+      "text": "已停止响应：{err}"
     },
     "keeping the tier an older takeover wrote": {
-      "text": "沿用老版本接管写下的档位",
-      "reviewed": true
+      "reviewed": true,
+      "text": "沿用老版本接管写下的档位"
     },
     "key file {path}": {
-      "text": "密钥文件 {path}",
-      "machine": true
+      "machine": true,
+      "text": "密钥文件 {path}"
     },
     "keys {list}": {
-      "text": "密钥 {list}",
-      "machine": true
+      "machine": true,
+      "text": "密钥 {list}"
     },
     "label": {
-      "text": "标签",
-      "machine": true
+      "machine": true,
+      "text": "标签"
     },
     "lazy": {
-      "text": "lazy",
-      "machine": true
+      "machine": true,
+      "text": "lazy"
     },
     "lazy dials on the first request and lets go when idle; persistent keeps it open": {
-      "text": "lazy 在首次请求时拨号，空闲即释放；persistent 保持常开",
-      "machine": true
+      "machine": true,
+      "text": "lazy 在首次请求时拨号，空闲即释放；persistent 保持常开"
     },
     "lift Codex tools from input[0] to the top level": {
-      "text": "把 Codex 的工具从 input[0] 抬到顶层",
-      "reviewed": true
+      "reviewed": true,
+      "text": "把 Codex 的工具从 input[0] 抬到顶层"
     },
     "lifted {n} tool declaration from input[0] to the top level (DeepSeek reads tools only there)": {
       "other": "把 {n} 条工具声明从 input[0] 抬到了顶层（DeepSeek 只在那里读工具）",
       "reviewed": true
     },
     "lifted {n} tool declaration from input[0] to the top level (most upstreams read tools only there)": {
-      "text": "把 {n} 条工具声明从 input[0] 抬到了顶层（多数上游只在那里读工具）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "把 {n} 条工具声明从 input[0] 抬到了顶层（多数上游只在那里读工具）"
     },
     "local changes archived to {dir} (restore from there)": {
-      "text": "本地改动已归档到 {dir}（要恢复就从那里取）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "本地改动已归档到 {dir}（要恢复就从那里取）"
     },
     "lossily rebuilt a foreign tool loop: kept the tool results and appended a plain user instruction to continue": {
-      "text": "有损重建外来 tool loop：保留工具结果并追加普通用户继续指令",
-      "reviewed": true
+      "reviewed": true,
+      "text": "有损重建外来 tool loop：保留工具结果并追加普通用户继续指令"
     },
     "machine name: it is the URL segment (/ui/remote/<id>/) and cannot contain / ? # or spaces": {
-      "text": "机器名：它是 URL 路径段（/ui/remote/\u003cid\u003e/），不能包含 / ? # 或空格",
-      "machine": true
+      "machine": true,
+      "text": "机器名：它是 URL 路径段（/ui/remote/<id>/），不能包含 / ? # 或空格"
     },
     "meaning": {
-      "text": "含义",
-      "reviewed": true
+      "reviewed": true,
+      "text": "含义"
     },
     "menuconfig-style UI": {
-      "text": "menuconfig 风格界面",
-      "reviewed": true
+      "reviewed": true,
+      "text": "menuconfig 风格界面"
     },
     "messages left untouched ({err})": {
-      "text": "messages 未改动（{err}）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "messages 未改动（{err}）"
     },
     "mode": {
-      "text": "模式",
-      "reviewed": true
+      "reviewed": true,
+      "text": "模式"
     },
     "mode only accepts current / suggested": {
-      "text": "模式只认 current / suggested",
-      "reviewed": true
+      "reviewed": true,
+      "text": "模式只认 current / suggested"
     },
     "mode → {mode}": {
-      "text": "模式 → {mode}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "模式 → {mode}"
     },
     "model name {model} matched no rule; falling back to mid": {
-      "text": "模型名 {model} 没命中规则，按 mid 兜底",
-      "reviewed": true
+      "reviewed": true,
+      "text": "模型名 {model} 没命中规则，按 mid 兜底"
     },
     "model name {model} matched no rule; the build itself is a guess": {
-      "text": "模型名 {model} 没命中规则，体格本身就是猜的",
-      "reviewed": true
+      "reviewed": true,
+      "text": "模型名 {model} 没命中规则，体格本身就是猜的"
     },
     "module dynamic role, not an omo slot": {
-      "text": "模块动态角色，非 omo 槽位",
-      "reviewed": true
+      "reviewed": true,
+      "text": "模块动态角色，非 omo 槽位"
     },
     "msg[{i}] has no reasoning_content  {keys}\n": {
-      "text": "msg[{i}] 没有 reasoning_content  {keys}\n",
-      "reviewed": true
+      "reviewed": true,
+      "text": "msg[{i}] 没有 reasoning_content  {keys}\n"
     },
     "naked forever is on — the classifier is short-circuited completely": {
-      "text": "裸奔永久模式已开启 —— 分类器被完全短路",
-      "reviewed": true
+      "reviewed": true,
+      "text": "裸奔永久模式已开启 —— 分类器被完全短路"
     },
     "naked is off — the classifier is working normally again": {
-      "text": "裸奔已关闭 —— 分类器恢复正常工作",
-      "reviewed": true
+      "reviewed": true,
+      "text": "裸奔已关闭 —— 分类器恢复正常工作"
     },
     "naked is on — the classifier stays short-circuited for {ttl}, then turns itself off": {
-      "text": "裸奔已开启 —— 分类器短路 {ttl} 后自动关闭",
-      "reviewed": true
+      "reviewed": true,
+      "text": "裸奔已开启 —— 分类器短路 {ttl} 后自动关闭"
     },
     "naked must be off, on or forever, got {value}": {
-      "text": "裸奔只能是 off / on / forever，收到 {value}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "裸奔只能是 off / on / forever，收到 {value}"
     },
     "naked on|forever|off|<duration>": {
-      "text": "naked on|forever|off|\u003c时长\u003e",
-      "reviewed": true
+      "reviewed": true,
+      "text": "naked on|forever|off|<时长>"
     },
     "naked: the classifier request is approved directly, the upstream is not called": {
-      "text": "裸奔：分类器请求被直接批准，未调用上游",
-      "reviewed": true
+      "reviewed": true,
+      "text": "裸奔：分类器请求被直接批准，未调用上游"
     },
     "naked: unknown duration {arg} (supported: on / forever / off / 30s / 2m / 2min / 1h)": {
-      "text": "naked: 不认识的时长 {arg}（支持 on / forever / off / 30s / 2m / 2min / 1h）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "naked: 不认识的时长 {arg}（支持 on / forever / off / 30s / 2m / 2min / 1h）"
     },
     "newgate (simple-cli) — a minimal UI. Available: status": {
-      "text": "newgate（simple-cli）——极简界面。可用：status",
-      "reviewed": true
+      "reviewed": true,
+      "text": "newgate（simple-cli）——极简界面。可用：status"
     },
     "no api_key": {
-      "text": "没有 api_key",
-      "reviewed": true
+      "reviewed": true,
+      "text": "没有 api_key"
     },
     "no available candidate": {
-      "text": "无可用候选",
-      "reviewed": true
+      "reviewed": true,
+      "text": "无可用候选"
     },
     "no key file found in {dir} — relying on ssh-agent": {
-      "text": "在 {dir} 中未找到密钥文件 — 依赖 ssh-agent",
-      "machine": true
+      "machine": true,
+      "text": "在 {dir} 中未找到密钥文件 — 依赖 ssh-agent"
     },
     "no omo slot registry; run newgate on opencode first": {
-      "text": "没有 omo 槽位登记表；先 newgate on opencode",
-      "reviewed": true
+      "reviewed": true,
+      "text": "没有 omo 槽位登记表；先 newgate on opencode"
     },
     "no profiles yet; run `newgate init` first": {
-      "text": "没有 profile，先跑 `newgate init`",
-      "reviewed": true
+      "reviewed": true,
+      "text": "没有 profile，先跑 `newgate init`"
     },
     "no registry (oh-my-openagent has never been taken over)": {
-      "text": "无注册表（未接管过 oh-my-openagent）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "无注册表（未接管过 oh-my-openagent）"
     },
     "no slot registry at {file}": {
-      "text": "没有槽位登记表 {file}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "没有槽位登记表 {file}"
     },
     "no slot registry at {file} — generated by one takeover: newgate on opencode": {
-      "text": "{file} 没有槽位注册表 —— 接管一次就会生成：newgate on opencode",
-      "reviewed": true
+      "reviewed": true,
+      "text": "{file} 没有槽位注册表 —— 接管一次就会生成：newgate on opencode"
     },
     "no source tree found here, so only the assembly graphs will be drawn — the import scan needs one (set {env} to point at it)": {
-      "text": "这里找不到源码树，所以只画装配图——import 那一半需要它（用 {env} 指过去）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "这里找不到源码树，所以只画装配图——import 那一半需要它（用 {env} 指过去）"
     },
     "no such concept: {id} — the page is probably stale, reload it": {
-      "text": "没有这个概念：{id} —— 页面多半已经过期了，重新载入一下",
-      "reviewed": true
+      "reviewed": true,
+      "text": "没有这个概念：{id} —— 页面多半已经过期了，重新载入一下"
     },
     "no such file — is codex installed on this machine?": {
-      "text": "没有这个文件——这台机器上装了 codex 吗？",
-      "reviewed": true
+      "reviewed": true,
+      "text": "没有这个文件——这台机器上装了 codex 吗？"
     },
     "no such slot key {key} (list them with newgate omo)": {
-      "text": "没有这个槽位键 {key}（newgate omo 看列表）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "没有这个槽位键 {key}（newgate omo 看列表）"
     },
     "no targets are configured": {
-      "text": "没有配置任何目标",
-      "machine": true
+      "machine": true,
+      "text": "没有配置任何目标"
     },
     "no targets yet — add one with `newgate tunnel add <id> --host <host>`": {
-      "text": "尚无目标 — 用 `newgate tunnel add \u003cid\u003e --host \u003chost\u003e` 添加一个",
-      "machine": true
+      "machine": true,
+      "text": "尚无目标 — 用 `newgate tunnel add <id> --host <host>` 添加一个"
     },
     "no usable key for {host}: look in {dir} or start ssh-agent (passwords are not supported — this module only does keys and the agent)": {
-      "text": "{host} 没有可用的密钥：查看 {dir}，或启动 ssh-agent（不支持密码 — 本模块只处理密钥和 agent）",
-      "machine": true
+      "machine": true,
+      "text": "{host} 没有可用的密钥：查看 {dir}，或启动 ssh-agent（不支持密码 — 本模块只处理密钥和 agent）"
     },
     "none": {
-      "text": "无",
-      "machine": true
+      "machine": true,
+      "text": "无"
     },
     "none are configured yet": {
-      "text": "尚未配置任何一项",
-      "machine": true
+      "machine": true,
+      "text": "尚未配置任何一项"
     },
     "not bound": {
-      "text": "未绑定",
-      "reviewed": true
+      "reviewed": true,
+      "text": "未绑定"
     },
     "not defined": {
-      "text": "没有定义",
-      "reviewed": true
+      "reviewed": true,
+      "text": "没有定义"
     },
     "not listening: {err}": {
-      "text": "未在监听：{err}",
-      "machine": true
+      "machine": true,
+      "text": "未在监听：{err}"
     },
     "note: {msg}": {
-      "text": "注意: {msg}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "注意: {msg}"
     },
     "now": {
-      "text": "现状",
-      "reviewed": true
+      "reviewed": true,
+      "text": "现状"
     },
     "off — the Bash classifier is asked as usual": {
-      "text": "关 — Bash 分类器照常去问上游",
-      "reviewed": true
+      "reviewed": true,
+      "text": "关 — Bash 分类器照常去问上游"
     },
     "oh-my-openagent's intra-agent slots": {
-      "text": "oh-my-openagent 的 intra-agent 槽位",
-      "reviewed": true
+      "reviewed": true,
+      "text": "oh-my-openagent 的 intra-agent 槽位"
     },
     "omo slot bindings": {
-      "text": "omo 槽位绑定",
-      "reviewed": true
+      "reviewed": true,
+      "text": "omo 槽位绑定"
     },
     "on (forever) — the classifier is short-circuited and every request logs [naked]": {
-      "text": "开着（永久） — 分类器被短路，每个请求都打一行 [naked]",
-      "reviewed": true
+      "reviewed": true,
+      "text": "开着（永久） — 分类器被短路，每个请求都打一行 [naked]"
     },
     "on (forever) — the classifier is short-circuited and every request logs [naked]; newgate naked off ends it": {
-      "text": "已开启（forever）—— 分类器被短路，每个请求都打 [naked] 日志；newgate naked off 关",
-      "reviewed": true
+      "reviewed": true,
+      "text": "已开启（forever）—— 分类器被短路，每个请求都打 [naked] 日志；newgate naked off 关"
     },
     "on — it turns itself off in {left}": {
-      "text": "开启中——还有 {left} 自动关闭",
-      "reviewed": true
+      "reviewed": true,
+      "text": "开启中——还有 {left} 自动关闭"
     },
     "on — it turns itself off in {left} (newgate naked off ends it early)": {
-      "text": "已开启 —— 还有 {left} 自动关（newgate naked off 可提前）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "已开启 —— 还有 {left} 自动关（newgate naked off 可提前）"
     },
     "opencode": {
-      "text": "opencode",
-      "reviewed": true
+      "reviewed": true,
+      "text": "opencode"
     },
     "opencode is not installed on this machine — nothing on this card takes effect yet. Install it with `newgate opencode -y`.": {
-      "text": "这台机器上没有装 opencode —— 这张卡上的设置暂时都不会生效。用 `newgate opencode -y` 装上它。",
-      "reviewed": true
+      "reviewed": true,
+      "text": "这台机器上没有装 opencode —— 这张卡上的设置暂时都不会生效。用 `newgate opencode -y` 装上它。"
     },
     "or byte-for-byte at http://127.0.0.1:{port}/ui/ (started by the daemon)": {
-      "text": "或完全一致的 http://127.0.0.1:{port}/ui/（由 daemon 启动）",
-      "machine": true
+      "machine": true,
+      "text": "或完全一致的 http://127.0.0.1:{port}/ui/（由 daemon 启动）"
     },
     "other": {
-      "text": "其他",
-      "reviewed": true
+      "reviewed": true,
+      "text": "其他"
     },
     "past max attempts": {
-      "text": "超出尝试上限",
-      "reviewed": true
+      "reviewed": true,
+      "text": "超出尝试上限"
     },
     "port http://127.0.0.1:{port}/ui/": {
-      "text": "转发到 http://127.0.0.1:{port}/ui/",
-      "machine": true
+      "machine": true,
+      "text": "转发到 http://127.0.0.1:{port}/ui/"
     },
     "previewing needs Content-Type: application/json (got {ct})": {
-      "text": "预览需要 Content-Type: application/json（实际 {ct}）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "预览需要 Content-Type: application/json（实际 {ct}）"
     },
     "previewing uses POST": {
-      "text": "预览用 POST",
-      "reviewed": true
+      "reviewed": true,
+      "text": "预览用 POST"
     },
     "private key": {
-      "text": "私钥",
-      "machine": true
+      "machine": true,
+      "text": "私钥"
     },
     "probed {n} binding": {
       "other": "探了 {n} 条",
       "reviewed": true
     },
     "profile selection": {
-      "text": "profile 选择",
-      "reviewed": true
+      "reviewed": true,
+      "text": "profile 选择"
     },
     "profile {name} extends {extends}, but this configuration has no such profile": {
-      "text": "档位 {name} extends {extends}，但这份配置里没有那个档位",
-      "reviewed": true
+      "reviewed": true,
+      "text": "档位 {name} extends {extends}，但这份配置里没有那个档位"
     },
     "profile {profiles} references provider {provider}, but the provider table has no such entry": {
-      "text": "档位 {profiles} 引用了 provider {provider}，但 provider 表里没有它",
-      "reviewed": true
+      "reviewed": true,
+      "text": "档位 {profiles} 引用了 provider {provider}，但 provider 表里没有它"
     },
     "provider / model must both be filled in": {
-      "text": "provider / model 都必须填写",
-      "reviewed": true
+      "reviewed": true,
+      "text": "provider / model 都必须填写"
     },
     "provider is not defined": {
-      "text": "provider 未定义",
-      "reviewed": true
+      "reviewed": true,
+      "text": "provider 未定义"
     },
     "provider {name} has no api_key_env; its key has to come from the secrets channel (config secrets on the host)": {
-      "text": "provider {name} 没有 api_key_env，密钥得来自密钥通道（宿主上 config secrets）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "provider {name} 没有 api_key_env，密钥得来自密钥通道（宿主上 config secrets）"
     },
     "provider.{id} injected (all pre-existing providers kept)": {
-      "text": "provider.{id} 已注入（原有 provider 全部保留）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "provider.{id} 已注入（原有 provider 全部保留）"
     },
     "provider/model, or @key to follow another tier. Empty = the Bash classifier rides the light tier.": {
-      "text": "provider/model，或 @键名 跟别的档位走。留空 = Bash 分类器走 light 档。",
-      "reviewed": true
+      "reviewed": true,
+      "text": "provider/model，或 @键名 跟别的档位走。留空 = Bash 分类器走 light 档。"
     },
     "reach a remote machine's web interface over SSH": {
-      "text": "通过 SSH 访问远程机器的 web 界面",
-      "machine": true
+      "machine": true,
+      "text": "通过 SSH 访问远程机器的 web 界面"
     },
     "reach it at {url}": {
-      "text": "在 {url} 访问",
-      "machine": true
+      "machine": true,
+      "text": "在 {url} 访问"
     },
     "reaches a remote machine's newgate interface over SSH": {
-      "text": "通过 SSH 访问远程机器的 newgate 界面",
-      "machine": true
+      "machine": true,
+      "text": "通过 SSH 访问远程机器的 newgate 界面"
     },
     "recorded the host key of {host} in {path} ({fp})": {
-      "text": "已记录 {host} 的主机密钥到 {path}（{fp}）",
-      "machine": true
+      "machine": true,
+      "text": "已记录 {host} 的主机密钥到 {path}（{fp}）"
     },
     "remote": {
-      "text": "remote",
-      "machine": true
+      "machine": true,
+      "text": "remote"
     },
     "remote host": {
-      "text": "远程主机",
-      "machine": true
+      "machine": true,
+      "text": "远程主机"
     },
     "remote interfaces": {
-      "text": "远程接口",
-      "machine": true
+      "machine": true,
+      "text": "远程接口"
     },
     "remote interfaces reached over SSH": {
-      "text": "通过 SSH 访问的远程接口",
-      "machine": true
+      "machine": true,
+      "text": "通过 SSH 访问的远程接口"
     },
     "remote port": {
-      "text": "远程端口",
-      "machine": true
+      "machine": true,
+      "text": "远程端口"
     },
     "rename mode": {
-      "text": "改名模式",
-      "reviewed": true
+      "reviewed": true,
+      "text": "改名模式"
     },
     "rename mode: codex's own model names map to tiers": {
-      "text": "改名模式：codex 用它自己的模型名，进来映射到档位",
-      "reviewed": true
+      "reviewed": true,
+      "text": "改名模式：codex 用它自己的模型名，进来映射到档位"
     },
     "restore finished, but the slot table was not cleared (the next takeover will reuse the old assignment): {err}": {
-      "text": "还原完成，但槽位表没清掉（下次接管会沿用旧分配）: {err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "还原完成，但槽位表没清掉（下次接管会沿用旧分配）: {err}"
     },
     "restoring {file} failed: {err}": {
-      "text": "还原 {file} 失败: {err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "还原 {file} 失败: {err}"
     },
     "route": {
-      "text": "路由",
-      "machine": true
+      "machine": true,
+      "text": "路由"
     },
     "route {path}": {
-      "text": "路由 {path}",
-      "machine": true
+      "machine": true,
+      "text": "路由 {path}"
     },
     "row actions need Content-Type: application/json (got {ct})": {
-      "text": "行上的动作需要 Content-Type: application/json（收到的是 {ct}）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "行上的动作需要 Content-Type: application/json（收到的是 {ct}）"
     },
     "row actions use POST": {
-      "text": "行上的动作要用 POST",
-      "reviewed": true
+      "reviewed": true,
+      "text": "行上的动作要用 POST"
     },
     "run `newgate tunnel test {id}` for a step-by-step answer": {
-      "text": "运行 `newgate tunnel test {id}` 逐步排查",
-      "machine": true
+      "machine": true,
+      "text": "运行 `newgate tunnel test {id}` 逐步排查"
     },
     "saving needs Content-Type: application/json (got {ct})": {
-      "text": "保存要求 Content-Type: application/json（这次是 {ct}）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "保存要求 Content-Type: application/json（这次是 {ct}）"
     },
     "saving uses POST": {
-      "text": "保存使用 POST",
-      "reviewed": true
+      "reviewed": true,
+      "text": "保存使用 POST"
     },
     "secrets updated (gen {gen})": {
-      "text": "已更新密钥（gen {gen}）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "已更新密钥（gen {gen}）"
     },
     "section actions need Content-Type: application/json (got {ct})": {
-      "text": "栏目动作要求 Content-Type: application/json（这次是 {ct}）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "栏目动作要求 Content-Type: application/json（这次是 {ct}）"
     },
     "section actions use POST": {
-      "text": "栏目动作使用 POST",
-      "reviewed": true
+      "reviewed": true,
+      "text": "栏目动作使用 POST"
     },
     "set as auto": {
-      "text": "设为自动",
-      "reviewed": true
+      "reviewed": true,
+      "text": "设为自动"
     },
     "short-circuit the Bash classifier: on=60s / forever=permanent / off=disabled": {
-      "text": "短路 Bash 分类器：on=60s / forever=永久 / off=关",
-      "reviewed": true
+      "reviewed": true,
+      "text": "短路 Bash 分类器：on=60s / forever=永久 / off=关"
     },
     "simple-cli (renders status and the commands; the other injection points are accepted but not shown)": {
-      "text": "simple-cli（渲染 status 与命令，其余注入点收下不显示）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "simple-cli（渲染 status 与命令，其余注入点收下不显示）"
     },
     "slot": {
-      "text": "槽位",
-      "reviewed": true
+      "reviewed": true,
+      "text": "槽位"
     },
     "slot registry → {file} ({n} key; default decides which tier each key follows)": {
-      "text": "槽位注册表 → {file}（{n} 个键，default 决定每个键跟哪一档走）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "槽位注册表 → {file}（{n} 个键，default 决定每个键跟哪一档走）"
     },
     "slots are discovered by the config extension module": {
-      "text": "槽位由配置扩展模块发现",
-      "reviewed": true
+      "reviewed": true,
+      "text": "槽位由配置扩展模块发现"
     },
     "some targets were ignored: {list}": {
-      "text": "部分目标被忽略：{list}",
-      "machine": true
+      "machine": true,
+      "text": "部分目标被忽略：{list}"
     },
     "ssh": {
-      "text": "ssh",
-      "machine": true
+      "machine": true,
+      "text": "ssh"
     },
     "ssh host": {
-      "text": "ssh 主机",
-      "machine": true
+      "machine": true,
+      "text": "ssh 主机"
     },
     "ssh port": {
-      "text": "ssh 端口",
-      "machine": true
+      "machine": true,
+      "text": "ssh 端口"
     },
     "ssh tunnel {id}": {
-      "text": "ssh 隧道 {id}",
-      "machine": true
+      "machine": true,
+      "text": "ssh 隧道 {id}"
     },
     "ssh tunnels": {
-      "text": "ssh 隧道",
-      "machine": true
+      "machine": true,
+      "text": "ssh 隧道"
     },
     "ssh_config sets {key} for this host, but this module only makes direct connections — that setting is being ignored": {
-      "text": "ssh_config 为此主机设置了 {key}，但本模块只建立直接连接 —— 该设置被忽略",
-      "machine": true
+      "machine": true,
+      "text": "ssh_config 为此主机设置了 {key}，但本模块只建立直接连接 —— 该设置被忽略"
     },
     "state": {
-      "text": "状态",
-      "machine": true
+      "machine": true,
+      "text": "状态"
     },
     "state.json — {key} could not be read, the defaults are in use": {
-      "text": "state.json — {key} 读不出来，现在用的是缺省值",
-      "reviewed": true
+      "reviewed": true,
+      "text": "state.json — {key} 读不出来，现在用的是缺省值"
     },
     "status blocks": {
-      "text": "状态块",
-      "reviewed": true
+      "reviewed": true,
+      "text": "状态块"
     },
     "strict refuses an unknown machine; accept-new records it the first time and still refuses if it later changes": {
-      "text": "strict 拒绝未知主机；accept-new 首次记录，之后若发生变化仍会拒绝",
-      "machine": true
+      "machine": true,
+      "text": "strict 拒绝未知主机；accept-new 首次记录，之后若发生变化仍会拒绝"
     },
     "suggested": {
-      "text": "建议",
-      "reviewed": true
+      "reviewed": true,
+      "text": "建议"
     },
     "switch: newgate omo mode current|suggested": {
-      "text": "切换：newgate omo mode current|suggested",
-      "reviewed": true
+      "reviewed": true,
+      "text": "切换：newgate omo mode current|suggested"
     },
     "switched to {name}": {
-      "text": "已切到 {name}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "已切到 {name}"
     },
     "sync failed (attempt {n}, retrying in {delay}): {err}": {
-      "text": "同步失败（第 {n} 次，{delay} 后重试）: {err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "同步失败（第 {n} 次，{delay} 后重试）: {err}"
     },
     "sync recovered (after {n} consecutive failures)": {
-      "text": "同步恢复（此前连续失败 {n} 次）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "同步恢复（此前连续失败 {n} 次）"
     },
     "tail shape left untouched ({err})": {
-      "text": "尾部形状未改动（{err}）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "尾部形状未改动（{err}）"
     },
     "takeover mode": {
-      "text": "接管模式",
-      "reviewed": true
+      "reviewed": true,
+      "text": "接管模式"
     },
     "takeover mode: one tier is written into config.toml": {
-      "text": "接管模式：把档位名写进 config.toml",
-      "reviewed": true
+      "reviewed": true,
+      "text": "接管模式：把档位名写进 config.toml"
     },
     "takes effect on the next request": {
-      "text": "下个请求生效",
-      "reviewed": true
+      "reviewed": true,
+      "text": "下个请求生效"
     },
     "takes effect within 1 second; if the profile spells out this key, the profile wins": {
-      "text": "1 秒内自动生效；profile 里显式写了这个键则以 profile 为准",
-      "reviewed": true
+      "reviewed": true,
+      "text": "1 秒内自动生效；profile 里显式写了这个键则以 profile 为准"
     },
     "taking over another upstream's unclosed reasoning/tool state needs a lossy rebuild first": {
-      "text": "接手其他上游未闭合的 reasoning/tool 状态前需要有损重建",
-      "reviewed": true
+      "reviewed": true,
+      "text": "接手其他上游未闭合的 reasoning/tool 状态前需要有损重建"
     },
     "taking over {file} failed: {err}": {
-      "text": "接管 {file} 失败: {err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "接管 {file} 失败: {err}"
     },
     "target": {
-      "text": "目标",
-      "machine": true
+      "machine": true,
+      "text": "目标"
     },
     "target {id}: {why}": {
-      "text": "目标 {id}：{why}",
-      "machine": true
+      "machine": true,
+      "text": "目标 {id}：{why}"
     },
     "the AES key is unusable: {err}": {
-      "text": "AES 密钥不可用: {err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "AES 密钥不可用: {err}"
     },
     "the Anthropic brand palette for the web interface": {
-      "text": "网页界面的 Anthropic 品牌配色",
-      "reviewed": true
+      "reviewed": true,
+      "text": "网页界面的 Anthropic 品牌配色"
     },
     "the Claude Code client": {
-      "text": "Claude Code 客户端接入",
-      "reviewed": true
+      "reviewed": true,
+      "text": "Claude Code 客户端接入"
     },
     "the Claude Code × DeepSeek crossing": {
-      "text": "Claude Code × DeepSeek 的交叉语义",
-      "reviewed": true
+      "reviewed": true,
+      "text": "Claude Code × DeepSeek 的交叉语义"
     },
     "the Claude Code × GLM crossing": {
-      "text": "Claude Code × GLM 的交叉语义",
-      "reviewed": true
+      "reviewed": true,
+      "text": "Claude Code × GLM 的交叉语义"
     },
     "the Codex client": {
-      "text": "Codex 客户端接入",
-      "reviewed": true
+      "reviewed": true,
+      "text": "Codex 客户端接入"
     },
     "the Codex × DeepSeek crossing": {
-      "text": "Codex × DeepSeek 的交叉语义",
-      "reviewed": true
+      "reviewed": true,
+      "text": "Codex × DeepSeek 的交叉语义"
     },
     "the OpenCode client": {
-      "text": "OpenCode 客户端接入",
-      "reviewed": true
+      "reviewed": true,
+      "text": "OpenCode 客户端接入"
     },
     "the Responses input[] ends on a function_call_output that is not ours and holds no user instruction — appended a continue instruction (the upstream misreports an instruction-less tail as a missing reasoning_text)": {
-      "text": "Responses 的 input[] 以别家产的 function_call_output 收尾、没有用户指令——追加一条 continue 指令（上游对空指令尾部误报 reasoning_text 缺失）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "Responses 的 input[] 以别家产的 function_call_output 收尾、没有用户指令——追加一条 continue 指令（上游对空指令尾部误报 reasoning_text 缺失）"
     },
     "the classifier settings in this request are not readable: {err}": {
-      "text": "这个请求里的分类器设置读不出来：{err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "这个请求里的分类器设置读不出来：{err}"
     },
     "the configshare bookkeeping file is corrupt; starting over from the initial state: {err}": {
-      "text": "configshare 记账文件损坏，已按初始状态重来: {err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "configshare 记账文件损坏，已按初始状态重来: {err}"
     },
     "the daemon closes its connection within a couple of seconds": {
-      "text": "daemon 会在几秒内关闭连接",
-      "machine": true
+      "machine": true,
+      "text": "daemon 会在几秒内关闭连接"
     },
     "the daemon is not running — the dashboard is served by it, so start it first: newgate start": {
-      "text": "守护进程没在跑 —— 界面是它发出来的，先起它：newgate start",
-      "reviewed": true
+      "reviewed": true,
+      "text": "守护进程没在跑 —— 界面是它发出来的，先起它：newgate start"
     },
     "the daemon is not running — this diagram is served by it, so start it first: newgate start": {
-      "text": "daemon 没在跑——这张图由它服务，先把它启起来：newgate start",
-      "reviewed": true
+      "reviewed": true,
+      "text": "daemon 没在跑——这张图由它服务，先把它启起来：newgate start"
     },
     "the daemon is not running — this takes effect when it starts": {
-      "text": "daemon 未运行 — 此项在它启动时生效",
-      "machine": true
+      "machine": true,
+      "text": "daemon 未运行 — 此项在它启动时生效"
     },
     "the daemon is not running: forwarding ports and background reconnection only happen there": {
-      "text": "daemon 未运行：端口转发和后台重连都只在那里进行",
-      "machine": true
+      "machine": true,
+      "text": "daemon 未运行：端口转发和后台重连都只在那里进行"
     },
     "the daemon picks this up within a couple of seconds": {
-      "text": "daemon 会在几秒内读取到此改动",
-      "machine": true
+      "machine": true,
+      "text": "daemon 会在几秒内读取到此改动"
     },
     "the diagram is read-only": {
-      "text": "这张图只读",
-      "reviewed": true
+      "reviewed": true,
+      "text": "这张图只读"
     },
     "the endpoint is empty (run newgate config join <endpoint> first)": {
-      "text": "endpoint 是空的（先 newgate config join \u003cendpoint\u003e）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "endpoint 是空的（先 newgate config join <endpoint>）"
     },
     "the envelope claims to be the {got} channel, but {want} was expected": {
-      "text": "信封自称是 {got} 通道，这里要的是 {want}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "信封自称是 {got} 通道，这里要的是 {want}"
     },
     "the envelope failed authentication (its content was changed, the two root keys differ, or the protocol versions do not match)": {
-      "text": "信封未通过认证（内容被改动、两端根密钥不同、或协议版本不一致）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "信封未通过认证（内容被改动、两端根密钥不同、或协议版本不一致）"
     },
     "the envelope generation {envelope} does not match the generation inside the secret set {secrets}": {
-      "text": "信封代数 {envelope} 与密钥集合内部代数 {secrets} 不一致",
-      "reviewed": true
+      "reviewed": true,
+      "text": "信封代数 {envelope} 与密钥集合内部代数 {secrets} 不一致"
     },
     "the envelope generation {envelope} does not match the generation inside the snapshot {snapshot} (the host assembled it wrong)": {
-      "text": "信封代数 {envelope} 与快照内部代数 {snapshot} 不一致（宿主端拼装有问题）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "信封代数 {envelope} 与快照内部代数 {snapshot} 不一致（宿主端拼装有问题）"
     },
     "the envelope is empty": {
-      "text": "信封是空的",
-      "reviewed": true
+      "reviewed": true,
+      "text": "信封是空的"
     },
     "the fable tier (the most expensive); also the marker used to spot a third-party model family falling back automatically": {
-      "text": "fable 档（最贵档）；也是第三方模型族自动回退的识别依据",
-      "reviewed": true
+      "reviewed": true,
+      "text": "fable 档（最贵档）；也是第三方模型族自动回退的识别依据"
     },
     "the file does not exist": {
-      "text": "文件不存在",
-      "reviewed": true
+      "reviewed": true,
+      "text": "文件不存在"
     },
     "the haiku tier; background features": {
-      "text": "haiku 档；后台功能",
-      "reviewed": true
+      "reviewed": true,
+      "text": "haiku 档；后台功能"
     },
     "the host declares build {want}, this machine is {got}: this machine can still parse the configuration (unknown fields are ignored, missing ones fall back to defaults), so it was let through. Upgrade newgate to line up exactly.": {
-      "text": "宿主声明的构建是 {want}，本机是 {got}：本机仍能解析这份配置（未知字段忽略/缺席走默认），已放行。要完全对齐就升级 newgate。",
-      "reviewed": true
+      "reviewed": true,
+      "text": "宿主声明的构建是 {want}，本机是 {got}：本机仍能解析这份配置（未知字段忽略/缺席走默认），已放行。要完全对齐就升级 newgate。"
     },
     "the host key of {host} does not match the one recorded in {path} — that is either a rebuilt machine or somebody in the middle": {
-      "text": "{host} 的 host key 与 {path} 中记录的不一致 — 要么是机器重装过，要么是有人在中间",
-      "machine": true
+      "machine": true,
+      "text": "{host} 的 host key 与 {path} 中记录的不一致 — 要么是机器重装过，要么是有人在中间"
     },
     "the host key of {host} is new and {path} is not writable: {err}": {
-      "text": "{host} 的 host key 是新的，而 {path} 不可写：{err}",
-      "machine": true
+      "machine": true,
+      "text": "{host} 的 host key 是新的，而 {path} 不可写：{err}"
     },
     "the host key of {host} is not in {path} — connect once from a terminal (`ssh {host}`) and answer yes, or set host_key to \"accept-new\" on this target": {
-      "text": "{host} 的 host key 不在 {path} 中 — 先从终端连接一次（`ssh {host}`）并回答 yes，或在此目标上把 host_key 设为 \"accept-new\"",
-      "machine": true
+      "machine": true,
+      "text": "{host} 的 host key 不在 {path} 中 — 先从终端连接一次（`ssh {host}`）并回答 yes，或在此目标上把 host_key 设为 \"accept-new\""
     },
     "the interface is on loopback only; nothing listens on other interfaces": {
-      "text": "界面只监听 loopback，其他网卡上没有监听",
-      "reviewed": true
+      "reviewed": true,
+      "text": "界面只监听 loopback，其他网卡上没有监听"
     },
     "the landing screen: every chain this machine resolves right now, in one view": {
-      "text": "首屏：这台机器此刻解析出来的每一条链，一屏看完",
-      "reviewed": true
+      "reviewed": true,
+      "text": "首屏：这台机器此刻解析出来的每一条链，一屏看完"
     },
     "the model `codex review` runs on; separate from the main one": {
-      "text": "`codex review` 跑的模型；与主模型分开",
-      "reviewed": true
+      "reviewed": true,
+      "text": "`codex review` 跑的模型；与主模型分开"
     },
     "the model and provider live in ~/.codex/config.toml": {
-      "text": "模型与 provider 住在 ~/.codex/config.toml 里",
-      "reviewed": true
+      "reviewed": true,
+      "text": "模型与 provider 住在 ~/.codex/config.toml 里"
     },
     "the model codex runs on; written into config.toml by takeover": {
-      "text": "codex 跑的模型；由接管写进 config.toml",
-      "reviewed": true
+      "reviewed": true,
+      "text": "codex 跑的模型；由接管写进 config.toml"
     },
     "the model field in settings.json is left untouched; what a tier means is decided by the env": {
-      "text": "settings.json 的 model 字段不动；档位含义由 env 决定",
-      "reviewed": true
+      "reviewed": true,
+      "text": "settings.json 的 model 字段不动；档位含义由 env 决定"
     },
     "the opus tier (the workhorse); the main loop runs here (Claude Code's default), and so does opusplan in Plan Mode": {
-      "text": "opus 档（主力档）；主循环在这跑（cc 默认），Plan Mode 下的 opusplan",
-      "reviewed": true
+      "reviewed": true,
+      "text": "opus 档（主力档）；主循环在这跑（cc 默认），Plan Mode 下的 opusplan"
     },
     "the peer is not a host (the endpoint returned 404) — is its role not set to host?": {
-      "text": "对端不是宿主（端点返回 404）——对方的 role 没设成 host？",
-      "reviewed": true
+      "reviewed": true,
+      "text": "对端不是宿主（端点返回 404）——对方的 role 没设成 host？"
     },
     "the peer speaks protocol version {peer}, this binary only understands {mine} (both ends have to be upgraded together)": {
-      "text": "对端协议版本是 {peer}，本二进制只认 {mine}（两端版本要一起升）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "对端协议版本是 {peer}，本二进制只认 {mine}（两端版本要一起升）"
     },
     "the provider field is not an object: {err}": {
-      "text": "provider 字段不是对象: {err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "provider 字段不是对象: {err}"
     },
     "the registry is empty": {
-      "text": "注册表为空",
-      "reviewed": true
+      "reviewed": true,
+      "text": "注册表为空"
     },
     "the request body is not valid JSON: {err}": {
-      "text": "请求体不是有效的 JSON：{err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "请求体不是有效的 JSON：{err}"
     },
     "the request says nothing about the theme": {
-      "text": "这次请求里没说皮肤是哪一套",
-      "reviewed": true
+      "reviewed": true,
+      "text": "这次请求里没说皮肤是哪一套"
     },
     "the response from {url} is not a valid envelope: {err}": {
-      "text": "{url} 的响应不是合法信封: {err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "{url} 的响应不是合法信封: {err}"
     },
     "the root key is only {n} bytes, at least {min} are needed (the string config trust gives you)": {
-      "text": "根密钥只有 {n} 字节，至少要 {min}（config trust 给的那串）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "根密钥只有 {n} 字节，至少要 {min}（config trust 给的那串）"
     },
     "the route lives on the shared port: http://127.0.0.1:{port}{prefix}/<id>/": {
-      "text": "路由位于共享端口上：http://127.0.0.1:{port}{prefix}/\u003cid\u003e/",
-      "machine": true
+      "machine": true,
+      "text": "路由位于共享端口上：http://127.0.0.1:{port}{prefix}/<id>/"
     },
     "the route rewrites the remote page's paths; the forwarding port does not — when something looks broken over the route, the port is the faithful one": {
-      "text": "路由会重写远程页面的路径；转发端口不会 — 当某处经由路由看起来坏了时，端口才是忠实的那个",
-      "machine": true
+      "machine": true,
+      "text": "路由会重写远程页面的路径；转发端口不会 — 当某处经由路由看起来坏了时，端口才是忠实的那个"
     },
     "the row for {slug} has no tier — pick one, or remove the row": {
-      "text": "{slug} 那一行没有档位——选一个，或者把那一行删掉",
-      "reviewed": true
+      "reviewed": true,
+      "text": "{slug} 那一行没有档位——选一个，或者把那一行删掉"
     },
     "the slot bindings in this request are not readable: {err}": {
-      "text": "这个请求里的槽位绑定读不出来：{err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "这个请求里的槽位绑定读不出来：{err}"
     },
     "the slot map in this request is not readable: {err}": {
-      "text": "这份请求里的槽位映射读不出来: {err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "这份请求里的槽位映射读不出来: {err}"
     },
     "the snapshot carries a file that is not in the managed set: {path} (the protocol never sends files outside the managed set)": {
-      "text": "快照里有不在托管集合里的文件 {path}（协议不允许发送托管集合之外的文件）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "快照里有不在托管集合里的文件 {path}（协议不允许发送托管集合之外的文件）"
     },
     "the snapshot has no {name} (the peer declared no schema); interpreting it as the current schema": {
-      "text": "快照里没有 {name}（对方没声明 schema），按当前 schema 解释",
-      "reviewed": true
+      "reviewed": true,
+      "text": "快照里没有 {name}（对方没声明 schema），按当前 schema 解释"
     },
     "the sonnet tier; the Bash classifier and /compact summaries run here": {
-      "text": "sonnet 档；Bash 分类器与 /compact 总结在这跑",
-      "reviewed": true
+      "reviewed": true,
+      "text": "sonnet 档；Bash 分类器与 /compact 总结在这跑"
     },
     "the table in this request is not readable: {err}": {
-      "text": "这次请求里的那张表读不出来：{err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "这次请求里的那张表读不出来：{err}"
     },
     "the targets in this request are not readable: {err}": {
-      "text": "此请求中的目标不可读：{err}",
-      "machine": true
+      "machine": true,
+      "text": "此请求中的目标不可读：{err}"
     },
     "the theme in this request is not readable: {err}": {
-      "text": "这次请求里的皮肤读不出来：{err}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "这次请求里的皮肤读不出来：{err}"
     },
     "the trailing user turn holds only tool_result and no user instruction — appended a continue instruction (the upstream misreports an instruction-less tail as a missing reasoning_content)": {
-      "text": "末尾的 user 轮只有 tool_result 没有用户指令——追加一条继续指令（上游对空指令尾部误报 reasoning_content 缺失）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "末尾的 user 轮只有 tool_result 没有用户指令——追加一条继续指令（上游对空指令尾部误报 reasoning_content 缺失）"
     },
     "the web configuration interface: a BFF and the front-end bundle": {
-      "text": "网页配置界面：BFF 加前端产物",
-      "reviewed": true
+      "reviewed": true,
+      "text": "网页配置界面：BFF 加前端产物"
     },
     "the whole special_treatment layer is off — none of this counts until it is switched back on": {
-      "text": "整个 special_treatment 层关着 — 在把它开回来之前，这里配的都不算数",
-      "reviewed": true
+      "reviewed": true,
+      "text": "整个 special_treatment 层关着 — 在把它开回来之前，这里配的都不算数"
     },
     "theme {id} has no name": {
-      "text": "皮肤 {id} 没有名字",
-      "reviewed": true
+      "reviewed": true,
+      "text": "皮肤 {id} 没有名字"
     },
     "theme {id} is already registered": {
-      "text": "皮肤 {id} 已经被登记过了",
-      "reviewed": true
+      "reviewed": true,
+      "text": "皮肤 {id} 已经被登记过了"
     },
     "there is no target called {id}": {
-      "text": "没有叫 {id} 的目标",
-      "machine": true
+      "machine": true,
+      "text": "没有叫 {id} 的目标"
     },
     "there is no theme {id} in this build": {
-      "text": "这次装配里没有 {id} 这套皮肤",
-      "reviewed": true
+      "reviewed": true,
+      "text": "这次装配里没有 {id} 这套皮肤"
     },
     "there was no concrete model name before takeover": {
-      "text": "接管前没有具体模型名",
-      "reviewed": true
+      "reviewed": true,
+      "text": "接管前没有具体模型名"
     },
     "thinking block": {
-      "text": "thinking 块",
-      "reviewed": true
+      "reviewed": true,
+      "text": "thinking 块"
     },
     "this build cannot serve a web interface: nothing provides a shared port (porthub) or a serve-time hook (serving)": {
-      "text": "这份产物提供不了 web 界面：既没有共享端口（porthub），也没有服务期回调（serving）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "这份产物提供不了 web 界面：既没有共享端口（porthub），也没有服务期回调（serving）"
     },
     "this build has no shared port, so the interface listens on its own port (the gateway is on a different one)": {
-      "text": "这份产物没有共享端口，界面监听自己的端口（网关在另一个端口上）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "这份产物没有共享端口，界面监听自己的端口（网关在另一个端口上）"
     },
     "this configuration declares schema_version={got}, but this binary only understands up to {max}: the meaning of fields may have changed, and misreading them raises no error (it routes to the wrong upstream or reports that a provider has no api_key). The previous configuration is kept in service. Upgrading newgate catches up automatically.": {
-      "text": "这份配置的 schema_version={got}，本二进制只认到 {max}：字段含义可能已经变了，误读不会报错（会路由到错的上游或报 provider 没有 api_key）。已保留上一份配置继续服务。升级 newgate 后会自动跟上。",
-      "reviewed": true
+      "reviewed": true,
+      "text": "这份配置的 schema_version={got}，本二进制只认到 {max}：字段含义可能已经变了，误读不会报错（会路由到错的上游或报 provider 没有 api_key）。已保留上一份配置继续服务。升级 newgate 后会自动跟上。"
     },
     "this diagram answers on loopback only; open it as http://127.0.0.1:{port}{prefix}/": {
-      "text": "这张图只在 loopback 上应答；请用 http://127.0.0.1:{port}{prefix}/ 打开",
-      "reviewed": true
+      "reviewed": true,
+      "text": "这张图只在 loopback 上应答；请用 http://127.0.0.1:{port}{prefix}/ 打开"
     },
     "this distribution's own message catalog, appended to the installed language": {
-      "text": "发行版自己的文案目录，追加进已装好的语言",
-      "reviewed": true
+      "reviewed": true,
+      "text": "发行版自己的文案目录，追加进已装好的语言"
     },
     "this interface answers on loopback only; reach it as http://127.0.0.1:{port} (the host name in this request was {host})": {
-      "text": "这个界面只答本机；请用 http://127.0.0.1:{port} 打开（这次请求里的主机名是 {host}）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "这个界面只答本机；请用 http://127.0.0.1:{port} 打开（这次请求里的主机名是 {host}）"
     },
     "this machine has no root key yet": {
-      "text": "本机还没有根密钥",
-      "reviewed": true
+      "reviewed": true,
+      "text": "本机还没有根密钥"
     },
     "this machine's {name} was modified locally (your changes will not be overwritten)": {
-      "text": "本机的 {name} 被本地改过（不会覆盖你的改动）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "本机的 {name} 被本地改过（不会覆盖你的改动）"
     },
     "this page is a best-effort copy of the remote interface: paths inside it are rewritten. if something looks broken, use the forwarding port instead — that one is byte-for-byte.": {
-      "text": "此页面是远程界面的尽力而为副本：其中的路径会被重写。如果某处看起来坏了，改用转发端口 — 那个是逐字节一致的。",
-      "machine": true
+      "machine": true,
+      "text": "此页面是远程界面的尽力而为副本：其中的路径会被重写。如果某处看起来坏了，改用转发端口 — 那个是逐字节一致的。"
     },
     "this process": {
-      "text": "这个进程",
-      "reviewed": true
+      "reviewed": true,
+      "text": "这个进程"
     },
     "this route only forwards the remote interface: {path} points outside it": {
-      "text": "这条 route 只转发远端的界面：{path} 落在了它外面",
-      "reviewed": true
+      "reviewed": true,
+      "text": "这条 route 只转发远端的界面：{path} 落在了它外面"
     },
     "this string is neither hex ({n} bytes) nor long enough as a raw key ({min} bytes) — was it copied in full?": {
-      "text": "这串既不是十六进制（{n} 字节），也不够 {min} 字节原文——拷全了吗",
-      "reviewed": true
+      "reviewed": true,
+      "text": "这串既不是十六进制（{n} 字节），也不够 {min} 字节原文——拷全了吗"
     },
     "this string is {n} bytes, at least {min} are needed — it looks truncated (it should be {chars} hex characters)": {
-      "text": "这串有 {n} 字节，至少要 {min}——像是被截断了（应是一整串 {chars} 个十六进制字符）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "这串有 {n} 字节，至少要 {min}——像是被截断了（应是一整串 {chars} 个十六进制字符）"
     },
     "this terminal does not support the TUI ({err}); use `newgate --set-profile <name>` instead": {
-      "text": "这个终端不支持 TUI（{err}）。用 `newgate --set-profile \u003cname\u003e` 代替",
-      "reviewed": true
+      "reviewed": true,
+      "text": "这个终端不支持 TUI（{err}）。用 `newgate --set-profile <name>` 代替"
     },
     "this tunnel answers on loopback only; open it as http://127.0.0.1:{port}{prefix}/": {
-      "text": "此隧道只在回环地址上应答；以 http://127.0.0.1:{port}{prefix}/ 打开",
-      "machine": true
+      "machine": true,
+      "text": "此隧道只在回环地址上应答；以 http://127.0.0.1:{port}{prefix}/ 打开"
     },
     "tier": {
-      "text": "档位",
-      "reviewed": true
+      "reviewed": true,
+      "text": "档位"
     },
     "traffic": {
-      "text": "流量",
-      "machine": true
+      "machine": true,
+      "text": "流量"
     },
     "tunnel [ls|add|rm|up|down|test] [id]": {
-      "text": "tunnel [ls|add|rm|up|down|test] [id]",
-      "machine": true
+      "machine": true,
+      "text": "tunnel [ls|add|rm|up|down|test] [id]"
     },
     "turn it off: newgate naked off": {
-      "text": "关闭：newgate naked off",
-      "reviewed": true
+      "reviewed": true,
+      "text": "关闭：newgate naked off"
     },
     "two rows are both named \"{slug}\" — only one of them could ever match": {
-      "text": "有两行都叫「{slug}」——只会有一行真的匹配得上",
-      "reviewed": true
+      "reviewed": true,
+      "text": "有两行都叫「{slug}」——只会有一行真的匹配得上"
     },
     "two targets are both called \"{id}\"": {
-      "text": "两个目标都叫 \"{id}\"",
-      "machine": true
+      "machine": true,
+      "text": "两个目标都叫 \"{id}\""
     },
     "unavailable": {
-      "text": "不可用",
-      "reviewed": true
+      "reviewed": true,
+      "text": "不可用"
     },
     "unknown command \"{cmd}\" (see the list with newgate status)": {
-      "text": "不认识 \"{cmd}\"（newgate status 看清单）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "不认识 \"{cmd}\"（newgate status 看清单）"
     },
     "unknown tunnel subcommand {verb} — try ls, add, rm, up, down or test": {
-      "text": "未知的 tunnel 子命令 {verb} — 试试 ls、add、rm、up、down 或 test",
-      "machine": true
+      "machine": true,
+      "text": "未知的 tunnel 子命令 {verb} — 试试 ls、add、rm、up、down 或 test"
     },
     "unusable": {
-      "text": "不可用",
-      "machine": true
+      "machine": true,
+      "text": "不可用"
     },
     "usage: newgate tunnel add <id> --host <host> [--user u] [--port 22] [--remote-port 8899] [--local-port 0] [--identity path] [--persistent] [--host-key strict|accept-new]": {
-      "text": "用法：newgate tunnel add \u003cid\u003e --host \u003chost\u003e [--user u] [--port 22] [--remote-port 8899] [--local-port 0] [--identity path] [--persistent] [--host-key strict|accept-new]",
-      "machine": true
+      "machine": true,
+      "text": "用法：newgate tunnel add <id> --host <host> [--user u] [--port 22] [--remote-port 8899] [--local-port 0] [--identity path] [--persistent] [--host-key strict|accept-new]"
     },
     "usage: newgate tunnel rm <id>": {
-      "text": "用法：newgate tunnel rm \u003cid\u003e",
-      "machine": true
+      "machine": true,
+      "text": "用法：newgate tunnel rm <id>"
     },
     "usage: newgate tunnel {verb} <id>": {
-      "text": "用法：newgate tunnel {verb} \u003cid\u003e",
-      "machine": true
+      "machine": true,
+      "text": "用法：newgate tunnel {verb} <id>"
     },
     "use for {client}": {
-      "text": "给 {client} 用",
-      "reviewed": true
+      "reviewed": true,
+      "text": "给 {client} 用"
     },
     "user": {
-      "text": "用户",
-      "machine": true
+      "machine": true,
+      "text": "用户"
     },
     "value": {
-      "text": "值",
-      "reviewed": true
+      "reviewed": true,
+      "text": "值"
     },
     "variant={variant} shifts down one step ({from} → {to})": {
-      "text": "variant={variant} 下调一级（{from} → {to}）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "variant={variant} 下调一级（{from} → {to}）"
     },
     "variant={variant} shifts up one step ({from} → {to})": {
-      "text": "variant={variant} 上调一级（{from} → {to}）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "variant={variant} 上调一级（{from} → {to}）"
     },
     "verbose mode": {
-      "text": "详细模式",
-      "reviewed": true
+      "reviewed": true,
+      "text": "详细模式"
     },
     "web": {
-      "text": "web",
-      "reviewed": true
+      "reviewed": true,
+      "text": "web"
     },
     "what is installed right now: {version}, assembled {took}": {
-      "text": "此刻装着的：{version}，装配于 {took}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "此刻装着的：{version}，装配于 {took}"
     },
-    "when the user explicitly runs newgate naked on/forever, Bash classifier requests are short-circuited into an approval without a single LLM call — no more 15-30s classifier latency and no more sessions wedged by a wrong block\non = a 60-second self-limiting window; forever = always on (every request is logged, status warns)\nonly the Claude Code security-monitor marker is recognised; newgate naked off / st off both end it": {
-      "text": "用户显式 newgate naked on/forever 时，Bash 分类器请求被直接短路成批准，一个 LLM 调用都不发——省掉分类器 15-30s 与误判卡死\non=60 秒自限；forever=常开（每个请求都打日志，status 警告）\n只认 Claude Code security-monitor 标记；newgate naked off / st off 均可关",
-      "reviewed": true
+    "when the user explicitly runs newgate naked on/forever, Claude Code's classifier requests (every gate: Bash, sandbox network, workflow, handoff) are short-circuited into an approval without a single LLM call — no more 15-30s classifier latency and no more sessions wedged by a wrong block\non = a 60-second self-limiting window; forever = always on (every request is logged, status warns)\nonly the classifier family is touched (non-streaming + its prompt marker or stop_sequences); compact summaries and title generation still get a real answer\nnewgate naked off / st off both end it": {
+      "reviewed": true,
+      "text": "用户显式 newgate naked on/forever 时，Claude Code 的分类器请求（每一条 gate：Bash、沙箱网络、workflow、handoff）被直接短路成批准，一个 LLM 调用都不发——省掉分类器 15-30s 与误判卡死\non=60 秒自限；forever=常开（每个请求都打日志，status 警告）\n只碰分类器这一类（非流式 + 它的提示词标记或 stop_sequences）；compact 总结与起标题仍走真答案\nnewgate naked off / st off 均可关闭"
     },
     "where the architecture diagram is served (dev builds)": {
-      "text": "架构图在哪儿服务（开发构建）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "架构图在哪儿服务（开发构建）"
     },
     "where the browser interface is served, and how to reach it": {
-      "text": "浏览器界面在哪儿、怎么打开",
-      "reviewed": true
+      "reviewed": true,
+      "text": "浏览器界面在哪儿、怎么打开"
     },
     "whether a target is currently connected is the daemon's business — this command runs in its own process and cannot see it (the web interface can)": {
-      "text": "目标当前是否连接由 daemon 负责——本命令运行在自己的进程中，看不到它（Web 界面可以）",
-      "machine": true
+      "machine": true,
+      "text": "目标当前是否连接由 daemon 负责——本命令运行在自己的进程中，看不到它（Web 界面可以）"
     },
     "why: {why}": {
-      "text": "建议依据 {why}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "建议依据 {why}"
     },
     "within this window every Bash classifier request is approved directly, with no safety check at all": {
-      "text": "这段时间内所有 Bash 分类器请求直接被批准，不经过任何安全检查",
-      "reviewed": true
+      "reviewed": true,
+      "text": "这段时间内所有 Bash 分类器请求直接被批准，不经过任何安全检查"
     },
     "writing the key name directly in a profile works too: omo-sisyphus=@normal, terra/medium": {
-      "text": "profile 里直接写键名同样有效：omo-sisyphus=@normal, terra/medium",
-      "reviewed": true
+      "reviewed": true,
+      "text": "profile 里直接写键名同样有效：omo-sisyphus=@normal, terra/medium"
     },
     "{binding} (override)": {
-      "text": "{binding}（override 指定）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "{binding}（override 指定）"
     },
     "{err} (nonce length {got}, expected {want})": {
-      "text": "{err}（nonce 长度 {got}，应为 {want}）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "{err}（nonce 长度 {got}，应为 {want}）"
     },
     "{file} changed on disk since this page loaded it — reload and apply again ({err})": {
-      "text": "{file} 在页面加载之后被别的东西改过——刷新页面再应用一次（{err}）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "{file} 在页面加载之后被别的东西改过——刷新页面再应用一次（{err}）"
     },
     "{file} does not parse ({err}); the built-in table is in use": {
-      "text": "{file} 解析不了（{err}），出厂那张表正在生效",
-      "reviewed": true
+      "reviewed": true,
+      "text": "{file} 解析不了（{err}），出厂那张表正在生效"
     },
     "{file} is not valid JSON": {
-      "text": "{file} 不是合法的 JSON",
-      "reviewed": true
+      "reviewed": true,
+      "text": "{file} 不是合法的 JSON"
     },
     "{head} · the highest priority globally, ahead of any profile": {
-      "text": "{head} · 全局最高优先，先于任何 profile",
-      "reviewed": true
+      "reviewed": true,
+      "text": "{head} · 全局最高优先，先于任何 profile"
     },
     "{host} resolves": {
-      "text": "{host} 可解析",
-      "machine": true
+      "machine": true,
+      "text": "{host} 可解析"
     },
     "{host}:{port} as {user}": {
-      "text": "{host}:{port}，以 {user} 身份",
-      "machine": true
+      "machine": true,
+      "text": "{host}:{port}，以 {user} 身份"
     },
     "{id}: SSH is up but {remote} refuses the connection: {err}": {
-      "text": "{id}：SSH 已通，但 {remote} 拒绝连接：{err}",
-      "machine": true
+      "machine": true,
+      "text": "{id}：SSH 已通，但 {remote} 拒绝连接：{err}"
     },
     "{id}: added": {
-      "text": "{id}：已添加",
-      "machine": true
+      "machine": true,
+      "text": "{id}：已添加"
     },
     "{id}: cannot keep the connection open, retrying in {n}s: {err}": {
-      "text": "{id}：连接无法保持，{n} 秒后重试：{err}",
-      "machine": true
+      "machine": true,
+      "text": "{id}：连接无法保持，{n} 秒后重试：{err}"
     },
     "{id}: cannot reach {remote}: {err}": {
-      "text": "{id}：无法连到 {remote}：{err}",
-      "machine": true
+      "machine": true,
+      "text": "{id}：无法连到 {remote}：{err}"
     },
     "{id}: closed the connection ({why})": {
-      "text": "{id}：已关闭连接（{why}）",
-      "machine": true
+      "machine": true,
+      "text": "{id}：已关闭连接（{why}）"
     },
     "{id}: closing {n} connection(s) that were still open": {
-      "text": "{id}：正在关闭 {n} 个仍然打开的连接",
-      "machine": true
+      "machine": true,
+      "text": "{id}：正在关闭 {n} 个仍然打开的连接"
     },
     "{id}: dials on demand only": {
-      "text": "{id}：仅按需拨号",
-      "machine": true
+      "machine": true,
+      "text": "{id}：仅按需拨号"
     },
     "{id}: forwarding http://{addr}/ui/ to {remote} over {ssh}": {
-      "text": "{id}：经 {ssh} 将 http://{addr}/ui/ 转发到 {remote}",
-      "machine": true
+      "machine": true,
+      "text": "{id}：经 {ssh} 将 http://{addr}/ui/ 转发到 {remote}"
     },
     "{id}: removed": {
-      "text": "{id}：已移除",
-      "machine": true
+      "machine": true,
+      "text": "{id}：已移除"
     },
     "{id}: the forwarding port stopped accepting: {err}": {
-      "text": "{id}：转发端口不再接受连接：{err}",
-      "machine": true
+      "machine": true,
+      "text": "{id}：转发端口不再接受连接：{err}"
     },
     "{id}: updated": {
-      "text": "{id}：已更新",
-      "machine": true
+      "machine": true,
+      "text": "{id}：已更新"
     },
     "{id}: will stay connected": {
-      "text": "{id}：将保持连接",
-      "machine": true
+      "machine": true,
+      "text": "{id}：将保持连接"
     },
     "{id}: {err}": {
-      "text": "{id}：{err}",
-      "machine": true
+      "machine": true,
+      "text": "{id}：{err}"
     },
     "{key} default binding → {value}": {
-      "text": "{key} 缺省归属 → {value}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "{key} 缺省归属 → {value}"
     },
     "{key} is not a known role key (list them with newgate omo ls)": {
-      "text": "{key} 不是已知角色键（newgate omo ls 看清单）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "{key} 不是已知角色键（newgate omo ls 看清单）"
     },
     "{key} override removed, back to {mode}": {
-      "text": "{key} 覆盖已删除，回到 {mode}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "{key} 覆盖已删除，回到 {mode}"
     },
     "{kind} injection accepted (this shell does not render it; the counts are in status)": {
-      "text": "收下 {kind} 注入（本壳不渲染，见 status 的计数）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "收下 {kind} 注入（本壳不渲染，见 status 的计数）"
     },
     "{names}: switched off individually, so that setting counts for nothing right now": {
-      "text": "{names}：被单独关掉了，所以这一格此刻不算数",
-      "reviewed": true
+      "reviewed": true,
+      "text": "{names}：被单独关掉了，所以这一格此刻不算数"
     },
     "{name} has no schema_version; interpreting it as the current schema": {
-      "text": "{name} 没写 schema_version，按当前 schema 解释",
-      "reviewed": true
+      "reviewed": true,
+      "text": "{name} 没写 schema_version，按当前 schema 解释"
     },
     "{note}; {why}": {
-      "text": "{note}；{why}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "{note}；{why}"
     },
     "{n} candidate did not make it: {reasons}": {
       "other": "{n} 个候选没进链：{reasons}",
       "reviewed": true
     },
     "{n} command": {
-      "text": "命令（{n} 条）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "命令（{n} 条）"
     },
     "{n} configured": {
-      "text": "已配置 {n} 个",
-      "machine": true
+      "machine": true,
+      "text": "已配置 {n} 个"
     },
     "{n} connections": {
-      "text": "{n} 个连接",
-      "machine": true
+      "machine": true,
+      "text": "{n} 个连接"
     },
     "{n} dialling on start": {
-      "text": "启动时拨号 {n} 个",
-      "machine": true
+      "machine": true,
+      "text": "启动时拨号 {n} 个"
     },
     "{n} key has a suggested tier (see newgate omo ls)": {
-      "text": "{n} 个键有建议档位（newgate omo ls 查看）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "{n} 个键有建议档位（newgate omo ls 查看）"
     },
     "{n} key's binding changes with it (overridden ones are unaffected); not happy? newgate omo mode current": {
-      "text": "{n} 个键的归属随之改变（有覆盖的不受影响）；不满意：newgate omo mode current",
-      "reviewed": true
+      "reviewed": true,
+      "text": "{n} 个键的归属随之改变（有覆盖的不受影响）；不满意：newgate omo mode current"
     },
     "{n} managed file on this machine was modified locally; applying the remote configuration stopped (your changes will not be overwritten)": {
-      "text": "本机有 {n} 个托管文件被本地改过，已停止应用远端配置（不会覆盖你的改动）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "本机有 {n} 个托管文件被本地改过，已停止应用远端配置（不会覆盖你的改动）"
     },
     "{n} not answering ({list})": {
       "other": "{n} 条不通（{list}）",
       "reviewed": true
     },
     "{n} slot differs from the recommendation": {
-      "text": "建议与现状不同（{n} 个）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "建议与现状不同（{n} 个）"
     },
     "{n} slot key · mode {mode}": {
-      "text": "{n} 个槽位键 · 模式 {mode}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "{n} 个槽位键 · 模式 {mode}"
     },
     "{n} slot key, but the registry is not group-readable (the user running the daemon cannot see it)": {
-      "text": "{n} 个槽位键，但注册表组不可读（跑 daemon 的另一个用户看不到）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "{n} 个槽位键，但注册表组不可读（跑 daemon 的另一个用户看不到）"
     },
     "{n} still in flight — refresh in a moment": {
       "other": "还有 {n} 条在飞，稍后刷新",
       "reviewed": true
     },
     "{n} targets": {
-      "text": "{n} 个目标",
-      "machine": true
+      "machine": true,
+      "text": "{n} 个目标"
     },
     "{n} unreadable": {
-      "text": "{n} 个无法读取",
-      "machine": true
+      "machine": true,
+      "text": "{n} 个无法读取"
     },
     "{n} with a forwarding port": {
-      "text": "{n} 个有转发端口",
-      "machine": true
+      "machine": true,
+      "text": "{n} 个有转发端口"
     },
     "{providers} carries an inline api_key for {names}: a secret may only travel over the secrets channel (newgate config secrets on the host); the config channel never carries one — on the host it is managed by git, so a single commit puts it in history forever": {
-      "text": "{providers} 里 {names} 带了内联 api_key：密钥只能走密钥通道（在宿主上 newgate config secrets），配置通道不含密——它在宿主侧是 git 管的，提交一次就永久进历史",
-      "reviewed": true
+      "reviewed": true,
+      "text": "{providers} 里 {names} 带了内联 api_key：密钥只能走密钥通道（在宿主上 newgate config secrets），配置通道不含密——它在宿主侧是 git 管的，提交一次就永久进历史"
     },
     "{remote} accepts connections": {
-      "text": "{remote} 接受连接",
-      "machine": true
+      "machine": true,
+      "text": "{remote} 接受连接"
     },
     "{report}": {
-      "text": "{report}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "{report}"
     },
     "{section}.{name} → {provider}/{key} (now {now}{suggested})": {
-      "text": "{section}.{name} → {provider}/{key}（现状 {now}{suggested}）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "{section}.{name} → {provider}/{key}（现状 {now}{suggested}）"
     },
     "{slot} · now {now} · effective {effective} · suggested {suggested}": {
-      "text": "{slot} · 现状 {now} · 生效 {effective} · 建议 {suggested}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "{slot} · 现状 {now} · 生效 {effective} · 建议 {suggested}"
     },
     "{slot} · now {now} · effective {effective} · suggested {suggested} (differs from now)": {
-      "text": "{slot} · 现状 {now} · 生效 {effective} · 建议 {suggested}（与现状不符）",
-      "reviewed": true
+      "reviewed": true,
+      "text": "{slot} · 现状 {now} · 生效 {effective} · 建议 {suggested}（与现状不符）"
     },
     "{table} added": {
-      "text": "新增 {table}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "新增 {table}"
     },
     "{table} rewritten": {
-      "text": "改写 {table}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "改写 {table}"
     },
     "{title} is read-only": {
-      "text": "{title} 是只读的",
-      "reviewed": true
+      "reviewed": true,
+      "text": "{title} 是只读的"
     },
     "{url} returned {status}: {body}": {
-      "text": "{url} 返回 {status}: {body}",
-      "reviewed": true
+      "reviewed": true,
+      "text": "{url} 返回 {status}: {body}"
     },
     "{value} is neither a tier (heavy/normal/mid/light/vision), nor a registered dynamic role key, nor provider/model": {
-      "text": "{value} 既不是档位（heavy/normal/mid/light/vision）、也不是已注册的动态角色键、也不是 provider/模型",
-      "reviewed": true
+      "reviewed": true,
+      "text": "{value} 既不是档位（heavy/normal/mid/light/vision）、也不是已注册的动态角色键、也不是 provider/模型"
     },
     "↑/↓ or j/k to move · Enter to apply · q to quit": {
-      "text": "↑/↓ 或 j/k 移动 · Enter 应用 · q 退出",
-      "reviewed": true
+      "reviewed": true,
+      "text": "↑/↓ 或 j/k 移动 · Enter 应用 · q 退出"
     }
+  },
+  "meta": {
+    "language": "zh-Hans",
+    "source": "en"
   }
 }
