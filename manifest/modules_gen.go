@@ -24,6 +24,7 @@ import (
 	ext_hello "github.com/rzbdz/newgate-ext/modules/hello"
 	ext_home "github.com/rzbdz/newgate-ext/modules/home"
 	ext_i18n "github.com/rzbdz/newgate-ext/modules/i18n"
+	ext_nothink "github.com/rzbdz/newgate-ext/modules/nothink"
 	ext_opencode "github.com/rzbdz/newgate-ext/modules/opencode"
 	ext_opencodeomo "github.com/rzbdz/newgate-ext/modules/opencodeomo"
 	ext_simple_cli "github.com/rzbdz/newgate-ext/modules/simple-cli"
@@ -73,6 +74,7 @@ func Specs() map[string]app.Selection {
 				{Dir: "glm", Component: ext_glm.New()},
 				{Dir: "claudecode_deepseek", Component: ext_claudecode_deepseek.New()},
 				{Dir: "claudecode_glm", Component: ext_claudecode_glm.New()},
+				{Dir: "nothink", Component: ext_nothink.New()},
 				{Dir: "claudecode", Component: ext_claudecode.New()},
 				{Dir: "opencode", Component: ext_opencode.New()},
 				{Dir: "opencodeomo", Component: ext_opencodeomo.New()},
@@ -102,6 +104,7 @@ func Specs() map[string]app.Selection {
 				{Dir: "glm", Component: ext_glm.New()},
 				{Dir: "claudecode_deepseek", Component: ext_claudecode_deepseek.New()},
 				{Dir: "claudecode_glm", Component: ext_claudecode_glm.New()},
+				{Dir: "nothink", Component: ext_nothink.New()},
 				{Dir: "claudecode", Component: ext_claudecode.New()},
 				{Dir: "opencode", Component: ext_opencode.New()},
 				{Dir: "opencodeomo", Component: ext_opencodeomo.New()},
@@ -116,6 +119,7 @@ func Specs() map[string]app.Selection {
 				{Dir: "glm", Component: ext_glm.New()},
 				{Dir: "claudecode_deepseek", Component: ext_claudecode_deepseek.New()},
 				{Dir: "claudecode_glm", Component: ext_claudecode_glm.New()},
+				{Dir: "nothink", Component: ext_nothink.New()},
 				{Dir: "claudecode", Component: ext_claudecode.New()},
 				{Dir: "opencode", Component: ext_opencode.New()},
 				{Dir: "opencodeomo", Component: ext_opencodeomo.New()},

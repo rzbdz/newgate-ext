@@ -149,3 +149,20 @@ newgate naked off
 用在「分类器误判了合法命令、会话卡住」的时候，不是长期配置。默认全程关，必须显式
 打开；`on` 的窗口写进 `state.json` 并**懒过期**——daemon 不持 timer，所以重启不会
 把它变成永久。
+
+`newgate nothink` 是另一条全局开关——让**每一条** Anthropic 方言的请求都别思考：
+
+```bash
+newgate nothink on        # 60 秒自限窗口
+newgate nothink 2h        # 自定义时长
+newgate nothink forever   # 永久（status 会一直打出这一行）
+newgate nothink off
+```
+
+它连客户端写着的 `thinking:{"type":"adaptive"}` 一起覆盖（Claude Code 主循环每条
+请求都带它，不覆盖就等于没开），换来的是钱和等待——代价是这一轮模型不推理，**质量
+会变**。所以默认关闭，开着的时候 `newgate status` 一直提醒。
+
+**尽力而为**：有的模型关不掉思考（「始终思考」那几家），它拿到的是最小强度
+（`enabled` + `reasoning_effort:"low"`）而不是一个 400；OpenAI 方言的请求没有这个
+字段可写，一个字节都不动。

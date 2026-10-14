@@ -14,6 +14,8 @@
 #          上游自己没给过推理，我们凭什么替它编）。
 #   17     形状 400：上游 400 原样透传 + 熔断器只计数、永不摘牌。
 #   18     补丁侧的三个契约：不编、措辞最小、原因分类。
+#   25     全局不思考开关：开着的时候客户端写的 thinking（主循环那条 adaptive）
+#          被覆盖成 disabled，OpenAI 方言的请求一个字节都不动，关掉即恢复。
 #
 # 假上游**按路径复用**内核的 core/mock/fake_upstream.py，不复制一份：它是逐字节
 # 复刻真实上游行为的产物，复制必然漂移，而漂移出来的是「绿的假测试」。所以跑之前
@@ -198,8 +200,8 @@ cat > "$NEWGATE_HOME/providers.json" <<EOF
 EOF
 cat > "$NEWGATE_HOME/mappings/ds.json" <<'EOF'
 { "name": "ds", "priority": 10, "roles": {
-    "heavy": "ds/deepseek-chat", "mid": "ds/deepseek-chat",
-    "light": "ds/deepseek-chat", "vision": "ds/deepseek-chat" } }
+    "heavy": "ds/deepseek-flash", "mid": "ds/deepseek-flash",
+    "light": "ds/deepseek-flash", "vision": "ds/deepseek-flash" } }
 EOF
 cat > "$NEWGATE_HOME/mappings/glm.json" <<'EOF'
 { "name": "glm", "priority": 20,
@@ -405,7 +407,7 @@ echo; echo "== 18. 补丁侧的三个契约：不编、措辞最小、原因分�
 # **缺**的字段，已经有了的一个字节都不碰（既有契约）。所以同一条请求同时给出
 # 两个样本：第一条 assistant 有原文（不许碰）、尾部那个 user 轮是裸 tool_result
 # （必须修）。
-PH_BODY='{"model":"deepseek-chat","max_tokens":16,"stream":false,'\
+PH_BODY='{"model":"deepseek-flash","max_tokens":16,"stream":false,'\
 '"thinking":{"type":"enabled"},'\
 '"messages":['\
 '{"role":"user","content":[{"type":"text","text":"跑一下"}]},'\
@@ -465,6 +467,71 @@ esac
 # 不留样子：真正的保证在两头——这条脚本上面那两条（跳过要说清、原因要分成
 # nocache），以及 modules/deepseek 自己的单测。「编占位符」这件事今天没有可断言
 # 的界面输出，硬留一条只会让下一个人以为这里有人看着。
+
+echo; echo "== 25. 全局不思考开关（newgate nothink） =="
+# 这一章锁的是**开关真的改了上游收到的字节**。它改的是客户端**写出来的意图**：
+# Claude Code 主循环每一条请求都带 thinking:{"type":"adaptive"}（2026-09-29 的
+# 现场 dump err-400-req000010：stream=true、28 个 tools、model=heavy），所以
+# 「尊重客户端写着的 thinking」那条规矩在这里正好是反面——不覆盖它，这个开关就
+# 等于没开。判据只能落在上游收到的 body 上，不能落在「命令没报错」上。
+NK_BODY='{"model":"deepseek-flash","max_tokens":16,"stream":false,'\
+'"thinking":{"type":"adaptive"},'\
+'"messages":[{"role":"user","content":[{"type":"text","text":"你好"}]}]}'
+
+# nk_thinking 打一发 Anthropic 方言，打印**上游收到的** thinking 值。
+nk_thinking() {
+  RESETUP
+  curl -s -o /dev/null -X POST "http://127.0.0.1:$PROXY_PORT/p/ds/v1/messages" \
+    -H 'Content-Type: application/json' -H 'anthropic-version: 2023-06-01' \
+    -H 'x-api-key: e2e' -d "$NK_BODY"
+  curl -s "http://127.0.0.1:$UP_PORT/__mock/requests" | python3 -c '
+import json,sys
+r=json.load(sys.stdin)
+if not r: print("NO_REQUEST"); raise SystemExit
+b=r[-1]["body"]
+print("ABSENT" if "thinking" not in b else json.dumps(b["thinking"], sort_keys=True))'
+}
+
+check "关着（缺省）：客户端写的 adaptive 原样发给上游" "$(nk_thinking)" '{"type": "adaptive"}'
+
+"$BIN" nothink forever >/dev/null 2>&1
+# 配置热加载：命令写 state.json 之后 NotifyProxy 发 SIGHUP，watcher 换页。
+sleep 0.5
+check "newgate nothink forever：adaptive 被覆盖成 disabled" "$(nk_thinking)" '{"type": "disabled"}'
+
+# 不静默：开着的时候 status 该看得见（它改的是模型行为，症状不会自己说是谁干的），
+# 日志里也该留下这一发改了什么。
+#
+# 先收进变量再按 case 匹配，**不要**写 `… | grep -q`：`grep -q` 命中第一处就退出，
+# 上游那个进程还没写完就吃到 SIGPIPE，而脚本开着 pipefail——于是命中了也判成失败
+# （2026-10-14 实测：这一条第一次跑就是这么红的）。
+STATUS_OUT="$("$BIN" status 2>&1)"
+case "$STATUS_OUT" in
+  *Nothink*) ok "status 里打出这一行（不静默）" ;;
+  *) bad "status 没提这个开关：$(echo "$STATUS_OUT" | head -6 | tr '\n' ' ')" ;;
+esac
+case "$(tail -40 "$NEWGATE_HOME/newgate.log")" in
+  *"nothink:"*"disabled"*) ok "日志写明这一发改了什么（不静默）" ;;
+  *) bad "日志里没有 nothink 那条 note（改写必须留痕）" ;;
+esac
+
+# OpenAI 方言**没有 thinking 这个字段可写**（opencode / codex 走那条路）：开着
+# 也不许往里塞一个人家不认识的字段——替它们补 disabled 的现场是「deepseek 不
+# 思考了」（2026-09-15，见 modules/claudecode_glm）。所以开关按**方言**认领。
+RESETUP
+curl -s -o /dev/null -X POST "http://127.0.0.1:$PROXY_PORT/p/ds/v1/chat/completions" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"deepseek-flash","max_tokens":16,"messages":[{"role":"user","content":"你好"}]}'
+GOT=$(curl -s "http://127.0.0.1:$UP_PORT/__mock/requests" | python3 -c '
+import json,sys
+r=json.load(sys.stdin)
+if not r: print("NO_REQUEST")
+else: print("ABSENT" if "thinking" not in r[-1]["body"] else "PRESENT")')
+check "OpenAI 方言的请求一个字节都不动" "$GOT" "ABSENT"
+
+"$BIN" nothink off >/dev/null 2>&1
+sleep 0.5
+check "newgate nothink off：回到客户端写的 adaptive" "$(nk_thinking)" '{"type": "adaptive"}'
 
 echo
 echo "结果: $PASS 通过, $FAIL 失败"

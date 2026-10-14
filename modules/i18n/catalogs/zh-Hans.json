@@ -216,6 +216,10 @@
       "reviewed": true,
       "text": "裸奔"
     },
+    "Nothink": {
+      "reviewed": true,
+      "text": "不思考"
+    },
     "Remote": {
       "machine": true,
       "text": "远端"
@@ -312,6 +316,10 @@
       "reviewed": true,
       "text": "命令不能为 nil"
     },
+    "a global no-reasoning switch, best effort (newgate nothink on|forever|off)": {
+      "reviewed": true,
+      "text": "全局不思考开关，尽力而为（newgate nothink on|forever|off）"
+    },
     "a loopback port forwarded byte-for-byte; empty means this target is reachable only through the rewritten route": {
       "machine": true,
       "text": "逐字节转发的回环端口；为空表示该目标只能通过重写后的路由到达"
@@ -400,6 +408,10 @@
       "machine": true,
       "text": "从远端看到的"
     },
+    "ask every upstream not to think: on=60s / forever=permanent / off=disabled": {
+      "reviewed": true,
+      "text": "让每个上游都别思考：on=60 秒 / forever=永久 / off=关闭"
+    },
     "asked from the interface": {
       "machine": true,
       "text": "从接口请求的"
@@ -443,6 +455,10 @@
     "before takeover": {
       "reviewed": true,
       "text": "接管前"
+    },
+    "best effort: a model that cannot turn thinking off gets the lowest reasoning effort, and OpenAI-dialect requests are untouched": {
+      "reviewed": true,
+      "text": "尽力而为：关不掉思考的模型给最低推理强度，OpenAI 方言的请求一个字节都不动"
     },
     "binding mode must be current or suggested, got {value}": {
       "reviewed": true,
@@ -695,6 +711,10 @@
     "end it early: newgate naked off": {
       "reviewed": true,
       "text": "提前关闭：newgate naked off"
+    },
+    "end it early: newgate nothink off": {
+      "reviewed": true,
+      "text": "提前关闭：newgate nothink off"
     },
     "every intercepted request logs [naked], and newgate status keeps showing a red warning": {
       "reviewed": true,
@@ -1004,6 +1024,26 @@
       "reviewed": true,
       "text": "注意: {msg}"
     },
+    "nothink forever is on — every request goes upstream with thinking off": {
+      "reviewed": true,
+      "text": "不思考永久模式已开启 —— 每一条请求都带着「不思考」发往上游"
+    },
+    "nothink is off — requests go upstream with the thinking the client asked for": {
+      "reviewed": true,
+      "text": "不思考已关闭 —— 请求按客户端要的思考设置发往上游"
+    },
+    "nothink is on — for {ttl} every request goes upstream with thinking off": {
+      "reviewed": true,
+      "text": "不思考已开启 —— 接下来 {ttl} 内每条请求都带着「不思考」发往上游"
+    },
+    "nothink on|forever|off|<duration>": {
+      "reviewed": true,
+      "text": "nothink on|forever|off|<时长>"
+    },
+    "nothink: unknown duration {arg} (supported: on / forever / off / 30s / 2m / 2min / 1h)": {
+      "reviewed": true,
+      "text": "nothink：不认识的时长 {arg}（支持：on / forever / off / 30s / 2m / 2min / 1h）"
+    },
     "now": {
       "reviewed": true,
       "text": "现状"
@@ -1020,6 +1060,10 @@
       "reviewed": true,
       "text": "omo 槽位绑定"
     },
+    "on (forever) — every request goes upstream with thinking off, best effort; newgate nothink off ends it": {
+      "reviewed": true,
+      "text": "开着（永久）—— 每条请求都带着「不思考」发往上游，尽力而为；newgate nothink off 关闭"
+    },
     "on (forever) — the classifier is short-circuited and every request logs [naked]": {
       "reviewed": true,
       "text": "开着（永久） — 分类器被短路，每个请求都打一行 [naked]"
@@ -1035,6 +1079,10 @@
     "on — it turns itself off in {left} (newgate naked off ends it early)": {
       "reviewed": true,
       "text": "已开启 —— 还有 {left} 自动关（newgate naked off 可提前）"
+    },
+    "on — it turns itself off in {left} (newgate nothink off ends it early)": {
+      "reviewed": true,
+      "text": "开着 —— {left} 后自动关闭（newgate nothink off 可提前关）"
     },
     "opencode": {
       "reviewed": true,
@@ -1428,6 +1476,10 @@
       "reviewed": true,
       "text": "文件不存在"
     },
+    "the global no-reasoning switch (newgate nothink on|forever) is on: every Anthropic-dialect request goes upstream with thinking disabled, adaptive/enabled included\nbest effort — a model that always thinks gets enabled + reasoning_effort=low instead of a 400, and OpenAI-dialect requests (no such field to write) are left alone\nnewgate nothink off ends it; st off nothink takes this plugin out without touching the setting": {
+      "reviewed": true,
+      "text": "全局不思考开关（newgate nothink on|forever）开着：每一条 Anthropic 方言的请求都带着 thinking:disabled 发往上游，写了 adaptive/enabled 的也在内\n尽力而为 —— 始终思考的模型给 enabled + reasoning_effort=low（而不是撞 400），OpenAI 方言的请求（没有这个字段可写）一个字节都不动\nnewgate nothink off 关闭；st off nothink 只摘插件、不动配置"
+    },
     "the haiku tier; background features": {
       "reviewed": true,
       "text": "haiku 档；后台功能"
@@ -1588,6 +1640,14 @@
       "reviewed": true,
       "text": "thinking 块"
     },
+    "thinking left as the client wrote it ({err})": {
+      "reviewed": true,
+      "text": "thinking 保持客户端写的样子（{err}）"
+    },
+    "thinking:{was} → disabled (nothink is on)": {
+      "reviewed": true,
+      "text": "thinking:{was} → disabled（不思考开着）"
+    },
     "this build cannot serve a web interface: nothing provides a shared port (porthub) or a serve-time hook (serving)": {
       "reviewed": true,
       "text": "这份产物提供不了 web 界面：既没有共享端口（porthub），也没有服务期回调（serving）"
@@ -1663,6 +1723,10 @@
     "turn it off: newgate naked off": {
       "reviewed": true,
       "text": "关闭：newgate naked off"
+    },
+    "turn it off: newgate nothink off": {
+      "reviewed": true,
+      "text": "关闭：newgate nothink off"
     },
     "two rows are both named \"{slug}\" — only one of them could ever match": {
       "reviewed": true,
