@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="canonical" href="https://rzbdz.github.io/newgate-ext/">
+<meta name="theme-color" content="#0f1115">
+<meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+
+<title>newgate-ext — 为 vibecoding 而生的最佳网关</title>
+<meta name="description" content="一个本地网关，站在 Claude Code / Codex / OpenCode 和你选定的模型之间：换上游是一条命令，坏一家不等于你坏，上游的怪癖是可插拔的模块。">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="newgate-ext">
+<meta property="og:title" content="newgate-ext — 为 vibecoding 而生的最佳网关">
+<meta property="og:description" content="一个本地网关，站在 Claude Code / Codex / OpenCode 和你选定的模型之间：换上游是一条命令，坏一家不等于你坏，上游的怪癖是可插拔的模块。">
+<meta property="og:url" content="https://rzbdz.github.io/newgate-ext/">
+<meta property="og:locale" content="zh_CN">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="newgate-ext — 为 vibecoding 而生的最佳网关">
+<meta name="twitter:description" content="一个本地网关，站在 Claude Code / Codex / OpenCode 和你选定的模型之间：换上游是一条命令，坏一家不等于你坏，上游的怪癖是可插拔的模块。">
+
+<link rel="icon" type="image/svg+xml" href="/newgate-ext/favicon.svg">
+<link rel="stylesheet" href="/newgate-ext/site.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/newgate-ext/"><strong>newgate-ext</strong></a>
+  <span class="spacer"></span>
+  <nav class="langs"><a href="/newgate-ext/" class="on">中文</a><span class="soon" title="not written yet">English</span></nav>
+</header>
+
+<div class="hero">
+  <p class="lead">newgate-ext<span class="sep">/</span>为 vibecoding 而生的最佳网关</p>
+  <h1>为 vibecoding 而生的最佳网关</h1>
+  <p class="sub">一个本地网关，站在 Claude Code / Codex / OpenCode 和你选定的模型之间：换上游是一条命令，坏一家不等于你坏，上游的怪癖是可插拔的模块。</p>
+  <p class="cta">
+    <a class="button primary" href="/newgate-ext/docs/quickstart/">快速开始</a>
+    <a class="button ghost" href="https://github.com/rzbdz/newgate">GitHub</a>
+    <a class="button ghost" href="/newgate-ext/docs/">文档</a>
+  </p>
+
+  
+  <div class="browser" data-tabs>
+    <div class="browser-bar">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <div class="browser-tabs" role="tablist" aria-label="newgate 控制台">
+        <button role="tab" aria-selected="true" data-tab="ui">newgate web</button>
+        <button role="tab" aria-selected="false" data-tab="arch">装配图</button>
+      </div>
+      <span class="addr">newgate-ext / dist.json</span>
+    </div>
+    <div class="browser-pane" data-pane="ui" role="tabpanel">
+      <iframe src="/newgate-ext/demo/" title="newgate 控制台" loading="lazy"></iframe>
+    </div>
+    <div class="browser-pane" data-pane="arch" role="tabpanel" hidden>
+      <img src="/newgate-ext/architecture.svg" alt="内核自带的模块与这个发行版自己写的模块，装进同一个二进制">
+    </div>
+  </div>
+  <ul class="chips">
+    <li>一个静态二进制</li>
+    <li>PATH shim 接管，配置就地改写</li>
+    <li>只有一个第三方依赖（SSH）</li>
+    <li>换版本不打断在途的会话</li>
+    <li>MIT · 可 fork</li>
+  </ul>
+</div>
+
+<main class="landing"><section class="feat"><h2><small>01</small> 接管你的 CLI，而 CLI 毫无察觉</h2>
+<p>一个 PATH shim，加上客户端自己的配置被就地改写——环境变量静默注入，改之前先按字节备份。装一次，此后不用再手改配置，也不用重开会话。</p>
+</section>
+<section class="feat"><h2><small>02</small> 换哪个 API 应答是一条命令</h2>
+<p>不是一次迁移。下一发请求就走新链，客户端继续跑着，它的配置没被动过，旧上游离你一条命令：</p>
+<pre><code class="lang-bash">newgate --set-profile ark</code></pre>
+</section>
+<section class="feat"><h2><small>03</small> 该全局就全局，小活可以临时来</h2>
+<p>档位配一次，所有客户端跟着走。某个小任务想换个模型，就在那一次调用上换：</p>
+<pre><code class="lang-bash">newgate claude --profile=kimi</code></pre>
+<p>什么都不改全局的。这个选择走在<strong>请求路径</strong>里，所以同时跑着的两个客户端永远不会拿错对方的选择。</p>
+</section>
+<section class="feat"><h2><small>04</small> 单个上游挂掉，不等于你挂掉</h2>
+<p>每个档位都是一条<strong>有序的候选链</strong>：你的规则优先，然后是预测的首字节时间。每一次跳过都有解释，每一次改道都记账。</p>
+</section>
+<section class="feat"><h2><small>05</small> 出了什么事，看得见</h2>
+<pre><code class="lang-bash">newgate metrics     # 按上下文大小分的延迟、改道次数、首字节超时、字节改写，每个计数器都带一句话
+newgate logs -f     # 跟着看代理日志
+newgate debug on    # 把每一发请求都倒出来
+newgate doctor      # 出问题时先跑它</code></pre>
+</section>
+<section class="feat"><h2><small>06</small> 同一份画面，浏览器里也有一份</h2>
+<p><code>newgate web</code> 打出地址——就挂在网关已经在听的那个端口上。档位绑定就地编辑、运行期开关直接拨、计数器、日志尾巴、绑定健康、此刻谁在走网关，都在那儿。每一次改动都走 <strong>命令行用的那条写入路径</strong>，并带上你加载时的那份修订：你在看页面时命令行改过的文件，会摆成一个冲突让你决定，而不是被盖掉。</p>
+</section>
+<section class="feat"><h2><small>07</small> 升级不会打断你</h2>
+<p><code>newgate restart</code> 把监听 socket 交给新二进制，并把在途的请求排干——流式的也算，所以在一个很长的 agent 会话中间换版本是安全的，哪怕那个会话正走在这条被替换掉的网关上。</p>
+</section>
+<section class="feat"><h2><small>08</small> 只开 SSH 的机器，界面也够得到</h2>
+<p>内网里常有一类机器：只开 SSH。newgate 在那台机器上照常跑着，网页界面在它的 <code>127.0.0.1:8899</code> 上听着，但你够不到。<code>modules/ssh-tunnel</code> 穿过 SSH 去把它取回来，一次给两条路：一个<strong>本地转发端口</strong>（路径一个字节都不动，远端界面原样可用），以及共享端口上的一条 <strong>route</strong>（不占端口，路径要改写，所以只能尽力而为）。两条都建立在同一条按需拨号、空闲释放的 SSH 连接上。</p>
+<p><strong>转发端口那条才是诚实的</strong>，这句话值得说两遍：route 上的改写有一处很容易漏—— <code>import.meta.env.BASE_URL</code> 在构建期就被折进了 JS 产物（<code>const Fn=&quot;/ui/api&quot;</code>），不改它，那个页面会去问<strong>你这台</strong>网关要数据，于是界面渲染得漂漂亮亮而每一个数字都是错的。所以两条路都在，而不是只做省事的那条。</p>
+</section>
+<section class="feat"><h2><small>09</small> 上游的怪癖是模块，不是 <code>if</code></h2>
+<p>DeepSeek 的 reasoning 回传与尾部形状、GLM 的思维链回传、Claude Code 的后台分类器调用——每个都写了它存在是为了防住哪个故障，可以在运行期开关。客户端 × 模型的桥也是模块（Claude Code × DeepSeek、Codex × DeepSeek、OpenCode 里 Oh My OpenAgent 的槽位）。读一个，换掉它，或者给一个我们从没听说过的上游写补丁。</p>
+</section>
+<h3>连 <code>gateway</code> 和 <code>cli</code> 都是模块</h3>
+<p>一个模块就是一个目录、一个导出的 <code>New()</code>。内核那一栏里住着网关、熔断、终端界面、接管；右边那一栏是这个发行版加的：客户端接入、上游怪癖、网页界面、三套皮肤。<strong>两栏是同一种东西</strong>——分栏只看它由哪个仓库出货，不看它被允许做什么。规格书（8 行 JSON）没写进去的模块，二进制里根本没有它，不是一个运行期开关。上面那个框子的第二页（装配图）就是它。</p>
+</main>
+
+<footer>
+  <p>这一页讲的是发行版 <strong>newgate-ext</strong> 的装配。内核机制的权威原文在
+     <a href="https://github.com/rzbdz/newgate">rzbdz/newgate</a>。</p>
+  <p><a href="https://github.com/rzbdz/newgate">内核</a> · <a href="https://github.com/rzbdz/newgate-ext/releases">版本发布</a></p>
+</footer>
+<script>
+  
+  
+  
+  
+  
+  
+  
+  (function () {
+    var box = document.querySelector('.browser[data-tabs]');
+    if (!box) return;
+    var tabs = [].slice.call(box.querySelectorAll('[role=tab]'));
+    var panes = [].slice.call(box.querySelectorAll('[data-pane]'));
+    function show(name) {
+      tabs.forEach(function (t) {
+        var on = t.dataset.tab === name;
+        t.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      panes.forEach(function (p) { p.hidden = p.dataset.pane !== name; });
+    }
+    tabs.forEach(function (t, i) {
+      t.addEventListener('click', function () { show(t.dataset.tab); });
+      t.addEventListener('keydown', function (e) {
+        var d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+        if (!d) return;
+        e.preventDefault();
+        var next = tabs[(i + d + tabs.length) % tabs.length];
+        show(next.dataset.tab);
+        next.focus();
+      });
+    });
+  })();
+</script>
+</body>
+</html>
