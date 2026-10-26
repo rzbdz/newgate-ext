@@ -7,11 +7,30 @@
 | 谁 | 管什么 |
 | --- | --- |
 | 内核的 `modules/porthub` | 那个端口归谁用。本模块只负责 `Mount("/ui", …)` |
-| 本模块的 `bff.go` | 三条件：发概念账本、把修改转交给概念的主人、发静态资源。**不认识任何模块** |
+| 本模块的 `bff.go` | 四件事：发概念账本、把修改转交给概念的主人、转交扩展端点、发静态资源。**不认识任何模块** |
 | 各业务模块 | 自己那一面长什么样、怎么写回去（`core/lib/view`，Optional 依赖） |
 
 加一个模块的界面 = 那个模块在自己的 `Start` 里 `Register`，本包与前端都不用改
 （前端只认 Kind，见 `web/src/api.ts`）。
+
+### 第二条口子：`/api/ext/<name>`
+
+概念账本只装**画得成一张卡**的东西。有一类功能不是一张卡——比如「点开模型下拉，
+问一句这家上游此刻提供哪些模型」：它没有可持久化的形状，也不该在每次快照里碰
+网络。这种时候模块 Optional 依赖本模块的 `web-extension` 端口，在自己的 `Start`
+里登记**一个名字 + 一个函数**：
+
+```go
+rel, err := web.Register("modellist", func(r webapi.ExtensionRequest) (any, error) {
+    // 形状由你定义；BFF 原样把请求体交给你，把你的返回值写成 JSON。
+    return myAnswer, nil
+})
+```
+
+前端 `POST /ui/api/ext/<name>`，体是 JSON。BFF 只做四件形状上的事：认 POST、
+认 `application/json`、找名字、转交——它仍然不认识任何模块。没登记的扩展回 404
+（界面据此回落到自己能拿到的那份数据），扩展返回 error 时回 400 并把那句话原样
+给界面。今天的第一个使用者是 `modules/modellist`（模型选择器的清单来源）。
 
 ## 本地调试：怎么在浏览器里打开
 

@@ -1,8 +1,16 @@
 package webdashboard
 
-import modules "github.com/rzbdz/newgate/component"
+import (
+	"context"
+	"encoding/json"
+	"net/url"
 
-// 本文件是**皮肤这件事的端口**：界面自己提供登记处，皮肤模块往里注册。
+	modules "github.com/rzbdz/newgate/component"
+)
+
+// 本文件是**界面提供出去的那几个端口**：皮肤登记处（theme）与扩展端点登记处
+// （extension）。两者形状一样——模块 Optional 依赖、在自己的 Start 里注册、
+// Stop 时还回来；界面不认识任何模块。
 //
 // # 为什么不把皮肤写死在这个包里
 //
@@ -59,3 +67,46 @@ type ThemeService interface {
 
 // ThemeCapability 是它在装配图上的名字。
 var ThemeCapability = modules.NewCapability[ThemeService]("web-theme")
+
+// ---------- 扩展端点 ----------
+//
+// BFF 的概念账本（core/lib/view）只装**能被画成一张卡**的东西。而有一类功能
+// 不是「一张卡」：用户点开模型下拉，要问一句「这家上游此刻提供哪些模型」。它
+// 没有可以持久化的形状，也不该在每次快照里都去碰网络（见 config/view.go 里
+// profileData 的注释）。
+//
+// 所以这里开第二条口子：**一个名字 + 一个函数**。模块在自己的 Start 里登记，
+// BFF 在 `/api/ext/<名字>` 上原样转交。它仍然**不认识任何模块**——它只认识
+// 「有人登记了这个名字」，就像 porthub 只认识「有人挂了这段前缀」。
+//
+// 方向与皮肤、概念账本完全一样：箭头只有「模块 → 界面」。没装任何扩展时这个
+// 端点一律 404，界面自己回落到它能拿到的数据（模型下拉会回落到 providers.json
+// 里声明的清单）。
+
+// ExtensionRequest 是一次扩展调用拿到的全部输入。
+//
+// Body 是**原样**的 JSON：形状由登记的那个模块解释，BFF 不解析它——与
+// apply 那条 `edit` 是同一条规矩。Context 来自这次 HTTP 请求，扩展做网络调用
+// 时要沿着它超时/取消（客户端关掉页面，上游请求就该停）。
+type ExtensionRequest struct {
+	Context context.Context
+	Method  string
+	Query   url.Values
+	Body    json.RawMessage
+}
+
+// ExtensionHandler 回答一次扩展调用。返回的值原样写成 JSON（200）；返回 error
+// 时 BFF 回 400 并把那句话给界面看（**不包装**：那是扩展对自己数据的说法）。
+type ExtensionHandler func(ExtensionRequest) (any, error)
+
+// ExtensionService 是扩展端点的登记处。
+//
+// 形状与 ThemeService 同：交进去、拿回撤销，Stop 时还回来。重名当场报错——
+// 两个模块抢同一个名字时只有一个能收到请求，而那件事在运行期表现为「另一个
+// 模块的按钮点了没反应」，没人能从界面上看出来。
+type ExtensionService interface {
+	Register(name string, h ExtensionHandler) (modules.Release, error)
+}
+
+// ExtensionCapability 是它在装配图上的名字。
+var ExtensionCapability = modules.NewCapability[ExtensionService]("web-extension")

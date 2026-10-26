@@ -3,6 +3,7 @@ package webdashboard
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"io/fs"
 	"net"
 	"net/http"
@@ -41,10 +42,14 @@ type Handler struct {
 	// 不是从装配图里取来的：装皮肤的模块 Optional 依赖本端口，而 port 的生命周期
 	// 就是这次装配，两边看到的是同一个实例。
 	themes *themeRegistry
+	// extensions 是**模块登记进来的额外 JSON 端点**（见 api.go 的
+	// ExtensionService）。与 themes 同一条：本模块自己建、别的模块往里注册，
+	// 生命周期就是这次装配。
+	extensions *extensionRegistry
 }
 
-func NewHandler(assets fs.FS, views *view.Registry, themes *themeRegistry) *Handler {
-	return &Handler{assets: assets, views: views, themes: themes}
+func NewHandler(assets fs.FS, views *view.Registry, themes *themeRegistry, extensions *extensionRegistry) *Handler {
+	return &Handler{assets: assets, views: views, themes: themes, extensions: extensions}
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -113,6 +118,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.preview(w, r)
+	case strings.HasPrefix(r.URL.Path, "/api/ext/"):
+		h.extension(w, r)
 	default:
 		h.static(w, r)
 	}
@@ -611,6 +618,76 @@ func (h *Handler) preview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.writeJSONStatus(w, http.StatusOK, previewResponse{Data: data})
+}
+
+// ---------- 扩展端点 ----------
+
+// extension 把一次 `/api/ext/<name>` 调用转交给登记了那个名字的模块。
+//
+// BFF 在这里做的四件事都是**形状**，没有一件是业务：认动词、认 JSON、找名字、
+// 原样转交。它不知道 `<name>` 是什么、请求体里该有什么、回什么算成功——那些
+// 属于登记的那个模块（见 api.go 的 ExtensionService）。
+//
+// 与 apply 同一道门（必须是 JSON）：扩展会去碰上游、改运行期状态，没有理由让它
+// 比保存更宽松。Host 门在 ServeHTTP 的最前面，已经过过了。
+func (h *Handler) extension(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
+		http.Error(w, i18n.T("extensions use POST", nil), http.StatusMethodNotAllowed)
+		return
+	}
+	if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		h.writeJSONStatus(w, http.StatusUnsupportedMediaType, map[string]any{
+			"error": i18n.T("extension calls need Content-Type: application/json (got {ct})", i18n.A{"ct": ct})})
+		return
+	}
+	name := strings.TrimPrefix(r.URL.Path, "/api/ext/")
+	if name == "" || strings.Contains(name, "/") {
+		// `/api/ext/` 与 `/api/ext/a/b` 都不是一个扩展的名字。回 404 而不是让
+		// 名字带着斜杠去查表——查不到时的那句话会变成「没有 a/b 这个扩展」，
+		// 而真相是「这个 URL 形状根本不对」。
+		h.writeJSONStatus(w, http.StatusNotFound, map[string]any{
+			"error": i18n.T("no API extension at {path}", i18n.A{"path": r.URL.Path})})
+		return
+	}
+	run, ok := h.extensions.Lookup(name)
+	if !ok {
+		// 404 而不是 500：多半是提供它的模块没装进这份装配（或者刚被摘掉）。
+		// 界面据此回落到自己能拿到的那份数据，而不是白屏。
+		h.writeJSONStatus(w, http.StatusNotFound, map[string]any{
+			"error": i18n.T("there is no API extension named {name} in this build — "+
+				"the page may be newer than the daemon, or the module that provides it is not installed",
+				i18n.A{"name": name})})
+		return
+	}
+	var body json.RawMessage
+	if r.Body != nil {
+		raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
+		if err != nil {
+			h.writeJSONStatus(w, http.StatusBadRequest, map[string]any{
+				"error": i18n.T("cannot read the request body: {err}", i18n.A{"err": err})})
+			return
+		}
+		if len(strings.TrimSpace(string(raw))) > 0 {
+			if !json.Valid(raw) {
+				h.writeJSONStatus(w, http.StatusBadRequest, map[string]any{
+					"error": i18n.T("the request body is not valid JSON", nil)})
+				return
+			}
+			body = raw
+		}
+	}
+	out, err := run(ExtensionRequest{Context: r.Context(), Method: r.Method, Query: r.URL.Query(), Body: body})
+	if err != nil {
+		// 扩展的报错原样带出去：它比 BFF 转述一句「操作失败」有用得多（与 apply
+		// 那条同一条规矩）。
+		h.writeJSONStatus(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
+	if out == nil {
+		out = map[string]any{}
+	}
+	h.writeJSONStatus(w, http.StatusOK, out)
 }
 
 // ---------- 静态资源 ----------
