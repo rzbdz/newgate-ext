@@ -79,6 +79,18 @@ const en: Record<string, string> = {
   " (not declared)": " (not declared)",
   model: "model",
   ref: "ref",
+  // 模型选择器（ModelPicker）：它问的是**上游**，不是 providers.json。
+  "asking the provider for its models…": "asking the provider for its models…",
+  "declared in providers.json — open the list to ask the provider":
+    "declared in providers.json — open the list to ask the provider",
+  "pick a provider first": "pick a provider first",
+  "{n} models from the provider": "{n} models from the provider",
+  cached: "cached",
+  "the provider did not list its models — showing the declared list":
+    "the provider did not list its models — showing the declared list",
+  "ask the provider again (ignore the cached answer)":
+    "ask the provider again (ignore the cached answer)",
+  "no model matches “{q}”": "no model matches “{q}”",
   "add a tier (e.g. vision)": "add a tier (e.g. vision)",
   "add tier": "add tier",
   default: "default",
@@ -185,6 +197,17 @@ const zhHans: Record<string, string> = {
   " (not declared)": "（没有声明过）",
   model: "模型",
   ref: "引用",
+  "asking the provider for its models…": "正在问上游要模型清单…",
+  "declared in providers.json — open the list to ask the provider":
+    "这是 providers.json 里声明的清单 —— 打开列表即可问上游",
+  "pick a provider first": "先选一家 provider",
+  "{n} models from the provider": "上游返回 {n} 个模型",
+  cached: "缓存",
+  "the provider did not list its models — showing the declared list":
+    "上游没有提供模型清单 —— 显示的是声明的那一份",
+  "ask the provider again (ignore the cached answer)":
+    "再问一次上游（忽略缓存）",
+  "no model matches “{q}”": "没有模型匹配“{q}”",
   "add a tier (e.g. vision)": "加一个档位（比如 vision）",
   "add tier": "加档位",
   default: "默认",

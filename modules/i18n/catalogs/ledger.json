@@ -8,6 +8,7 @@
     },
     "\"the Responses input[] ends on a function_call_output whose call_id is not ours\" is no longer repaired (no \"continue\" appended), and the upstream misreports such an instruction-less tail as a missing reasoning_text and answers 400": {},
     "\"the last user message holds only tool_result\" is no longer repaired (no \"continue\" appended), and the upstream misreports such an instruction-less tail as a missing reasoning_content and answers 400": {},
+    "(empty body)": {},
     "(messages is not an array, cannot audit)\n": {},
     "(no messages field, cannot audit)\n": {},
     "(none)": {},
@@ -134,6 +135,8 @@
     "a loopback port forwarded byte-for-byte; empty means this target is reachable only through the rewritten route": {},
     "a lossy rebuild happened before taking over a foreign unclosed tool loop": {},
     "a menuconfig-style terminal interface": {},
+    "a model-list request needs a provider name": {},
+    "a model-list request needs {\"provider\": \"…\"}": {},
     "a name from ~/.ssh/config, or an address": {},
     "a path, never key material. Leave empty to use the usual files and ssh-agent": {},
     "a reference is written as @key (e.g. @normal), got {value}": {
@@ -162,6 +165,7 @@
     "api_key missing": {},
     "arch": {},
     "as seen from the far side": {},
+    "ask a provider which models it serves, for the model picker in the web interface": {},
     "ask every upstream not to think: on=60s / forever=permanent / off=disabled": {},
     "asked from the interface": {},
     "assistant messages in the history no longer get their reasoning text backfilled, and OpenAI-dialect DeepSeek answers 400 to \"reasoning_content must be passed back\" (the chain then advances on its own; the symptom is a silent provider switch)": {},
@@ -211,6 +215,11 @@
     "cannot archive {path}: {err}": {
       "args": [
         "path"
+      ]
+    },
+    "cannot build the model-list request for {url}: {err}": {
+      "args": [
+        "url"
       ]
     },
     "cannot derive the auth token: {err}": {},
@@ -270,7 +279,22 @@
         "url"
       ]
     },
+    "cannot read providers.json: {err}": {
+      "args": [
+        "err"
+      ]
+    },
     "cannot read random bytes: {err}": {},
+    "cannot read the answer from {url}: {err}": {
+      "args": [
+        "url"
+      ]
+    },
+    "cannot read the request body: {err}": {
+      "args": [
+        "err"
+      ]
+    },
     "cannot read {path}: {err}": {
       "args": [
         "err",
@@ -418,6 +442,12 @@
     "end it early: newgate nothink off": {},
     "every intercepted request logs [naked], and newgate status keeps showing a red warning": {},
     "every subagent / agent team / workflow; set it to inherit to hand that back to per-slot resolution": {},
+    "extension calls need Content-Type: application/json (got {ct})": {
+      "args": [
+        "ct"
+      ]
+    },
+    "extensions use POST": {},
     "failed to inject thinking: {err}": {},
     "failed: {err}": {
       "args": [
@@ -560,6 +590,11 @@
       ]
     },
     "newgate (simple-cli) — a minimal UI. Available: status": {},
+    "no API extension at {path}": {
+      "args": [
+        "path"
+      ]
+    },
     "no api_key": {},
     "no available candidate": {},
     "no key file found in {dir} — relying on ssh-agent": {
@@ -856,6 +891,8 @@
     "the Codex × DeepSeek crossing": {},
     "the OpenCode client": {},
     "the Responses input[] ends on a function_call_output that is not ours and holds no user instruction — appended a continue instruction (the upstream misreports an instruction-less tail as a missing reasoning_text)": {},
+    "the answer has neither a data nor a models array": {},
+    "the answer is empty": {},
     "the classifier settings in this request are not readable: {err}": {
       "args": [
         "err"
@@ -925,6 +962,11 @@
     "the model and provider live in ~/.codex/config.toml": {},
     "the model codex runs on; written into config.toml by takeover": {},
     "the model field in settings.json is left untouched; what a tier means is decided by the env": {},
+    "the model-list request is not valid JSON: {err}": {
+      "args": [
+        "err"
+      ]
+    },
     "the opus tier (the workhorse); the main loop runs here (Claude Code's default), and so does opusplan in Plan Mode": {},
     "the peer is not a host (the endpoint returned 404) — is its role not set to host?": {},
     "the peer speaks protocol version {peer}, this binary only understands {mine} (both ends have to be upgraded together)": {
@@ -933,8 +975,10 @@
         "peer"
       ]
     },
+    "the provider answered with an empty model list": {},
     "the provider field is not an object: {err}": {},
     "the registry is empty": {},
+    "the request body is not valid JSON": {},
     "the request body is not valid JSON: {err}": {
       "args": [
         "err"
@@ -1013,6 +1057,16 @@
         "id"
       ]
     },
+    "there is no API extension named {name} in this build — the page may be newer than the daemon, or the module that provides it is not installed": {
+      "args": [
+        "name"
+      ]
+    },
+    "there is no provider named {name} in providers.json": {
+      "args": [
+        "name"
+      ]
+    },
     "there is no target called {id}": {
       "args": [
         "id"
@@ -1060,6 +1114,7 @@
     },
     "this page is a best-effort copy of the remote interface: paths inside it are rewritten. if something looks broken, use the forwarding port instead — that one is byte-for-byte.": {},
     "this process": {},
+    "this provider does not expose a model list": {},
     "this route only forwards the remote interface: {path} points outside it": {
       "args": [
         "path"
@@ -1142,6 +1197,21 @@
     },
     "verbose mode": {},
     "web": {},
+    "web: the extension {name} is already registered by another module — only one of them would ever receive a request": {
+      "args": [
+        "name"
+      ]
+    },
+    "web: {name} is not a usable extension name — use lowercase letters, digits, '-' and '_'": {
+      "args": [
+        "name"
+      ]
+    },
+    "web: {name} registered a nil extension handler — the interface would get a 500 for it": {
+      "args": [
+        "name"
+      ]
+    },
     "what is installed right now: {version}, assembled {took}": {
       "args": [
         "took",
@@ -1418,6 +1488,16 @@
         "providers"
       ]
     },
+    "{provider} has no base URL to ask for models": {
+      "args": [
+        "provider"
+      ]
+    },
+    "{provider} has no base_url to ask for models": {
+      "args": [
+        "provider"
+      ]
+    },
     "{remote} accepts connections": {
       "args": [
         "remote"
@@ -1467,6 +1547,37 @@
     "{title} is read-only": {
       "args": [
         "title"
+      ]
+    },
+    "{url} answered HTTP {status}: {body}": {
+      "args": [
+        "body",
+        "status",
+        "url"
+      ]
+    },
+    "{url} answered with more than {n} bytes — that is not a model list": {
+      "args": [
+        "n",
+        "url"
+      ]
+    },
+    "{url} did not answer with a model list: {err}": {
+      "args": [
+        "url"
+      ]
+    },
+    "{url} has no model list (HTTP {status})": {
+      "args": [
+        "status",
+        "url"
+      ]
+    },
+    "{url} rejected the request (HTTP {status}) — the key may be wrong or not allowed to list models: {body}": {
+      "args": [
+        "body",
+        "status",
+        "url"
       ]
     },
     "{url} returned {status}: {body}": {

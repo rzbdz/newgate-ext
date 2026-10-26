@@ -23,7 +23,7 @@
 ## 这一页在这一份装配里意味着什么
 
 这个站点的每一页都在讲**发行版 `newgate-ext` 的默认规格**（`dist.json`）：
-18 个模块，Claude Code / Codex / OpenCode 三家客户端，TUI + 浏览器两份界面，
+19 个模块，Claude Code / Codex / OpenCode 三家客户端，TUI + 浏览器两份界面，
 外加三套网页皮肤（黑 / 白 / Anthropic），以及一条穿过 SSH 看远端界面的通道。
 
 换成别的规格书（`dist-simple-cli.json`、`dist-dashboard.json`、`dist-hello.json`），

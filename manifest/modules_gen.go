@@ -24,6 +24,7 @@ import (
 	ext_hello "github.com/rzbdz/newgate-ext/modules/hello"
 	ext_home "github.com/rzbdz/newgate-ext/modules/home"
 	ext_i18n "github.com/rzbdz/newgate-ext/modules/i18n"
+	ext_modellist "github.com/rzbdz/newgate-ext/modules/modellist"
 	ext_nothink "github.com/rzbdz/newgate-ext/modules/nothink"
 	ext_opencode "github.com/rzbdz/newgate-ext/modules/opencode"
 	ext_opencodeomo "github.com/rzbdz/newgate-ext/modules/opencodeomo"
@@ -60,6 +61,7 @@ func Specs() map[string]app.Selection {
 				{Dir: "opencode", Component: ext_opencode.New()},
 				{Dir: "opencodeomo", Component: ext_opencodeomo.New()},
 				{Dir: "web-dashboard", Component: ext_web_dashboard.New()},
+				{Dir: "modellist", Component: ext_modellist.New()},
 				{Dir: "theme-dark", Component: ext_theme_dark.New()},
 				{Dir: "theme-light", Component: ext_theme_light.New()},
 				{Dir: "theme-anthropic", Component: ext_theme_anthropic.New()},
@@ -79,6 +81,7 @@ func Specs() map[string]app.Selection {
 				{Dir: "opencode", Component: ext_opencode.New()},
 				{Dir: "opencodeomo", Component: ext_opencodeomo.New()},
 				{Dir: "web-dashboard", Component: ext_web_dashboard.New()},
+				{Dir: "modellist", Component: ext_modellist.New()},
 				{Dir: "theme-dark", Component: ext_theme_dark.New()},
 				{Dir: "theme-light", Component: ext_theme_light.New()},
 				{Dir: "theme-anthropic", Component: ext_theme_anthropic.New()},
@@ -124,6 +127,7 @@ func Specs() map[string]app.Selection {
 				{Dir: "opencode", Component: ext_opencode.New()},
 				{Dir: "opencodeomo", Component: ext_opencodeomo.New()},
 				{Dir: "web-dashboard", Component: ext_web_dashboard.New()},
+				{Dir: "modellist", Component: ext_modellist.New()},
 				{Dir: "theme-dark", Component: ext_theme_dark.New()},
 				{Dir: "theme-light", Component: ext_theme_light.New()},
 				{Dir: "theme-anthropic", Component: ext_theme_anthropic.New()},

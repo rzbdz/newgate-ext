@@ -148,6 +148,11 @@ jobs:
       - name: 控制面的端到端（快照 / 保存 / 冲突 / 两道门）
         run: bash mock/e2e_dashboard.sh
 
+      # 模型清单那条路（web 下拉背后）：适配器拼地址、解析分组、缓存/refresh，
+      # 以及「上游没有这个接口」必须是 200 + supported:false 而不是故障。
+      - name: 模型清单的端到端（假上游）
+        run: bash mock/e2e_modellist.sh
+
       # 「这个客户端没装」那条路：问一句、best-effort 装、然后照常启动；以及
       # 它的边界——工具**在**的时候一个字都不碰它的命令行。用**假 npm**，所以这
       # 条既不上网也不在这台机器上真装东西（沙箱的 PATH 是密闭的）。
@@ -210,7 +215,7 @@ jobs:
       - name: 失败时导出日志
         if: failure()
         run: |
-          for d in /tmp/newgate-dist-e2e.* /tmp/newgate-claude-e2e.* /tmp/newgate-tailorigin.* /tmp/newgate-codexresp.* /tmp/newgate-codextools.*; do
+          for d in /tmp/newgate-dist-e2e.* /tmp/newgate-claude-e2e.* /tmp/newgate-tailorigin.* /tmp/newgate-codexresp.* /tmp/newgate-codextools.* /tmp/newgate-modellist-e2e.*; do
             [ -d "$d" ] || continue
             echo "=== $d ==="
             find "$d" -name '*.log' -exec sh -c 'echo "--- {}"; tail -80 "{}"' \;

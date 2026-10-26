@@ -12,6 +12,10 @@
       "reviewed": true,
       "text": "「最后一条 user 消息只有 tool_result」不再被修（不再追加「继续」），上游会把这种空指令尾部误报成 reasoning_content 缺失而 400"
     },
+    "(empty body)": {
+      "reviewed": true,
+      "text": "（空响应）"
+    },
     "(messages is not an array, cannot audit)\n": {
       "reviewed": true,
       "text": "（messages 不是数组，无法审计）\n"
@@ -332,6 +336,14 @@
       "reviewed": true,
       "text": "menuconfig 风格的终端界面"
     },
+    "a model-list request needs a provider name": {
+      "reviewed": true,
+      "text": "模型清单请求必须说明是哪一家 provider"
+    },
+    "a model-list request needs {\"provider\": \"…\"}": {
+      "reviewed": true,
+      "text": "模型清单请求需要 {\"provider\": \"…\"}"
+    },
     "a name from ~/.ssh/config, or an address": {
       "machine": true,
       "text": "~/.ssh/config 中的名称，或一个地址"
@@ -408,6 +420,10 @@
       "machine": true,
       "text": "从远端看到的"
     },
+    "ask a provider which models it serves, for the model picker in the web interface": {
+      "reviewed": true,
+      "text": "向 provider 询问它提供哪些模型，供 web 界面的模型选择器使用"
+    },
     "ask every upstream not to think: on=60s / forever=permanent / off=disabled": {
       "reviewed": true,
       "text": "让每个上游都别思考：on=60 秒 / forever=永久 / off=关闭"
@@ -467,6 +483,10 @@
     "cannot archive {path}: {err}": {
       "reviewed": true,
       "text": "归档 {path} 失败: {err}"
+    },
+    "cannot build the model-list request for {url}: {err}": {
+      "reviewed": true,
+      "text": "无法为 {url} 构造模型清单请求：{err}"
     },
     "cannot derive the auth token: {err}": {
       "reviewed": true,
@@ -528,9 +548,21 @@
       "reviewed": true,
       "text": "连不上 {url}: {err}"
     },
+    "cannot read providers.json: {err}": {
+      "reviewed": true,
+      "text": "读不了 providers.json：{err}"
+    },
     "cannot read random bytes: {err}": {
       "reviewed": true,
       "text": "取随机数失败: {err}"
+    },
+    "cannot read the answer from {url}: {err}": {
+      "reviewed": true,
+      "text": "读不了 {url} 的响应：{err}"
+    },
+    "cannot read the request body: {err}": {
+      "reviewed": true,
+      "text": "读不了请求体：{err}"
     },
     "cannot read {path}: {err}": {
       "machine": true,
@@ -723,6 +755,14 @@
     "every subagent / agent team / workflow; set it to inherit to hand that back to per-slot resolution": {
       "reviewed": true,
       "text": "所有 subagent / agent team / workflow；设 inherit 可交还给各自解析"
+    },
+    "extension calls need Content-Type: application/json (got {ct})": {
+      "reviewed": true,
+      "text": "扩展调用需要 Content-Type: application/json（实际是 {ct}）"
+    },
+    "extensions use POST": {
+      "reviewed": true,
+      "text": "扩展端点只接受 POST"
     },
     "failed to inject thinking: {err}": {
       "reviewed": true,
@@ -939,6 +979,10 @@
     "newgate (simple-cli) — a minimal UI. Available: status": {
       "reviewed": true,
       "text": "newgate（simple-cli）——极简界面。可用：status"
+    },
+    "no API extension at {path}": {
+      "reviewed": true,
+      "text": "{path} 上没有 API 扩展"
     },
     "no api_key": {
       "reviewed": true,
@@ -1408,6 +1452,14 @@
       "reviewed": true,
       "text": "Responses 的 input[] 以别家产的 function_call_output 收尾、没有用户指令——追加一条 continue 指令（上游对空指令尾部误报 reasoning_text 缺失）"
     },
+    "the answer has neither a data nor a models array": {
+      "reviewed": true,
+      "text": "响应里既没有 data 也没有 models 数组"
+    },
+    "the answer is empty": {
+      "reviewed": true,
+      "text": "响应是空的"
+    },
     "the classifier settings in this request are not readable: {err}": {
       "reviewed": true,
       "text": "这个请求里的分类器设置读不出来：{err}"
@@ -1524,6 +1576,10 @@
       "reviewed": true,
       "text": "settings.json 的 model 字段不动；档位含义由 env 决定"
     },
+    "the model-list request is not valid JSON: {err}": {
+      "reviewed": true,
+      "text": "模型清单请求不是合法的 JSON：{err}"
+    },
     "the opus tier (the workhorse); the main loop runs here (Claude Code's default), and so does opusplan in Plan Mode": {
       "reviewed": true,
       "text": "opus 档（主力档）；主循环在这跑（cc 默认），Plan Mode 下的 opusplan"
@@ -1536,6 +1592,10 @@
       "reviewed": true,
       "text": "对端协议版本是 {peer}，本二进制只认 {mine}（两端版本要一起升）"
     },
+    "the provider answered with an empty model list": {
+      "reviewed": true,
+      "text": "上游返回了一份空的模型清单"
+    },
     "the provider field is not an object: {err}": {
       "reviewed": true,
       "text": "provider 字段不是对象: {err}"
@@ -1543,6 +1603,10 @@
     "the registry is empty": {
       "reviewed": true,
       "text": "注册表为空"
+    },
+    "the request body is not valid JSON": {
+      "reviewed": true,
+      "text": "请求体不是合法的 JSON"
     },
     "the request body is not valid JSON: {err}": {
       "reviewed": true,
@@ -1624,6 +1688,14 @@
       "reviewed": true,
       "text": "皮肤 {id} 已经被登记过了"
     },
+    "there is no API extension named {name} in this build — the page may be newer than the daemon, or the module that provides it is not installed": {
+      "reviewed": true,
+      "text": "这个构建里没有名为 {name} 的 API 扩展 —— 页面可能比守护进程新，或者提供它的模块没有装"
+    },
+    "there is no provider named {name} in providers.json": {
+      "reviewed": true,
+      "text": "providers.json 里没有名为 {name} 的 provider"
+    },
     "there is no target called {id}": {
       "machine": true,
       "text": "没有叫 {id} 的目标"
@@ -1687,6 +1759,10 @@
     "this process": {
       "reviewed": true,
       "text": "这个进程"
+    },
+    "this provider does not expose a model list": {
+      "reviewed": true,
+      "text": "这家 provider 没有提供模型清单接口"
     },
     "this route only forwards the remote interface: {path} points outside it": {
       "reviewed": true,
@@ -1791,6 +1867,18 @@
     "web": {
       "reviewed": true,
       "text": "web"
+    },
+    "web: the extension {name} is already registered by another module — only one of them would ever receive a request": {
+      "reviewed": true,
+      "text": "web：扩展 {name} 已经被另一个模块登记 —— 两个里只有一个能收到请求"
+    },
+    "web: {name} is not a usable extension name — use lowercase letters, digits, '-' and '_'": {
+      "reviewed": true,
+      "text": "web：{name} 不是可用的扩展名 —— 只能用小写字母、数字、'-' 和 '_'"
+    },
+    "web: {name} registered a nil extension handler — the interface would get a 500 for it": {
+      "reviewed": true,
+      "text": "web：{name} 登记了 nil 扩展处理函数 —— 界面请求它会得到 500"
     },
     "what is installed right now: {version}, assembled {took}": {
       "reviewed": true,
@@ -2004,6 +2092,14 @@
       "reviewed": true,
       "text": "{providers} 里 {names} 带了内联 api_key：密钥只能走密钥通道（在宿主上 newgate config secrets），配置通道不含密——它在宿主侧是 git 管的，提交一次就永久进历史"
     },
+    "{provider} has no base URL to ask for models": {
+      "reviewed": true,
+      "text": "{provider} 没有可以问模型清单的 base URL"
+    },
+    "{provider} has no base_url to ask for models": {
+      "reviewed": true,
+      "text": "{provider} 没有可以问模型清单的 base_url"
+    },
     "{remote} accepts connections": {
       "machine": true,
       "text": "{remote} 接受连接"
@@ -2035,6 +2131,26 @@
     "{title} is read-only": {
       "reviewed": true,
       "text": "{title} 是只读的"
+    },
+    "{url} answered HTTP {status}: {body}": {
+      "reviewed": true,
+      "text": "{url} 返回 HTTP {status}：{body}"
+    },
+    "{url} answered with more than {n} bytes — that is not a model list": {
+      "reviewed": true,
+      "text": "{url} 的响应超过 {n} 字节 —— 那不是一份模型清单"
+    },
+    "{url} did not answer with a model list: {err}": {
+      "reviewed": true,
+      "text": "{url} 没有返回模型清单：{err}"
+    },
+    "{url} has no model list (HTTP {status})": {
+      "reviewed": true,
+      "text": "{url} 没有模型清单接口（HTTP {status}）"
+    },
+    "{url} rejected the request (HTTP {status}) — the key may be wrong or not allowed to list models: {body}": {
+      "reviewed": true,
+      "text": "{url} 拒绝了请求（HTTP {status}）—— key 可能不对，或者不允许列模型：{body}"
     },
     "{url} returned {status}: {body}": {
       "reviewed": true,

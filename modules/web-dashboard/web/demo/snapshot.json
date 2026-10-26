@@ -1279,11 +1279,11 @@
       "actions": [
         {
           "id": "set-default",
-          "label": "应用"
+          "label": "使用"
         },
         {
           "id": "set-default-all",
-          "label": "应用到全部"
+          "label": "全局使用"
         }
       ]
     },
@@ -1397,11 +1397,11 @@
       "actions": [
         {
           "id": "set-default",
-          "label": "应用"
+          "label": "使用"
         },
         {
           "id": "set-default-all",
-          "label": "应用到全部"
+          "label": "全局使用"
         }
       ]
     },
@@ -1493,11 +1493,11 @@
       "actions": [
         {
           "id": "set-default",
-          "label": "应用"
+          "label": "使用"
         },
         {
           "id": "set-default-all",
-          "label": "应用到全部"
+          "label": "全局使用"
         }
       ]
     },

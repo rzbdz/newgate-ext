@@ -49,6 +49,10 @@ export default defineConfig({
   root: "demo",
   publicDir: resolve(here, "public"),
   base: DEMO_BASE,
+  // 演示页没有后端：模型下拉**不要**去问 /api/ext/modellist（那会得到一条 404，
+  // 屏幕上写着「问不到」——而这不是演示页要演的东西）。它照常列出 providers.json
+  // 里声明的那份清单，交互（打开、搜索、分组）全都能玩。
+  define: { __NEWGATE_DEMO__: "true" },
   plugins: [svelte()],
   build: {
     outDir: resolve(here, "../../../site/dist/demo"),

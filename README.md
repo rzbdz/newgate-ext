@@ -52,9 +52,12 @@ something is wrong.
 `newgate web` prints the address — served on the port the gateway already
 listens on. Profiles and tier bindings edited in place, runtime switches
 flipped, counters, the log tail, binding health, and who is going through the
-gateway right now. Every change goes through the **same write path the command
-line uses**, carrying the revision you loaded: a file the CLI changed while you
-were looking at the page is a conflict laid out for you, not an overwrite.
+gateway right now. Model pickers ask the provider what it actually serves
+(OpenAI- and Anthropic-style `/models`, grouped when the upstream says so) and
+fall back to the declared list when it does not. Every change goes through the
+**same write path the command line uses**, carrying the revision you loaded: a
+file the CLI changed while you were looking at the page is a conflict laid out
+for you, not an overwrite.
 
 **Upgrading doesn't interrupt you.**
 `newgate restart` hands the listening socket to the new binary and drains what's

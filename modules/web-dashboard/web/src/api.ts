@@ -378,3 +378,56 @@ export async function runSectionAction(source: string, action: string): Promise<
     }),
   );
 }
+
+/**
+ * 一个上游能提供的模型。
+ *
+ * `group` 是**上游自己说的**分组（有的返回 `owned_by`，有的在 id 里用 `/` 分段）。
+ * 它只影响下拉里怎么摆，不参与任何身份判断——模型的身份永远是 `id`。
+ */
+export interface ModelInfo {
+  id: string;
+  name?: string;
+  group?: string;
+}
+
+/**
+ * 一次「问上游要模型清单」的回答（见发行版的 modules/modellist）。
+ *
+ * `supported` 为 false 是**正常答案**：多数上游没有这个接口，或者这个 key 不被
+ * 允许列模型。那时 `models` 为空、`note` 说原因，界面回落到 providers.json 里
+ * 声明的清单——而不是把「问不到」画成一次故障。
+ */
+export interface ModelList {
+  provider: string;
+  supported: boolean;
+  /** 命中的适配器（`openai` / `anthropic`）。机器标记，不翻译。 */
+  adapter?: string;
+  /** 实际问的地址（不含凭据）。 */
+  endpoint?: string;
+  models: ModelInfo[];
+  groups?: string[];
+  fetched_at?: string;
+  /** 这一份是从进程内缓存里拿的（界面据此说「缓存」）。 */
+  cached?: boolean;
+  /** `supported` 为 false 时说明原因（后端已翻好）。 */
+  note?: string;
+}
+
+/**
+ * 问一次某个 provider 的模型清单。
+ *
+ * 它走的是 BFF 的**扩展端点**（`/api/ext/modellist`）：BFF 不认识 modellist，
+ * 只把请求转交给登记了那个名字的模块。`refresh` 为 true 时跳过进程内缓存。
+ */
+export async function modelList(provider: string, refresh = false): Promise<ModelList> {
+  const doc = await json<ModelList & { error?: unknown }>(
+    await fetch(`${API}/ext/modellist`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider, refresh }),
+    }),
+  );
+  if (doc.error) throw new Error(errText(doc.error));
+  return doc;
+}

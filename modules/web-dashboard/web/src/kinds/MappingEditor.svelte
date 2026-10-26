@@ -7,6 +7,7 @@
   // 关键一条：**整个 roles 一起交**，不是增量——后端是「替换 roles 这一个键」。
   import { untrack } from "svelte";
   import { t } from "../i18n";
+  import ModelPicker from "../ModelPicker.svelte";
 
   type Binding = { provider?: string; model?: string; ref?: string };
   type Role = { id: string; bindings: Binding[] };
@@ -255,20 +256,18 @@
               <option value={b.provider}>{b.provider}{t(" (not declared)")}</option>
             {/if}
           </select>
-          <input
-            class="mono model"
-            list="models-{id}-{i}"
+          <ModelPicker
+            provider={b.provider ?? ""}
+            declared={models(b.provider ?? "")}
             value={b.model ?? ""}
-            placeholder={t("model")}
-            disabled={readonly}
-            oninput={(e) => {
-              const m = e.currentTarget.value;
+            {readonly}
+            onchange={(m) => {
+              // 选择器**同时**承担「手打一个上游没列出的模型」：它交回来的就是
+              // 输入框里那一串。所以这里只有一条写路径，没有「选中」与「输入」
+              // 两种语义要区分。
               push((p) => { p.roles[id][i].model = m; });
             }}
           />
-          <datalist id="models-{id}-{i}">
-            {#each models(b.provider ?? "") as m (m)}<option value={m}></option>{/each}
-          </datalist>
         {/if}
         <span class="spacer"></span>
         {#if !readonly}
@@ -306,7 +305,6 @@
   .role:first-of-type { border-top: 0; }
   .cand { padding: 2px 0 2px 6px; }
   .cand select { min-width: 150px; }
-  .cand .model { min-width: 220px; }
   .idx { width: 14px; }
   .danger { color: var(--danger, #c0392b); }
   label.tiny { display: flex; align-items: center; gap: 4px; font-size: 11px; }
