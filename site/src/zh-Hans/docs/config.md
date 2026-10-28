@@ -68,6 +68,7 @@ newgate tier normal        # 这一档此刻解析到哪条链、谁被跳过、
 newgate --set-profile ark  # 换全局默认
 newgate claude --profile=ds  # 单次覆盖，不动全局
 newgate probe              # 主动验证 provider 连接、方言与已知怪癖
+newgate verify             # 指纹：上游真的在用 binding 写的那个模型吗（可跟 profile 名）
 ```
 
 接管：

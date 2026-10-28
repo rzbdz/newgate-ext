@@ -18,9 +18,17 @@
   // 卡片 `.card` 有 `overflow: hidden`（见 app.css）。绝对定位的菜单会被卡片裁掉，
   // 于是在最需要它的地方（一屏十几张档位卡）只剩一条缝。fixed 到视口、按输入框
   // 的位置算坐标，再把宽度夹进视口——滚动/缩放时直接关掉菜单（见 closeOnViewport）。
-  import { untrack } from "svelte";
+  import { onMount, untrack } from "svelte";
   import { t } from "./i18n";
-  import { modelList, type ModelInfo, type ModelList } from "./api";
+  import {
+    modelList,
+    fingerprintCache,
+    fingerprintRun,
+    type FingerprintEntry,
+    type FingerprintMatch,
+    type ModelInfo,
+    type ModelList,
+  } from "./api";
   import { fuzzyFilter } from "./fuzzy";
 
   let {
@@ -28,6 +36,14 @@
     provider = "",
     declared = [],
     readonly = false,
+    /**
+     * 要不要在格子旁边显示上一次验到的指纹、并给一颗「验」按钮。
+     *
+     * 默认开；自由验证那一页把它关掉——那里自己有一套 API/挑战数选择与一颗
+     * 「获取指纹」，同一个格子里再放一颗同名按钮会让「这一次按的到底是哪一个」
+     * 变得没有答案。
+     */
+    verify = true,
     onchange,
   }: {
     value?: string;
@@ -35,6 +51,7 @@
     /** providers.json 里声明的模型名：问不到上游时就用这一份。 */
     declared?: string[];
     readonly?: boolean;
+    verify?: boolean;
     onchange: (model: string) => void;
   } = $props();
 
@@ -45,6 +62,16 @@
   let loading = $state(false);
   let loadError = $state("");
   let catalogs = $state<Record<string, ModelList>>({});
+
+  /**
+   * 按模型名缓存的指纹结论（来自 `/api/ext/fingerprint` 的 cache 动作）。
+   *
+   * 它只在该下拉被打开/换 provider 时读一次（缓存文件很小），**不自动去验**：
+   * verify 会花 token，必须是人点出来的。这里展示的永远是「上一次验到的那份」。
+   */
+  let fingerprints = $state<Record<string, FingerprintEntry>>({});
+  let fpError = $state("");
+  let fpBusy = $state(false);
 
   let input: HTMLInputElement | undefined = $state();
   let menuEl: HTMLDivElement | undefined = $state();
@@ -62,7 +89,8 @@
   });
 
   // 换 provider = 换了一份清单：菜单与本地查询都重来（缓存按 provider 存着，
-  // 切回来还在）。
+  // 切回来还在）。指纹也一起换：它是按「provider/model」存的，留着上一家的
+  // 只会让新格子显示一个不属于它的结论。
   let seenProvider = untrack(() => provider);
   $effect(() => {
     if (seenProvider === provider) return;
@@ -70,7 +98,17 @@
     open = false;
     loadError = "";
     query = value;
+    fingerprints = {};
+    fpError = "";
+    if (verify) void loadFingerprints();
   });
+
+  onMount(() => {
+    if (verify) void loadFingerprints();
+  });
+
+  /** 选中那个模型上一次的结论（没有就是 undefined）。 */
+  const selectedFP = $derived(provider && value ? fingerprints[value] : undefined);
 
   const catalog = $derived(provider ? catalogs[provider] : undefined);
 
@@ -122,6 +160,94 @@
     return out;
   });
 
+  async function loadFingerprints() {
+    if (__NEWGATE_DEMO__ || !provider || !verify || readonly) return;
+    try {
+      const list = await fingerprintCache(provider);
+      const next: Record<string, FingerprintEntry> = {};
+      for (const e of list) next[e.model] = e;
+      fingerprints = next;
+      fpError = "";
+    } catch (e) {
+      // 端点是可选的：没装那个模块时这里是 404。**不是故障**——格子照常用，
+      // 只是没有指纹可展示（与 modelList 的 404 同一条）。
+      fpError = e instanceof Error ? e.message : String(e);
+    }
+  }
+
+  /**
+   * 现场验一次选中的模型。**会花 token**：按钮的 title 已说明，不弹确认框——
+   * 这个按钮点一下就是「我要验」，再问一次只会多一步。
+   */
+  async function verifySelected() {
+    const model = value.trim();
+    if (!verify || !provider || !model || fpBusy) return;
+    fpBusy = true;
+    fpError = "";
+    try {
+      const e = await fingerprintRun(provider, model, "auto", 3);
+      fingerprints = { ...fingerprints, [e.model]: e };
+    } catch (e) {
+      fpError = e instanceof Error ? e.message : String(e);
+    } finally {
+      fpBusy = false;
+    }
+  }
+
+  function matchTone(m: FingerprintMatch): string {
+    switch (m) {
+      case "match":
+      case "dated":
+        return "ok";
+      case "family":
+      case "mismatch":
+        return "warn";
+      default:
+        return "bad";
+    }
+  }
+
+  function matchText(m: FingerprintMatch): string {
+    switch (m) {
+      case "match":
+        return t("match");
+      case "dated":
+        return t("dated snapshot");
+      case "family":
+        return t("same family");
+      case "mismatch":
+        return t("different model");
+      case "unknown":
+        return t("no ranking");
+      case "error":
+        return t("error");
+      default:
+        return m;
+    }
+  }
+
+  function fpLabel(e: FingerprintEntry): string {
+    const name = e.predicted_name || e.predicted;
+    return name || t("no ranking");
+  }
+
+  function fpPct(e: FingerprintEntry): string {
+    return e.probability == null ? "" : ` ${Math.round(e.probability * 100)}%`;
+  }
+
+  function fpMark(m: FingerprintMatch): string {
+    switch (m) {
+      case "match":
+      case "dated":
+        return "✓";
+      case "family":
+      case "mismatch":
+        return "⚠";
+      default:
+        return "✕";
+    }
+  }
+
   async function load(refresh: boolean) {
     // 演示页没有后端（见 src/env.d.ts）：照常列声明清单，不去问一个不存在的端点。
     if (__NEWGATE_DEMO__) return;
@@ -168,6 +294,9 @@
       // 已经打开时不清——那会把用户正打着的那串字擦掉。
       query = "";
       if (provider && !catalogs[provider] && !loading) void load(false);
+      // 指纹是本地缓存（几十 KB），每次打开都重读一遍：终端里刚跑过 verify
+      // 的话，下拉里那一格应该立刻是新结论，而不是页面加载时的那一份。
+      if (verify) void loadFingerprints();
     }
   }
 
@@ -275,6 +404,30 @@
     >↻</button>
   {/if}
 
+  {#if verify && provider && !readonly && value.trim()}
+    <!-- 上一次验到的指纹就在格子旁边：它是**陈述**（缓存），不是「这一格的值」，
+         所以不参与编辑、也不进草稿。没有它就是「还没验过」，不是故障。 -->
+    <span
+      class="fp {selectedFP ? matchTone(selectedFP.match) : 'none'}"
+      title={selectedFP
+        ? `${fpLabel(selectedFP)}${fpPct(selectedFP)} · ${selectedFP.checked_at}`
+        : t("no fingerprint yet — verify to ask the upstream")}
+    >
+      {#if selectedFP}{fpMark(selectedFP.match)} {fpLabel(selectedFP)}{fpPct(selectedFP)}{:else}{t("no fingerprint")}{/if}
+    </span>
+    <button
+      type="button"
+      class="tiny ghost"
+      title={t("ask the upstream for a fresh fingerprint (costs tokens)")}
+      onmousedown={(e) => e.preventDefault()}
+      onclick={verifySelected}
+      disabled={fpBusy}
+    >{fpBusy ? t("verifying…") : t("verify")}</button>
+  {/if}
+  {#if fpError}
+    <span class="fp bad" title={fpError}>!</span>
+  {/if}
+
   {#if open}
     <div
       bind:this={menuEl}
@@ -286,13 +439,17 @@
       style:width="{pos.width}px"
       style:max-height="{pos.maxHeight}px"
     >
-      <div class="status" class:bad={!!loadError}>{status}</div>
+      <div class="status" class:bad={!!loadError || !!fpError}>
+        {status}
+        {#if fpError} · {t("fingerprint: {err}", { err: fpError })}{/if}
+      </div>
       {#if grouped.length}
         {#each grouped as g (g.group)}
           {#if g.group}
             <div class="group"><span>{g.group}</span><span class="dim">{g.items.length}</span></div>
           {/if}
           {#each g.items as it (it.m.id)}
+            {@const fpe = fingerprints[it.m.id]}
             <button
               type="button"
               class="opt"
@@ -303,9 +460,18 @@
               onmousedown={(e) => e.preventDefault()}
               onclick={() => pick(it.m)}
             >
-              <span class="mid mono">{it.m.id}</span>
-              {#if it.m.name && it.m.name !== it.m.id}
-                <span class="mname dim">{it.m.name}</span>
+              <span class="oinfo">
+                <span class="mid mono">{it.m.id}</span>
+                {#if it.m.name && it.m.name !== it.m.id}
+                  <span class="mname dim">{it.m.name}</span>
+                {/if}
+              </span>
+              {#if fpe}
+                <!-- 下拉里每一行都带**上一次**的指纹：选之前就能看见「这一行写的是
+                     这个名字，但上次验出来是另一个」。这是这个下拉最该有的信息。 -->
+                <span class="fpm {matchTone(fpe.match)}" title={matchText(fpe.match)}>
+                  {matchText(fpe.match)}{#if fpe.probability != null} · {Math.round(fpe.probability * 100)}%{/if}
+                </span>
               {/if}
             </button>
           {/each}
@@ -318,9 +484,26 @@
 </div>
 
 <style>
-  .picker { position: relative; display: inline-flex; align-items: center; min-width: 220px; }
+  .picker { position: relative; display: inline-flex; align-items: center; flex-wrap: wrap; row-gap: 4px; min-width: 220px; }
   .picker .model { flex: 1; min-width: 160px; }
   .probe { padding: 0 4px; line-height: 1; }
+  /* 指纹那一格：陈述，不是输入。颜色只表达「名字对上没有」，不改变形状。 */
+  .fp {
+    font-size: 11px;
+    font-family: var(--mono);
+    padding: 1px 6px;
+    border-radius: 99px;
+    border: 1px solid var(--line);
+    color: var(--dim);
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .fp.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 50%, var(--line)); }
+  .fp.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 50%, var(--line)); }
+  .fp.bad { color: var(--danger, #c0392b); border-color: var(--danger, #c0392b); }
+  .fp.none { color: var(--dim); border-style: dashed; }
   .menu {
     position: fixed;
     z-index: 50;
@@ -355,9 +538,9 @@
   .group:first-of-type { border-top: 0; margin-top: 0; }
   .opt {
     display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 1px;
+    flex-direction: row;
+    align-items: baseline;
+    gap: 8px;
     width: 100%;
     text-align: left;
     background: transparent;
@@ -368,8 +551,14 @@
     color: var(--fg);
     font-size: 12px;
   }
+  .oinfo { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
   .opt:hover, .opt.active { background: color-mix(in srgb, var(--accent) 16%, transparent); }
   .opt.selected .mid { font-weight: 600; }
   .opt .mid { font-size: 12px; overflow-wrap: anywhere; }
   .opt .mname { font-size: 11px; }
+  /* 每行右侧的上一次指纹：小、等宽，不抢模型名的位置。 */
+  .fpm { font-size: 10px; font-family: var(--mono); white-space: nowrap; color: var(--dim); }
+  .fpm.ok { color: var(--ok); }
+  .fpm.warn { color: var(--warn); }
+  .fpm.bad { color: var(--danger, #c0392b); }
 </style>

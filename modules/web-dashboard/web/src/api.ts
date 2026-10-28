@@ -13,7 +13,8 @@ export type Kind =
   | "table"
   | "log"
   | "chains"
-  | "overview";
+  | "overview"
+  | "fingerprints";
 
 export interface Concept {
   id: string;
@@ -430,4 +431,137 @@ export async function modelList(provider: string, refresh = false): Promise<Mode
   );
   if (doc.error) throw new Error(errText(doc.error));
   return doc;
+}
+
+/**
+ * 指纹：参考库说这个上游实际是谁（见发行版的 modules/verify）。
+ *
+ * # 为什么前端只认一个端点名
+ *
+ * 与 modellist 同一条：`/api/ext/fingerprint` 是**登记了这个名字的模块**在回答，
+ * BFF 不认识它。端点名刻意不是模块名——前端要知道的是「有一个指纹端点」，不是
+ * 「有一个 verify 模块」。没有这个端点时下拉与面板回落到「还没有指纹」，而不是
+ * 报错（这对老后端、对没装本模块的装配都成立）。
+ */
+export type FingerprintMatch =
+  | "match"
+  | "dated"
+  | "family"
+  | "mismatch"
+  | "unknown"
+  | "error";
+
+export interface FingerprintCandidate {
+  model: string;
+  display_name?: string;
+  family?: string;
+  family_name?: string;
+  score: number;
+  probability?: number | null;
+}
+
+/**
+ * 一条 binding 的指纹结论。
+ *
+ * `match` 是机器标记，颜色与措辞由界面自己决定（见 `matchTone` / `matchText`）：
+ * 后端不知道这一屏用什么词，而前端也不该把它翻译成第二套身份。
+ */
+export interface FingerprintEntry {
+  provider: string;
+  model: string;
+  api?: string;
+  predicted?: string;
+  predicted_name?: string;
+  family?: string;
+  family_name?: string;
+  decision?: string;
+  probability?: number | null;
+  match: FingerprintMatch;
+  used_outputs?: number;
+  results?: FingerprintCandidate[];
+  checked_at: string;
+  build?: string;
+  error?: string;
+  cache_error?: string;
+}
+
+export interface FingerprintRole {
+  role: string;
+  provider?: string;
+  model?: string;
+  error?: string;
+}
+
+export interface FingerprintProfile {
+  name: string;
+  roles: FingerprintRole[];
+}
+
+export interface FingerprintProvider {
+  name: string;
+  protocol?: string;
+  base_url?: string;
+  has_key: boolean;
+  models?: string[];
+}
+
+/** 这一屏的全部素材（后端 modules/verify 的 State）。 */
+export interface FingerprintState {
+  profiles: FingerprintProfile[];
+  providers: FingerprintProvider[];
+  entries: FingerprintEntry[];
+  build?: string;
+  loaded: boolean;
+  data_cached?: boolean;
+  error?: string;
+}
+
+async function fingerprintExt<T>(body: unknown): Promise<T> {
+  const res = await fetch(`${API}/ext/fingerprint`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const doc = await json<T & { error?: unknown }>(res);
+  // 只有 **HTTP 失败**才是错误。State 自己的 `error` 是「配置/缓存读不出来」的
+  // 一条陈述，页面照常画——把它也当异常会让整屏白掉。
+  if (!res.ok) {
+    const msg = errText(doc.error);
+    throw new Error(msg || `${res.status} ${res.statusText}`);
+  }
+  return doc as T;
+}
+
+/** 这一屏的素材。终端里的 verify 刚写下的结论也会在这里出现。 */
+export function fingerprintState(): Promise<FingerprintState> {
+  return fingerprintExt<FingerprintState>({ action: "state" });
+}
+
+/** 只看缓存（模型下拉用）：不给 provider 就返回全部。 */
+export async function fingerprintCache(
+  provider = "",
+  model = "",
+): Promise<FingerprintEntry[]> {
+  const doc = await fingerprintExt<{ entries: FingerprintEntry[] }>({
+    action: "cache",
+    provider,
+    model,
+  });
+  return doc.entries ?? [];
+}
+
+/** 真打一轮指纹。**会花 token**：界面上的按钮措辞要说清楚。 */
+export function fingerprintRun(
+  provider: string,
+  model: string,
+  api = "auto",
+  count = 3,
+): Promise<FingerprintEntry> {
+  return fingerprintExt<FingerprintEntry>({
+    action: "run",
+    provider,
+    model,
+    api,
+    count,
+  });
 }

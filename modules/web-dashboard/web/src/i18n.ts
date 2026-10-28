@@ -134,6 +134,59 @@ const en: Record<string, string> = {
   // 延迟那个单位。它单独一条而不是拼进数字里：中文写「毫秒」也不该改数字那一格
   // 的排版（那一列是拿来竖着比的）。
   ms: "ms",
+  // ---- 指纹（kinds/Fingerprints.svelte 与 ModelPicker 的缓存展示） ----
+  "by profile": "by profile",
+  "pick a model": "pick a model",
+  "reference data {build}": "reference data {build}",
+  "reference data not loaded yet — the first verify downloads about 3.6 MB":
+    "reference data not loaded yet — the first verify downloads about 3.6 MB",
+  "reference data is cached — the first verify in this process loads it":
+    "reference data is cached — the first verify in this process loads it",
+  profile: "profile",
+  "all profiles": "all profiles",
+  "verifying…": "verifying…",
+  "verify all ({n})": "verify all ({n})",
+  "no profiles to verify — configure a profile first, or use “pick a model”":
+    "no profiles to verify — configure a profile first, or use “pick a model”",
+  "{n} tiers": "{n} tiers",
+  tier: "tier",
+  "upstream/model": "upstream/model",
+  fingerprint: "fingerprint",
+  "name match": "name match",
+  checked: "checked",
+  verify: "verify",
+  "ask the upstream for a fresh fingerprint (costs tokens)":
+    "ask the upstream for a fresh fingerprint (costs tokens)",
+  provider: "provider",
+  api: "api",
+  "auto (from the provider protocol)": "auto (from the provider protocol)",
+  challenges: "challenges",
+  "get fingerprint": "get fingerprint",
+  "no providers declared — add one in providers.json first":
+    "no providers declared — add one in providers.json first",
+  prediction: "prediction",
+  probability: "probability",
+  decision: "decision",
+  "used outputs": "used outputs",
+  family: "family",
+  "reference data": "reference data",
+  "top candidates": "top candidates",
+  score: "score",
+  match: "match",
+  "dated snapshot": "dated snapshot",
+  "same family": "same family",
+  "different model": "different model",
+  "no ranking": "no ranking",
+  error: "error",
+  "just now": "just now",
+  "{n} min ago": "{n} min ago",
+  "{n} h ago": "{n} h ago",
+  "{n} d ago": "{n} d ago",
+  "no fingerprint": "no fingerprint",
+  "no fingerprint yet — verify to ask the upstream":
+    "no fingerprint yet — verify to ask the upstream",
+  "fingerprint: {err}": "fingerprint: {err}",
+  "the fingerprint request failed": "the fingerprint request failed",
 };
 
 const zhHans: Record<string, string> = {
@@ -238,6 +291,58 @@ const zhHans: Record<string, string> = {
   "edit this file": "去编辑这份文件",
   "+{n} more on the chain": "链上还有 {n} 站",
   ms: "毫秒",
+  "by profile": "按档位文件",
+  "pick a model": "挑一个模型",
+  "reference data {build}": "参考数据 {build}",
+  "reference data not loaded yet — the first verify downloads about 3.6 MB":
+    "参考数据还没加载 —— 第一次验证会下载约 3.6 MB",
+  "reference data is cached — the first verify in this process loads it":
+    "参考数据已缓存 —— 本进程第一次验证时加载它",
+  profile: "档位文件",
+  "all profiles": "全部档位文件",
+  "verifying…": "验证中…",
+  "verify all ({n})": "全部验证（{n}）",
+  "no profiles to verify — configure a profile first, or use “pick a model”":
+    "没有可验证的档位文件 —— 先配一份，或者用「挑一个模型」",
+  "{n} tiers": "{n} 个档位",
+  tier: "档位",
+  "upstream/model": "上游/模型",
+  fingerprint: "指纹",
+  "name match": "名字匹配",
+  checked: "验证时间",
+  verify: "验证",
+  "ask the upstream for a fresh fingerprint (costs tokens)":
+    "向上游要一份新的指纹（会花 token）",
+  provider: "上游",
+  api: "接口",
+  "auto (from the provider protocol)": "自动（按上游的 protocol）",
+  challenges: "挑战数",
+  "get fingerprint": "获取指纹",
+  "no providers declared — add one in providers.json first":
+    "还没有声明任何上游 —— 先去 providers.json 加一家",
+  prediction: "指纹结论",
+  probability: "置信度",
+  decision: "裁决",
+  "used outputs": "有效样本",
+  family: "家族",
+  "reference data": "参考数据",
+  "top candidates": "候选前几名",
+  score: "分数",
+  match: "匹配",
+  "dated snapshot": "日期快照",
+  "same family": "同族",
+  "different model": "不同模型",
+  "no ranking": "没有排名",
+  error: "错误",
+  "just now": "刚刚",
+  "{n} min ago": "{n} 分钟前",
+  "{n} h ago": "{n} 小时前",
+  "{n} d ago": "{n} 天前",
+  "no fingerprint": "没有指纹",
+  "no fingerprint yet — verify to ask the upstream":
+    "还没有指纹 —— 点验证去问上游",
+  "fingerprint: {err}": "指纹：{err}",
+  "the fingerprint request failed": "指纹请求失败",
 };
 
 const dicts: Record<string, Record<string, string>> = { en, "zh-Hans": zhHans };

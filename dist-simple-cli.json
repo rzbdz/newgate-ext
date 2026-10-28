@@ -10,7 +10,8 @@
     "nothink",
     "claudecode",
     "opencode",
-    "opencodeomo"
+    "opencodeomo",
+    "verify"
   ],
   "disable": [
     "cli"

@@ -15,6 +15,7 @@
   import Table from "./kinds/Table.svelte";
   import Chains from "./kinds/Chains.svelte";
   import Overview from "./kinds/Overview.svelte";
+  import Fingerprints from "./kinds/Fingerprints.svelte";
 
   let {
     concept,
@@ -214,6 +215,11 @@
       <Overview data={shown} onAction={(a) => onAction?.(a)} {onOpenFile} />
     {:else if concept.kind === "series"}
       <Series data={shown} />
+    {:else if concept.kind === "fingerprints"}
+      <!-- 指纹那一屏：数据是这一节的全部素材（profile / provider / 上次结论），
+           现场再验一次走它自己的扩展端点（见 kinds/Fingerprints.svelte）。
+           它没有 Apply：这一屏不改任何配置，只回答「对面是谁」。 -->
+      <Fingerprints data={shown} />
     {:else if concept.kind === "log"}
       <LogView data={shown} />
     {:else}
