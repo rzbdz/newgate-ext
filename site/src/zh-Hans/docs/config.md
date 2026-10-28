@@ -65,7 +65,11 @@ profile 与路由：
 ```bash
 newgate profiles           # 有哪些 profile
 newgate tier normal        # 这一档此刻解析到哪条链、谁被跳过、为什么
+newgate agents             # 每个客户端的 profile、槽位绑定与配置文件
+newgate tui                # 逐客户端选 profile（左栏客户端，右栏档位）
+newgate lang zh-Hans       # 界面读哪份消息目录
 newgate --set-profile work  # 换全局默认
+newgate --set-profile work --agent claude  # 只给 claude 用 work
 newgate claude --profile=other  # 单次覆盖，不动全局
 newgate probe              # 主动验证 provider 连接、方言与已知怪癖
 newgate verify             # 指纹：上游真的在用 binding 写的那个模型吗（可跟 profile 名）

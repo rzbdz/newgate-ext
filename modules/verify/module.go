@@ -60,6 +60,13 @@ func New() modules.Component {
 					return err
 				}
 				releases = append(releases, rel)
+				// 「指纹」是这一版新增的词；帮助屏的术语表归它的拥有者报
+				// （与 config 报 profile、confighook 报 agent 同一条）。
+				rel, err = ui.RegisterGlossary(verifyGlossary{})
+				if err != nil {
+					return err
+				}
+				releases = append(releases, rel)
 			}
 			if up, ok := modules.Get(ctx, upgradeapi.Capability); ok {
 				rel, err := up.Register(upgradeapi.Action{

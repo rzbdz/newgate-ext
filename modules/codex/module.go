@@ -11,6 +11,7 @@ import (
 	modules "github.com/rzbdz/newgate/component"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 	viewapi "github.com/rzbdz/newgate/lib/view"
+	cliapi "github.com/rzbdz/newgate/modules/cli/extension"
 	configapi "github.com/rzbdz/newgate/modules/config"
 	confighookapi "github.com/rzbdz/newgate/modules/confighook"
 	gatewayapi "github.com/rzbdz/newgate/modules/gateway"
@@ -42,6 +43,8 @@ func New() modules.Component {
 			// 弱依赖——它不在时抬工具照常跑，只是没有开关可关（见 st-tools.go 的
 			// registerToolsLift）。
 			modules.Optional(pluginmanagerapi.Capability),
+			// 终端界面：在就把接管模式报进 status（见 status.go），不在就跳过。
+			modules.Optional(cliapi.Capability),
 		},
 		Provides: []modules.Provision{
 			modules.Provide(Capability, Client{AgentID: ID}),
@@ -104,6 +107,15 @@ func New() modules.Component {
 			// web 界面：登记「Codex 档位」那张卡（见 view.go）。
 			if v, ok := modules.Get(ctx, viewapi.Capability); ok {
 				release, err := registerView(v)
+				if err != nil {
+					return err
+				}
+				releases = append(releases, release)
+			}
+			// 终端：接管模式那一行（见 status.go）。模式在网页上能切，终端里
+			// 至少要能看见——这正是「新功能没有注入」的一处。
+			if ui, ok := modules.Get(ctx, cliapi.Capability); ok {
+				release, err := ui.RegisterStatus(status{})
 				if err != nil {
 					return err
 				}

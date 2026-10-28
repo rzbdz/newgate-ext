@@ -50,6 +50,18 @@ newgate tier normal
 第 1 条是**单次覆盖**，不动任何全局状态。它编码在请求路径里，所以两个客户端同时
 跑着，永远不会拿错对方的选择。
 
+看每个客户端此刻实际用哪一份，以及它下面的槽位落到哪些上游：
+
+```bash
+newgate status        # 「客户端」一块：谁跟随缺省、谁单独定过
+newgate agents        # 每个客户端的槽位、当前绑定，以及它自己的配置文件
+newgate tui           # 左栏选客户端，右栏选 profile；d 回到跟随缺省
+```
+
+「单独定过」和「跟随缺省」是两件事，哪怕此刻解析出来是同一个 profile：前者不会
+跟着全局缺省变。`newgate --set-profile work --agent claude` 写下的是前者；
+`newgate tui` 里选「跟随全局缺省」则是把那条记录删掉。
+
 ## 改一份 profile
 
 ```bash

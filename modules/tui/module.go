@@ -11,8 +11,10 @@
 // # 它依赖什么
 //
 // 只依赖 config/store 与 gateway/controlplane 两个**共享叶子**（前者读写 profile、
-// 后者写完之后通知守护进程重读）。**不依赖 cli**：它只是把一个命令注入进去，而那
-// 是可选的（没装任何 ui 时这个模块什么也不做，自己的功能不受影响）。
+// 后者写完之后通知守护进程重读），外加 confighook 的 **AgentCatalog**（有哪些
+// 客户端可改；可选的——骨架装配里没有它时这一屏只剩全局缺省，功能不残缺）。
+// **不依赖 cli**：它只是把一个命令注入进去，而那同样是可选的（没装任何 ui 时
+// 这个模块什么也不做，自己的功能不受影响）。
 //
 // 为什么可以直接用 store：它是被 gateway / runtime / config 共同使用的叶子包（与
 // config/paths 同级），不是「某个模块的内部结构」——所以这条 import 不是依赖边，
@@ -31,6 +33,7 @@ import (
 	modules "github.com/rzbdz/newgate/component"
 	"github.com/rzbdz/newgate/lib/i18n"
 	cliapi "github.com/rzbdz/newgate/modules/cli/extension"
+	agentapi "github.com/rzbdz/newgate/modules/confighook"
 )
 
 // New 声明终端界面模块。
@@ -45,13 +48,16 @@ func New() modules.Component {
 			// ui 是**弱依赖**（见 component.Optional）：装着界面就把 `newgate tui`
 			// 挂上去，没装就跳过——本模块没有别的职责，于是什么也不做。
 			modules.Optional(cliapi.Capability),
+			// 客户端目录：有它才有「改哪一家」这一栏；没有就只改全局缺省。
+			modules.Optional(agentapi.AgentCatalogCapability),
 		},
 		Start: func(_ context.Context, ctx modules.Context) error {
 			ui, ok := modules.Get(ctx, cliapi.Capability)
 			if !ok {
 				return nil
 			}
-			release, err := ui.RegisterCommand(tuiCommand{})
+			catalog, _ := modules.Get(ctx, agentapi.AgentCatalogCapability)
+			release, err := ui.RegisterCommand(tuiCommand{catalog: catalog})
 			if err != nil {
 				return err
 			}
@@ -63,7 +69,7 @@ func New() modules.Component {
 }
 
 // tuiCommand 是 `newgate tui`（别名 menuconfig）。
-type tuiCommand struct{}
+type tuiCommand struct{ catalog agentapi.AgentCatalog }
 
 var (
 	_ cliapi.Command    = tuiCommand{}
@@ -84,12 +90,12 @@ func (tuiCommand) Help() cliapi.HelpLine {
 		Section: cliapi.SectionMaintenance,
 		Rank:    50,
 		Usage:   "tui",
-		Summary: i18n.T("menuconfig-style UI", nil),
+		Summary: i18n.T("menuconfig-style UI: the profile each client uses, and the bindings behind it", nil),
 	}
 }
 
-func (tuiCommand) Run(host cliapi.Host, _ []string) int {
-	if err := Run(); err != nil {
+func (c tuiCommand) Run(host cliapi.Host, _ []string) int {
+	if err := Run(c.catalog); err != nil {
 		return host.Die(70, fmt.Sprintf("tui: %v", err))
 	}
 	return 0

@@ -43,8 +43,8 @@ func (verifyCommand) Unstyled(args []string) bool {
 func (verifyCommand) Help() cliapi.HelpLine {
 	return cliapi.HelpLine{
 		Section: cliapi.SectionObserve, Rank: 41,
-		Usage:   "verify [profile] [--provider <name> --model <model>] [--api auto|responses|chat_completions|messages] [--count 1-3] [--json]",
-		Summary: i18n.T("fingerprint each binding and report which model the upstream really serves", nil),
+		Usage:   "verify [profile] [flags]",
+		Summary: i18n.T("fingerprint each binding; one model with --provider/--model (also --api, --count, --json)", nil),
 	}
 }
 

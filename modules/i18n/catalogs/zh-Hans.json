@@ -44,6 +44,10 @@
       "reviewed": true,
       "text": "* 有覆盖（newgate omo use 写入），优先级最高"
     },
+    "* on the left marks a client set for that client only; * on the right marks the profile in effect": {
+      "reviewed": true,
+      "text": "左边的 * 表示这个客户端单独设置过档位；右边的 * 表示当前生效的档位"
+    },
     "+ model": {
       "reviewed": true,
       "text": "+ 模型"
@@ -87,6 +91,10 @@
     "Anthropic-dialect requests no longer get a thinking block prepended to content[], which triggers the same \"content[].thinking must be passed back\" 400": {
       "reviewed": true,
       "text": "Anthropic 方言下不再给 content[] 开头补 thinking 块，同样触发「content[].thinking 必须回传」400"
+    },
+    "Applies to the next request; takeover rewrites the client's own config with newgate on <agent>.": {
+      "reviewed": true,
+      "text": "下一次请求生效；接管要等 newgate on <agent> 才会重写客户端自己的配置。"
     },
     "Auto": {
       "reviewed": true,
@@ -220,6 +228,10 @@
       "reviewed": true,
       "text": "接管 oh-my-openagent 时自动生成。default 是这个键在 profile 里没写时的缺省归属；想让某个槽位换档位，改 overrides（支持 \"@别的键\" / \"档位名\" / \"provider/模型\"），或在 profile 里直接写这个键。"
     },
+    "Global default": {
+      "reviewed": true,
+      "text": "全局缺省"
+    },
     "Home": {
       "reviewed": true,
       "text": "主页"
@@ -235,6 +247,10 @@
     "Nothink": {
       "reviewed": true,
       "text": "不思考"
+    },
+    "Profiles": {
+      "reviewed": true,
+      "text": "档位"
     },
     "Remote": {
       "machine": true,
@@ -379,6 +395,10 @@
     "a row has no model name — nothing would ever match it": {
       "reviewed": true,
       "text": "有一行没写模型名——那一行谁也匹配不上"
+    },
+    "a statistical identity computed from hundreds of integers the upstream generates; compared against the reference bank to see which model really answers": {
+      "reviewed": true,
+      "text": "由上游生成的数百个整数算出的统计身份；和参考库比对，判断实际应答的是哪个模型"
     },
     "a status provider cannot be nil": {
       "reviewed": true,
@@ -588,6 +608,10 @@
       "reviewed": true,
       "text": "连不上 {url}: {err}"
     },
+    "cannot read profile {name}: {err}": {
+      "reviewed": true,
+      "text": "读不了档位 {name}：{err}"
+    },
     "cannot read providers.json: {err}": {
       "reviewed": true,
       "text": "读不了 providers.json：{err}"
@@ -603,6 +627,10 @@
     "cannot read the request body: {err}": {
       "reviewed": true,
       "text": "读不了请求体：{err}"
+    },
+    "cannot read this profile": {
+      "reviewed": true,
+      "text": "读不了这份档位"
     },
     "cannot read {path}: {err}": {
       "machine": true,
@@ -848,9 +876,9 @@
       "reviewed": true,
       "text": "指纹"
     },
-    "fingerprint each binding and report which model the upstream really serves": {
+    "fingerprint each binding; one model with --provider/--model (also --api, --count, --json)": {
       "reviewed": true,
-      "text": "给每条 binding 取指纹，报告上游实际在服务哪个模型"
+      "text": "给每条 binding 取指纹；只想验一个模型时用 --provider/--model（还有 --api、--count、--json）"
     },
     "fingerprint reference data is already up to date ({build})": {
       "reviewed": true,
@@ -868,9 +896,17 @@
       "reviewed": true,
       "text": "指纹是证据，不是证明：固定请求参数，重要的时候多验几轮"
     },
+    "follow the global default ({profile})": {
+      "reviewed": true,
+      "text": "跟随全局缺省（{profile}）"
+    },
     "follow the system": {
       "reviewed": true,
       "text": "跟随系统"
+    },
+    "follows the global default": {
+      "reviewed": true,
+      "text": "跟随全局缺省"
     },
     "forwarding": {
       "machine": true,
@@ -891,6 +927,10 @@
     "give either a profile or --provider/--model, not both": {
       "reviewed": true,
       "text": "档位文件和 --provider/--model 只能给一边"
+    },
+    "global default is now {profile}": {
+      "reviewed": true,
+      "text": "全局缺省已改成 {profile}"
     },
     "glossary": {
       "reviewed": true,
@@ -1016,9 +1056,9 @@
       "reviewed": true,
       "text": "含义"
     },
-    "menuconfig-style UI": {
+    "menuconfig-style UI: the profile each client uses, and the bindings behind it": {
       "reviewed": true,
-      "text": "menuconfig 风格界面"
+      "text": "menuconfig 风格界面：每个客户端用哪个档位，以及它背后的绑定"
     },
     "messages left untouched ({err})": {
       "reviewed": true,
@@ -1176,10 +1216,6 @@
       "machine": true,
       "text": "尚未配置任何一项"
     },
-    "not bound": {
-      "reviewed": true,
-      "text": "未绑定"
-    },
     "not defined": {
       "reviewed": true,
       "text": "没有定义"
@@ -1187,6 +1223,10 @@
     "not listening: {err}": {
       "machine": true,
       "text": "未在监听：{err}"
+    },
+    "not taken over": {
+      "reviewed": true,
+      "text": "未接管"
     },
     "note: {msg}": {
       "reviewed": true,
@@ -1219,6 +1259,10 @@
     "off — the Bash classifier is asked as usual": {
       "reviewed": true,
       "text": "关 — Bash 分类器照常去问上游"
+    },
+    "oh-my-openagent slots: what each one uses, and how to override it": {
+      "reviewed": true,
+      "text": "oh-my-openagent 槽位：每一格走什么，以及怎么覆盖"
     },
     "oh-my-openagent's intra-agent slots": {
       "reviewed": true,
@@ -1304,10 +1348,6 @@
       "reviewed": true,
       "text": "档位文件"
     },
-    "profile selection": {
-      "reviewed": true,
-      "text": "profile 选择"
-    },
     "profile {name} extends {extends}, but this configuration has no such profile": {
       "reviewed": true,
       "text": "档位 {name} extends {extends}，但这份配置里没有那个档位"
@@ -1315,6 +1355,10 @@
     "profile {profiles} references provider {provider}, but the provider table has no such entry": {
       "reviewed": true,
       "text": "档位 {profiles} 引用了 provider {provider}，但 provider 表里没有它"
+    },
+    "profiles and clients": {
+      "reviewed": true,
+      "text": "档位与客户端"
     },
     "provider / model must both be filled in": {
       "reviewed": true,
@@ -1480,6 +1524,10 @@
       "reviewed": true,
       "text": "设为自动"
     },
+    "set for this client only": {
+      "reviewed": true,
+      "text": "仅此客户端单独设置"
+    },
     "short-circuit the Bash classifier: on=60s / forever=permanent / off=disabled": {
       "reviewed": true,
       "text": "短路 Bash 分类器：on=60s / forever=永久 / off=关"
@@ -1499,6 +1547,10 @@
     "slots are discovered by the config extension module": {
       "reviewed": true,
       "text": "槽位由配置扩展模块发现"
+    },
+    "slots are discovered from the config file at takeover": {
+      "reviewed": true,
+      "text": "槽位在接管时从配置文件里发现"
     },
     "some targets were ignored: {list}": {
       "machine": true,
@@ -1556,10 +1608,6 @@
       "reviewed": true,
       "text": "切换：newgate omo mode current|suggested"
     },
-    "switched to {name}": {
-      "reviewed": true,
-      "text": "已切到 {name}"
-    },
     "sync failed (attempt {n}, retrying in {delay}): {err}": {
       "reviewed": true,
       "text": "同步失败（第 {n} 次，{delay} 后重试）: {err}"
@@ -1572,6 +1620,10 @@
       "reviewed": true,
       "text": "尾部形状未改动（{err}）"
     },
+    "taken over": {
+      "reviewed": true,
+      "text": "已接管"
+    },
     "takeover mode": {
       "reviewed": true,
       "text": "接管模式"
@@ -1579,6 +1631,10 @@
     "takeover mode: one tier is written into config.toml": {
       "reviewed": true,
       "text": "接管模式：把档位名写进 config.toml"
+    },
+    "takeover · config.toml gets the tier name": {
+      "reviewed": true,
+      "text": "接管 · 档位名写进 config.toml"
     },
     "takes effect on the next request": {
       "reviewed": true,
@@ -1651,6 +1707,10 @@
     "the classifier settings in this request are not readable: {err}": {
       "reviewed": true,
       "text": "这个请求里的分类器设置读不出来：{err}"
+    },
+    "the client uses whatever the global default is": {
+      "reviewed": true,
+      "text": "这个客户端跟随全局缺省"
     },
     "the configshare bookkeeping file is corrupt; starting over from the initial state: {err}": {
       "reviewed": true,
@@ -1735,6 +1795,14 @@
     "the first run downloads about 3.6 MB of reference data and caches it under {dir}": {
       "reviewed": true,
       "text": "第一次运行会下载约 3.6 MB 参考数据，并缓存在 {dir}"
+    },
+    "the global default": {
+      "reviewed": true,
+      "text": "全局缺省"
+    },
+    "the global default has no parent to follow": {
+      "reviewed": true,
+      "text": "全局缺省没有上一级可跟随"
     },
     "the global no-reasoning switch (newgate nothink on|forever) is on: every Anthropic-dialect request goes upstream with thinking disabled, adaptive/enabled included\nbest effort — a model that always thinks gets enabled + reasoning_effort=low instead of a 400, and OpenAI-dialect requests (no such field to write) are left alone\nnewgate nothink off ends it; st off nothink takes this plugin out without touching the setting": {
       "reviewed": true,
@@ -1936,6 +2004,10 @@
       "reviewed": true,
       "text": "这份产物没有共享端口，界面监听自己的端口（网关在另一个端口上）"
     },
+    "this client is no longer in the catalog": {
+      "reviewed": true,
+      "text": "这个客户端已经不在目录里了"
+    },
     "this configuration declares schema_version={got}, but this binary only understands up to {max}: the meaning of fields may have changed, and misreading them raises no error (it routes to the wrong upstream or reports that a provider has no api_key). The previous configuration is kept in service. Upgrading newgate catches up automatically.": {
       "reviewed": true,
       "text": "这份配置的 schema_version={got}，本二进制只认到 {max}：字段含义可能已经变了，误读不会报错（会路由到错的上游或报 provider 没有 api_key）。已保留上一份配置继续服务。升级 newgate 后会自动跟上。"
@@ -2031,6 +2103,10 @@
     "unavailable": {
       "reviewed": true,
       "text": "不可用"
+    },
+    "unbound": {
+      "reviewed": true,
+      "text": "未绑定"
     },
     "unknown command \"{cmd}\" (see the list with newgate status)": {
       "reviewed": true,
@@ -2188,6 +2264,18 @@
       "reviewed": true,
       "text": "profile 里直接写键名同样有效：omo-sisyphus=@normal, terra/medium"
     },
+    "{agent} already follows the global default": {
+      "reviewed": true,
+      "text": "{agent} 已经在跟随全局缺省"
+    },
+    "{agent} follows the global default again": {
+      "reviewed": true,
+      "text": "{agent} 已改回跟随全局缺省"
+    },
+    "{agent} now uses {profile}": {
+      "reviewed": true,
+      "text": "{agent} 现在使用 {profile}"
+    },
     "{binding} (override)": {
       "reviewed": true,
       "text": "{binding}（override 指定）"
@@ -2344,6 +2432,10 @@
       "reviewed": true,
       "text": "{n} 条匹配 · {dated} 条日期快照 · {family} 条同族 · {mismatch} 条不同模型 · {unknown} 条没有排名 · {bad} 条失败"
     },
+    "{n} model name maps back to a tier": {
+      "reviewed": true,
+      "text": "{n} 个模型名会反解回档位"
+    },
     "{n} not answering ({list})": {
       "other": "{n} 条不通（{list}）",
       "reviewed": true
@@ -2464,9 +2556,9 @@
       "reviewed": true,
       "text": "{value} 既不是档位（heavy/normal/mid/light/vision）、也不是已注册的动态角色键、也不是 provider/模型"
     },
-    "↑/↓ or j/k to move · Enter to apply · q to quit": {
+    "↑/↓ or j/k move · ←/→ or Tab switch pane · Enter apply · d follow the default · r reload · q quit": {
       "reviewed": true,
-      "text": "↑/↓ 或 j/k 移动 · Enter 应用 · q 退出"
+      "text": "↑/↓ 或 j/k 移动 · ←/→ 或 Tab 切换栏 · Enter 应用 · d 跟随缺省 · r 重载 · q 退出"
     }
   },
   "meta": {

@@ -18,9 +18,20 @@ import (
 
 type omoCommand struct{}
 
-var _ cliapi.Command = (*omoCommand)(nil)
+var (
+	_ cliapi.Command    = (*omoCommand)(nil)
+	_ cliapi.Documented = (*omoCommand)(nil)
+)
 
 func (omoCommand) Names() []string { return []string{"omo", "slots"} }
+
+func (omoCommand) Help() cliapi.HelpLine {
+	return cliapi.HelpLine{
+		Section: cliapi.SectionRouting, Rank: 40,
+		Usage:   "omo [ls|use|unset|mode|explain]",
+		Summary: i18n.T("oh-my-openagent slots: what each one uses, and how to override it", nil),
+	}
+}
 
 func (omoCommand) Run(host cliapi.Host, args []string) int {
 	return cmdOmo(host, args)
