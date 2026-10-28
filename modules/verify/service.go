@@ -68,6 +68,9 @@ func (s *service) State() State {
 
 	st.Build, st.Loaded = s.det.Loaded()
 	st.DataCached = s.cache.dataReady()
+	if at, ok := s.cache.dataCheckedAt(); ok {
+		st.DataCheckedAt = &at
+	}
 	st.Error = strings.Join(problems, " · ")
 	return st
 }
@@ -194,6 +197,14 @@ func resolveAPI(api string) (string, error) {
 		return "", i18n.E("unknown fingerprint api {api} (use auto, responses, chat_completions or messages)",
 			i18n.A{"api": api})
 	}
+}
+
+// Upgrade 是挂到 `newgate upgrade` 上的动作：强制刷新参考库。
+//
+// 它只碰**动态数据**（缓存里的参考库），不碰二进制——第一版 upgrade 的边界见
+// modules/upgrade 的包注释。
+func (s *service) Upgrade(ctx context.Context) (string, error) {
+	return s.det.Refresh(ctx)
 }
 
 // cacheDoc 是「只看缓存」那条查询的回答（模型下拉用）。

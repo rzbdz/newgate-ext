@@ -148,6 +148,9 @@ type State struct {
 	// DataCached 说的是参考库的缓存文件在不在这台机器上。它解释「第一次验证
 	// 会下载」——文件已经在了，就只是解析（几十毫秒），不必吓人。
 	DataCached bool `json:"data_cached"`
+	// DataCheckedAt 是参考库缓存最后一次被下载/检查的时间（缓存文件的 mtime）。
+	// 界面用它说「尺子有多旧」；nil = 没有缓存。
+	DataCheckedAt *time.Time `json:"data_checked_at,omitempty"`
 	// Error 是读配置/缓存时的整体错误。页面照常打开（自由验证那半仍然可用），
 	// 但要把原因写在面板上。
 	Error string `json:"error,omitempty"`

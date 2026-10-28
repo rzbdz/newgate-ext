@@ -23,11 +23,11 @@ dump/                请求级取证（开了 debug 才有）
 ```jsonc
 {
   "providers": {
-    "ark": {
+    "vendor": {
       "protocol": "anthropic",          // anthropic | openai
       "base_url": "https://…",
       "api_key": "sk-…",                // 或者用下面的 api_key_env
-      "api_key_env": "NEWGATE_KEY_ARK"  // 密钥不落盘
+      "api_key_env": "NEWGATE_KEY_VENDOR"  // 密钥不落盘
     }
   }
 }
@@ -41,12 +41,12 @@ dump/                请求级取证（开了 debug 才有）
 
 ```text
 description = 日常主力
-normal = ark/deepseek-v3, backup/gpt-5.6
-light  = fast/glm-air
+normal = vendor/model-a, backup/model-b
+light  = cheap/model-c
 ```
 
 没写出来的档位向上承接（`normal` 缺席由 `mid` 接）。`.json` 后缀也认，形状
-`newgate profile kv ark` 摊出来的那份就是。
+`newgate profile kv work` 摊出来的那份就是。
 
 ## 命令速查
 
@@ -65,10 +65,11 @@ profile 与路由：
 ```bash
 newgate profiles           # 有哪些 profile
 newgate tier normal        # 这一档此刻解析到哪条链、谁被跳过、为什么
-newgate --set-profile ark  # 换全局默认
-newgate claude --profile=ds  # 单次覆盖，不动全局
+newgate --set-profile work  # 换全局默认
+newgate claude --profile=other  # 单次覆盖，不动全局
 newgate probe              # 主动验证 provider 连接、方言与已知怪癖
 newgate verify             # 指纹：上游真的在用 binding 写的那个模型吗（可跟 profile 名）
+newgate upgrade            # 跑所有模块登记的动态数据/配置升级动作
 ```
 
 接管：
@@ -82,11 +83,11 @@ newgate off claude
 
 ```bash
 newgate tunnel                          # = ls：配了哪些目标、两条路的地址
-newgate tunnel add snode1 --host 10.0.50.11 --user me --remote-port 8899 --local-port 9401
-newgate tunnel rm snode1
-newgate tunnel up snode1                # 常驻（默认是按需拨号、空闲释放）
-newgate tunnel down snode1
-newgate tunnel test snode1              # 真拨一次，说清卡在哪一步
+newgate tunnel add remote --host host.example --user me --remote-port 8899 --local-port 9401
+newgate tunnel rm remote
+newgate tunnel up remote                # 常驻（默认是按需拨号、空闲释放）
+newgate tunnel down remote
+newgate tunnel test remote              # 真拨一次，说清卡在哪一步
 ```
 
 观测：
@@ -108,7 +109,7 @@ newgate web        # 打出网页面板的地址
 ```bash
 newgate ask "把这段话译成英文：……"
 echo "解释一下这段 diff" | newgate ask --tier light
-newgate ask --profile ds --system "只回 JSON" "……"
+newgate ask --profile other --system "只回 JSON" "……"
 ```
 
 `ask` 走**正在跑的那个代理**发一句问题，只把正文打出来。它自己不起代理（一次提问

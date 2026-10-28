@@ -34,7 +34,7 @@ state.json          当前 profile、接管状态
 ```jsonc
 {
   "providers": {
-    "ark": { "protocol": "anthropic", "base_url": "https://…", "api_key": "sk-…" }
+    "vendor": { "protocol": "anthropic", "base_url": "https://…", "api_key": "sk-…" }
   }
 }
 ```

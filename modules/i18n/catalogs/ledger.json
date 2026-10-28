@@ -82,6 +82,7 @@
     "DeepSeek thinking mode wants reasoning passed back verbatim, but the client strips it → 400\nso we put it back (the original the client carries → thinkcache; **no original means skip it, never invent one**); only the Claude Code path turns thinking off outright (it strips the blocks, so thinking would be spent for nothing); a foreign unclosed tool loop is first lossily rebuilt from the visible tool results, then DeepSeek takes over": {},
     "DeepSeek upstream quirk patches": {},
     "DeepSeek's /responses accepts `custom` tools only for apply_patch and answers 400 for every other one (the message inside a namespace is a different one); with the degrade off a Codex request carrying any other custom tool is rejected outright": {},
+    "Fingerprint reference data": {},
     "Fingerprints": {},
     "GCM is unusable: {err}": {},
     "GLM models treat a missing thinking field as thinking on (Anthropic semantics say off) → requests that never asked to think get dragged into ten-plus seconds\non the Claude Code path an explicit disabled is filled in when it is absent (present is left alone); OpenAI-dialect clients (opencode) have no such field to write, so they are not touched": {},
@@ -154,6 +155,7 @@
     "a true-black theme for the web interface": {},
     "a white theme for the web interface": {},
     "accepted but not rendered": {},
+    "action": {},
     "add a target": {},
     "adopt them all": {},
     "all profiles": {},
@@ -239,6 +241,11 @@
     },
     "cannot derive the auth token: {err}": {},
     "cannot derive the encryption key: {err}": {},
+    "cannot download the fingerprint reference data from {sources}": {
+      "args": [
+        "sources"
+      ]
+    },
     "cannot fix the permissions of {path}: {err}": {
       "args": [
         "path"
@@ -468,6 +475,7 @@
     "different model": {},
     "disabled": {},
     "disconnect": {},
+    "download the latest model fingerprint reference bank": {},
     "dump material": {},
     "e.g. gpt-5.6-luna": {},
     "each key follows the recommendation, derived from model build and variant strength": {},
@@ -493,6 +501,16 @@
     "field": {},
     "fingerprint": {},
     "fingerprint each binding and report which model the upstream really serves": {},
+    "fingerprint reference data is already up to date ({build})": {
+      "args": [
+        "build"
+      ]
+    },
+    "fingerprint reference data is now {build}": {
+      "args": [
+        "build"
+      ]
+    },
     "fingerprint request failed: {err}": {
       "args": [
         "err"
@@ -651,6 +669,7 @@
         "dir"
       ]
     },
+    "no module registered an upgrade action in this build": {},
     "no omo slot registry; run newgate on opencode first": {},
     "no profiles yet; run `newgate init` first": {},
     "no ranking": {},
@@ -815,11 +834,44 @@
         "path"
       ]
     },
+    "read the refreshed fingerprint reference data: {err}": {
+      "args": [
+        "err"
+      ]
+    },
     "recorded the host key of {host} in {path} ({fp})": {
       "args": [
         "fp",
         "host",
         "path"
+      ]
+    },
+    "reference data checksum is {got}, bundle says {want}": {
+      "args": [
+        "got",
+        "want"
+      ]
+    },
+    "reference data does not list {file}": {
+      "args": [
+        "file"
+      ]
+    },
+    "reference data is read from the local directory {dir}; nothing to refresh": {
+      "args": [
+        "dir"
+      ]
+    },
+    "reference data schema {schema}/{detector_schema} is not supported": {
+      "args": [
+        "detector_schema",
+        "schema"
+      ]
+    },
+    "refresh the dynamic data/configuration modules own (not the binary)": {},
+    "refresh the fingerprint reference data: {err}": {
+      "args": [
+        "err"
       ]
     },
     "remote": {},
@@ -1005,6 +1057,11 @@
     "the fable tier (the most expensive); also the marker used to spot a third-party model family falling back automatically": {},
     "the file does not exist": {},
     "the fingerprint reference data could not be loaded": {},
+    "the fingerprint reference data server answered HTTP {status}": {
+      "args": [
+        "status"
+      ]
+    },
     "the fingerprint request is not valid JSON: {err}": {
       "args": [
         "err"
@@ -1207,6 +1264,7 @@
         "base"
       ]
     },
+    "this refreshes module-owned dynamic data/configuration only; the newgate binary is not replaced (git-remote self-upgrade is not supported yet)": {},
     "this route only forwards the remote interface: {path} points outside it": {
       "args": [
         "path"
@@ -1268,7 +1326,40 @@
         "verb"
       ]
     },
+    "unknown upgrade action {id} (available: {names})": {
+      "args": [
+        "id",
+        "names"
+      ]
+    },
     "unusable": {},
+    "upgrade finished: {n} succeeded": {
+      "args": [
+        "n"
+      ]
+    },
+    "upgrade finished: {ok} succeeded, {failed} failed": {
+      "args": [
+        "failed",
+        "ok"
+      ]
+    },
+    "upgrade the dynamic data and configuration modules own (the binary is not replaced)": {},
+    "upgrade: action {id} is already registered by another module": {
+      "args": [
+        "id"
+      ]
+    },
+    "upgrade: action {id} must provide Title, Describe and Run": {
+      "args": [
+        "id"
+      ]
+    },
+    "upgrade: {id} is not a usable action id — use lowercase letters, digits, '.', '_' and '-'": {
+      "args": [
+        "id"
+      ]
+    },
     "upstream/model": {},
     "usage: newgate tunnel add <id> --host <host> [--user u] [--port 22] [--remote-port 8899] [--local-port 0] [--identity path] [--persistent] [--host-key strict|accept-new]": {},
     "usage: newgate tunnel rm <id>": {},
@@ -1330,6 +1421,7 @@
         "version"
       ]
     },
+    "what it refreshes": {},
     "when the user explicitly runs newgate naked on/forever, Claude Code's classifier requests (every gate: Bash, sandbox network, workflow, handoff) are short-circuited into an approval without a single LLM call — no more 15-30s classifier latency and no more sessions wedged by a wrong block\non = a 60-second self-limiting window; forever = always on (every request is logged, status warns)\nonly the classifier family is touched (non-streaming + its prompt marker or stop_sequences); compact summaries and title generation still get a real answer\nnewgate naked off / st off both end it": {},
     "where the architecture diagram is served (dev builds)": {},
     "where the browser interface is served, and how to reach it": {},
@@ -1515,6 +1607,12 @@
         "note",
         "why"
       ]
+    },
+    "{n} action": {
+      "args": [
+        "n"
+      ],
+      "other": "{n} actions"
     },
     "{n} candidate did not make it: {reasons}": {
       "args": [

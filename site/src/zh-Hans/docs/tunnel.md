@@ -7,10 +7,10 @@
 一个模块（`modules/ssh-tunnel`），两条路，同时在：
 
 ```text
-newgate tunnel add snode1 --host 10.0.50.11 --user me --remote-port 8899 --local-port 9401
+newgate tunnel add remote --host host.example --user me --remote-port 8899 --local-port 9401
 
 http://127.0.0.1:9401/ui/                  转发端口 —— 一个字节都不动
-http://127.0.0.1:8899/ui/remote/snode1/    共享端口上的 route —— 路径被改写
+http://127.0.0.1:8899/ui/remote/remote/    共享端口上的 route —— 路径被改写
 ```
 
 ## 两条路为什么都在

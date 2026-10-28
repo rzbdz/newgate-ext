@@ -15,6 +15,7 @@
 | 让 Claude Code / Codex / OpenCode 走这条网关 | [接管客户端](/docs/clients/) |
 | 在 codex 里换模型（而不是换配置） | [Codex 模式](/docs/codex/) |
 | 配置文件的形状、常用命令 | [配置与命令](/docs/config/) |
+| 确认上游实际在服务哪个模型、刷新动态数据 | [指纹与升级](/docs/verify/) |
 | 让一台只开 SSH 的机器上的界面出现在本机 | [穿过 SSH 看远端界面](/docs/tunnel/) |
 | 出问题了 | [排障](/docs/troubleshooting/) |
 | 写一个自己的模块 | [写一个模块](/docs/modules/) |
@@ -23,7 +24,7 @@
 ## 这一页在这一份装配里意味着什么
 
 这个站点的每一页都在讲**发行版 `newgate-ext` 的默认规格**（`dist.json`）：
-20 个模块，Claude Code / Codex / OpenCode 三家客户端，TUI + 浏览器两份界面，
+21 个模块，Claude Code / Codex / OpenCode 三家客户端，TUI + 浏览器两份界面，
 外加三套网页皮肤（黑 / 白 / Anthropic），以及一条穿过 SSH 看远端界面的通道。
 
 换成别的规格书（`dist-simple-cli.json`、`dist-dashboard.json`、`dist-hello.json`），

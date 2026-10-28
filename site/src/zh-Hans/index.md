@@ -11,7 +11,7 @@
 一条命令：
 
 ```bash
-newgate --set-profile ark
+newgate --set-profile work
 ```
 
 ## <small>03</small> 该全局就全局，小活可以临时来
@@ -19,7 +19,7 @@ newgate --set-profile ark
 档位配一次，所有客户端跟着走。某个小任务想换个模型，就在那一次调用上换：
 
 ```bash
-newgate claude --profile=kimi
+newgate claude --profile=cheap
 ```
 
 什么都不改全局的。这个选择走在**请求路径**里，所以同时跑着的两个客户端永远不会
@@ -71,6 +71,25 @@ DeepSeek 的 reasoning 回传与尾部形状、GLM 的思维链回传、Claude C
 调用——每个都写了它存在是为了防住哪个故障，可以在运行期开关。客户端 × 模型的桥也是
 模块（Claude Code × DeepSeek、Codex × DeepSeek、OpenCode 里 Oh My OpenAgent 的
 槽位）。读一个，换掉它，或者给一个我们从没听说过的上游写补丁。
+
+## <small>10</small> 先探活，再相信它
+
+`newgate probe` 对每条候选真打一发最小请求：通不通、说哪种方言、延迟多少，还顺手
+记下这家上游的怪癖（哪些请求形状会 400）。探明的结论会落盘，下一轮不再重复花
+token；网页的健康表与命令行看的是同一份账本。
+
+## <small>11</small> 指纹：上游真的是你以为的那个模型吗
+
+`newgate verify` 不问模型「你是谁」——它当然会照着你写的名字回。它让模型吐几百个
+1–355 的整数，再拿这些数字和模型指纹参考库比一遍，报出参考库认为的模型；binding
+写的名字对不上时给 warning，同族也算 warning。网页上多了一页**指纹**：按档位文件筛、
+每条 binding 一个「验证」按钮，还能直接挑一家上游、一个模型现场取指纹；配置页的
+模型下拉里也会带出上一次验到的结论。
+
+参考库是动态数据：默认每 2 小时检查一次新版本，也可以 `newgate upgrade` 手动刷新
+（`upgrade` 是模块登记动态数据升级动作的入口；第一版只做数据/配置，不换二进制）。
+指纹由 [lm-detector](https://github.com/Ikaleio/lm-detector) 提供（MIT），参考数据
+来自 [lm.ikale.io](https://lm.ikale.io/docs/sdk)。谢谢这个项目。
 
 ### 连 `gateway` 和 `cli` 都是模块
 

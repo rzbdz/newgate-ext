@@ -228,9 +228,9 @@ func outcomeOf(got map[targets.Target]verifyOutcome, provider, model string) (*E
 // profileArg 取第一个**真正的**位置参数。
 //
 // 不能直接用 cliapi.Positional：它只认「以 - 开头的是 flag」，不知道
-// `--provider smt-gemini` 里的 `smt-gemini` 是那个 flag 的**值**。2026-10-28
-// 实测：`verify --provider smt-gemini --model gemini-4-argon` 被解析成「profile
-// 是 smt-gemini」，于是报「档位文件和 --provider/--model 只能给一边」。
+// `--provider vendor-model` 里的 `vendor-model` 是那个 flag 的**值**。2026-10-28
+// 实测：`verify --provider vendor-model --model some-model` 被解析成「profile
+// 是 vendor-model」，于是报「档位文件和 --provider/--model 只能给一边」。
 // 同一条也会让 `verify --count 1` 去验证一份叫 `1` 的 profile。
 //
 // 这里只跳过本命令认识的、带值的 flag；`--json` 这类布尔 flag 由「以 - 开头」

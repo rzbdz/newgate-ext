@@ -9,7 +9,7 @@
 [![CI](https://github.com/rzbdz/newgate-ext/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/rzbdz/newgate-ext/actions/workflows/ci.yml)
 ![release](https://github.com/rzbdz/newgate-ext/actions/workflows/release.yml/badge.svg)
 ![Go](https://img.shields.io/badge/go-1.27-00ADD8?logo=go&logoColor=white)
-![dependencies](https://img.shields.io/badge/third--party_deps-0-brightgreen)
+![dependencies](https://img.shields.io/badge/third--party_deps-4-blue)
 
 <sub><a href="README.md">English</a> · <b>中文</b></sub>
 
@@ -21,17 +21,30 @@
 时会话照跑；来了新模型、或者某个上游又冒出新怪癖时，适配它就是一个小模块——在你自己
 fork 的仓库里，按你自己的节奏。
 
+## 新增：自带探活与指纹
+
+**探活是一条正式命令。** `newgate probe` 对每条候选真打一发最小请求，报出连通性、
+方言能力，以及它顺手学到的上游怪癖——健康表与命令行读的是同一本账。
+
+**指纹告诉你上游实际在服务谁。** `newgate verify` 让模型吐几百个整数，再拿它们和
+模型参考库比一遍；它报出指纹指向的模型，binding 写的名字对不上时给出警告。结论会缓存，
+网页的模型下拉和专门的**指纹**页都能直接用：按档位文件批量验，或者挑一家上游、一个
+模型现场取指纹。`newgate upgrade` 可以手动刷新参考数据，默认每两小时自动检查一次。
+
+指纹由 [lm-detector](https://github.com/Ikaleio/lm-detector) 提供（MIT），参考数据
+来自 [lm.ikale.io](https://lm.ikale.io/docs/sdk)。谢谢这个项目。
+
 **接管你的 CLI，而 CLI 毫无察觉。**
 PATH shim 加上就地改写客户端自己的配置——env 静默注入，动手前先做逐字节备份。装一次，
 之后你再也不用改配置文件，也不用重开会话。
 
 **换哪个 API 应答是一条命令，不是一次迁移。**
-`newgate --set-profile ark`——下一个请求就走新链。客户端照跑，配置不动，老上游留着
+`newgate --set-profile work`——下一个请求就走新链。客户端照跑，配置不动，老上游留着
 一条命令的距离。
 
 **该全局就全局，小活可以临时来。**
 档位设一次，所有客户端跟着走。某件小活想换个模型，就这一次覆盖——
-`newgate claude --profile=kimi`——全局状态一点不动。覆盖写在**请求路径**里，所以
+`newgate claude --profile=cheap`——全局状态一点不动。覆盖写在**请求路径**里，所以
 同时跑着的两个客户端，永远不会串到对方的偏好上。
 
 **单个上游挂掉，不等于你挂掉。**
@@ -91,12 +104,12 @@ fork 里那个 `modules/deepseek` 满足同一份契约、声明同样的 `Requi
 `modules/ssh-tunnel` 去把它取回来：
 
 ```bash
-newgate tunnel add snode1 --host 10.0.50.11 --user me --remote-port 8899 --local-port 9401
+newgate tunnel add remote --host host.example --user me --remote-port 8899 --local-port 9401
 ```
 
 ```text
 http://127.0.0.1:9401/ui/                  一个字节都不动——远端界面原样
-http://127.0.0.1:8899/ui/remote/snode1/    同一个东西，不占端口，路径被改写
+http://127.0.0.1:8899/ui/remote/remote/    同一个东西，不占端口，路径被改写
 ```
 
 两条同时可用，背后是同一条 SSH 连接：第一次用到才拨，空闲了自己断（`--persistent`

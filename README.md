@@ -9,7 +9,7 @@
 [![CI](https://github.com/rzbdz/newgate-ext/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/rzbdz/newgate-ext/actions/workflows/ci.yml)
 ![release](https://github.com/rzbdz/newgate-ext/actions/workflows/release.yml/badge.svg)
 ![Go](https://img.shields.io/badge/go-1.27-00ADD8?logo=go&logoColor=white)
-![dependencies](https://img.shields.io/badge/third--party_deps-0-brightgreen)
+![dependencies](https://img.shields.io/badge/third--party_deps-4-blue)
 
 <sub><b>English</b> · <a href="README.zh-Hans.md">中文</a></sub>
 
@@ -22,19 +22,38 @@ stays out of the way of the flow: your session keeps running while you switch
 providers, and when a new model — or a fresh upstream quirk — shows up, adapting
 to it is one small module, in your own fork, on your own schedule.
 
+## New: probe and fingerprints, built in
+
+**Probe is a first-class command.** `newgate probe` sends one real request to
+every candidate and reports reachability, dialect support, and the upstream
+quirks it learns along the way. The health table and the CLI read the same
+bookkeeping.
+
+**Fingerprints tell you what the upstream is actually serving.** `newgate verify`
+asks a model to emit a few hundred integers and scores them against a model
+reference bank. It reports the model the fingerprint points at, and warns when
+the name in your binding is not the one it sees. The result is cached and shown
+in the web model picker; a dedicated **Fingerprints** page verifies a whole
+profile or a single hand-picked upstream/model. `newgate upgrade` refreshes the
+reference data on demand; by default it is checked every two hours.
+
+Fingerprinting is powered by [lm-detector](https://github.com/Ikaleio/lm-detector)
+(MIT), with reference data from [lm.ikale.io](https://lm.ikale.io/docs/sdk).
+Thank you.
+
 **It takes over your CLI, without your CLI knowing.**
 A PATH shim and the client's own config rewritten in place — env injected
 silently, byte-exact backups taken first. Install once; you never edit a config
 by hand again, and you never reopen a session.
 
 **Changing which API answers is one command, not a migration.**
-`newgate --set-profile ark` — the next request takes the new chain. Your client
+`newgate --set-profile work` — the next request takes the new chain. Your client
 keeps running, its config untouched, the old provider one command away.
 
 **Global when you want it, ad-hoc when the task is small.**
 Set the tiers once and every client follows them. When one little job deserves a
 different model, override it for that single run — `newgate claude
---profile=kimi` — and nothing global changes. The override travels in the
+--profile=cheap` — and nothing global changes. The override travels in the
 request path, so two clients running at the same time can never pick up each
 other's choice.
 
@@ -107,12 +126,12 @@ Some machines only expose SSH — their newgate web interface listens on `localh
 over there and nothing else gets through. `modules/ssh-tunnel` goes and gets it:
 
 ```bash
-newgate tunnel add snode1 --host 10.0.50.11 --user me --remote-port 8899 --local-port 9401
+newgate tunnel add remote --host host.example --user me --remote-port 8899 --local-port 9401
 ```
 
 ```text
 http://127.0.0.1:9401/ui/                  byte-for-byte — the remote interface as it is
-http://127.0.0.1:8899/ui/remote/snode1/    the same thing, no extra port, paths rewritten
+http://127.0.0.1:8899/ui/remote/remote/    the same thing, no extra port, paths rewritten
 ```
 
 Both are live at once, off one SSH connection that is dialled on first use and let go

@@ -3,6 +3,7 @@ package verify
 import (
 	"context"
 
+	upgradeapi "github.com/rzbdz/newgate-ext/modules/upgrade"
 	webapi "github.com/rzbdz/newgate-ext/modules/web-dashboard"
 	modules "github.com/rzbdz/newgate/component"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
@@ -34,6 +35,9 @@ func New() modules.Component {
 			modules.Optional(viewapi.Capability),
 			modules.Optional(webapi.ExtensionCapability),
 			modules.Optional(cliapi.Capability),
+			// 升级登记处：在就挂一个「刷新参考库」的动作，不在就只靠 TTL
+			// 自动更新（见 detect.go 的 memoryTTL）。
+			modules.Optional(upgradeapi.Capability),
 		},
 		Start: func(_ context.Context, ctx modules.Context) error {
 			if v, ok := modules.Get(ctx, viewapi.Capability); ok {
@@ -52,6 +56,20 @@ func New() modules.Component {
 			}
 			if ui, ok := modules.Get(ctx, cliapi.Capability); ok {
 				rel, err := ui.RegisterCommand(verifyCommand{svc: svc})
+				if err != nil {
+					return err
+				}
+				releases = append(releases, rel)
+			}
+			if up, ok := modules.Get(ctx, upgradeapi.Capability); ok {
+				rel, err := up.Register(upgradeapi.Action{
+					ID:    "fingerprint-data",
+					Title: func() string { return i18n.T("Fingerprint reference data", nil) },
+					Describe: func() string {
+						return i18n.T("download the latest model fingerprint reference bank", nil)
+					},
+					Run: func(ctx context.Context) (string, error) { return svc.Upgrade(ctx) },
+				})
 				if err != nil {
 					return err
 				}

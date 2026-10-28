@@ -1,11 +1,14 @@
 package verify
 
 import (
+	"encoding/binary"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
 	"sync"
+	"time"
 
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 	"github.com/rzbdz/newgate/modules/config/paths"
@@ -55,6 +58,54 @@ func (c *cacheStore) dataPath() string {
 func (c *cacheStore) dataReady() bool {
 	_, err := os.Stat(c.dataPath())
 	return err == nil
+}
+
+// dataCheckedAt 是参考库缓存最后一次被下载/检查的时间。
+//
+// 它是**缓存文件的 mtime**：bundle 没变时只 touch 这个文件（表示「我看过了」），
+// 变了才重写。所以它同时回答「尺子有多旧」与「上次联网检查是什么时候」，正是
+// 界面要显示的那句话。
+func (c *cacheStore) dataCheckedAt() (time.Time, bool) {
+	info, err := os.Stat(c.dataPath())
+	if err != nil {
+		return time.Time{}, false
+	}
+	return info.ModTime(), true
+}
+
+// dataVersion 是缓存里 detector 的 sha256（bundle 自己声明的版本号）。
+//
+// 只读缓存开头那一段 bundle.json，不把 4.5 MB 的 detector 整个读进来：
+// 检查「有没有新版」时，这个值要和远端 bundle 的 sha 比。
+func (c *cacheStore) dataVersion() string {
+	f, err := os.Open(c.dataPath())
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	var head [4]byte
+	if _, err := io.ReadFull(f, head[:]); err != nil {
+		return ""
+	}
+	n := binary.LittleEndian.Uint32(head[:])
+	if n == 0 || n > 4<<20 {
+		return ""
+	}
+	raw := make([]byte, n)
+	if _, err := io.ReadFull(f, raw); err != nil {
+		return ""
+	}
+	var b referenceBundle
+	if json.Unmarshal(raw, &b) != nil {
+		return ""
+	}
+	return b.Files[referenceDetectorFile].SHA256
+}
+
+// touchData 把「刚检查过」记在缓存文件的 mtime 上，内容不动。
+func (c *cacheStore) touchData() {
+	now := time.Now()
+	_ = os.Chtimes(c.dataPath(), now, now)
 }
 
 func (c *cacheStore) read() (map[string]Entry, error) {

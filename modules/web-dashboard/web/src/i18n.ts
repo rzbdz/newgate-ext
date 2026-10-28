@@ -154,6 +154,7 @@ const en: Record<string, string> = {
   fingerprint: "fingerprint",
   "name match": "name match",
   checked: "checked",
+  "checked {age}": "checked {age}",
   verify: "verify",
   "ask the upstream for a fresh fingerprint (costs tokens)":
     "ask the upstream for a fresh fingerprint (costs tokens)",
@@ -310,6 +311,7 @@ const zhHans: Record<string, string> = {
   fingerprint: "指纹",
   "name match": "名字匹配",
   checked: "验证时间",
+  "checked {age}": "检查于 {age}",
   verify: "验证",
   "ask the upstream for a fresh fingerprint (costs tokens)":
     "向上游要一份新的指纹（会花 token）",

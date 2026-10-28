@@ -14,11 +14,12 @@ import (
 )
 
 type fakeDetector struct {
-	res   *lmfpd.DetectResult
-	build string
-	api   string
-	err   error
-	calls int
+	res       *lmfpd.DetectResult
+	build     string
+	api       string
+	err       error
+	calls     int
+	refreshed int
 }
 
 func (f *fakeDetector) Detect(context.Context, domain.Provider, string, string, int) (*lmfpd.DetectResult, string, string, error) {
@@ -27,6 +28,11 @@ func (f *fakeDetector) Detect(context.Context, domain.Provider, string, string, 
 }
 
 func (f *fakeDetector) Loaded() (string, bool) { return f.build, f.res != nil }
+
+func (f *fakeDetector) Refresh(context.Context) (string, error) {
+	f.refreshed++
+	return "fingerprint reference data is now test", nil
+}
 
 func seedConfig(t *testing.T) {
 	t.Helper()
@@ -158,6 +164,20 @@ func TestStateNeverLeaksKeys(t *testing.T) {
 	}
 	if strings.Contains(string(raw), "sk-top-secret") {
 		t.Fatal("the provider key leaked into the interface payload")
+	}
+}
+
+func TestUpgradeRefreshesReferenceData(t *testing.T) {
+	seedConfig(t)
+	svc := newService()
+	fake := &fakeDetector{res: scored()}
+	svc.det = fake
+	msg, err := svc.Upgrade(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fake.refreshed != 1 || msg == "" {
+		t.Fatalf("refresh calls = %d, message = %q", fake.refreshed, msg)
 	}
 }
 

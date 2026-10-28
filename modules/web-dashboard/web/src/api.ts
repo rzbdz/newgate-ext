@@ -513,6 +513,8 @@ export interface FingerprintState {
   build?: string;
   loaded: boolean;
   data_cached?: boolean;
+  /** 参考库缓存最后一次被下载/检查的时间（缓存文件的 mtime）。 */
+  data_checked_at?: string;
   error?: string;
 }
 

@@ -34,6 +34,7 @@ import (
 	ext_theme_dark "github.com/rzbdz/newgate-ext/modules/theme-dark"
 	ext_theme_light "github.com/rzbdz/newgate-ext/modules/theme-light"
 	ext_tui "github.com/rzbdz/newgate-ext/modules/tui"
+	ext_upgrade "github.com/rzbdz/newgate-ext/modules/upgrade"
 	ext_verify "github.com/rzbdz/newgate-ext/modules/verify"
 	ext_web_dashboard "github.com/rzbdz/newgate-ext/modules/web-dashboard"
 	app "github.com/rzbdz/newgate/app"
@@ -63,6 +64,7 @@ func Specs() map[string]app.Selection {
 				{Dir: "opencodeomo", Component: ext_opencodeomo.New()},
 				{Dir: "web-dashboard", Component: ext_web_dashboard.New()},
 				{Dir: "modellist", Component: ext_modellist.New()},
+				{Dir: "upgrade", Component: ext_upgrade.New()},
 				{Dir: "verify", Component: ext_verify.New()},
 				{Dir: "theme-dark", Component: ext_theme_dark.New()},
 				{Dir: "theme-light", Component: ext_theme_light.New()},
@@ -84,6 +86,7 @@ func Specs() map[string]app.Selection {
 				{Dir: "opencodeomo", Component: ext_opencodeomo.New()},
 				{Dir: "web-dashboard", Component: ext_web_dashboard.New()},
 				{Dir: "modellist", Component: ext_modellist.New()},
+				{Dir: "upgrade", Component: ext_upgrade.New()},
 				{Dir: "verify", Component: ext_verify.New()},
 				{Dir: "theme-dark", Component: ext_theme_dark.New()},
 				{Dir: "theme-light", Component: ext_theme_light.New()},
@@ -114,6 +117,7 @@ func Specs() map[string]app.Selection {
 				{Dir: "claudecode", Component: ext_claudecode.New()},
 				{Dir: "opencode", Component: ext_opencode.New()},
 				{Dir: "opencodeomo", Component: ext_opencodeomo.New()},
+				{Dir: "upgrade", Component: ext_upgrade.New()},
 				{Dir: "verify", Component: ext_verify.New()},
 			},
 		},
@@ -132,6 +136,7 @@ func Specs() map[string]app.Selection {
 				{Dir: "opencodeomo", Component: ext_opencodeomo.New()},
 				{Dir: "web-dashboard", Component: ext_web_dashboard.New()},
 				{Dir: "modellist", Component: ext_modellist.New()},
+				{Dir: "upgrade", Component: ext_upgrade.New()},
 				{Dir: "verify", Component: ext_verify.New()},
 				{Dir: "theme-dark", Component: ext_theme_dark.New()},
 				{Dir: "theme-light", Component: ext_theme_light.New()},

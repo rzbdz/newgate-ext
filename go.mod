@@ -4,14 +4,12 @@ go 1.27
 
 require (
 	github.com/Ikaleio/lm-detector/sdk/go v0.2.0
+	github.com/klauspost/compress v1.18.4
 	github.com/rzbdz/newgate v0.0.0
 	golang.org/x/crypto v0.57.0
 )
 
-require (
-	github.com/klauspost/compress v1.18.4 // indirect
-	golang.org/x/sys v0.48.0 // indirect
-)
+require golang.org/x/sys v0.48.0 // indirect
 
 // 内核是**这个仓库里的一份普通依赖**，钉在 core/ 这个 submodule 的提交上。
 //

@@ -27,9 +27,9 @@ heavy  >  normal  >  mid  >  light
 一个 profile 给每一档配**若干**候选，顺序就是 fallback 顺序：
 
 ```text
-normal = ark/deepseek-v3, backup/gpt-5.6
+normal = vendor/model-a, backup/model-b
 mid    = backup/gpt-5.6
-light  = fast/glm-air
+light  = cheap/model-c
 ```
 
 请求先走链头。**连接失败、上游错误可以转移、首字节超时**这三种情况下才试下一站。
@@ -43,9 +43,9 @@ newgate tier normal
 
 优先级从高到低：
 
-1. **这一次调用显式点名**：`newgate claude --profile=kimi`；
+1. **这一次调用显式点名**：`newgate claude --profile=cheap`；
 2. **这个客户端绑定的**：`state.json` 里按 agent 记的那一份；
-3. **全局默认**：`newgate --set-profile ark`。
+3. **全局默认**：`newgate --set-profile work`。
 
 第 1 条是**单次覆盖**，不动任何全局状态。它编码在请求路径里，所以两个客户端同时
 跑着，永远不会拿错对方的选择。
@@ -54,9 +54,9 @@ newgate tier normal
 
 ```bash
 newgate web                    # 在网页面板上点着改
-newgate profile kv ark         # 把 ark 摊成 KV 文本
-newgate profile kv ark --write # 改完写回盘上
-$EDITOR ~/.config/newgate/mappings/ark.json   # 或直接改文件，watch 会捡起来
+newgate profile kv work         # 把 work 摊成 KV 文本
+newgate profile kv work --write # 改完写回盘上
+$EDITOR ~/.config/newgate/mappings/work.json   # 或直接改文件，watch 会捡起来
 ```
 
 文件本身住在 `~/.config/newgate/mappings/`，`.kv` 与 `.json` 两种后缀都认。

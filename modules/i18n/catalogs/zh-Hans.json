@@ -196,6 +196,10 @@
       "reviewed": true,
       "text": "DeepSeek 的 /responses 只认 apply_patch 一个 custom 工具，其余一律 400（藏在 namespace 里时换一句）；关掉降级，任何带别的 custom 工具的 Codex 请求都会被直接拒掉"
     },
+    "Fingerprint reference data": {
+      "reviewed": true,
+      "text": "指纹参考数据"
+    },
     "Fingerprints": {
       "reviewed": true,
       "text": "指纹"
@@ -396,6 +400,10 @@
       "reviewed": true,
       "text": "收下但未渲染"
     },
+    "action": {
+      "reviewed": true,
+      "text": "动作"
+    },
     "add a target": {
       "machine": true,
       "text": "添加目标"
@@ -519,6 +527,10 @@
     "cannot derive the encryption key: {err}": {
       "reviewed": true,
       "text": "派生加密密钥失败: {err}"
+    },
+    "cannot download the fingerprint reference data from {sources}": {
+      "reviewed": true,
+      "text": "无法从 {sources} 下载指纹参考数据"
     },
     "cannot fix the permissions of {path}: {err}": {
       "reviewed": true,
@@ -768,6 +780,10 @@
       "machine": true,
       "text": "断开连接"
     },
+    "download the latest model fingerprint reference bank": {
+      "reviewed": true,
+      "text": "下载最新的模型指纹参考库"
+    },
     "dump material": {
       "reviewed": true,
       "text": "诊断素材"
@@ -835,6 +851,14 @@
     "fingerprint each binding and report which model the upstream really serves": {
       "reviewed": true,
       "text": "给每条 binding 取指纹，报告上游实际在服务哪个模型"
+    },
+    "fingerprint reference data is already up to date ({build})": {
+      "reviewed": true,
+      "text": "指纹参考数据已是最新（{build}）"
+    },
+    "fingerprint reference data is now {build}": {
+      "reviewed": true,
+      "text": "指纹参考数据已更新到 {build}"
     },
     "fingerprint request failed: {err}": {
       "reviewed": true,
@@ -1084,6 +1108,10 @@
       "machine": true,
       "text": "在 {dir} 中未找到密钥文件 — 依赖 ssh-agent"
     },
+    "no module registered an upgrade action in this build": {
+      "reviewed": true,
+      "text": "这份装配里没有模块登记升级动作"
+    },
     "no omo slot registry; run newgate on opencode first": {
       "reviewed": true,
       "text": "没有 omo 槽位登记表；先 newgate on opencode"
@@ -1332,9 +1360,37 @@
       "reviewed": true,
       "text": "读取指纹缓存 {path} 失败: {err}"
     },
+    "read the refreshed fingerprint reference data: {err}": {
+      "reviewed": true,
+      "text": "读取刷新后的指纹参考数据：{err}"
+    },
     "recorded the host key of {host} in {path} ({fp})": {
       "machine": true,
       "text": "已记录 {host} 的主机密钥到 {path}（{fp}）"
+    },
+    "reference data checksum is {got}, bundle says {want}": {
+      "reviewed": true,
+      "text": "参考数据校验和是 {got}，bundle 声明的是 {want}"
+    },
+    "reference data does not list {file}": {
+      "reviewed": true,
+      "text": "参考数据里没有 {file}"
+    },
+    "reference data is read from the local directory {dir}; nothing to refresh": {
+      "reviewed": true,
+      "text": "参考数据来自本地目录 {dir}；没有可刷新的东西"
+    },
+    "reference data schema {schema}/{detector_schema} is not supported": {
+      "reviewed": true,
+      "text": "不支持参考数据 schema {schema}/{detector_schema}"
+    },
+    "refresh the dynamic data/configuration modules own (not the binary)": {
+      "reviewed": true,
+      "text": "刷新模块自己拥有的动态数据/配置（不换二进制）"
+    },
+    "refresh the fingerprint reference data: {err}": {
+      "reviewed": true,
+      "text": "刷新指纹参考数据失败: {err}"
     },
     "remote": {
       "machine": true,
@@ -1664,6 +1720,10 @@
       "reviewed": true,
       "text": "指纹参考数据加载失败"
     },
+    "the fingerprint reference data server answered HTTP {status}": {
+      "reviewed": true,
+      "text": "指纹参考数据服务器返回 HTTP {status}"
+    },
     "the fingerprint request is not valid JSON: {err}": {
       "reviewed": true,
       "text": "指纹请求不是合法的 JSON: {err}"
@@ -1916,6 +1976,10 @@
       "reviewed": true,
       "text": "这家上游没有 api key（设置 api_key 或 api_key_env）: {base}"
     },
+    "this refreshes module-owned dynamic data/configuration only; the newgate binary is not replaced (git-remote self-upgrade is not supported yet)": {
+      "reviewed": true,
+      "text": "这里只刷新模块拥有的动态数据/配置；newgate 二进制不会被替换（暂不支持从 git remote 自动升级）"
+    },
     "this route only forwards the remote interface: {path} points outside it": {
       "reviewed": true,
       "text": "这条 route 只转发远端的界面：{path} 落在了它外面"
@@ -1984,9 +2048,37 @@
       "machine": true,
       "text": "未知的 tunnel 子命令 {verb} — 试试 ls、add、rm、up、down 或 test"
     },
+    "unknown upgrade action {id} (available: {names})": {
+      "reviewed": true,
+      "text": "未知的升级动作 {id}（可用：{names}）"
+    },
     "unusable": {
       "machine": true,
       "text": "不可用"
+    },
+    "upgrade finished: {n} succeeded": {
+      "reviewed": true,
+      "text": "升级完成：{n} 个成功"
+    },
+    "upgrade finished: {ok} succeeded, {failed} failed": {
+      "reviewed": true,
+      "text": "升级完成：{ok} 个成功，{failed} 个失败"
+    },
+    "upgrade the dynamic data and configuration modules own (the binary is not replaced)": {
+      "reviewed": true,
+      "text": "升级模块自己拥有的动态数据与配置（不替换二进制）"
+    },
+    "upgrade: action {id} is already registered by another module": {
+      "reviewed": true,
+      "text": "upgrade：动作 {id} 已被另一个模块登记"
+    },
+    "upgrade: action {id} must provide Title, Describe and Run": {
+      "reviewed": true,
+      "text": "upgrade：动作 {id} 必须提供 Title、Describe 和 Run"
+    },
+    "upgrade: {id} is not a usable action id — use lowercase letters, digits, '.', '_' and '-'": {
+      "reviewed": true,
+      "text": "upgrade：{id} 不是可用的动作 ID —— 只能用小写字母、数字、'.'、'_' 和 '-'"
     },
     "upstream/model": {
       "reviewed": true,
@@ -2059,6 +2151,10 @@
     "what is installed right now: {version}, assembled {took}": {
       "reviewed": true,
       "text": "此刻装着的：{version}，装配于 {took}"
+    },
+    "what it refreshes": {
+      "reviewed": true,
+      "text": "刷新什么"
     },
     "when the user explicitly runs newgate naked on/forever, Claude Code's classifier requests (every gate: Bash, sandbox network, workflow, handoff) are short-circuited into an approval without a single LLM call — no more 15-30s classifier latency and no more sessions wedged by a wrong block\non = a 60-second self-limiting window; forever = always on (every request is logged, status warns)\nonly the classifier family is touched (non-streaming + its prompt marker or stop_sequences); compact summaries and title generation still get a real answer\nnewgate naked off / st off both end it": {
       "reviewed": true,
@@ -2207,6 +2303,10 @@
     "{note}; {why}": {
       "reviewed": true,
       "text": "{note}；{why}"
+    },
+    "{n} action": {
+      "reviewed": true,
+      "text": "{n} 个动作"
     },
     "{n} candidate did not make it: {reasons}": {
       "other": "{n} 个候选没进链：{reasons}",

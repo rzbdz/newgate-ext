@@ -266,9 +266,9 @@
     <span class="spacer"></span>
     <span class="dim tiny">
       {#if view.loaded}
-        {t("reference data {build}", { build: view.build || "?" })}
+        {t("reference data {build}", { build: view.build || "?" })}{#if view.data_checked_at} · {t("checked {age}", { age: ago(view.data_checked_at) })}{/if}
       {:else if view.data_cached}
-        {t("reference data is cached — the first verify in this process loads it")}
+        {t("reference data is cached — the first verify in this process loads it")}{#if view.data_checked_at} · {t("checked {age}", { age: ago(view.data_checked_at) })}{/if}
       {:else}
         {t("reference data not loaded yet — the first verify downloads about 3.6 MB")}
       {/if}
