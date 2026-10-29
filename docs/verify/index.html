@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="canonical" href="https://rzbdz.github.io/newgate-ext/docs/verify/">
+<meta name="theme-color" content="#0f1115">
+<meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+
+<title>指纹与升级 · newgate-ext</title>
+<meta name="description" content="配置里写着 provider/model，但上游真的在用这个模型吗？转发一条消息问问「你是谁」没有用——它当然会照着你写的名字回。指纹换一种问法：让模型吐几百个 1–355 之间的整数，再拿这些数字和一份模型参考库比一遍。不同的模型在选数上">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="newgate-ext">
+<meta property="og:title" content="指纹与升级 · newgate-ext">
+<meta property="og:description" content="配置里写着 provider/model，但上游真的在用这个模型吗？转发一条消息问问「你是谁」没有用——它当然会照着你写的名字回。指纹换一种问法：让模型吐几百个 1–355 之间的整数，再拿这些数字和一份模型参考库比一遍。不同的模型在选数上">
+<meta property="og:url" content="https://rzbdz.github.io/newgate-ext/docs/verify/">
+<meta property="og:locale" content="zh_CN">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="指纹与升级 · newgate-ext">
+<meta name="twitter:description" content="配置里写着 provider/model，但上游真的在用这个模型吗？转发一条消息问问「你是谁」没有用——它当然会照着你写的名字回。指纹换一种问法：让模型吐几百个 1–355 之间的整数，再拿这些数字和一份模型参考库比一遍。不同的模型在选数上">
+
+<link rel="icon" type="image/svg+xml" href="/newgate-ext/favicon.svg">
+<link rel="stylesheet" href="/newgate-ext/site.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/newgate-ext/"><strong>newgate-ext</strong></a>
+  <span class="spacer"></span>
+  <nav class="langs"><a href="/newgate-ext/docs/verify/" class="on">中文</a><span class="soon" title="not written yet">English</span></nav>
+</header>
+<div class="shell">
+  <nav class="side">
+    <ul>
+    <li><a href="/newgate-ext/">首页</a></li>
+    <li><a href="/newgate-ext/docs/">文档</a></li>
+    <li><a href="/newgate-ext/docs/quickstart/">快速开始</a></li>
+    <li><a href="/newgate-ext/docs/tiers/">档位与 profile</a></li>
+    <li><a href="/newgate-ext/docs/clients/">接管客户端</a></li>
+    <li><a href="/newgate-ext/docs/codex/">Codex 模式</a></li>
+    <li><a href="/newgate-ext/docs/config/">配置与命令</a></li>
+    <li class="on"><a href="/newgate-ext/docs/verify/">指纹与升级</a></li>
+    <li><a href="/newgate-ext/docs/tunnel/">穿过 SSH 看远端界面</a></li>
+    <li><a href="/newgate-ext/docs/troubleshooting/">排障</a></li>
+    <li><a href="/newgate-ext/docs/modules/">写一个模块</a></li>
+    <li><a href="/newgate-ext/docs/fork/">fork 一份发行版</a></li>
+    <li><a href="/newgate-ext/changelog/">更新日志</a></li>
+    </ul>
+  </nav>
+  <main>
+    <h1>指纹与升级</h1>
+    <h2>这个功能回答什么问题</h2>
+<p>配置里写着 <code>provider/model</code>，但上游<strong>真的</strong>在用这个模型吗？转发一条消息问问「你是谁」没有用——它当然会照着你写的名字回。指纹换一种问法：让模型吐几百个 1–355 之间的整数，再拿这些数字和一份模型参考库比一遍。不同的模型在选数上有各自稳定的统计特征，所以这件事比名字可靠得多。</p>
+<p><code>newgate verify</code> 做一次这样的验证；网页上对应侧栏里的<strong>指纹</strong>页。</p>
+<h2>命令行</h2>
+<pre><code class="lang-bash">newgate verify                          # 全部 profile，每条 binding 验一次
+newgate verify work                     # 只验一份 profile
+newgate verify --provider vendor --model model-a --count 3
+newgate verify --json                   # 机器可读</code></pre>
+<p><code>--count</code> 是挑战数（1–3）。1 条就能给出排名（<code>partial</code>，没有校准概率）；3 条是参考库推荐值，<code>scored</code> 时会给出概率。每次验证都会真打上游、会花 token。</p>
+<p>结果会按 <code>provider/model</code> 缓存到 <code>~/.config/newgate/fingerprints/cache.json</code>，所以网页和模型下拉能看到「上一次验到的是谁」，不必每看一次就重验。</p>
+<h2>网页</h2>
+<p>侧栏「指纹」页里：</p>
+<ul>
+<li><strong>按档位文件</strong>：筛一份 profile，列出每条 binding 的上次结论、名字匹配、时间，每行一个「验证」按钮；「全部验证」会把当前筛选里的去重目标跑一遍。</li>
+<li><strong>挑一个模型</strong>：不经过任何 profile，直接选上游、模型、API 和挑战数，现场取一份指纹，并显示参考库的 Top 候选。</li>
+</ul>
+<p>配置页的模型下拉也接上了：选中模型旁边会带出上一次的指纹和「验证」按钮，下拉列表每一行也会标注上次的匹配结果。</p>
+<h2>名字匹配怎么判</h2>
+<table>
+<thead><tr><th>结论</th><th>含义</th></tr></thead>
+<tbody>
+<tr><td><code>match</code></td><td>去掉分隔符后名字完全一致</td></tr>
+<tr><td><code>dated</code></td><td>同一个模型，另一个日期/快照版</td></tr>
+<tr><td><code>family</code></td><td>同族里的<strong>另一个</strong>模型（会警告）</td></tr>
+<tr><td><code>mismatch</code></td><td>名字对不上，也不是同族（会警告）</td></tr>
+<tr><td><code>unknown</code></td><td>这一轮没有可用的排名（样本失败、不是模型输出）</td></tr>
+</tbody></table>
+<p><code>family</code> 和 <code>mismatch</code> 是<strong>警告，不是命令失败</strong>。指纹是证据，不是证明：参考库是闭集排名，库里没有的新模型会被判成「最接近的那个」；重要判断建议固定请求参数、隔一会儿再验一轮，并结合概率和 Top 候选一起看。</p>
+<h2>参考数据有多新</h2>
+<p>参考库是<strong>动态数据</strong>，不跟 newgate 的版本绑死：</p>
+<ul>
+<li>默认每 <strong>2 小时</strong>检查一次新版本（下载 <code>bundle.json</code>，只有 detector 的 sha 变了才下约 3.6 MB）；</li>
+<li>想要立刻刷新：<code>newgate upgrade</code>（见下）；</li>
+<li>调整检查间隔：<code>NEWGATE_FINGERPRINT_TTL=6h</code>（<code>time.ParseDuration</code> 允许的任何写法）；</li>
+<li>完全离线：<code>NEWGATE_FINGERPRINT_DATA=/path/to/data</code> 指向一份含 <code>unified_bank.json</code> + <code>shared_detector.bin</code> 的目录。</li>
+</ul>
+<p>第一次验证要下载约 3.6 MB 并缓存在 <code>~/.config/newgate/fingerprints/data.bin</code>；之后本地加载是几十毫秒，打分是毫秒级——<strong>真正慢的是上游生成那几百个整数</strong>，一次通常几十秒。</p>
+<h2><code>newgate upgrade</code></h2>
+<pre><code class="lang-bash">newgate upgrade                   # 先看一遍，再分两次问：换二进制吗？刷新模块数据吗？
+newgate upgrade --check           # 只看有没有新的，什么都不动
+newgate upgrade -y                # 不问，有事可做的直接做（-f 再加上允许重装/倒退）
+newgate upgrade --list            # 有哪些动作（binary、fingerprint-data …）
+newgate upgrade fingerprint-data  # 只刷新指纹参考库
+newgate upgrade@v0.9.0            # 把二进制钉到某个 tag（也可以是分支、提交）
+newgate upgrade --help            # 完整说明，含这份构建里实际有哪些动作</code></pre>
+<p><strong>不静默执行</strong>：<code>upgrade</code> 先只看一遍，把每个动作「会做什么 / 已经是最新」打出来，然后<strong>分两次</strong>问 y/N——一次问 newgate 二进制，一次问各模块挂进来的数据动作；已经是最新的不问。没有终端又没给 <code>-y</code> 时不执行、以 1 退出（脚本看得出「其实没升」）。</p>
+<p><code>upgrade</code> 是模块<strong>登记升级动作</strong>的入口：谁拥有那份东西，谁提供怎么拿、怎么校验。二进制本身也是其中一个动作（<code>binary</code>，由 <code>self-update</code> 模块登记），所以一条命令连二进制带数据一起升；点了 <code>@版本</code> 时只有认识版本的动作会跑，其余的跳过并说一声。</p>
+<h3>二进制从哪来：两种模式</h3>
+<table>
+<thead><tr><th>模式</th><th>给谁</th><th>做什么</th></tr></thead>
+<tbody>
+<tr><td><code>release</code></td><td>不编代码的机器</td><td>去规格书声明的 GitHub 仓库拿<strong>最新 Release</strong> 里本平台的产物，对 <code>SHA256SUMS</code>，换上</td></tr>
+<tr><td><code>git</code></td><td>开发者、尝鲜的人</td><td>在本地 checkout 里 <code>fetch</code> → 能快进就快进 → <code>build/build.sh</code> → 换上</td></tr>
+</tbody></table>
+<p>走哪个是<strong>第一次运行这个二进制时</strong>定下来的，记在 <code>state.json</code> 的 <code>self-update</code> 段：编它的那份源码在本机、是发行版仓库 → <code>git</code>；不在（从 Release 下的）→ <code>release</code>。之后只认那一段：</p>
+<pre><code class="lang-bash">newgate self-update                 # 现在走哪条、仓库在哪、上一版留没留着
+newgate self-update git [目录]       # 改成从本地仓库构建（缺省是编这个二进制的那份）
+newgate self-update release [owner/repo]  # 改成装 GitHub Release（可以顺手换仓库）
+newgate self-update rollback        # 换回上一版（再敲一次又换回来）</code></pre>
+<p><code>@版本</code> 不分模式：先找那个 tag 的 Release，有本平台产物就下它；没有（只打了 tag 没发版、是分支或提交、或者本平台不在 Release 矩阵里，比如 riscv64）就在<strong>临时目录</strong> 里 clone 那个 ref 编一份——开发者手上那份 checkout 不会被切走。这条路要本机有 <code>git</code>、<code>go</code>、<code>bash</code>、<code>python3</code>。</p>
+<p>几条保险：</p>
+<ul>
+<li>新二进制先以 <code>newgate</code> 的名字跑一次 <code>version</code>，跑不起来、或者不是同一个发行版，就<strong>不换</strong>；</li>
+<li>换法是同目录临时文件 + rename，旧的那份留成 <code>&lt;路径&gt;.prev</code>；</li>
+<li>不给 <code>--force</code> 不倒退：开发机常常比最新 Release 新（<code>v0.8.0-40-g…</code>），这时 <code>upgrade</code> 只说一句；</li>
+<li>git 模式<strong>绝不替你做决定</strong>：工作区有改动、本地有没推的提交、分叉、detached—— 都不拉，照编手上这份；</li>
+<li>daemon 在跑就用新二进制执行 <code>newgate restart</code>（socket 交接，会话不断），换完核对 daemon 真的跑在新文件上、并且在答话；<strong>交接失败、新进程起不来或不答话，自动换回旧版并用旧版把 daemon 拉回来</strong>；</li>
+<li>留不下 <code>.prev</code> 就不换（没有退路的替换不做）；下载/构建中途被打断留下的半成品，下一次升级时清掉。</li>
+</ul>
+<p>发布仓库写在规格书里（<code>dist.json</code> 的 <code>&quot;github&quot;: &quot;owner/repo&quot;</code>）：fork 的人改这一行，升级通道就接到了自己的仓库。</p>
+<h2>致谢</h2>
+<p>指纹检测由 <a href="https://github.com/Ikaleio/lm-detector">lm-detector</a> 提供（MIT），参考数据来自 <a href="https://lm.ikale.io/docs/sdk">lm.ikale.io</a>。谢谢这个项目。</p>
+
+  </main>
+</div>
+<footer>
+  <p>这一页讲的是发行版 <strong>newgate-ext</strong> 的装配。内核机制的权威原文在
+     <a href="https://github.com/rzbdz/newgate">rzbdz/newgate</a>。</p>
+  <p><a href="https://github.com/rzbdz/newgate">内核</a> · <a href="https://github.com/rzbdz/newgate-ext/releases">版本发布</a></p>
+</footer>
+</body>
+</html>
