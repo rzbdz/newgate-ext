@@ -29,7 +29,14 @@ fork 的仓库里，按你自己的节奏。
 **指纹告诉你上游实际在服务谁。** `newgate verify` 让模型吐几百个整数，再拿它们和
 模型参考库比一遍；它报出指纹指向的模型，binding 写的名字对不上时给出警告。结论会缓存，
 网页的模型下拉和专门的**指纹**页都能直接用：按档位文件批量验，或者挑一家上游、一个
-模型现场取指纹。`newgate upgrade` 可以手动刷新参考数据，默认每两小时自动检查一次。
+模型现场取指纹。参考数据默认每两小时自动检查一次，`newgate upgrade` 可以手动刷新。
+
+**`newgate upgrade` 连 newgate 自己一起升。** 只跑 newgate 的机器去拿 GitHub 上最新
+Release 里本平台的产物并核对校验和；开发机则在自己的仓库里 fetch、用
+`build/build.sh` 重编——走哪种在第一次运行时定下，`newgate self-update` 可以看、可以改。
+`newgate upgrade@v0.9.0` 钉到某个 tag（那个 tag 没发版就 clone 下来现编）。新二进制
+先试跑再换上，旧的留给 `newgate self-update rollback`，daemon 交接 socket，跑着的会话
+感觉不到。
 
 指纹由 [lm-detector](https://github.com/Ikaleio/lm-detector) 提供（MIT），参考数据
 来自 [lm.ikale.io](https://lm.ikale.io/docs/sdk)。谢谢这个项目。

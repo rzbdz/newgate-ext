@@ -34,8 +34,17 @@ asks a model to emit a few hundred integers and scores them against a model
 reference bank. It reports the model the fingerprint points at, and warns when
 the name in your binding is not the one it sees. The result is cached and shown
 in the web model picker; a dedicated **Fingerprints** page verifies a whole
-profile or a single hand-picked upstream/model. `newgate upgrade` refreshes the
-reference data on demand; by default it is checked every two hours.
+profile or a single hand-picked upstream/model. The reference data is checked
+every two hours; `newgate upgrade` refreshes it on demand.
+
+**`newgate upgrade` upgrades newgate itself.** Machines that only run newgate pull
+the latest GitHub release for their platform and verify its checksum; a developer
+machine fetches its own checkout and rebuilds with `build/build.sh` — which one is
+decided on the first run, and `newgate self-update` shows or changes it.
+`newgate upgrade@v0.9.0` pins a tag (no release for it? it clones that ref and
+builds it). The new binary is smoke-tested before it replaces the old one, the old
+one is kept for `newgate self-update rollback`, and the daemon hands its socket
+over, so a running session never notices.
 
 Fingerprinting is powered by [lm-detector](https://github.com/Ikaleio/lm-detector)
 (MIT), with reference data from [lm.ikale.io](https://lm.ikale.io/docs/sdk).

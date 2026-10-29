@@ -1,5 +1,6 @@
 {
   "distribution": "simple-cli",
+  "github": "rzbdz/newgate-ext",
   "modules": [
     "i18n",
     "simple-cli",
@@ -12,6 +13,7 @@
     "opencode",
     "opencodeomo",
     "upgrade",
+    "self-update",
     "verify"
   ],
   "disable": [

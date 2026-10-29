@@ -19,7 +19,7 @@ func New() modules.Component {
 	return modules.Component{
 		Name: Name,
 		Desc: func() string {
-			return i18n.T("upgrade the dynamic data and configuration modules own (the binary is not replaced)", nil)
+			return i18n.T("upgrade newgate itself and the dynamic data modules own, through actions each module registers", nil)
 		},
 		// 与 modellist / verify 同一层：它是基础设施，不是客户端、不是上游补丁。
 		Type: "infra",

@@ -40,6 +40,7 @@
         "tier"
       ]
     },
+    "--check: nothing is downloaded, replaced or restarted": {},
     "--count must be 1, 2 or 3": {},
     "--host is required (a name from ~/.ssh/config works)": {},
     ": {names}": {
@@ -54,6 +55,8 @@
       ]
     },
     "; ": {},
+    "@ needs a version after it, e.g. upgrade@v0.9.0": {},
+    "@version": {},
     "Anthropic": {},
     "Anthropic-dialect requests no longer get a thinking block prepended to content[], which triggers the same \"content[].thinking must be passed back\" 400": {},
     "Applies to the next request; takeover rewrites the client's own config with newgate on <agent>.": {},
@@ -90,6 +93,19 @@
     "GLM models treat a missing thinking field as thinking on (Anthropic semantics say off) → requests that never asked to think get dragged into ten-plus seconds\non the Claude Code path an explicit disabled is filled in when it is absent (present is left alone); OpenAI-dialect clients (opencode) have no such field to write, so they are not touched": {},
     "GLM upstream quirk patches": {},
     "Generated automatically when oh-my-openagent is taken over. default is the binding this key falls back to when the profile does not spell it out; to move a slot to another tier, edit overrides (it accepts \"@other-key\" / \"tier name\" / \"provider/model\"), or write this key directly in the profile.": {},
+    "GitHub API refused the request (HTTP {code}; rate limited? set GITHUB_TOKEN): {body}": {
+      "args": [
+        "body",
+        "code"
+      ]
+    },
+    "GitHub answered HTTP {code}: {body}": {
+      "args": [
+        "body",
+        "code"
+      ]
+    },
+    "GitHub's answer has no tag_name": {},
     "Global default": {},
     "Home": {},
     "Interface": {},
@@ -138,6 +154,7 @@
         "left"
       ]
     },
+    "`newgate restart` failed: {err}": {},
     "a command cannot be nil": {},
     "a global no-reasoning switch, best effort (newgate nothink on|forever|off)": {},
     "a loopback port forwarded byte-for-byte; empty means this target is reachable only through the rewritten route": {},
@@ -156,6 +173,7 @@
     "a row has no model name — nothing would ever match it": {},
     "a statistical identity computed from hundreds of integers the upstream generates; compared against the reference bank to see which model really answers": {},
     "a status provider cannot be nil": {},
+    "a submodule was not at its recorded commit before the pull; left it where it is": {},
     "a theme needs an id": {},
     "a true-black theme for the web interface": {},
     "a white theme for the web interface": {},
@@ -163,7 +181,19 @@
     "action": {},
     "add a target": {},
     "adopt them all": {},
+    "after the restart no daemon is running; see newgate logs": {},
     "all profiles": {},
+    "already at {tag}": {
+      "args": [
+        "tag"
+      ]
+    },
+    "already at {version} (built from {repo})": {
+      "args": [
+        "repo",
+        "version"
+      ]
+    },
     "already on the chain": {},
     "always": {},
     "and {n} more": {
@@ -173,6 +203,7 @@
       "other": "and {n} more"
     },
     "another sync round is already running; this round was skipped": {},
+    "another upgrade is already running": {},
     "api: chosen from each provider's protocol · challenges per target: {count}": {
       "args": [
         "count"
@@ -229,9 +260,40 @@
     },
     "before takeover": {},
     "best effort: a model that cannot turn thinking off gets the lowest reasoning effort, and OpenAI-dialect requests are untouched": {},
+    "binary": {},
     "binding mode must be current or suggested, got {value}": {
       "args": [
         "value"
+      ]
+    },
+    "build/build.sh failed: {err}": {},
+    "build/build.sh produced {n} binaries for {platform}, expected one": {
+      "args": [
+        "n",
+        "platform"
+      ]
+    },
+    "building from source needs {tools} on PATH": {
+      "args": [
+        "tools"
+      ]
+    },
+    "building {spec} for {platform} in {repo}": {
+      "args": [
+        "platform",
+        "repo",
+        "spec"
+      ]
+    },
+    "cached {version}, last checked {ago} ago; upgrade would check for a newer bank": {
+      "args": [
+        "ago",
+        "version"
+      ]
+    },
+    "cached {version}; upgrade would check for a newer bank": {
+      "args": [
+        "version"
       ]
     },
     "cannot archive {path}: {err}": {
@@ -249,6 +311,11 @@
     "cannot download the fingerprint reference data from {sources}": {
       "args": [
         "sources"
+      ]
+    },
+    "cannot download {name}: {err}": {
+      "args": [
+        "name"
       ]
     },
     "cannot fix the permissions of {path}: {err}": {
@@ -300,6 +367,7 @@
         "path"
       ]
     },
+    "cannot reach GitHub: {err}": {},
     "cannot reach {addr}: {err}": {
       "args": [
         "addr",
@@ -311,6 +379,7 @@
         "url"
       ]
     },
+    "cannot read GitHub's answer: {err}": {},
     "cannot read profile {name}: {err}": {
       "args": [
         "err",
@@ -355,6 +424,11 @@
         "path"
       ]
     },
+    "cannot replace {target}: {err}": {
+      "args": [
+        "target"
+      ]
+    },
     "cannot resolve {host}: {err}": {
       "args": [
         "err",
@@ -370,6 +444,11 @@
       "args": [
         "err",
         "path"
+      ]
+    },
+    "cannot write next to {target}: {err}": {
+      "args": [
+        "target"
       ]
     },
     "cannot write the bookkeeping: {err}": {
@@ -394,6 +473,19 @@
         "head"
       ]
     },
+    "checksum mismatch for {asset}: got {got}, {file} says {want}": {
+      "args": [
+        "asset",
+        "file",
+        "got",
+        "want"
+      ]
+    },
+    "checksum verified against {file}": {
+      "args": [
+        "file"
+      ]
+    },
     "choosing a theme needs Content-Type: application/json (got {ct})": {
       "args": [
         "ct"
@@ -413,6 +505,13 @@
     "classifier_override is not valid: {err}": {
       "args": [
         "err"
+      ]
+    },
+    "cloning {url} at {ref} into {dir}": {
+      "args": [
+        "dir",
+        "ref",
+        "url"
       ]
     },
     "closing the SSH connections: {err}": {
@@ -468,6 +567,13 @@
     },
     "current = keep what each slot used before takeover; suggested = move each slot to the tier its model build implies.": {},
     "current=takeover status · suggested=recommendation · switch: newgate omo mode <mode>": {},
+    "daemon": {},
+    "daemon now runs the new binary (pid {old} → {new})": {
+      "args": [
+        "new",
+        "old"
+      ]
+    },
     "dated snapshot": {},
     "decided by the model build; no variant was recorded before takeover": {},
     "decided by the model build; variant={variant} does not change the tier": {
@@ -475,6 +581,7 @@
         "variant"
       ]
     },
+    "decided on first run": {},
     "default": {},
     "degrade Codex custom tools for DeepSeek": {},
     "degraded {n} custom tool to a standard function (DeepSeek rejects any custom tool other than apply_patch with 400)": {
@@ -483,11 +590,46 @@
       ],
       "other": "degraded {n} custom tools to standard functions (DeepSeek rejects any custom tool other than apply_patch with 400)"
     },
+    "detached HEAD: not pulling": {},
     "diagnostics": {},
     "different model": {},
     "disabled": {},
     "disconnect": {},
+    "distribution {dist} declares no GitHub repository; set one with `newgate self-update release <owner/repo>` or use git mode": {
+      "args": [
+        "dist"
+      ]
+    },
+    "download the latest GitHub release of {repo} and swap it in (graceful daemon handoff)": {
+      "args": [
+        "repo"
+      ]
+    },
     "download the latest model fingerprint reference bank": {},
+    "downloading {asset} from {tag}": {
+      "args": [
+        "asset",
+        "tag"
+      ]
+    },
+    "downloading {asset} from {tag} ({mb} MB)": {
+      "args": [
+        "asset",
+        "mb",
+        "tag"
+      ]
+    },
+    "downloading {name} answered HTTP {code}": {
+      "args": [
+        "code",
+        "name"
+      ]
+    },
+    "downloading {name} broke off: {err}": {
+      "args": [
+        "name"
+      ]
+    },
     "dump material": {},
     "e.g. gpt-5.6-luna": {},
     "each key follows the recommendation, derived from model build and variant strength": {},
@@ -506,6 +648,23 @@
     "extensions use POST": {},
     "failed to inject thinking: {err}": {},
     "failed: {err}": {
+      "args": [
+        "err"
+      ]
+    },
+    "fast-forward failed, building what is checked out: {err}": {
+      "args": [
+        "err"
+      ]
+    },
+    "fast-forwarded {branch} by {n} commit": {
+      "args": [
+        "branch",
+        "n"
+      ],
+      "other": "fast-forwarded {branch} by {n} commits"
+    },
+    "fetch failed, building what is checked out: {err}": {
       "args": [
         "err"
       ]
@@ -539,8 +698,21 @@
     "forwarding": {},
     "forwarding port": {},
     "generated by one takeover: newgate on opencode": {},
+    "git mode: {err}; point it elsewhere with `newgate self-update git <dir>`": {},
+    "git {args}: {msg}": {
+      "args": [
+        "args",
+        "msg"
+      ]
+    },
     "give both --provider and --model, or neither": {},
     "give either a profile or --provider/--model, not both": {},
+    "give one version, not {a} and {b}": {
+      "args": [
+        "a",
+        "b"
+      ]
+    },
     "global default is now {profile}": {
       "args": [
         "profile"
@@ -571,6 +743,7 @@
         "root"
       ]
     },
+    "inferred, not saved yet": {},
     "inject thinking:disabled (the first step)": {},
     "injected {patch} (Claude Code will not pass DeepSeek thinking blocks back)": {
       "args": [
@@ -580,6 +753,19 @@
     "injected {patch} (GLM treats an absent field as thinking on)": {
       "args": [
         "patch"
+      ]
+    },
+    "installed {version} at {target} (could not keep a copy of the previous one)": {
+      "args": [
+        "target",
+        "version"
+      ]
+    },
+    "installed {version} at {target}; the previous binary is kept as {prev}": {
+      "args": [
+        "prev",
+        "target",
+        "version"
       ]
     },
     "it is protected by a passphrase; add it to ssh-agent (`ssh-add {path}`) and leave identity empty": {
@@ -679,6 +865,18 @@
     },
     "name match": {},
     "newgate (simple-cli) — a minimal UI. Available: status": {},
+    "newgate binary": {},
+    "newgate upgrade --check shows whether there is something newer; newgate upgrade@<tag> pins a version": {},
+    "newgate upgrade now builds from {dir}": {
+      "args": [
+        "dir"
+      ]
+    },
+    "newgate upgrade now installs GitHub releases of {repo}": {
+      "args": [
+        "repo"
+      ]
+    },
     "no API extension at {path}": {
       "args": [
         "path"
@@ -696,7 +894,13 @@
     "no omo slot registry; run newgate on opencode first": {},
     "no profiles yet; run `newgate init` first": {},
     "no ranking": {},
+    "no reference data cached yet; upgrade would download it": {},
     "no registry (oh-my-openagent has never been taken over)": {},
+    "no repository to build from: distribution {dist} declares no GitHub repository": {
+      "args": [
+        "dist"
+      ]
+    },
     "no result": {},
     "no slot registry at {file}": {
       "args": [
@@ -726,6 +930,11 @@
     },
     "no targets are configured": {},
     "no targets yet — add one with `newgate tunnel add <id> --host <host>`": {},
+    "no upgrade action in this build takes a version (@{version})": {
+      "args": [
+        "version"
+      ]
+    },
     "no usable key for {host}: look in {dir} or start ssh-agent (passwords are not supported — this module only does keys and the agent)": {
       "args": [
         "dir",
@@ -734,6 +943,7 @@
     },
     "none": {},
     "none are configured yet": {},
+    "none declared": {},
     "not defined": {},
     "not listening: {err}": {
       "args": [
@@ -790,6 +1000,7 @@
       ]
     },
     "other": {},
+    "overrides the specification": {},
     "parse fingerprint cache {path}: {err}": {
       "args": [
         "err",
@@ -808,6 +1019,7 @@
       ]
     },
     "previewing uses POST": {},
+    "previous kept as .prev": {},
     "private key": {},
     "probability": {},
     "probed {n} binding": {
@@ -863,6 +1075,11 @@
         "err"
       ]
     },
+    "rebuild from {repo} with build/build.sh and swap it in (graceful daemon handoff)": {
+      "args": [
+        "repo"
+      ]
+    },
     "recorded the host key of {host} in {path} ({fp})": {
       "args": [
         "fp",
@@ -892,10 +1109,33 @@
         "schema"
       ]
     },
-    "refresh the dynamic data/configuration modules own (not the binary)": {},
     "refresh the fingerprint reference data: {err}": {
       "args": [
         "err"
+      ]
+    },
+    "release {tag} has no {asset}; building it from source": {
+      "args": [
+        "asset",
+        "tag"
+      ]
+    },
+    "release {tag} has no {asset}; building {tag} from source instead": {
+      "args": [
+        "asset",
+        "tag"
+      ]
+    },
+    "release {tag} has no {file}; refusing to install an unverified binary": {
+      "args": [
+        "file",
+        "tag"
+      ]
+    },
+    "release {tag} has {asset}; upgrade would install it": {
+      "args": [
+        "asset",
+        "tag"
       ]
     },
     "remote": {},
@@ -905,6 +1145,7 @@
     "remote port": {},
     "rename mode": {},
     "rename mode: codex's own model names map to tiers": {},
+    "replace the newgate binary from a GitHub release or a local build, with a graceful daemon handoff": {},
     "replace {path}: {err}": {
       "args": [
         "err",
@@ -915,6 +1156,12 @@
     "restoring {file} failed: {err}": {
       "args": [
         "file"
+      ]
+    },
+    "rolled back to {version}; the replaced binary is now {prev}": {
+      "args": [
+        "prev",
+        "version"
       ]
     },
     "route": {},
@@ -955,7 +1202,13 @@
     "set as auto": {},
     "set for this client only": {},
     "short-circuit the Bash classifier: on=60s / forever=permanent / off=disabled": {},
+    "show or choose where newgate upgrade gets new binaries; rollback restores the previous one": {},
     "simple-cli (renders status and the commands; the other injection points are accepted but not shown)": {},
+    "skipped (no versions): {ids}": {
+      "args": [
+        "ids"
+      ]
+    },
     "slot": {},
     "slot registry → {file} ({n} key; default decides which tier each key follows)": {
       "args": [
@@ -993,6 +1246,11 @@
     },
     "status blocks": {},
     "strict refuses an unknown machine; accept-new records it the first time and still refuses if it later changes": {},
+    "submodule update failed: {err}": {
+      "args": [
+        "err"
+      ]
+    },
     "suggested": {},
     "summary": {},
     "switch: newgate omo mode current|suggested": {},
@@ -1050,11 +1308,24 @@
     },
     "the client uses whatever the global default is": {},
     "the configshare bookkeeping file is corrupt; starting over from the initial state: {err}": {},
+    "the daemon (pid {pid}) is still running an old binary; see newgate logs": {
+      "args": [
+        "pid"
+      ]
+    },
+    "the daemon (pid {pid}) runs from {exe}, not {target}; it was left alone": {
+      "args": [
+        "exe",
+        "pid",
+        "target"
+      ]
+    },
     "the daemon closes its connection within a couple of seconds": {},
     "the daemon is not running — the dashboard is served by it, so start it first: newgate start": {},
     "the daemon is not running — this diagram is served by it, so start it first: newgate start": {},
     "the daemon is not running — this takes effect when it starts": {},
     "the daemon is not running: forwarding ports and background reconnection only happen there": {},
+    "the daemon is not running; its next start uses the new binary": {},
     "the daemon picks this up within a couple of seconds": {},
     "the diagram is read-only": {},
     "the endpoint is empty (run newgate config join <endpoint> first)": {},
@@ -1137,6 +1408,13 @@
         "err"
       ]
     },
+    "the new binary does not run here, nothing was replaced: {err}": {},
+    "the new binary reports {version}, which is not a {dist} build; nothing was replaced (--force to install it anyway)": {
+      "args": [
+        "dist",
+        "version"
+      ]
+    },
     "the opus tier (the workhorse); the main loop runs here (Claude Code's default), and so does opusplan in Plan Mode": {},
     "the peer is not a host (the endpoint returned 404) — is its role not set to host?": {},
     "the peer speaks protocol version {peer}, this binary only understands {mine} (both ends have to be upgraded together)": {
@@ -1145,6 +1423,7 @@
         "peer"
       ]
     },
+    "the previous binary does not run: {err}": {},
     "the provider answered with an empty model list": {},
     "the provider field is not an object: {err}": {},
     "the registry is empty": {},
@@ -1232,6 +1511,11 @@
         "name"
       ]
     },
+    "there is no previous binary to roll back to ({prev} is missing)": {
+      "args": [
+        "prev"
+      ]
+    },
     "there is no provider named {name} in providers.json": {
       "args": [
         "name"
@@ -1255,6 +1539,22 @@
         "was"
       ]
     },
+    "this binary ({current}) is newer than the latest release {tag}; nothing to do (--force installs the release anyway)": {
+      "args": [
+        "current",
+        "tag"
+      ]
+    },
+    "this binary does not know which distribution it is (specification {spec}); rebuild it with build/build.sh": {
+      "args": [
+        "spec"
+      ]
+    },
+    "this binary was started by `go run` ({exe}); build one with build/build.sh first": {
+      "args": [
+        "exe"
+      ]
+    },
     "this build cannot serve a web interface: nothing provides a shared port (porthub) or a serve-time hook (serving)": {},
     "this build has no shared port, so the interface listens on its own port (the gateway is on a different one)": {},
     "this client is no longer in the catalog": {},
@@ -1270,6 +1570,7 @@
         "prefix"
       ]
     },
+    "this distribution declares no GitHub repository; give one: newgate self-update release <owner/repo>": {},
     "this distribution's own message catalog, appended to the installed language": {},
     "this interface answers on loopback only; reach it as http://127.0.0.1:{port} (the host name in this request was {host})": {
       "args": [
@@ -1291,7 +1592,6 @@
         "base"
       ]
     },
-    "this refreshes module-owned dynamic data/configuration only; the newgate binary is not replaced (git-remote self-upgrade is not supported yet)": {},
     "this route only forwards the remote interface: {path} points outside it": {
       "args": [
         "path"
@@ -1334,6 +1634,16 @@
     },
     "unavailable": {},
     "unbound": {},
+    "unexpected `version` output: {line}": {
+      "args": [
+        "line"
+      ]
+    },
+    "unexpected argument {arg}": {
+      "args": [
+        "arg"
+      ]
+    },
     "unknown command \"{cmd}\" (see the list with newgate status)": {
       "args": [
         "cmd"
@@ -1349,6 +1659,11 @@
         "api"
       ]
     },
+    "unknown self-update subcommand {sub} (git, release, rollback)": {
+      "args": [
+        "sub"
+      ]
+    },
     "unknown tunnel subcommand {verb} — try ls, add, rm, up, down or test": {
       "args": [
         "verb"
@@ -1361,6 +1676,12 @@
       ]
     },
     "unusable": {},
+    "upgrade action {id} has no versions; drop @{version}": {
+      "args": [
+        "id",
+        "version"
+      ]
+    },
     "upgrade finished: {n} succeeded": {
       "args": [
         "n"
@@ -1372,7 +1693,21 @@
         "ok"
       ]
     },
-    "upgrade the dynamic data and configuration modules own (the binary is not replaced)": {},
+    "upgrade newgate and the data its modules own; @version pins a tag, branch or commit": {},
+    "upgrade newgate itself and the dynamic data modules own, through actions each module registers": {},
+    "upgrade would build {version} from {repo} (this binary is {current})": {
+      "args": [
+        "current",
+        "repo",
+        "version"
+      ]
+    },
+    "upgrade would clone {url} at {ref} and build it": {
+      "args": [
+        "ref",
+        "url"
+      ]
+    },
     "upgrade: action {id} is already registered by another module": {
       "args": [
         "id"
@@ -1427,6 +1762,7 @@
         "n"
       ]
     },
+    "version": {},
     "web": {},
     "web: the extension {name} is already registered by another module — only one of them would ever receive a request": {
       "args": [
@@ -1483,9 +1819,73 @@
         "profile"
       ]
     },
+    "{api}; the github.com fallback failed too: {web}": {
+      "args": [
+        "api",
+        "web"
+      ]
+    },
     "{binding} (override)": {
       "args": [
         "binding"
+      ]
+    },
+    "{branch} and {upstream} have diverged ({ahead} ahead, {behind} behind): not pulling": {
+      "args": [
+        "ahead",
+        "behind",
+        "branch",
+        "upstream"
+      ]
+    },
+    "{branch} has no upstream: not pulling": {
+      "args": [
+        "branch"
+      ]
+    },
+    "{branch} is {n} commit ahead of {upstream}": {
+      "args": [
+        "branch",
+        "n",
+        "upstream"
+      ],
+      "other": "{branch} is {n} commits ahead of {upstream}"
+    },
+    "{branch} is {n} commit behind {upstream}, but the working tree has changes: not pulling": {
+      "args": [
+        "branch",
+        "n",
+        "upstream"
+      ],
+      "other": "{branch} is {n} commits behind {upstream}, but the working tree has changes: not pulling"
+    },
+    "{branch} is {n} commit behind {upstream}; upgrade would fast-forward it": {
+      "args": [
+        "branch",
+        "n",
+        "upstream"
+      ],
+      "other": "{branch} is {n} commits behind {upstream}; upgrade would fast-forward it"
+    },
+    "{dir} has no build/build.sh (is it a newgate distribution repository?)": {
+      "args": [
+        "dir"
+      ]
+    },
+    "{dir} has no {spec} (the specification this binary was built from)": {
+      "args": [
+        "dir",
+        "spec"
+      ]
+    },
+    "{dir} is not an absolute path": {
+      "args": [
+        "dir"
+      ]
+    },
+    "{dir} is not the root of a git checkout": {
+      "args": [
+        "dir"
       ]
     },
     "{err} (nonce length {got}, expected {want})": {
@@ -1509,6 +1909,13 @@
     "{file} is not valid JSON": {
       "args": [
         "file"
+      ]
+    },
+    "{file} of {tag} does not list {asset}; refusing to install an unverified binary": {
+      "args": [
+        "asset",
+        "file",
+        "tag"
       ]
     },
     "{head} · the highest priority globally, ahead of any profile": {
@@ -1646,6 +2053,19 @@
         "name"
       ]
     },
+    "{name} is larger than {limit} MB; refusing it": {
+      "args": [
+        "limit",
+        "name"
+      ]
+    },
+    "{name} is {got} bytes, GitHub said {want}": {
+      "args": [
+        "got",
+        "name",
+        "want"
+      ]
+    },
     "{note}; {why}": {
       "args": [
         "note",
@@ -1766,6 +2186,13 @@
         "n"
       ]
     },
+    "{old} → {new}; {daemon}": {
+      "args": [
+        "daemon",
+        "new",
+        "old"
+      ]
+    },
     "{providers} carries an inline api_key for {names}: a secret may only travel over the secrets channel (newgate config secrets on the host); the config channel never carries one — on the host it is managed by git, so a single commit puts it in history forever": {
       "args": [
         "names",
@@ -1782,6 +2209,23 @@
         "provider"
       ]
     },
+    "{ref} cannot build this distribution: {err}": {
+      "args": [
+        "ref"
+      ]
+    },
+    "{ref} is not a tag or branch of {url}": {
+      "args": [
+        "ref",
+        "url"
+      ]
+    },
+    "{ref} is not a tag, branch or commit of {url}": {
+      "args": [
+        "ref",
+        "url"
+      ]
+    },
     "{remote} accepts connections": {
       "args": [
         "remote"
@@ -1790,6 +2234,22 @@
     "{report}": {
       "args": [
         "report"
+      ]
+    },
+    "{repo} has no published release yet": {
+      "args": [
+        "repo"
+      ]
+    },
+    "{repo} has no release named {ref}; building it from source": {
+      "args": [
+        "ref",
+        "repo"
+      ]
+    },
+    "{repo} is not owner/repo (no https://, no .git)": {
+      "args": [
+        "repo"
       ]
     },
     "{section}.{name} → {provider}/{key} (now {now}{suggested})": {
@@ -1826,6 +2286,13 @@
     "{table} rewritten": {
       "args": [
         "table"
+      ]
+    },
+    "{tag} is available (this binary is {current}); upgrade would install {asset}": {
+      "args": [
+        "asset",
+        "current",
+        "tag"
       ]
     },
     "{target}: fingerprint says {prediction}, but the binding asks for {model} ({match})": {
@@ -1899,6 +2366,11 @@
     "{value} is neither a tier (heavy/normal/mid/light/vision), nor a registered dynamic role key, nor provider/model": {
       "args": [
         "value"
+      ]
+    },
+    "{version} is installed, but the daemon handoff failed: {err}": {
+      "args": [
+        "version"
       ]
     },
     "↑/↓ or j/k move · ←/→ or Tab switch pane · Enter apply · d follow the default · r reload · q quit": {}

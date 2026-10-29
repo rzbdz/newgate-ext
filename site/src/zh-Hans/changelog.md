@@ -7,6 +7,15 @@
 
 ## 最近
 
+### v0.9.x
+
+- **自升级**：`newgate upgrade` 连二进制一起升。两种来源——GitHub Release（下本平台
+  产物、对校验和），或者开发机上从本地仓库 `fetch` + `build/build.sh`；走哪种在第一次
+  运行时定下来，`newgate self-update` 可以看、可以改。`newgate upgrade@<tag>` 钉版本：
+  有 Release 用 Release，没有就临时 clone 那个 ref 现编。换之前先试跑，旧版留成
+  `.prev`，`newgate self-update rollback` 换回去；daemon 走 socket 交接，会话不断。
+- 规格书多了一个 `github` 字段：发布在哪个仓库。fork 的人改这一行，升级通道就是自己的。
+
 ### v0.8.x
 
 - **探活成了正式命令**：`newgate probe` 对每条候选真打一发，报连通性、方言能力和

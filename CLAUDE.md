@@ -141,7 +141,7 @@ NEWGATE_PLATFORMS="linux/amd64 linux/arm64 darwin/arm64" build/build.sh dist/
   `*` 与具体名字同时写、或点了不存在的目录，生成期就报错。
 - 换规格书 = 改 `dist.json` 或加一份 `dist*.json`，**不用改任何 Go 代码**：
   `distgen` 会把全部规格书生成进 `manifest/modules_gen.go`（那份文件要提交），
-  构建时用 `-X main.spec=<文件名>` 选一份。
+  构建时用 `-X distinfo.spec=<文件名>` 选一份。
 - **`manifest/modules_gen.go` 是生成物但进版本控制**：它记着「这份提交装了什么」。
   改了规格书或模块目录就要重新生成（`go run ./tools/distgen`），
   CI 有一步 `-check` 拦「忘了生成」。
@@ -247,3 +247,16 @@ git tag v0.1.0 && git push origin main --tags   # CI 编平台矩阵并挂到 Gi
 
 产物直接可下载（`gh release download <tag>` 或 Release 页面）。发行节奏是发行版
 作者的事：内核今天合了什么，不该决定你的产品什么时候发新版。
+
+### 发出去的东西被谁读（2026-10-29 起）
+
+`newgate upgrade`（`modules/self-update` 的 release 模式）直接读 Release：
+产物名 `newgate-<distribution>-<os>-<arch>` 与 `SHA256SUMS` 是**协议**，改名或者
+少挂校验和，已经装出去的每一台机器都会升不上来（没有 SHA256SUMS 的 Release 它拒装）。
+发在哪个仓库写在规格书的 `"github"` 字段里，由 `tools/distgen` 生成进
+`manifest/distinfo`——fork 的人改这一行，升级通道就接到了自己的仓库。
+
+本机这类开发机走 **git 模式**（第一次运行时按构建期注入的源码目录推断，记在
+`state.json` 的 `self-update` 段）：`newgate upgrade` = fetch → 能快进就快进 →
+`build/build.sh` → 试跑 → 换上 → daemon 交接。工作区有改动/分叉时不拉，照编手上这份。
+`newgate self-update` 看/改模式，`newgate self-update rollback` 换回 `.prev`。

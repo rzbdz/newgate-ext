@@ -73,7 +73,8 @@ newgate --set-profile work --agent claude  # 只给 claude 用 work
 newgate claude --profile=other  # 单次覆盖，不动全局
 newgate probe              # 主动验证 provider 连接、方言与已知怪癖
 newgate verify             # 指纹：上游真的在用 binding 写的那个模型吗（可跟 profile 名）
-newgate upgrade            # 跑所有模块登记的动态数据/配置升级动作
+newgate upgrade            # 升级二进制并刷新各模块的数据（--check 只看；@v0.9.0 钉版本）
+newgate self-update        # 二进制从哪来：GitHub Release 还是本地仓库构建
 ```
 
 接管：

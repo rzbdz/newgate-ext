@@ -69,15 +69,54 @@ newgate verify --json                   # 机器可读
 ## `newgate upgrade`
 
 ```bash
-newgate upgrade                 # 跑所有模块登记的升级动作
-newgate upgrade --list          # 只看有哪些动作
+newgate upgrade                   # 升级二进制 + 刷新各模块的数据
+newgate upgrade --check           # 只看有没有新的，什么都不动
+newgate upgrade --list            # 有哪些动作（binary、fingerprint-data …）
 newgate upgrade fingerprint-data  # 只刷新指纹参考库
+newgate upgrade@v0.9.0            # 把二进制钉到某个 tag（也可以是分支、提交）
 ```
 
-`upgrade` 是模块**登记动态数据升级动作**的入口：谁拥有那份数据，谁提供怎么拿、怎么
-校验。第一版只做动态数据/配置（指纹参考库、将来的远端配置、插件自己的数据文件），
-**不换二进制**。绑定一个 git remote 自动 fetch + 编译 + 安装同样还没有做——静态升级
-仍然走「换二进制 + `newgate restart` 优雅交接」那条路。
+`upgrade` 是模块**登记升级动作**的入口：谁拥有那份东西，谁提供怎么拿、怎么校验。
+二进制本身也是其中一个动作（`binary`，由 `self-update` 模块登记），所以一条命令
+连二进制带数据一起升；点了 `@版本` 时只有认识版本的动作会跑，其余的跳过并说一声。
+
+### 二进制从哪来：两种模式
+
+| 模式 | 给谁 | 做什么 |
+| --- | --- | --- |
+| `release` | 不编代码的机器 | 去规格书声明的 GitHub 仓库拿**最新 Release** 里本平台的产物，对 `SHA256SUMS`，换上 |
+| `git` | 开发者、尝鲜的人 | 在本地 checkout 里 `fetch` → 能快进就快进 → `build/build.sh` → 换上 |
+
+走哪个是**第一次运行这个二进制时**定下来的，记在 `state.json` 的 `self-update` 段：
+编它的那份源码在本机、是发行版仓库 → `git`；不在（从 Release 下的）→ `release`。
+之后只认那一段：
+
+```bash
+newgate self-update                 # 现在走哪条、仓库在哪、上一版留没留着
+newgate self-update git [目录]       # 改成从本地仓库构建（缺省是编这个二进制的那份）
+newgate self-update release [owner/repo]  # 改成装 GitHub Release（可以顺手换仓库）
+newgate self-update rollback        # 换回上一版（再敲一次又换回来）
+```
+
+`@版本` 不分模式：先找那个 tag 的 Release，有本平台产物就下它；没有（只打了 tag
+没发版、是分支或提交、或者本平台不在 Release 矩阵里，比如 riscv64）就在**临时目录**
+里 clone 那个 ref 编一份——开发者手上那份 checkout 不会被切走。这条路要本机有
+`git`、`go`、`bash`、`python3`。
+
+几条保险：
+
+- 新二进制先以 `newgate` 的名字跑一次 `version`，跑不起来、或者不是同一个发行版，
+  就**不换**；
+- 换法是同目录临时文件 + rename，旧的那份留成 `<路径>.prev`；
+- 不给 `--force` 不倒退：开发机常常比最新 Release 新（`v0.8.0-40-g…`），这时
+  `upgrade` 只说一句；
+- git 模式**绝不替你做决定**：工作区有改动、本地有没推的提交、分叉、detached——
+  都不拉，照编手上这份；
+- daemon 在跑就用新二进制执行 `newgate restart`（socket 交接，会话不断），换完核对
+  daemon 真的跑在新文件上。
+
+发布仓库写在规格书里（`dist.json` 的 `"github": "owner/repo"`）：fork 的人改这一行，
+升级通道就接到了自己的仓库。
 
 ## 致谢
 

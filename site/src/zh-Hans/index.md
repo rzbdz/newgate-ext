@@ -48,9 +48,11 @@ newgate doctor      # 出问题时先跑它
 
 ## <small>07</small> 升级不会打断你
 
-`newgate restart` 把监听 socket 交给新二进制，并把在途的请求排干——流式的也算，
-所以在一个很长的 agent 会话中间换版本是安全的，哪怕那个会话正走在这条被替换掉的
-网关上。
+`newgate upgrade` 拿到新二进制（GitHub Release，或者开发机上从本地仓库现编），
+试跑一次、换上，然后 `newgate restart` 把监听 socket 交给它，并把在途的请求排干——
+流式的也算，所以在一个很长的 agent 会话中间换版本是安全的，哪怕那个会话正走在这条
+被替换掉的网关上。`newgate upgrade@v0.9.0` 钉到某个版本；换坏了
+`newgate self-update rollback` 一步换回去。
 
 ## <small>08</small> 只开 SSH 的机器，界面也够得到
 
@@ -87,7 +89,7 @@ token；网页的健康表与命令行看的是同一份账本。
 模型下拉里也会带出上一次验到的结论。
 
 参考库是动态数据：默认每 2 小时检查一次新版本，也可以 `newgate upgrade` 手动刷新
-（`upgrade` 是模块登记动态数据升级动作的入口；第一版只做数据/配置，不换二进制）。
+（`upgrade` 是各模块登记升级动作的入口，二进制本身也是其中一项）。
 指纹由 [lm-detector](https://github.com/Ikaleio/lm-detector) 提供（MIT），参考数据
 来自 [lm.ikale.io](https://lm.ikale.io/docs/sdk)。谢谢这个项目。
 

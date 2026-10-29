@@ -17,7 +17,7 @@
 // # 一份生成物装下全部规格书
 //
 // 每份规格书各得一条 app.Selection，**同时**生成在 manifest/modules_gen.go 里，
-// 构建时用 -ldflags -X main.spec=<文件名> 选一份。这样 -check 一次就能校验全部
+// 构建时用 -ldflags -X distinfo.spec=<文件名> 选一份。这样 -check 一次就能校验全部
 // 变体：一份坏掉的 dist-simple-cli.json 会让默认构建就红——而不是等到有人真的
 // 编那个变体时才发现，那时离「谁改坏了哪一行」已经很远了。
 package main
@@ -32,6 +32,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -52,11 +53,17 @@ const (
 	genFileName = "modules_gen.go"
 	// orderGenFileName 是**第二份**生成物：启动顺序（见 renderOrder）。
 	orderGenFileName = "order_gen.go"
+	// infoPkgDir/infoFileName 是**第三份**生成物：每份规格书的身份（叫什么、从哪个
+	// GitHub 仓库发布）。它单独成一个叶子包，因为读它的是**模块**（self-update
+	// 要知道自己该下哪个产物），而 manifest 包 import 了每一个模块——模块抬头
+	// import manifest 就是编译环（arch-diagram 实测撞过同一堵墙）。
+	infoPkgDir   = "manifest/distinfo"
+	infoFileName = "specs_gen.go"
 	// orderProbeDir 是算顺序的那个探针程序（见它的包注释）。
 	orderProbeDir = "tools/distgen/orderprobe"
 	// specGlob 是规格书的文件名模式（dist.json / dist-simple-cli.json）。
 	specGlob = "dist*.json"
-	// defaultSpec 是没注入 -ldflags -X main.spec 时用的那一份。
+	// defaultSpec 是没注入 -ldflags -X distinfo.spec 时用的那一份。
 	defaultSpec = "dist.json"
 	// disableAllToken 是规格书里「内核自带的全都不要」的写法：`"disable": ["*"]`。
 	//
@@ -69,6 +76,10 @@ const (
 	disableAllToken = "*"
 )
 
+// githubRepo 是 `owner/repo` 的形状。宽松到 GitHub 自己允许的字符，严格到拒掉
+// 最常见的两种写法错误：整条 URL 与带 `.git` 的克隆地址。
+var githubRepo = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+$`)
+
 // spec 是规格书（Spec）：本发行版由哪些模块组成、关掉内核的哪几个。
 //
 // DisallowUnknownFields 是刻意的：写错一个键名（"module" / "disabled"）如果被
@@ -77,6 +88,13 @@ type spec struct {
 	Distribution string   `json:"distribution"`
 	Modules      []string `json:"modules"`
 	Disable      []string `json:"disable"`
+	// GitHub 是这份发行版**发布在哪**（`owner/repo`）：自更新从这个仓库的 Release
+	// 下产物、从它的源码编某个 tag。可以不写——不写的规格书就没有「从 Release
+	// 升级」这条路，只能在本地仓库里编（见 modules/self-update）。
+	//
+	// 它在规格书里而不是在模块里，因为「发在哪」是**发行版**的事实：fork 的人
+	// 改这一行就把升级通道接到自己的仓库，不用碰任何 Go 代码。
+	GitHub string `json:"github,omitempty"`
 }
 
 // module 是一个待装配的自有模块目录。
@@ -116,6 +134,11 @@ func main() {
 	}
 	target := filepath.Join(root, genPkgDir, genFileName)
 	orderTarget := filepath.Join(root, genPkgDir, orderGenFileName)
+	infoTarget := filepath.Join(root, infoPkgDir, infoFileName)
+	infoContent, err := format.Source(renderInfo(specs, names))
+	if err != nil {
+		fail(fmt.Errorf("生成的源码不合法（这是生成器的 bug）: %w", err))
+	}
 
 	// **先后问题**：上面那份清单会引用 order_gen.go 里的 startOrder（把构建期算好的
 	// 启动顺序贴回每份规格书）。而第一次生成时它还不存在——那样这个包根本编不过，
@@ -133,18 +156,28 @@ func main() {
 	}
 
 	if *check {
-		current, err := os.ReadFile(target)
-		if err != nil || !bytes.Equal(current, content) {
-			fail(fmt.Errorf("%s 已过期：运行 `go run ./tools/distgen` 后重新提交", target))
+		for _, f := range []struct {
+			path string
+			want []byte
+		}{{target, content}, {infoTarget, infoContent}} {
+			current, err := os.ReadFile(f.path)
+			if err != nil || !bytes.Equal(current, f.want) {
+				fail(fmt.Errorf("%s 已过期：运行 `go run ./tools/distgen` 后重新提交", f.path))
+			}
 		}
 	}
 
 	if !*check {
-		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-			fail(err)
-		}
-		if err := os.WriteFile(target, content, 0o644); err != nil {
-			fail(err)
+		for _, f := range []struct {
+			path string
+			data []byte
+		}{{target, content}, {infoTarget, infoContent}} {
+			if err := os.MkdirAll(filepath.Dir(f.path), 0o755); err != nil {
+				fail(err)
+			}
+			if err := os.WriteFile(f.path, f.data, 0o644); err != nil {
+				fail(err)
+			}
 		}
 	}
 
@@ -162,15 +195,15 @@ func main() {
 		if err != nil || !bytes.Equal(current, orderContent) {
 			fail(fmt.Errorf("%s 已过期：运行 `go run ./tools/distgen` 后重新提交", orderTarget))
 		}
-		fmt.Printf("distgen: %d 份规格书 × %d 个自有模块，两份生成物都是新的\n",
+		fmt.Printf("distgen: %d 份规格书 × %d 个自有模块，三份生成物都是新的\n",
 			len(names), len(mods))
 		return
 	}
 	if err := os.WriteFile(orderTarget, orderContent, 0o644); err != nil {
 		fail(err)
 	}
-	fmt.Printf("distgen: %d 份规格书 × %d 个自有模块 → %s, %s\n",
-		len(names), len(mods), target, orderTarget)
+	fmt.Printf("distgen: %d 份规格书 × %d 个自有模块 → %s, %s, %s\n",
+		len(names), len(mods), target, orderTarget, infoTarget)
 }
 
 // renderOrder 跑 tools/distgen/orderprobe，把它打出来的顺序编成 order_gen.go。
@@ -274,6 +307,9 @@ func loadSpecs(repoRoot string) (map[string]spec, []string, error) {
 		if len(s.Modules) == 0 {
 			return nil, nil, fmt.Errorf("%s 的 modules 是空的——一个模块都不装的发行版没有意义", name)
 		}
+		if s.GitHub != "" && !githubRepo.MatchString(s.GitHub) {
+			return nil, nil, fmt.Errorf("%s 的 github 是 %q——要写成 `owner/repo`（不带 https://、不带 .git）", name, s.GitHub)
+		}
 		out[name] = s
 		names = append(names, name)
 	}
@@ -371,7 +407,7 @@ func render(mods []module, specs map[string]spec, names []string) []byte {
 	b.WriteString("//\n")
 	b.WriteString("// 由仓库根的规格书（dist*.json）编译而来：每条 app.Selection 就是一份规格书\n")
 	b.WriteString("// 要装的东西——自己的模块 + 要关掉的内核模块。构建时用\n")
-	b.WriteString("// -ldflags -X main.spec=<文件名> 选一份，DefaultSpec 是没注入时的兜底。\n")
+	b.WriteString("// -ldflags -X distinfo.spec=<文件名> 选一份，DefaultSpec 是没注入时的兜底。\n")
 	b.WriteString("//\n")
 	b.WriteString("// 规格书里的 `\"disable\": [\"*\"]` 编成 app.Selection.AllCore：内核自带的全都不要，\n")
 	b.WriteString("// 只留关不掉的那些（组合根自己要用的端口）。\n")
@@ -386,7 +422,7 @@ func render(mods []module, specs map[string]spec, names []string) []byte {
 	}
 	b.WriteString(")\n\n")
 
-	b.WriteString("// DefaultSpec 是没注入 -X main.spec 时用的规格书。\n")
+	b.WriteString("// DefaultSpec 是没注入 -X distinfo.spec 时用的规格书。\n")
 	b.WriteString("//\n")
 	b.WriteString("// 它让 `go run ./cmd/newgate` 与 `go test ./...` 不用先编一遍就能跑——\n")
 	b.WriteString("// 默认那份就是仓库根的主规格书，与正式产物一致。\n")
@@ -445,6 +481,34 @@ func render(mods []module, specs map[string]spec, names []string) []byte {
 	b.WriteString("\t\treturn nil, fmt.Errorf(\"没有叫 %q 的规格书（可用：%s）\", name, strings.Join(SpecNames(), \", \"))\n")
 	b.WriteString("\t}\n")
 	b.WriteString("\treturn sel.Load()\n")
+	b.WriteString("}\n")
+	return b.Bytes()
+}
+
+// renderInfo 生成 manifest/distinfo 的规格书身份表。
+//
+// 只放「这份规格书叫什么、发在哪」——**不放模块表**：这个包要被模块 import，
+// 而模块表 import 模块（见 infoPkgDir 的注释）。
+func renderInfo(specs map[string]spec, names []string) []byte {
+	var b bytes.Buffer
+	b.WriteString("// Code generated by tools/distgen. DO NOT EDIT.\n")
+	b.WriteString("//\n")
+	b.WriteString("// 每份规格书的身份：distribution（产物名与版本号前缀）与 github（发布仓库）。\n")
+	b.WriteString("// 与 manifest/modules_gen.go 同源（仓库根的 dist*.json），分开放是为了让模块\n")
+	b.WriteString("// 能读它而不成环——见 tools/distgen 的 infoPkgDir。\n")
+	b.WriteString("\npackage distinfo\n\n")
+	b.WriteString("// DefaultSpec 是没注入 -X 时用的规格书（与 manifest.DefaultSpec 同一个值）。\n")
+	fmt.Fprintf(&b, "const DefaultSpec = %q\n\n", defaultSpec)
+	b.WriteString("// specs 是规格书文件名 → 身份。\n")
+	b.WriteString("var specs = map[string]Info{\n")
+	for _, name := range names {
+		s := specs[name]
+		fmt.Fprintf(&b, "\t%q: {Spec: %q, Distribution: %q", name, name, s.Distribution)
+		if s.GitHub != "" {
+			fmt.Fprintf(&b, ", GitHub: %q", s.GitHub)
+		}
+		b.WriteString("},\n")
+	}
 	b.WriteString("}\n")
 	return b.Bytes()
 }

@@ -64,6 +64,10 @@
       "reviewed": true,
       "text": "，建议 {tier}"
     },
+    "--check: nothing is downloaded, replaced or restarted": {
+      "reviewed": true,
+      "text": "--check：不下载、不替换、不重启"
+    },
     "--count must be 1, 2 or 3": {
       "reviewed": true,
       "text": "--count 只能是 1、2 或 3"
@@ -83,6 +87,14 @@
     "; ": {
       "reviewed": true,
       "text": "；"
+    },
+    "@ needs a version after it, e.g. upgrade@v0.9.0": {
+      "reviewed": true,
+      "text": "@ 后面要跟一个版本，例如 upgrade@v0.9.0"
+    },
+    "@version": {
+      "reviewed": true,
+      "text": "@版本"
     },
     "Anthropic": {
       "reviewed": true,
@@ -228,6 +240,18 @@
       "reviewed": true,
       "text": "接管 oh-my-openagent 时自动生成。default 是这个键在 profile 里没写时的缺省归属；想让某个槽位换档位，改 overrides（支持 \"@别的键\" / \"档位名\" / \"provider/模型\"），或在 profile 里直接写这个键。"
     },
+    "GitHub API refused the request (HTTP {code}; rate limited? set GITHUB_TOKEN): {body}": {
+      "reviewed": true,
+      "text": "GitHub API 拒绝了请求（HTTP {code}；被限流了？设一下 GITHUB_TOKEN）：{body}"
+    },
+    "GitHub answered HTTP {code}: {body}": {
+      "reviewed": true,
+      "text": "GitHub 回了 HTTP {code}：{body}"
+    },
+    "GitHub's answer has no tag_name": {
+      "reviewed": true,
+      "text": "GitHub 的回答里没有 tag_name"
+    },
     "Global default": {
       "reviewed": true,
       "text": "全局缺省"
@@ -348,6 +372,10 @@
       "reviewed": true,
       "text": "[naked] 分类器请求被直接批准，未调用上游（窗口还剩 {left}）"
     },
+    "`newgate restart` failed: {err}": {
+      "reviewed": true,
+      "text": "`newgate restart` 失败：{err}"
+    },
     "a command cannot be nil": {
       "reviewed": true,
       "text": "命令不能为 nil"
@@ -404,6 +432,10 @@
       "reviewed": true,
       "text": "状态提供者不能为 nil"
     },
+    "a submodule was not at its recorded commit before the pull; left it where it is": {
+      "reviewed": true,
+      "text": "拉取之前有 submodule 不在 gitlink 记的提交上；保持原样，没动它"
+    },
     "a theme needs an id": {
       "reviewed": true,
       "text": "一套皮肤必须有 id"
@@ -432,9 +464,21 @@
       "reviewed": true,
       "text": "全部采纳"
     },
+    "after the restart no daemon is running; see newgate logs": {
+      "reviewed": true,
+      "text": "重启之后没有 daemon 在跑；看 newgate logs"
+    },
     "all profiles": {
       "reviewed": true,
       "text": "全部档位文件"
+    },
+    "already at {tag}": {
+      "reviewed": true,
+      "text": "已经是 {tag}"
+    },
+    "already at {version} (built from {repo})": {
+      "reviewed": true,
+      "text": "已经是 {version}（从 {repo} 编的）"
     },
     "already on the chain": {
       "reviewed": true,
@@ -451,6 +495,10 @@
     "another sync round is already running; this round was skipped": {
       "reviewed": true,
       "text": "另一轮同步正在进行，这一轮跳过了"
+    },
+    "another upgrade is already running": {
+      "reviewed": true,
+      "text": "另一个升级正在进行"
     },
     "api: chosen from each provider's protocol · challenges per target: {count}": {
       "reviewed": true,
@@ -528,9 +576,37 @@
       "reviewed": true,
       "text": "尽力而为：关不掉思考的模型给最低推理强度，OpenAI 方言的请求一个字节都不动"
     },
+    "binary": {
+      "reviewed": true,
+      "text": "二进制"
+    },
     "binding mode must be current or suggested, got {value}": {
       "reviewed": true,
       "text": "绑定方式只能是 current 或 suggested，收到 {value}"
+    },
+    "build/build.sh failed: {err}": {
+      "reviewed": true,
+      "text": "build/build.sh 失败：{err}"
+    },
+    "build/build.sh produced {n} binaries for {platform}, expected one": {
+      "reviewed": true,
+      "text": "build/build.sh 给 {platform} 编出了 {n} 个二进制，应当只有一个"
+    },
+    "building from source needs {tools} on PATH": {
+      "reviewed": true,
+      "text": "从源码构建需要 PATH 上有 {tools}"
+    },
+    "building {spec} for {platform} in {repo}": {
+      "reviewed": true,
+      "text": "在 {repo} 里为 {platform} 编 {spec}"
+    },
+    "cached {version}, last checked {ago} ago; upgrade would check for a newer bank": {
+      "reviewed": true,
+      "text": "手上是 {version}，{ago} 前查过；upgrade 会去查有没有更新的参考库"
+    },
+    "cached {version}; upgrade would check for a newer bank": {
+      "reviewed": true,
+      "text": "手上是 {version}；upgrade 会去查有没有更新的参考库"
     },
     "cannot archive {path}: {err}": {
       "reviewed": true,
@@ -551,6 +627,10 @@
     "cannot download the fingerprint reference data from {sources}": {
       "reviewed": true,
       "text": "无法从 {sources} 下载指纹参考数据"
+    },
+    "cannot download {name}: {err}": {
+      "reviewed": true,
+      "text": "下载不了 {name}：{err}"
     },
     "cannot fix the permissions of {path}: {err}": {
       "reviewed": true,
@@ -600,6 +680,10 @@
       "reviewed": true,
       "text": "{path} 解析失败: {err}"
     },
+    "cannot reach GitHub: {err}": {
+      "reviewed": true,
+      "text": "连不上 GitHub：{err}"
+    },
     "cannot reach {addr}: {err}": {
       "machine": true,
       "text": "无法到达 {addr}：{err}"
@@ -607,6 +691,10 @@
     "cannot reach {url}: {err}": {
       "reviewed": true,
       "text": "连不上 {url}: {err}"
+    },
+    "cannot read GitHub's answer: {err}": {
+      "reviewed": true,
+      "text": "读不懂 GitHub 的回答：{err}"
     },
     "cannot read profile {name}: {err}": {
       "reviewed": true,
@@ -648,6 +736,10 @@
       "reviewed": true,
       "text": "替换 {path} 失败（配置可能处于新旧混合状态，下一次同步会重试）: {err}"
     },
+    "cannot replace {target}: {err}": {
+      "reviewed": true,
+      "text": "替换不了 {target}：{err}"
+    },
     "cannot resolve {host}: {err}": {
       "machine": true,
       "text": "无法解析 {host}：{err}"
@@ -659,6 +751,10 @@
     "cannot use the private key {path}: {err}": {
       "machine": true,
       "text": "无法使用私钥 {path}：{err}"
+    },
+    "cannot write next to {target}: {err}": {
+      "reviewed": true,
+      "text": "无法在 {target} 旁边写文件：{err}"
     },
     "cannot write the bookkeeping: {err}": {
       "reviewed": true,
@@ -684,6 +780,14 @@
       "reviewed": true,
       "text": "链头 {head}"
     },
+    "checksum mismatch for {asset}: got {got}, {file} says {want}": {
+      "reviewed": true,
+      "text": "{asset} 的校验和对不上：算出来是 {got}，{file} 里写的是 {want}"
+    },
+    "checksum verified against {file}": {
+      "reviewed": true,
+      "text": "已按 {file} 核对校验和"
+    },
     "choosing a theme needs Content-Type: application/json (got {ct})": {
       "reviewed": true,
       "text": "换皮肤要 Content-Type: application/json（现在是 {ct}）"
@@ -703,6 +807,10 @@
     "classifier_override is not valid: {err}": {
       "reviewed": true,
       "text": "classifier_override 无效：{err}"
+    },
+    "cloning {url} at {ref} into {dir}": {
+      "reviewed": true,
+      "text": "把 {url} 的 {ref} clone 到 {dir}"
     },
     "closing the SSH connections: {err}": {
       "machine": true,
@@ -768,6 +876,14 @@
       "reviewed": true,
       "text": "current=接管现状 · suggested=建议 · 切换：newgate omo mode <模式>"
     },
+    "daemon": {
+      "reviewed": true,
+      "text": "守护进程"
+    },
+    "daemon now runs the new binary (pid {old} → {new})": {
+      "reviewed": true,
+      "text": "守护进程已换到新二进制（pid {old} → {new}）"
+    },
     "dated snapshot": {
       "reviewed": true,
       "text": "日期快照"
@@ -780,6 +896,10 @@
       "reviewed": true,
       "text": "按模型体格判定，variant={variant} 不改变档位"
     },
+    "decided on first run": {
+      "reviewed": true,
+      "text": "首次运行时定下的"
+    },
     "default": {
       "reviewed": true,
       "text": "默认"
@@ -791,6 +911,10 @@
     "degraded {n} custom tool to a standard function (DeepSeek rejects any custom tool other than apply_patch with 400)": {
       "other": "把 {n} 条 custom 工具降级成了普通 function（DeepSeek 除 apply_patch 外不认任何 custom，一律 400）",
       "reviewed": true
+    },
+    "detached HEAD: not pulling": {
+      "reviewed": true,
+      "text": "HEAD 是 detached 的：不拉取"
     },
     "diagnostics": {
       "reviewed": true,
@@ -808,9 +932,33 @@
       "machine": true,
       "text": "断开连接"
     },
+    "distribution {dist} declares no GitHub repository; set one with `newgate self-update release <owner/repo>` or use git mode": {
+      "reviewed": true,
+      "text": "发行版 {dist} 没有声明 GitHub 仓库；用 `newgate self-update release <owner/repo>` 设一个，或者改用 git 模式"
+    },
+    "download the latest GitHub release of {repo} and swap it in (graceful daemon handoff)": {
+      "reviewed": true,
+      "text": "下载 {repo} 最新的 GitHub Release 并换上（守护进程优雅交接）"
+    },
     "download the latest model fingerprint reference bank": {
       "reviewed": true,
       "text": "下载最新的模型指纹参考库"
+    },
+    "downloading {asset} from {tag}": {
+      "reviewed": true,
+      "text": "从 {tag} 下载 {asset}"
+    },
+    "downloading {asset} from {tag} ({mb} MB)": {
+      "reviewed": true,
+      "text": "从 {tag} 下载 {asset}（{mb} MB）"
+    },
+    "downloading {name} answered HTTP {code}": {
+      "reviewed": true,
+      "text": "下载 {name} 回了 HTTP {code}"
+    },
+    "downloading {name} broke off: {err}": {
+      "reviewed": true,
+      "text": "下载 {name} 中断：{err}"
     },
     "dump material": {
       "reviewed": true,
@@ -868,6 +1016,18 @@
       "machine": true,
       "text": "失败：{err}"
     },
+    "fast-forward failed, building what is checked out: {err}": {
+      "reviewed": true,
+      "text": "快进失败，就编当前检出的这份：{err}"
+    },
+    "fast-forwarded {branch} by {n} commit": {
+      "reviewed": true,
+      "text": "{branch} 已快进 {n} 个提交"
+    },
+    "fetch failed, building what is checked out: {err}": {
+      "reviewed": true,
+      "text": "fetch 失败，就编当前检出的这份：{err}"
+    },
     "field": {
       "reviewed": true,
       "text": "字段"
@@ -920,6 +1080,14 @@
       "reviewed": true,
       "text": "接管一次即生成：newgate on opencode"
     },
+    "git mode: {err}; point it elsewhere with `newgate self-update git <dir>`": {
+      "reviewed": true,
+      "text": "git 模式：{err}；用 `newgate self-update git <目录>` 指到别处"
+    },
+    "git {args}: {msg}": {
+      "reviewed": true,
+      "text": "git {args}：{msg}"
+    },
     "give both --provider and --model, or neither": {
       "reviewed": true,
       "text": "--provider 和 --model 要么都给，要么都不给"
@@ -927,6 +1095,10 @@
     "give either a profile or --provider/--model, not both": {
       "reviewed": true,
       "text": "档位文件和 --provider/--model 只能给一边"
+    },
+    "give one version, not {a} and {b}": {
+      "reviewed": true,
+      "text": "只能给一个版本，不能同时是 {a} 和 {b}"
     },
     "global default is now {profile}": {
       "reviewed": true,
@@ -980,6 +1152,10 @@
       "reviewed": true,
       "text": "import 从 {root} 扫描"
     },
+    "inferred, not saved yet": {
+      "reviewed": true,
+      "text": "推断的，还没写下来"
+    },
     "inject thinking:disabled (the first step)": {
       "reviewed": true,
       "text": "注入 thinking:disabled（第 1 手）"
@@ -991,6 +1167,14 @@
     "injected {patch} (GLM treats an absent field as thinking on)": {
       "reviewed": true,
       "text": "注入 {patch}（GLM 把缺省当默认思考）"
+    },
+    "installed {version} at {target} (could not keep a copy of the previous one)": {
+      "reviewed": true,
+      "text": "已把 {version} 装到 {target}（没能留下旧版的副本）"
+    },
+    "installed {version} at {target}; the previous binary is kept as {prev}": {
+      "reviewed": true,
+      "text": "已把 {version} 装到 {target}；旧版留在 {prev}"
     },
     "it is protected by a passphrase; add it to ssh-agent (`ssh-add {path}`) and leave identity empty": {
       "machine": true,
@@ -1128,6 +1312,22 @@
       "reviewed": true,
       "text": "newgate（simple-cli）——极简界面。可用：status"
     },
+    "newgate binary": {
+      "reviewed": true,
+      "text": "newgate 二进制"
+    },
+    "newgate upgrade --check shows whether there is something newer; newgate upgrade@<tag> pins a version": {
+      "reviewed": true,
+      "text": "newgate upgrade --check 看有没有更新的；newgate upgrade@<tag> 钉到某个版本"
+    },
+    "newgate upgrade now builds from {dir}": {
+      "reviewed": true,
+      "text": "newgate upgrade 今后从 {dir} 构建"
+    },
+    "newgate upgrade now installs GitHub releases of {repo}": {
+      "reviewed": true,
+      "text": "newgate upgrade 今后安装 {repo} 的 GitHub Release"
+    },
     "no API extension at {path}": {
       "reviewed": true,
       "text": "{path} 上没有 API 扩展"
@@ -1164,9 +1364,17 @@
       "reviewed": true,
       "text": "没有排名"
     },
+    "no reference data cached yet; upgrade would download it": {
+      "reviewed": true,
+      "text": "还没有缓存参考库；upgrade 会去下载"
+    },
     "no registry (oh-my-openagent has never been taken over)": {
       "reviewed": true,
       "text": "无注册表（未接管过 oh-my-openagent）"
+    },
+    "no repository to build from: distribution {dist} declares no GitHub repository": {
+      "reviewed": true,
+      "text": "没有可以构建的仓库：发行版 {dist} 没有声明 GitHub 仓库"
     },
     "no result": {
       "reviewed": true,
@@ -1204,6 +1412,10 @@
       "machine": true,
       "text": "尚无目标 — 用 `newgate tunnel add <id> --host <host>` 添加一个"
     },
+    "no upgrade action in this build takes a version (@{version})": {
+      "reviewed": true,
+      "text": "这份构建里没有接受版本号的升级动作（@{version}）"
+    },
     "no usable key for {host}: look in {dir} or start ssh-agent (passwords are not supported — this module only does keys and the agent)": {
       "machine": true,
       "text": "{host} 没有可用的密钥：查看 {dir}，或启动 ssh-agent（不支持密码 — 本模块只处理密钥和 agent）"
@@ -1215,6 +1427,10 @@
     "none are configured yet": {
       "machine": true,
       "text": "尚未配置任何一项"
+    },
+    "none declared": {
+      "reviewed": true,
+      "text": "没有声明"
     },
     "not defined": {
       "reviewed": true,
@@ -1312,6 +1528,10 @@
       "reviewed": true,
       "text": "其他"
     },
+    "overrides the specification": {
+      "reviewed": true,
+      "text": "覆盖了规格书里的"
+    },
     "parse fingerprint cache {path}: {err}": {
       "reviewed": true,
       "text": "解析指纹缓存 {path} 失败: {err}"
@@ -1331,6 +1551,10 @@
     "previewing uses POST": {
       "reviewed": true,
       "text": "预览用 POST"
+    },
+    "previous kept as .prev": {
+      "reviewed": true,
+      "text": "旧版留成了 .prev"
     },
     "private key": {
       "machine": true,
@@ -1408,6 +1632,10 @@
       "reviewed": true,
       "text": "读取刷新后的指纹参考数据：{err}"
     },
+    "rebuild from {repo} with build/build.sh and swap it in (graceful daemon handoff)": {
+      "reviewed": true,
+      "text": "用 build/build.sh 从 {repo} 重新构建并换上（守护进程优雅交接）"
+    },
     "recorded the host key of {host} in {path} ({fp})": {
       "machine": true,
       "text": "已记录 {host} 的主机密钥到 {path}（{fp}）"
@@ -1428,13 +1656,25 @@
       "reviewed": true,
       "text": "不支持参考数据 schema {schema}/{detector_schema}"
     },
-    "refresh the dynamic data/configuration modules own (not the binary)": {
-      "reviewed": true,
-      "text": "刷新模块自己拥有的动态数据/配置（不换二进制）"
-    },
     "refresh the fingerprint reference data: {err}": {
       "reviewed": true,
       "text": "刷新指纹参考数据失败: {err}"
+    },
+    "release {tag} has no {asset}; building it from source": {
+      "reviewed": true,
+      "text": "Release {tag} 里没有 {asset}；改从源码构建"
+    },
+    "release {tag} has no {asset}; building {tag} from source instead": {
+      "reviewed": true,
+      "text": "Release {tag} 里没有 {asset}；改从源码构建 {tag}"
+    },
+    "release {tag} has no {file}; refusing to install an unverified binary": {
+      "reviewed": true,
+      "text": "Release {tag} 里没有 {file}；不安装没法校验的二进制"
+    },
+    "release {tag} has {asset}; upgrade would install it": {
+      "reviewed": true,
+      "text": "Release {tag} 里有 {asset}；upgrade 会安装它"
     },
     "remote": {
       "machine": true,
@@ -1464,6 +1704,10 @@
       "reviewed": true,
       "text": "改名模式：codex 用它自己的模型名，进来映射到档位"
     },
+    "replace the newgate binary from a GitHub release or a local build, with a graceful daemon handoff": {
+      "reviewed": true,
+      "text": "用 GitHub Release 或本地构建替换 newgate 二进制，守护进程优雅交接"
+    },
     "replace {path}: {err}": {
       "reviewed": true,
       "text": "替换 {path} 失败: {err}"
@@ -1475,6 +1719,10 @@
     "restoring {file} failed: {err}": {
       "reviewed": true,
       "text": "还原 {file} 失败: {err}"
+    },
+    "rolled back to {version}; the replaced binary is now {prev}": {
+      "reviewed": true,
+      "text": "已回滚到 {version}；换下来的那份现在是 {prev}"
     },
     "route": {
       "machine": true,
@@ -1532,9 +1780,17 @@
       "reviewed": true,
       "text": "短路 Bash 分类器：on=60s / forever=永久 / off=关"
     },
+    "show or choose where newgate upgrade gets new binaries; rollback restores the previous one": {
+      "reviewed": true,
+      "text": "查看或选择 newgate upgrade 从哪儿拿新二进制；rollback 换回上一版"
+    },
     "simple-cli (renders status and the commands; the other injection points are accepted but not shown)": {
       "reviewed": true,
       "text": "simple-cli（渲染 status 与命令，其余注入点收下不显示）"
+    },
+    "skipped (no versions): {ids}": {
+      "reviewed": true,
+      "text": "已跳过（没有版本概念）：{ids}"
     },
     "slot": {
       "reviewed": true,
@@ -1595,6 +1851,10 @@
     "strict refuses an unknown machine; accept-new records it the first time and still refuses if it later changes": {
       "machine": true,
       "text": "strict 拒绝未知主机；accept-new 首次记录，之后若发生变化仍会拒绝"
+    },
+    "submodule update failed: {err}": {
+      "reviewed": true,
+      "text": "submodule 更新失败：{err}"
     },
     "suggested": {
       "reviewed": true,
@@ -1716,6 +1976,14 @@
       "reviewed": true,
       "text": "configshare 记账文件损坏，已按初始状态重来: {err}"
     },
+    "the daemon (pid {pid}) is still running an old binary; see newgate logs": {
+      "reviewed": true,
+      "text": "守护进程（pid {pid}）还在跑旧的二进制；看 newgate logs"
+    },
+    "the daemon (pid {pid}) runs from {exe}, not {target}; it was left alone": {
+      "reviewed": true,
+      "text": "守护进程（pid {pid}）跑的是 {exe}，不是 {target}；没有动它"
+    },
     "the daemon closes its connection within a couple of seconds": {
       "machine": true,
       "text": "daemon 会在几秒内关闭连接"
@@ -1735,6 +2003,10 @@
     "the daemon is not running: forwarding ports and background reconnection only happen there": {
       "machine": true,
       "text": "daemon 未运行：端口转发和后台重连都只在那里进行"
+    },
+    "the daemon is not running; its next start uses the new binary": {
+      "reviewed": true,
+      "text": "守护进程没在跑；下次启动就是新二进制"
     },
     "the daemon picks this up within a couple of seconds": {
       "machine": true,
@@ -1856,6 +2128,14 @@
       "reviewed": true,
       "text": "模型清单请求不是合法的 JSON：{err}"
     },
+    "the new binary does not run here, nothing was replaced: {err}": {
+      "reviewed": true,
+      "text": "新二进制在这台机器上跑不起来，什么都没换：{err}"
+    },
+    "the new binary reports {version}, which is not a {dist} build; nothing was replaced (--force to install it anyway)": {
+      "reviewed": true,
+      "text": "新二进制报的版本是 {version}，不是 {dist} 发行版；什么都没换（--force 强行安装）"
+    },
     "the opus tier (the workhorse); the main loop runs here (Claude Code's default), and so does opusplan in Plan Mode": {
       "reviewed": true,
       "text": "opus 档（主力档）；主循环在这跑（cc 默认），Plan Mode 下的 opusplan"
@@ -1867,6 +2147,10 @@
     "the peer speaks protocol version {peer}, this binary only understands {mine} (both ends have to be upgraded together)": {
       "reviewed": true,
       "text": "对端协议版本是 {peer}，本二进制只认 {mine}（两端版本要一起升）"
+    },
+    "the previous binary does not run: {err}": {
+      "reviewed": true,
+      "text": "上一版二进制跑不起来：{err}"
     },
     "the provider answered with an empty model list": {
       "reviewed": true,
@@ -1968,6 +2252,10 @@
       "reviewed": true,
       "text": "这个构建里没有名为 {name} 的 API 扩展 —— 页面可能比守护进程新，或者提供它的模块没有装"
     },
+    "there is no previous binary to roll back to ({prev} is missing)": {
+      "reviewed": true,
+      "text": "没有可以回滚的上一版（{prev} 不存在）"
+    },
     "there is no provider named {name} in providers.json": {
       "reviewed": true,
       "text": "providers.json 里没有名为 {name} 的 provider"
@@ -1996,6 +2284,18 @@
       "reviewed": true,
       "text": "thinking:{was} → disabled（不思考开着）"
     },
+    "this binary ({current}) is newer than the latest release {tag}; nothing to do (--force installs the release anyway)": {
+      "reviewed": true,
+      "text": "这个二进制（{current}）比最新的 Release {tag} 还新；不用做什么（--force 照样装 Release）"
+    },
+    "this binary does not know which distribution it is (specification {spec}); rebuild it with build/build.sh": {
+      "reviewed": true,
+      "text": "这个二进制不知道自己是哪个发行版（规格书 {spec}）；用 build/build.sh 重新编一份"
+    },
+    "this binary was started by `go run` ({exe}); build one with build/build.sh first": {
+      "reviewed": true,
+      "text": "这个二进制是 `go run` 起的（{exe}）；先用 build/build.sh 编一份"
+    },
     "this build cannot serve a web interface: nothing provides a shared port (porthub) or a serve-time hook (serving)": {
       "reviewed": true,
       "text": "这份产物提供不了 web 界面：既没有共享端口（porthub），也没有服务期回调（serving）"
@@ -2015,6 +2315,10 @@
     "this diagram answers on loopback only; open it as http://127.0.0.1:{port}{prefix}/": {
       "reviewed": true,
       "text": "这张图只在 loopback 上应答；请用 http://127.0.0.1:{port}{prefix}/ 打开"
+    },
+    "this distribution declares no GitHub repository; give one: newgate self-update release <owner/repo>": {
+      "reviewed": true,
+      "text": "这个发行版没有声明 GitHub 仓库；给一个：newgate self-update release <owner/repo>"
     },
     "this distribution's own message catalog, appended to the installed language": {
       "reviewed": true,
@@ -2047,10 +2351,6 @@
     "this provider has no api key (set api_key or api_key_env): {base}": {
       "reviewed": true,
       "text": "这家上游没有 api key（设置 api_key 或 api_key_env）: {base}"
-    },
-    "this refreshes module-owned dynamic data/configuration only; the newgate binary is not replaced (git-remote self-upgrade is not supported yet)": {
-      "reviewed": true,
-      "text": "这里只刷新模块拥有的动态数据/配置；newgate 二进制不会被替换（暂不支持从 git remote 自动升级）"
     },
     "this route only forwards the remote interface: {path} points outside it": {
       "reviewed": true,
@@ -2108,6 +2408,14 @@
       "reviewed": true,
       "text": "未绑定"
     },
+    "unexpected `version` output: {line}": {
+      "reviewed": true,
+      "text": "`version` 的输出不对：{line}"
+    },
+    "unexpected argument {arg}": {
+      "reviewed": true,
+      "text": "多余的参数 {arg}"
+    },
     "unknown command \"{cmd}\" (see the list with newgate status)": {
       "reviewed": true,
       "text": "不认识 \"{cmd}\"（newgate status 看清单）"
@@ -2119,6 +2427,10 @@
     "unknown fingerprint api {api} (use auto, responses, chat_completions or messages)": {
       "reviewed": true,
       "text": "未知的指纹接口 {api}（用 auto、responses、chat_completions 或 messages）"
+    },
+    "unknown self-update subcommand {sub} (git, release, rollback)": {
+      "reviewed": true,
+      "text": "self-update 没有子命令 {sub}（git、release、rollback）"
     },
     "unknown tunnel subcommand {verb} — try ls, add, rm, up, down or test": {
       "machine": true,
@@ -2132,6 +2444,10 @@
       "machine": true,
       "text": "不可用"
     },
+    "upgrade action {id} has no versions; drop @{version}": {
+      "reviewed": true,
+      "text": "升级动作 {id} 没有版本概念；去掉 @{version}"
+    },
     "upgrade finished: {n} succeeded": {
       "reviewed": true,
       "text": "升级完成：{n} 个成功"
@@ -2140,9 +2456,21 @@
       "reviewed": true,
       "text": "升级完成：{ok} 个成功，{failed} 个失败"
     },
-    "upgrade the dynamic data and configuration modules own (the binary is not replaced)": {
+    "upgrade newgate and the data its modules own; @version pins a tag, branch or commit": {
       "reviewed": true,
-      "text": "升级模块自己拥有的动态数据与配置（不替换二进制）"
+      "text": "升级 newgate 以及各模块自带的数据；@版本 钉到某个 tag、分支或提交"
+    },
+    "upgrade newgate itself and the dynamic data modules own, through actions each module registers": {
+      "reviewed": true,
+      "text": "升级 newgate 本身与各模块自带的动态数据，动作由各模块自己登记"
+    },
+    "upgrade would build {version} from {repo} (this binary is {current})": {
+      "reviewed": true,
+      "text": "upgrade 会从 {repo} 编出 {version}（当前是 {current}）"
+    },
+    "upgrade would clone {url} at {ref} and build it": {
+      "reviewed": true,
+      "text": "upgrade 会 clone {url} 的 {ref} 并构建"
     },
     "upgrade: action {id} is already registered by another module": {
       "reviewed": true,
@@ -2207,6 +2535,10 @@
     "verifying {n} targets (concurrency {c}; each target asks for {count} challenges)": {
       "reviewed": true,
       "text": "正在验证 {n} 个目标（并发 {c}；每个目标 {count} 个挑战）"
+    },
+    "version": {
+      "reviewed": true,
+      "text": "版本"
     },
     "web": {
       "reviewed": true,
@@ -2276,9 +2608,49 @@
       "reviewed": true,
       "text": "{agent} 现在使用 {profile}"
     },
+    "{api}; the github.com fallback failed too: {web}": {
+      "reviewed": true,
+      "text": "{api}；退回 github.com 网页地址也失败了：{web}"
+    },
     "{binding} (override)": {
       "reviewed": true,
       "text": "{binding}（override 指定）"
+    },
+    "{branch} and {upstream} have diverged ({ahead} ahead, {behind} behind): not pulling": {
+      "reviewed": true,
+      "text": "{branch} 与 {upstream} 已分叉（领先 {ahead}、落后 {behind}）：不拉取"
+    },
+    "{branch} has no upstream: not pulling": {
+      "reviewed": true,
+      "text": "{branch} 没有上游：不拉取"
+    },
+    "{branch} is {n} commit ahead of {upstream}": {
+      "reviewed": true,
+      "text": "{branch} 领先 {upstream} {n} 个提交"
+    },
+    "{branch} is {n} commit behind {upstream}, but the working tree has changes: not pulling": {
+      "reviewed": true,
+      "text": "{branch} 落后 {upstream} {n} 个提交，但工作区有改动：不拉取"
+    },
+    "{branch} is {n} commit behind {upstream}; upgrade would fast-forward it": {
+      "reviewed": true,
+      "text": "{branch} 落后 {upstream} {n} 个提交；upgrade 会把它快进"
+    },
+    "{dir} has no build/build.sh (is it a newgate distribution repository?)": {
+      "reviewed": true,
+      "text": "{dir} 里没有 build/build.sh（这是 newgate 发行版的仓库吗？）"
+    },
+    "{dir} has no {spec} (the specification this binary was built from)": {
+      "reviewed": true,
+      "text": "{dir} 里没有 {spec}（编这个二进制用的规格书）"
+    },
+    "{dir} is not an absolute path": {
+      "reviewed": true,
+      "text": "{dir} 不是绝对路径"
+    },
+    "{dir} is not the root of a git checkout": {
+      "reviewed": true,
+      "text": "{dir} 不是一份 git checkout 的根目录"
     },
     "{err} (nonce length {got}, expected {want})": {
       "reviewed": true,
@@ -2295,6 +2667,10 @@
     "{file} is not valid JSON": {
       "reviewed": true,
       "text": "{file} 不是合法的 JSON"
+    },
+    "{file} of {tag} does not list {asset}; refusing to install an unverified binary": {
+      "reviewed": true,
+      "text": "{tag} 的 {file} 里没有 {asset}；不安装没法校验的二进制"
     },
     "{head} · the highest priority globally, ahead of any profile": {
       "reviewed": true,
@@ -2388,6 +2764,14 @@
       "reviewed": true,
       "text": "{name} 没写 schema_version，按当前 schema 解释"
     },
+    "{name} is larger than {limit} MB; refusing it": {
+      "reviewed": true,
+      "text": "{name} 超过了 {limit} MB；拒收"
+    },
+    "{name} is {got} bytes, GitHub said {want}": {
+      "reviewed": true,
+      "text": "{name} 有 {got} 字节，GitHub 说是 {want}"
+    },
     "{note}; {why}": {
       "reviewed": true,
       "text": "{note}；{why}"
@@ -2468,6 +2852,10 @@
       "machine": true,
       "text": "{n} 个有转发端口"
     },
+    "{old} → {new}; {daemon}": {
+      "reviewed": true,
+      "text": "{old} → {new}；{daemon}"
+    },
     "{providers} carries an inline api_key for {names}: a secret may only travel over the secrets channel (newgate config secrets on the host); the config channel never carries one — on the host it is managed by git, so a single commit puts it in history forever": {
       "reviewed": true,
       "text": "{providers} 里 {names} 带了内联 api_key：密钥只能走密钥通道（在宿主上 newgate config secrets），配置通道不含密——它在宿主侧是 git 管的，提交一次就永久进历史"
@@ -2480,6 +2868,18 @@
       "reviewed": true,
       "text": "{provider} 没有可以问模型清单的 base_url"
     },
+    "{ref} cannot build this distribution: {err}": {
+      "reviewed": true,
+      "text": "{ref} 编不出这个发行版：{err}"
+    },
+    "{ref} is not a tag or branch of {url}": {
+      "reviewed": true,
+      "text": "{ref} 不是 {url} 的 tag 或分支"
+    },
+    "{ref} is not a tag, branch or commit of {url}": {
+      "reviewed": true,
+      "text": "{ref} 不是 {url} 的 tag、分支或提交"
+    },
     "{remote} accepts connections": {
       "machine": true,
       "text": "{remote} 接受连接"
@@ -2487,6 +2887,18 @@
     "{report}": {
       "reviewed": true,
       "text": "{report}"
+    },
+    "{repo} has no published release yet": {
+      "reviewed": true,
+      "text": "{repo} 还没有发布过 Release"
+    },
+    "{repo} has no release named {ref}; building it from source": {
+      "reviewed": true,
+      "text": "{repo} 没有叫 {ref} 的 Release；改从源码构建"
+    },
+    "{repo} is not owner/repo (no https://, no .git)": {
+      "reviewed": true,
+      "text": "{repo} 不是 owner/repo 的形状（不带 https://、不带 .git）"
     },
     "{section}.{name} → {provider}/{key} (now {now}{suggested})": {
       "reviewed": true,
@@ -2507,6 +2919,10 @@
     "{table} rewritten": {
       "reviewed": true,
       "text": "改写 {table}"
+    },
+    "{tag} is available (this binary is {current}); upgrade would install {asset}": {
+      "reviewed": true,
+      "text": "有 {tag} 可用（当前是 {current}）；upgrade 会安装 {asset}"
     },
     "{target}: fingerprint says {prediction}, but the binding asks for {model} ({match})": {
       "reviewed": true,
@@ -2555,6 +2971,10 @@
     "{value} is neither a tier (heavy/normal/mid/light/vision), nor a registered dynamic role key, nor provider/model": {
       "reviewed": true,
       "text": "{value} 既不是档位（heavy/normal/mid/light/vision）、也不是已注册的动态角色键、也不是 provider/模型"
+    },
+    "{version} is installed, but the daemon handoff failed: {err}": {
+      "reviewed": true,
+      "text": "{version} 已经装上，但守护进程交接失败：{err}"
     },
     "↑/↓ or j/k move · ←/→ or Tab switch pane · Enter apply · d follow the default · r reload · q quit": {
       "reviewed": true,

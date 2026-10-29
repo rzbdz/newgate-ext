@@ -1,5 +1,6 @@
 {
   "distribution": "hello",
+  "github": "rzbdz/newgate-ext",
   "modules": [
     "i18n",
     "hello"

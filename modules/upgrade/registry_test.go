@@ -10,7 +10,7 @@ func action(id string) Action {
 		ID:       id,
 		Title:    func() string { return id },
 		Describe: func() string { return "test" },
-		Run:      func(context.Context) (string, error) { return "ok", nil },
+		Run:      func(context.Context, Request) (string, error) { return "ok", nil },
 	}
 }
 
@@ -58,4 +58,23 @@ func ids(as []Action) []string {
 		out = append(out, a.ID)
 	}
 	return out
+}
+
+func TestParseArgs(t *testing.T) {
+	got, err := parseArgs([]string{"@v0.9.0", "binary", "--check", "--force"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.only != "binary" || got.req.Version != "v0.9.0" || !got.req.Check || !got.req.Force {
+		t.Fatalf("parsed = %+v", got)
+	}
+	if _, err := parseArgs([]string{"@v1", "@v2"}); err == nil {
+		t.Fatal("two versions should be rejected")
+	}
+	if _, err := parseArgs([]string{"@"}); err == nil {
+		t.Fatal("an empty version should be rejected")
+	}
+	if _, err := parseArgs([]string{"a", "b"}); err == nil {
+		t.Fatal("a second action name should be rejected")
+	}
 }

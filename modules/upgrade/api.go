@@ -9,12 +9,17 @@
 // 回滚。所以这里只提供一条缝：模块在 Start 里登记一个带 ID 的升级动作，
 // `newgate upgrade` 把它们全跑一遍。
 //
-// # 边界（第一版）
+// # 二进制也是一个动作（2026-10-29）
 //
-// **只做动态数据/配置**。不换二进制、不拉 git 仓库、不编译、不重启 daemon——
-// 「绑定一个 git remote 自动 fetch + build + install」是明确**没有做**的那件事
-// （见命令里的说明）。静态升级已经有更合适的那条路：换二进制 + 优雅交接
-// (`newgate restart`)，它需要处理运行中的进程，和这里「拿一份文件」是两种问题。
+// 第一版只做动态数据，并且明说「不换二进制、不拉 git 仓库」。换二进制现在由
+// `modules/self-update` 登记成**同一张表里的一个动作**（ID `binary`）：本模块仍然
+// 不知道怎么下 Release、怎么编、怎么交接 daemon——那些是那个模块的知识；这里只多
+// 了两样所有动作都能用的东西：
+//
+//   - **目标版本**（`newgate upgrade@v0.9.0`）。只有声明了 Versioned 的动作收它；
+//     数据动作没有「版本」这个概念，点了版本时它们被跳过并说一声。
+//   - **只看不动**（`--check`）与**强制**（`--force`）。它们装在 Request 里交给每个
+//     动作，含义由动作自己落实（见 Request 的字段注释）。
 //
 // 它为什么住在发行版：哪些东西允许被升级、默认装哪些动作，是产品决定；内核
 // 只提供模块框架。装不装本模块，verify 之类的功能照常工作（只是没有手动刷新
@@ -45,7 +50,23 @@ type Action struct {
 	Describe func() string
 	// Run 执行升级。返回的字符串是**给人看的结果**（新版本号、下载了什么），
 	// 由命令原样打印；error 表示这一下失败了（命令会继续跑其余动作）。
-	Run func(ctx context.Context) (string, error)
+	Run func(ctx context.Context, req Request) (string, error)
+	// Versioned 声明这个动作认识 Request.Version。没声明的动作在用户点了版本时
+	// 被跳过：把 `@v0.9.0` 交给一个只会「拿最新」的动作，它要么忽略（静默），
+	// 要么各自报一种错——两种都不如在这里统一说一句。
+	Versioned bool
+}
+
+// Request 是这一次 `newgate upgrade` 的参数。
+type Request struct {
+	// Version 是 `upgrade@<值>` 里的那个值：tag、分支或提交，原样交给动作解释。
+	// 空 = 「最新」。
+	Version string
+	// Check 只看不动：报出「会做什么 / 有没有新的」，**不许改动任何东西**
+	// （不下载到最终位置、不替换、不重启）。动作做不到只看的时候就直说做不到。
+	Check bool
+	// Force 允许重装同一个版本、允许倒退到更旧的版本。
+	Force bool
 }
 
 // Service 是升级动作的登记处。

@@ -1,5 +1,6 @@
 {
   "distribution": "dev",
+  "github": "rzbdz/newgate-ext",
   "modules": [
     "i18n",
     "home",
@@ -15,6 +16,7 @@
     "web-dashboard",
     "modellist",
     "upgrade",
+    "self-update",
     "verify",
     "theme-dark",
     "theme-light",

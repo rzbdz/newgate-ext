@@ -2,7 +2,7 @@
 //
 // 由仓库根的规格书（dist*.json）编译而来：每条 app.Selection 就是一份规格书
 // 要装的东西——自己的模块 + 要关掉的内核模块。构建时用
-// -ldflags -X main.spec=<文件名> 选一份，DefaultSpec 是没注入时的兜底。
+// -ldflags -X distinfo.spec=<文件名> 选一份，DefaultSpec 是没注入时的兜底。
 //
 // 规格书里的 `"disable": ["*"]` 编成 app.Selection.AllCore：内核自带的全都不要，
 // 只留关不掉的那些（组合根自己要用的端口）。
@@ -28,6 +28,7 @@ import (
 	ext_nothink "github.com/rzbdz/newgate-ext/modules/nothink"
 	ext_opencode "github.com/rzbdz/newgate-ext/modules/opencode"
 	ext_opencodeomo "github.com/rzbdz/newgate-ext/modules/opencodeomo"
+	ext_self_update "github.com/rzbdz/newgate-ext/modules/self-update"
 	ext_simple_cli "github.com/rzbdz/newgate-ext/modules/simple-cli"
 	ext_ssh_tunnel "github.com/rzbdz/newgate-ext/modules/ssh-tunnel"
 	ext_theme_anthropic "github.com/rzbdz/newgate-ext/modules/theme-anthropic"
@@ -41,7 +42,7 @@ import (
 	modules "github.com/rzbdz/newgate/component"
 )
 
-// DefaultSpec 是没注入 -X main.spec 时用的规格书。
+// DefaultSpec 是没注入 -X distinfo.spec 时用的规格书。
 //
 // 它让 `go run ./cmd/newgate` 与 `go test ./...` 不用先编一遍就能跑——
 // 默认那份就是仓库根的主规格书，与正式产物一致。
@@ -65,6 +66,7 @@ func Specs() map[string]app.Selection {
 				{Dir: "web-dashboard", Component: ext_web_dashboard.New()},
 				{Dir: "modellist", Component: ext_modellist.New()},
 				{Dir: "upgrade", Component: ext_upgrade.New()},
+				{Dir: "self-update", Component: ext_self_update.New()},
 				{Dir: "verify", Component: ext_verify.New()},
 				{Dir: "theme-dark", Component: ext_theme_dark.New()},
 				{Dir: "theme-light", Component: ext_theme_light.New()},
@@ -87,6 +89,7 @@ func Specs() map[string]app.Selection {
 				{Dir: "web-dashboard", Component: ext_web_dashboard.New()},
 				{Dir: "modellist", Component: ext_modellist.New()},
 				{Dir: "upgrade", Component: ext_upgrade.New()},
+				{Dir: "self-update", Component: ext_self_update.New()},
 				{Dir: "verify", Component: ext_verify.New()},
 				{Dir: "theme-dark", Component: ext_theme_dark.New()},
 				{Dir: "theme-light", Component: ext_theme_light.New()},
@@ -118,6 +121,7 @@ func Specs() map[string]app.Selection {
 				{Dir: "opencode", Component: ext_opencode.New()},
 				{Dir: "opencodeomo", Component: ext_opencodeomo.New()},
 				{Dir: "upgrade", Component: ext_upgrade.New()},
+				{Dir: "self-update", Component: ext_self_update.New()},
 				{Dir: "verify", Component: ext_verify.New()},
 			},
 		},
@@ -137,6 +141,7 @@ func Specs() map[string]app.Selection {
 				{Dir: "web-dashboard", Component: ext_web_dashboard.New()},
 				{Dir: "modellist", Component: ext_modellist.New()},
 				{Dir: "upgrade", Component: ext_upgrade.New()},
+				{Dir: "self-update", Component: ext_self_update.New()},
 				{Dir: "verify", Component: ext_verify.New()},
 				{Dir: "theme-dark", Component: ext_theme_dark.New()},
 				{Dir: "theme-light", Component: ext_theme_light.New()},

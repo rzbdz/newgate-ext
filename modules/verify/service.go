@@ -207,6 +207,30 @@ func (s *service) Upgrade(ctx context.Context) (string, error) {
 	return s.det.Refresh(ctx)
 }
 
+// UpgradeStatus 是 `newgate upgrade --check` 里这一项的回答：只报手上那份，不出网。
+//
+// 「远端有没有新的」要下一份 bundle 才知道（参考库没有便宜的版本探针），而
+// --check 的约定是不动任何东西——所以这里老实说「手上是哪一版、上次查是什么时候」。
+func (s *service) UpgradeStatus() string {
+	v := s.cache.dataVersion()
+	if v == "" {
+		return i18n.T("no reference data cached yet; upgrade would download it", nil)
+	}
+	if at, ok := s.cache.dataCheckedAt(); ok {
+		return i18n.T("cached {version}, last checked {ago} ago; upgrade would check for a newer bank",
+			i18n.A{"version": shortHash(v), "ago": strings.TrimSuffix(time.Since(at).Round(time.Minute).String(), "0s")})
+	}
+	return i18n.T("cached {version}; upgrade would check for a newer bank", i18n.A{"version": shortHash(v)})
+}
+
+// shortHash 把参考库的版本（一串 sha256）截成能读的长度，与 git 的短哈希同一个惯例。
+func shortHash(v string) string {
+	if len(v) == 64 {
+		return v[:12]
+	}
+	return v
+}
+
 // cacheDoc 是「只看缓存」那条查询的回答（模型下拉用）。
 type cacheDoc struct {
 	Entries []Entry `json:"entries"`

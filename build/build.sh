@@ -156,7 +156,11 @@ for spec in $specs; do
   # 规格书里的 distribution 同时是**版本号的前缀**和产物名里的那一段。两者是同一个
   # 事实，所以从同一处读——手工拼一个产物名去跑 e2e，最容易在这里对不上。
   ldflags_common="-s -w -X main.version=$dist-$rev -X main.buildTime=$build_time"
-  ldflags_common="$ldflags_common -X main.commitTime=$commit_time -X main.spec=$spec"
+  # 规格书名与源码树注入的是 distinfo（不是 main）：模块也要读它们——self-update
+  # 据此决定下哪个产物、第一次装时走 Release 还是走本地仓库（见那个包的注释）。
+  ldflags_common="$ldflags_common -X main.commitTime=$commit_time"
+  ldflags_common="$ldflags_common -X github.com/rzbdz/newgate-ext/manifest/distinfo.spec=$spec"
+  ldflags_common="$ldflags_common -X github.com/rzbdz/newgate-ext/manifest/distinfo.source=$here"
   for p in $platforms; do
     goos=${p%/*}; goarch=${p#*/}
     artifact="$out/newgate-$dist-$goos-$goarch"
