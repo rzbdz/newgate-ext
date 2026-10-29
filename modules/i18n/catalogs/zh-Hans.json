@@ -756,6 +756,10 @@
       "machine": true,
       "text": "无法保存：{err}"
     },
+    "cannot tell whether {tag} is newer than this binary ({current}); --force installs it": {
+      "reviewed": true,
+      "text": "判断不了 {tag} 是否比这个二进制（{current}）新；--force 照样安装"
+    },
     "cannot use the private key {path}: {err}": {
       "machine": true,
       "text": "无法使用私钥 {path}：{err}"

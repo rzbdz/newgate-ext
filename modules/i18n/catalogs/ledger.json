@@ -442,6 +442,12 @@
         "err"
       ]
     },
+    "cannot tell whether {tag} is newer than this binary ({current}); --force installs it": {
+      "args": [
+        "current",
+        "tag"
+      ]
+    },
     "cannot use the private key {path}: {err}": {
       "args": [
         "err",

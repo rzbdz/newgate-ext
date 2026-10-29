@@ -137,16 +137,22 @@ func (u *updater) latestRelease(ctx context.Context, req upgradeapi.Request) (st
 
 // notNewer 回答「最新 Release 不比手上的新，该跳过」并给出那句话。
 //
-// 认不出版本号（`dev`、只有提交号）时不跳过：没法比就照常换，那正是用户敲这条
-// 命令想要的。
+// 手上的版本号认不出来（只有提交号：从一个没打 tag 的提交编的，多半是
+// `upgrade@<分支>` 钉上去的）时**也跳过**：没法比新旧，而把一个特意钉上去的版本
+// 悄悄换成 Release 正是「替人做决定」。--force 照换。Release 的 tag 认不出来时
+// 照常换——那是发布方的命名，不是这台机器的选择。
 func (u *updater) notNewer(tag string, req upgradeapi.Request) (string, bool) {
 	if req.Force {
 		return "", false
 	}
 	cur, okCur := parseVersion(u.current, u.info.Distribution)
 	lat, okLat := parseVersion(tag, "")
-	if !okCur || !okLat {
+	if !okLat {
 		return "", false
+	}
+	if !okCur {
+		return i18n.T("cannot tell whether {tag} is newer than this binary ({current}); --force installs it",
+			i18n.A{"tag": tag, "current": u.current}), true
 	}
 	switch c := compare(lat, cur); {
 	case c == 0 && !cur.dirty:

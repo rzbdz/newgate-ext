@@ -272,9 +272,14 @@ func refExists(ctx context.Context, url, ref string) error {
 
 // cloneRef 把 url 的 ref（tag、分支或提交）clone 进一个临时目录，带上 submodule。
 //
-// 先试浅 clone（tag/分支一步到位）；ref 是个提交号时 `--branch` 认不得，退回完整
-// clone + checkout。submodule 同样先浅后深：gitlink 指的提交不一定是对方某个分支
-// 的头，有的服务器不让按提交号浅取。
+// 不做浅 clone：build.sh 的版本号来自 `git describe --tags`，浅 clone 拿不到 tag
+// 与通往它的历史，编出来的版本号就只剩一个提交号（`default-d5899f6`）——之后的
+// `upgrade` 没法再比新旧。换成 `--filter=blob:none`（部分 clone：提交历史全要，文件
+// 内容按需取），describe 照常、下载量和浅 clone 差不多；服务器不支持时退回完整
+// clone。`--branch` 认不得提交号，那时 clone 默认分支再 checkout。
+//
+// submodule 先浅后深：内核的版本号不进产物名，浅取就够；gitlink 指的提交不一定是
+// 对方某个分支的头，有的服务器不让按提交号浅取，那就退回完整的。
 func cloneRef(ctx context.Context, url, ref string, log io.Writer) (string, func(), error) {
 	tmp, err := os.MkdirTemp("", "newgate-src-")
 	if err != nil {
@@ -286,8 +291,18 @@ func cloneRef(ctx context.Context, url, ref string, log io.Writer) (string, func
 	defer cancel()
 	fmt.Fprintln(log, i18n.T("cloning {url} at {ref} into {dir}", i18n.A{"url": url, "ref": ref, "dir": src}))
 
-	if _, err := git(cctx, tmp, "clone", "--quiet", "--depth", "1", "--branch", ref, url, src); err != nil {
+	cloned := false
+	for _, args := range [][]string{
+		{"clone", "--quiet", "--filter=blob:none", "--branch", ref, url, src},
+		{"clone", "--quiet", "--branch", ref, url, src},
+	} {
+		if _, err := git(cctx, tmp, args...); err == nil {
+			cloned = true
+			break
+		}
 		_ = os.RemoveAll(src)
+	}
+	if !cloned {
 		if _, err := git(cctx, tmp, "clone", "--quiet", url, src); err != nil {
 			cleanup()
 			return "", func() {}, err

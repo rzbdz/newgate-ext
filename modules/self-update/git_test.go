@@ -134,3 +134,44 @@ func TestGitModeFastForwardsBuildsAndInstalls(t *testing.T) {
 		t.Fatal("the developer's working tree was touched")
 	}
 }
+
+// `upgrade@<ref>` 的临时 clone 必须带着 tag 与通往它的历史：版本号来自 describe，
+// 浅 clone 只剩一个提交号，之后的 upgrade 就没法再比新旧。分支、tag、提交号三种
+// ref 都要 clone 得出来。
+func TestCloneRefKeepsDescribableHistory(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip(err)
+	}
+	root := t.TempDir()
+	origin := filepath.Join(root, "origin.git")
+	seed := filepath.Join(root, "seed")
+	run(t, root, "init", "-q", "--bare", "-b", "main", origin)
+	run(t, root, "clone", "-q", origin, seed)
+	write(t, filepath.Join(seed, "README"), "one\n")
+	run(t, seed, "add", ".")
+	run(t, seed, "commit", "-q", "-m", "one")
+	run(t, seed, "tag", "v0.1.0")
+	write(t, filepath.Join(seed, "README"), "two\n")
+	run(t, seed, "commit", "-q", "-am", "two")
+	head := run(t, seed, "rev-parse", "HEAD")
+	run(t, seed, "push", "-q", "origin", "HEAD:main", "--tags")
+
+	url := "file://" + origin
+	for ref, want := range map[string]string{
+		"main":   "v0.1.0-1-g",
+		"v0.1.0": "v0.1.0",
+		head:     "v0.1.0-1-g",
+	} {
+		src, cleanup, err := cloneRef(context.Background(), url, ref, io.Discard)
+		if err != nil {
+			t.Fatalf("%s: %v", ref, err)
+		}
+		if got := describe(context.Background(), src); !strings.HasPrefix(got, want) {
+			t.Errorf("%s: describe = %q, want prefix %q", ref, got, want)
+		}
+		cleanup()
+	}
+	if _, _, err := cloneRef(context.Background(), url, "no-such-ref", io.Discard); err == nil {
+		t.Fatal("an unknown ref must fail")
+	}
+}

@@ -245,6 +245,12 @@ func TestReleaseNotNewerIsSkippedWithoutForce(t *testing.T) {
 		}
 	}
 
+	// 手上是一个没打 tag 的提交编的（upgrade@<分支> 钉上去的）：没法比，不替人换。
+	h0 := newHarness(t, gh, "default-d5899f6")
+	if msg, err := h0.u.run(context.Background(), upgradeapi.Request{}); err != nil || h0.installedVersion(t) != "default-d5899f6" {
+		t.Fatalf("untagged build: msg %q err %v; must stay", msg, err)
+	}
+
 	// --force 照样装（开发机想回到正式版）。
 	h := newHarness(t, gh, "default-v0.8.0-40-gabcdef0")
 	if _, err := h.u.run(context.Background(), upgradeapi.Request{Force: true}); err != nil {
