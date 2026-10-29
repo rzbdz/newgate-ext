@@ -96,6 +96,10 @@
       "reviewed": true,
       "text": "@版本"
     },
+    "An update is available": {
+      "reviewed": true,
+      "text": "有新版本"
+    },
     "Anthropic": {
       "reviewed": true,
       "text": "Anthropic"
@@ -131,6 +135,14 @@
     "Black": {
       "reviewed": true,
       "text": "黑"
+    },
+    "Check for updates": {
+      "reviewed": true,
+      "text": "检查更新"
+    },
+    "Checking…": {
+      "reviewed": true,
+      "text": "检查中…"
     },
     "Classifier config": {
       "reviewed": true,
@@ -248,6 +260,14 @@
       "reviewed": true,
       "text": "GitHub 回了 HTTP {code}：{body}"
     },
+    "GitHub releases": {
+      "reviewed": true,
+      "text": "GitHub 发行版"
+    },
+    "GitHub releases of {repo}": {
+      "reviewed": true,
+      "text": "来自 {repo} 的 GitHub 发行版"
+    },
     "GitHub's answer has no tag_name": {
       "reviewed": true,
       "text": "GitHub 的回答里没有 tag_name"
@@ -264,6 +284,10 @@
       "reviewed": true,
       "text": "新二进制接管不了守护进程时会自动回滚；也可以用 newgate self-update rollback 手动换回。"
     },
+    "Install it from a terminal with newgate upgrade (it asks before replacing anything).": {
+      "reviewed": true,
+      "text": "在终端里用 newgate upgrade 安装（替换任何东西之前它都会先问）。"
+    },
     "Interface": {
       "reviewed": true,
       "text": "界面"
@@ -271,6 +295,10 @@
     "Naked": {
       "reviewed": true,
       "text": "裸奔"
+    },
+    "Not checked yet": {
+      "reviewed": true,
+      "text": "还没检查过"
     },
     "Nothink": {
       "reviewed": true,
@@ -328,6 +356,10 @@
       "reviewed": true,
       "text": "探这一份"
     },
+    "The check failed": {
+      "reviewed": true,
+      "text": "检查失败"
+    },
     "The colours of this interface. Saved to state.json and applied at once — no reload. Nothing but tokens changes: a theme cannot move anything around.": {
       "reviewed": true,
       "text": "这块界面的配色。存进 state.json，当场生效，不用刷新。一套皮肤能改的只有那一组颜色令牌——它动不了版面。"
@@ -339,6 +371,14 @@
     "Theme": {
       "reviewed": true,
       "text": "皮肤"
+    },
+    "Up to date": {
+      "reviewed": true,
+      "text": "已是最新"
+    },
+    "Updates": {
+      "reviewed": true,
+      "text": "更新"
     },
     "Upgrades newgate itself and the data its modules own. Nothing happens silently: it first looks (like --check), then asks once for the newgate binary and once for the module data, and only does what you confirmed.": {
       "reviewed": true,
@@ -624,6 +664,10 @@
       "reviewed": true,
       "text": "在 {repo} 里为 {platform} 编 {spec}"
     },
+    "built from {repo}": {
+      "reviewed": true,
+      "text": "从 {repo} 构建"
+    },
     "cached {version}, last checked {ago} ago; upgrade would check for a newer bank": {
       "reviewed": true,
       "text": "手上是 {version}，{ago} 前查过；upgrade 会去查有没有更新的参考库"
@@ -748,6 +792,10 @@
       "reviewed": true,
       "text": "读不了请求体：{err}"
     },
+    "cannot read the request: {err}": {
+      "reviewed": true,
+      "text": "读不懂这次请求：{err}"
+    },
     "cannot read this profile": {
       "reviewed": true,
       "text": "读不了这份档位"
@@ -819,6 +867,14 @@
     "chain head {head}": {
       "reviewed": true,
       "text": "链头 {head}"
+    },
+    "checked just now": {
+      "reviewed": true,
+      "text": "刚刚检查过"
+    },
+    "checked {ago} ago": {
+      "reviewed": true,
+      "text": "{ago} 前检查过"
     },
     "checksum mismatch for {asset}: got {got}, {file} says {want}": {
       "reviewed": true,
@@ -1383,6 +1439,10 @@
     "newgate upgrade now installs GitHub releases of {repo}": {
       "reviewed": true,
       "text": "newgate upgrade 今后安装 {repo} 的 GitHub Release"
+    },
+    "newgate version": {
+      "reviewed": true,
+      "text": "newgate 版本"
     },
     "no API extension at {path}": {
       "reviewed": true,
@@ -2492,6 +2552,10 @@
       "reviewed": true,
       "text": "多余的参数 {arg}"
     },
+    "unknown action {action}": {
+      "reviewed": true,
+      "text": "没有 {action} 这个动作"
+    },
     "unknown command \"{cmd}\" (see the list with newgate status)": {
       "reviewed": true,
       "text": "不认识 \"{cmd}\"（newgate status 看清单）"
@@ -2616,13 +2680,37 @@
       "reviewed": true,
       "text": "web"
     },
+    "web: plugin {name} asks for the slot {slot}, which this interface does not have": {
+      "reviewed": true,
+      "text": "web：插件 {name} 要填的槽位 {slot} 这个界面没有"
+    },
+    "web: plugin {name} cannot read its entry {entry}: {err}": {
+      "reviewed": true,
+      "text": "web：插件 {name} 读不到它的入口 {entry}：{err}"
+    },
+    "web: plugin {name} fills no slot, so it would never appear": {
+      "reviewed": true,
+      "text": "web：插件 {name} 一个槽位都没填，它永远不会出现"
+    },
+    "web: plugin {name} has no assets or no entry file": {
+      "reviewed": true,
+      "text": "web：插件 {name} 没有文件或没有入口"
+    },
     "web: the extension {name} is already registered by another module — only one of them would ever receive a request": {
       "reviewed": true,
       "text": "web：扩展 {name} 已经被另一个模块登记 —— 两个里只有一个能收到请求"
     },
+    "web: the plugin {name} is already registered by another module": {
+      "reviewed": true,
+      "text": "web：插件 {name} 已经被另一个模块登记过了"
+    },
     "web: {name} is not a usable extension name — use lowercase letters, digits, '-' and '_'": {
       "reviewed": true,
       "text": "web：{name} 不是可用的扩展名 —— 只能用小写字母、数字、'-' 和 '_'"
+    },
+    "web: {name} is not a usable plugin name — use lowercase letters, digits, '-' and '_'": {
+      "reviewed": true,
+      "text": "web：{name} 不能当插件名——只用小写字母、数字、'-' 和 '_'"
     },
     "web: {name} registered a nil extension handler — the interface would get a 500 for it": {
       "reviewed": true,

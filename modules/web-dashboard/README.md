@@ -32,6 +32,53 @@ rel, err := web.Register("modellist", func(r webapi.ExtensionRequest) (any, erro
 （界面据此回落到自己能拿到的那份数据），扩展返回 error 时回 400 并把那句话原样
 给界面。今天的第一个使用者是 `modules/modellist`（模型选择器的清单来源）。
 
+### 第三条口子：模块自带前端（插件）
+
+前两条口子都要求**前端事先认识形状**（Kind、或者某个扩展端点的回答）。一个模块要
+一块前端不认识的界面时，它不该往 `web/src` 里加组件，而是**自带前端代码**：
+
+```go
+//go:embed web
+var webFiles embed.FS
+
+plugins.RegisterPlugin(webapi.Plugin{
+    Name:   "self-update",
+    Assets: sub(webFiles, "web"),   // 模块自己的 ES module + 静态文件
+    Entry:  "plugin.js",            // export function mount(el, host) { …; return unmount }
+    Slots:  []webapi.PluginSlot{webapi.SlotTopbar},
+})
+```
+
+BFF 在 `/api/plugins` 发清单、在 `/plugins/<名字>/…` 发文件；界面（`PluginSlot.svelte`）
+在自己版面的**槽位**里给每个插件一个空容器和一个 host（`ext()` 调扩展端点、`asset()`、
+`lang`）。界面认识的只有槽位与这份契约；插件的文案由它自己的扩展端点给（后端翻译），
+样式用设计令牌。一个插件挂不上只丢它自己那一格。今天的槽位只有 `topbar`，要别的
+（侧栏一节、整页）就在这里加一个槽位——那是给模块的**更高自由度的定制点**，不是让
+界面去认识模块。第一个使用者是 `modules/self-update`（顶栏的「更新」）。
+
+### 分层：界面 ← 包装层 ← 模块
+
+- **界面（本模块）**只提供框架接口：Kind、槽位、插件契约、扩展端点的转交。不认识
+  任何模块。
+- **单个模块**的界面：它自己带插件（上面那条）。
+- **多个模块拼起来的界面**（模型下拉要 modellist 的清单 + verify 的指纹）：不写进
+  界面，也不让某一个业务模块去依赖另一个——放进一层**包装模块**，它把那几个模块当
+  数据上游（Optional 依赖它们的端口），聚合之后一次注入给界面。抽象层次不清楚的时候
+  就再加一层，而不是让界面越界。
+
+### 谁越界了（2026-10-29 盘点，待迁）
+
+`boundary_test.go` 的棘轮守着「前端源码不许写死扩展端点名」，下面前两条在它的名单上
+（**只减不增**）；后几条它查不出来，列在这里：
+
+| 在哪 | 越了什么界 | 该去哪 |
+| --- | --- | --- |
+| `kinds/Fingerprints.svelte` + `api.ts` 的 fingerprint 类型与 `/ext/fingerprint` | 整个指纹页是 modules/verify 的界面 | verify 自带插件（需要一个「整页」槽位） |
+| `ModelPicker.svelte` 直接问 `/ext/modellist` 与 `/ext/fingerprint` | 模型下拉认识两个模块 | 界面定义一个「模型来源」端口；包装模块聚合 modellist + verify 去实现它 |
+| 内核 `lib/view` 的 `KindFingerprints` | 内核认识一个发行版模块的形状 | 随指纹页迁成插件后删掉 |
+| `kinds/Overview.svelte` 按动作 id 前缀 `probe` 分支 | 认识 home 那几个动作的命名 | 动作自己声明「会花多久 / 要不要转圈」这类语义字段 |
+| `App.svelte` 顶栏只画 id 为 `fallback` 的那个节动作 | 认识某个模块的动作 id | 动作声明「要上顶栏」（一个 placement 字段），界面按字段摆 |
+
 ## 本地调试：怎么在浏览器里打开
 
 **不要动线上那个 daemon**（它跑在 8899，你自己的请求也穿行在其中）。起一个沙箱

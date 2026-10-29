@@ -3,6 +3,7 @@ package webdashboard
 import (
 	"context"
 	"encoding/json"
+	"io/fs"
 	"net/url"
 
 	modules "github.com/rzbdz/newgate/component"
@@ -110,3 +111,66 @@ type ExtensionService interface {
 
 // ExtensionCapability 是它在装配图上的名字。
 var ExtensionCapability = modules.NewCapability[ExtensionService]("web-extension")
+
+// ---------- 前端插件 ----------
+//
+// 概念账本（core/lib/view）给的是**数据 + 一种已知的画法**（Kind）；扩展端点给的是
+// **数据**。两者都要求前端事先认识那种形状——于是一个模块想要一块「前端不认识」的
+// 界面时，过去唯一的办法是往前端里加一个组件、让前端认识它（指纹那一屏就是这么
+// 进去的，见 README 的「谁越界了」）。那条路的代价是：前端目录里长出了模块的知识，
+// 摘掉模块，前端里那块代码还在。
+//
+// 这一口让模块**自带前端代码**：模块把一个 ES module（和它要的别的静态文件）嵌进
+// 自己的二进制段里，登记一个名字 + 它要填的**槽位**。BFF 在 `/plugins/<名字>/…`
+// 上原样发这些文件，在 `/api/plugins` 上发一张清单；界面按槽位把每个插件挂上去。
+// 界面认识的只有槽位（它自己的版面）和「插件长什么样」这份契约，不认识任何一个
+// 插件——与 Kind 是同一条判据：**前端提供框架接口，模块往里填**。
+//
+// # 插件的 JS 契约（版本 1）
+//
+//	export function mount(el, host) { …; return () => { /* 卸载 */ } }
+//
+//   - el：界面给的一个空容器，插件在里面随便画；
+//   - host.ext(name, body)：POST `/api/ext/<name>`（与模块自己登记的扩展端点配对），
+//     回 JSON；非 2xx 时 reject 一个 Error（message 是 BFF/扩展给的那句话）；
+//   - host.asset(path)：本插件自己的静态文件地址；
+//   - host.lang：界面当前的语言 tag。
+//
+// 样式用界面的设计令牌（`var(--panel)`、`var(--ink)`、`var(--ok)`…，见 app.css 的
+// `:root`），皮肤换了插件自己就跟着换。文案**由插件自己的扩展端点给**（后端走
+// i18n.T，与 CLI 同一份目录表）：前端的消息目录是界面的，不是模块的。
+//
+// 一个插件挂不上（加载失败、mount 抛错）只影响它自己那一格：界面照常（fail-open）。
+
+// PluginSlot 是界面版面上一处可以挂插件的位置。
+type PluginSlot string
+
+const (
+	// SlotTopbar 是顶栏右侧、皮肤按钮左边的一小格：放一颗按钮/徽标，
+	// 点开的面板由插件自己画（相对这一格定位）。
+	SlotTopbar PluginSlot = "topbar"
+)
+
+// pluginSlots 是今天界面认识的全部槽位。登记一个不在这里的槽位当场报错：
+// 静默接受的话，插件在界面上哪儿都不出现，而作者看不出是拼错了还是没加载。
+var pluginSlots = map[PluginSlot]bool{SlotTopbar: true}
+
+// Plugin 是一个模块自带的前端代码。
+type Plugin struct {
+	// Name 是机器标记，也是 URL 的一段（`/plugins/<Name>/…`）。字符集同扩展端点。
+	Name string
+	// Assets 是插件的文件（通常是模块里的 `//go:embed web`）。
+	Assets fs.FS
+	// Entry 是 Assets 里那个 ES module 的路径（导出 mount）。
+	Entry string
+	// Slots 是它要填的槽位。
+	Slots []PluginSlot
+}
+
+// PluginService 是前端插件的登记处。形状与 ExtensionService 同。
+type PluginService interface {
+	RegisterPlugin(p Plugin) (modules.Release, error)
+}
+
+// PluginCapability 是它在装配图上的名字。
+var PluginCapability = modules.NewCapability[PluginService]("web-plugin")

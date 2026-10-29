@@ -48,6 +48,7 @@ import (
 	cliapi "github.com/rzbdz/newgate/modules/cli/extension"
 
 	upgradeapi "github.com/rzbdz/newgate-ext/modules/upgrade"
+	webapi "github.com/rzbdz/newgate-ext/modules/web-dashboard"
 )
 
 // Name 是这个模块在装配表与 `newgate plugin` 里的名字（= 目录名）。
@@ -72,6 +73,9 @@ func New() modules.Component {
 		Requires: []modules.Requirement{
 			modules.Optional(upgradeapi.Capability),
 			modules.Optional(cliapi.Capability),
+			// 网页那一面（web.go）：扩展端点给数据与文案，插件口发前端代码。
+			modules.Optional(webapi.ExtensionCapability),
+			modules.Optional(webapi.PluginCapability),
 		},
 		Start: func(_ context.Context, ctx modules.Context) error {
 			// 第一次运行时把「走哪条路」写下来（见包注释）。失败不挡启动：
@@ -92,6 +96,26 @@ func New() modules.Component {
 					return err
 				}
 				releases = append(releases, rel)
+			}
+			if web, ok := modules.Get(ctx, webapi.ExtensionCapability); ok {
+				rel, err := web.Register(webName, newWebState().handle)
+				if err != nil {
+					return err
+				}
+				releases = append(releases, rel)
+				// 插件只在端点在的时候挂：没有端点的插件只会在顶栏上报错。
+				if plugins, ok := modules.Get(ctx, webapi.PluginCapability); ok {
+					rel, err := plugins.RegisterPlugin(webapi.Plugin{
+						Name:   webName,
+						Assets: webAssets(),
+						Entry:  "plugin.js",
+						Slots:  []webapi.PluginSlot{webapi.SlotTopbar},
+					})
+					if err != nil {
+						return err
+					}
+					releases = append(releases, rel)
+				}
 			}
 			if ui, ok := modules.Get(ctx, cliapi.Capability); ok {
 				rel, err := ui.RegisterCommand(selfUpdateCommand{})

@@ -57,6 +57,7 @@
     "; ": {},
     "@ needs a version after it, e.g. upgrade@v0.9.0": {},
     "@version": {},
+    "An update is available": {},
     "Anthropic": {},
     "Anthropic-dialect requests no longer get a thinking block prepended to content[], which triggers the same \"content[].thinking must be passed back\" 400": {},
     "Applies to the next request; takeover rewrites the client's own config with newgate on <agent>.": {},
@@ -66,6 +67,8 @@
     "Bash classifier: the whole chain is rerouted to light": {},
     "Binding mode": {},
     "Black": {},
+    "Check for updates": {},
+    "Checking…": {},
     "Classifier config": {},
     "Classifier override": {},
     "Classifier rerouting": {},
@@ -105,12 +108,20 @@
         "code"
       ]
     },
+    "GitHub releases": {},
+    "GitHub releases of {repo}": {
+      "args": [
+        "repo"
+      ]
+    },
     "GitHub's answer has no tag_name": {},
     "Global default": {},
     "Home": {},
     "If a new binary fails to take over the daemon it is rolled back automatically; newgate self-update rollback swaps back by hand.": {},
+    "Install it from a terminal with newgate upgrade (it asks before replacing anything).": {},
     "Interface": {},
     "Naked": {},
+    "Not checked yet": {},
     "Nothink": {},
     "Profiles": {},
     "Refresh this module data now? [y/N] ": {
@@ -144,9 +155,12 @@
     },
     "Targets": {},
     "Test this profile": {},
+    "The check failed": {},
     "The colours of this interface. Saved to state.json and applied at once — no reload. Nothing but tokens changes: a theme cannot move anything around.": {},
     "The model name codex itself sends — copy it out of `codex debug models` (the slug).": {},
     "Theme": {},
+    "Up to date": {},
+    "Updates": {},
     "Upgrades newgate itself and the data its modules own. Nothing happens silently: it first looks (like --check), then asks once for the newgate binary and once for the module data, and only does what you confirmed.": {},
     "Usage: newgate omo [ls | use <key> <binding> | unset <key> | mode current|suggested | explain <key>]": {},
     "Usage: newgate omo explain <slot key>": {},
@@ -300,6 +314,11 @@
         "spec"
       ]
     },
+    "built from {repo}": {
+      "args": [
+        "repo"
+      ]
+    },
     "cached {version}, last checked {ago} ago; upgrade would check for a newer bank": {
       "args": [
         "ago",
@@ -423,6 +442,7 @@
         "err"
       ]
     },
+    "cannot read the request: {err}": {},
     "cannot read this profile": {},
     "cannot read {path}: {err}": {
       "args": [
@@ -499,6 +519,12 @@
     "chain head {head}": {
       "args": [
         "head"
+      ]
+    },
+    "checked just now": {},
+    "checked {ago} ago": {
+      "args": [
+        "ago"
       ]
     },
     "checksum mismatch for {asset}: got {got}, {file} says {want}": {
@@ -904,6 +930,7 @@
         "repo"
       ]
     },
+    "newgate version": {},
     "no API extension at {path}": {
       "args": [
         "path"
@@ -1676,6 +1703,11 @@
         "arg"
       ]
     },
+    "unknown action {action}": {
+      "args": [
+        "action"
+      ]
+    },
     "unknown command \"{cmd}\" (see the list with newgate status)": {
       "args": [
         "cmd"
@@ -1790,12 +1822,44 @@
     },
     "version": {},
     "web": {},
+    "web: plugin {name} asks for the slot {slot}, which this interface does not have": {
+      "args": [
+        "name",
+        "slot"
+      ]
+    },
+    "web: plugin {name} cannot read its entry {entry}: {err}": {
+      "args": [
+        "entry",
+        "name"
+      ]
+    },
+    "web: plugin {name} fills no slot, so it would never appear": {
+      "args": [
+        "name"
+      ]
+    },
+    "web: plugin {name} has no assets or no entry file": {
+      "args": [
+        "name"
+      ]
+    },
     "web: the extension {name} is already registered by another module — only one of them would ever receive a request": {
       "args": [
         "name"
       ]
     },
+    "web: the plugin {name} is already registered by another module": {
+      "args": [
+        "name"
+      ]
+    },
     "web: {name} is not a usable extension name — use lowercase letters, digits, '-' and '_'": {
+      "args": [
+        "name"
+      ]
+    },
+    "web: {name} is not a usable plugin name — use lowercase letters, digits, '-' and '_'": {
       "args": [
         "name"
       ]

@@ -567,3 +567,56 @@ export function fingerprintRun(
     count,
   });
 }
+
+// ---------- 前端插件（契约见 Go 侧 api.go 的「前端插件」） ----------
+//
+// 界面在这里**不认识任何一个插件**：它只拿一张清单（名字、入口地址、要填的槽位），
+// 在自己版面上的槽位里给每个插件一个空容器，然后把 host 交给它。插件里画什么、
+// 问哪个扩展端点、说什么话，全是插件所在的那个模块的事。
+
+export interface PluginDoc {
+  name: string;
+  /** 相对 BASE_URL 的入口地址（带内容哈希的 ?v=）。 */
+  entry: string;
+  slots: string[];
+}
+
+/** 交给插件的 host（版本 1）。 */
+export interface PluginHost {
+  name: string;
+  lang: string;
+  ext<T = unknown>(name: string, body?: unknown): Promise<T>;
+  asset(path: string): string;
+}
+
+let pluginList: Promise<PluginDoc[]> | null = null;
+
+/** 这次打开页面时的插件清单。只问一次：插件跟着二进制走，换二进制会换页面。 */
+export function pluginManifest(): Promise<PluginDoc[]> {
+  pluginList ??= fetch(`${API}/plugins`)
+    .then((r) => (r.ok ? r.json() : { plugins: [] }))
+    .then((doc: { plugins?: PluginDoc[] }) => doc.plugins ?? [])
+    // 老 daemon 没有这条路由 / 网络错：当作一个插件都没有，界面照常。
+    .catch(() => []);
+  return pluginList;
+}
+
+export function pluginHost(name: string, lang: string): PluginHost {
+  return {
+    name,
+    lang,
+    async ext<T>(ext: string, body: unknown = {}): Promise<T> {
+      const res = await fetch(`${API}/ext/${encodeURIComponent(ext)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const doc = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(errText((doc as { error?: unknown }).error) || `HTTP ${res.status}`);
+      return doc as T;
+    },
+    asset(path: string): string {
+      return `${import.meta.env.BASE_URL}plugins/${name}/${path}`;
+    },
+  };
+}

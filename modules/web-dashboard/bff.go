@@ -46,10 +46,12 @@ type Handler struct {
 	// ExtensionService）。与 themes 同一条：本模块自己建、别的模块往里注册，
 	// 生命周期就是这次装配。
 	extensions *extensionRegistry
+	// plugins 是**模块自带的前端代码**（见 api.go 的「前端插件」）。
+	plugins *pluginRegistry
 }
 
-func NewHandler(assets fs.FS, views *view.Registry, themes *themeRegistry, extensions *extensionRegistry) *Handler {
-	return &Handler{assets: assets, views: views, themes: themes, extensions: extensions}
+func NewHandler(assets fs.FS, views *view.Registry, themes *themeRegistry, extensions *extensionRegistry, plugins *pluginRegistry) *Handler {
+	return &Handler{assets: assets, views: views, themes: themes, extensions: extensions, plugins: plugins}
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -120,6 +122,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.preview(w, r)
 	case strings.HasPrefix(r.URL.Path, "/api/ext/"):
 		h.extension(w, r)
+	case r.URL.Path == "/api/plugins":
+		h.writeJSONStatus(w, http.StatusOK, map[string]any{"plugins": h.plugins.manifest()})
+	case strings.HasPrefix(r.URL.Path, "/plugins/"):
+		h.plugins.servePlugin(w, r)
 	default:
 		h.static(w, r)
 	}

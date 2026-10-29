@@ -69,6 +69,7 @@ func New() modules.Component {
 	// 提供端口，模块在自己的 Start 里登记一个名字与一个函数。没装任何扩展时
 	// 端点一律 404，界面回落到自己能拿到的那份数据。
 	extensions := newExtensionRegistry()
+	plugins := newPluginRegistry()
 	// self 是这次装配的事实：挂上了没有、挂上之后怎么撤。命令要用它如实回答
 	// 「界面上哪儿找」——装了本模块**不等于**它有入口（porthub 缺席时就没有），
 	// 让命令按实际挂载结果说话，而不是按「我装了没有」猜。
@@ -92,6 +93,7 @@ func New() modules.Component {
 			modules.Provide(viewapi.Capability, viewapi.Service(views)),
 			modules.Provide(ThemeCapability, ThemeService(themes)),
 			modules.Provide(ExtensionCapability, ExtensionService(extensions)),
+			modules.Provide(PluginCapability, PluginService(plugins)),
 		},
 		Start: func(_ context.Context, ctx modules.Context) error {
 			sub, err := fs.Sub(assets, AssetDir)
@@ -115,7 +117,7 @@ func New() modules.Component {
 				}); err != nil {
 				return err
 			}
-			handler := NewHandler(sub, views, themes, extensions)
+			handler := NewHandler(sub, views, themes, extensions, plugins)
 			// 两条路，只能走一条，而且都要先问「这条路存不存在」：
 			//
 			//   - **porthub 在**：挂到共享端口上（常态）。挂载是进程内注册（不产生

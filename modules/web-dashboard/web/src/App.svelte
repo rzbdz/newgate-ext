@@ -46,6 +46,7 @@
   import SplitView from "./SplitView.svelte";
   import TabStrip from "./TabStrip.svelte";
   import ThemePicker from "./ThemePicker.svelte";
+  import PluginSlot from "./PluginSlot.svelte";
 
   let concepts = $state<Concept[]>([]);
   let sections = $state<Section[]>([]);
@@ -1042,6 +1043,8 @@
       <button onclick={reloadAll} disabled={busy}>{t("reload")}</button>
     {/if}
 
+    <!-- 模块自带前端的挂点（见 PluginSlot.svelte）：这里不认识任何插件。 -->
+    <PluginSlot at="topbar" {lang} />
     {#if themeDoc.themes.length}
       <ThemePicker doc={themeDoc} onPick={pickTheme} />
     {/if}
