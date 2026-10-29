@@ -333,3 +333,21 @@ func TestSuggest(t *testing.T) {
 		}
 	}
 }
+
+// TestTakeoverCarriesAgentIdentity 锁住 2026-10-29 snode1 那次现场：接管写进
+// opencode.json 的 baseURL 必须带 `/a/opencode`。网关只从路径认客户端
+// （`/a/<agent>[/p/<profile>]/v1/...`，见内核 forward.parseTarget），漏了它
+// 请求就被当成匿名、走全局缺省——界面上给 opencode 单独选的 profile 永远不生效。
+func TestTakeoverCarriesAgentIdentity(t *testing.T) {
+	target := isolate(t)
+	p := writeTarget(t, target, "opencode.json", `{"$schema":"x"}`)
+	if _, err := ApplyOpencode(p, 8899, nil); err != nil {
+		t.Fatal(err)
+	}
+	prov := node(t, readJSONFile(t, p), "provider", ProviderID)
+	opts, _ := prov["options"].(map[string]interface{})
+	got, _ := opts["baseURL"].(string)
+	if want := "http://127.0.0.1:8899/a/opencode/v1"; got != want {
+		t.Fatalf("baseURL = %q, want %q (without /a/opencode the gateway routes by the global default)", got, want)
+	}
+}

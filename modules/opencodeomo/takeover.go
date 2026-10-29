@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	opencodeapi "github.com/rzbdz/newgate-ext/modules/opencode"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 	"github.com/rzbdz/newgate/modules/config/domain"
 	agentapi "github.com/rzbdz/newgate/modules/confighook"
@@ -81,7 +82,16 @@ func buildNewgateProvider(port int, extra []string) map[string]interface{} {
 		"npm":  "@ai-sdk/openai-compatible",
 		"name": "newgate (local proxy)",
 		"options": map[string]interface{}{
-			"baseURL": fmt.Sprintf("http://127.0.0.1:%d/v1", port),
+			// **路径里必须带 `/a/opencode`**：网关只从 URL 认「这一发是哪个客户端」
+			// （forward.parseTarget，客户端不让我们塞 header），认不出就按**全局
+			// 缺省**选链头。claude（`/a/claude`）与 codex（`/a/codex/v1`）一直带着，
+			// 这里漏了——于是界面上给 opencode 单独选的 profile 写进了 state.json，
+			// 却从来没被问过。2026-10-29 snode1 实测：opencode 切成 ds，请求仍走
+			// 全局缺省 claude 的链。本机全局缺省恰好也是 ds，所以一直没露出来。
+			//
+			// 已接管的机器要重跑一次 `newgate on opencode`（Apply 每次整块重写
+			// provider.newgate，所以这一格会被换掉）。
+			"baseURL": fmt.Sprintf("http://127.0.0.1:%d/a/%s/v1", port, opencodeapi.ID),
 			"apiKey":  "newgate-local",
 		},
 		"models": models,
