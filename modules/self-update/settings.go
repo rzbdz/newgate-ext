@@ -2,7 +2,6 @@ package selfupdate
 
 import (
 	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -81,10 +80,7 @@ func saveSettings(s settings) error {
 
 // ensureSettings 返回生效的设置；还没有那一段时推断一份，**推断得有把握才写下来**。
 //
-// 第二个返回值说的是「这份是不是落了盘」。没把握的情况只有一种：构建期注入的源码
-// 目录**看不见**（不是不存在，而是没权限 stat，比如 daemon 以另一个用户跑、源码在
-// /root 下）。这时写下 release 会把开发机永久改成 release，所以只在内存里用推断值，
-// 等一个看得见的进程来写。
+// 第二个返回值说的是「这份是不是落了盘」。
 func ensureSettings() (settings, bool) {
 	if s, ok := loadSettings(); ok {
 		return s, true
@@ -108,20 +104,24 @@ func ensureSettings() (settings, bool) {
 // infer 按构建期的源码目录猜这台机器走哪条路。
 //
 //   - 目录在、是一份带 build/build.sh 与这份规格书的 git checkout → git；
-//   - 目录不在（CI 编的产物带的是 runner 的路径）→ release；
+//   - 目录不在（CI 编的产物带的是 runner 的路径）、或者这个用户看不见它 → release；
 //   - 没注入（`go run`、测试）或者在临时目录里（`upgrade@<ref>` 那份临时 clone
-//     编出来的产物，第一次跑 `version` 时那个目录还在）→ 不下结论；
-//   - 看不见（权限）→ 不下结论。
+//     编出来的产物，第一次跑 `version` 时那个目录还在）→ 不下结论。
+//
+// 「看不见」算 release 而不是「不下结论」：第一版是后者，理由是「daemon 以别的用户
+// 跑、源码在 /root 下，别让它把开发机写成 release」。结果 2026-10-29 部署到 snode1
+// 第一件事就撞上反例——那台机器上**也有** /root（0700），本机编的产物带着
+// /root/workspace/newgate-ext，于是普通用户那边永远是「推断的，还没写下来」。
+// 而真正的判据很简单：这个用户读不到那份源码，就**编不了**它，git 模式对他没有
+// 意义。开发机上那个担心也不成立：daemon 是 CLI 拉起来的，CLI 那一次 Start 早就
+// 把 git 写下了。
 func infer(source, spec string) (settings, bool) {
 	fallback := settings{Mode: modeRelease}
 	if source == "" || underTemp(source) {
 		return fallback, false
 	}
 	if _, err := os.Stat(source); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return fallback, true
-		}
-		return fallback, false
+		return fallback, true
 	}
 	if checkRepo(source, spec) != nil {
 		// 目录在但不是本仓库（被别的东西占了这个路径）：那就不是「自己编的」。

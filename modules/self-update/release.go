@@ -171,7 +171,7 @@ func (c *releaseClient) webStatus(ctx context.Context, endpoint string, location
 	noFollow.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	resp, err := noFollow.Do(req)
 	if err != nil {
-		return 0, i18n.Ef(err, "cannot reach GitHub: {err}", nil)
+		return 0, unreachable(err)
 	}
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
@@ -216,7 +216,7 @@ func (c *releaseClient) get(ctx context.Context, endpoint string) (*ghRelease, e
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, i18n.Ef(err, "cannot reach GitHub: {err}", nil)
+		return nil, unreachable(err)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
@@ -302,6 +302,18 @@ func parseSums(text string) map[string]string {
 		out[strings.TrimPrefix(f[1], "*")] = strings.ToLower(f[0])
 	}
 	return out
+}
+
+// unreachable 是「连不上 GitHub」的那句话。内网机器多半要走代理（snode1 就是：代理
+// 只写在登录 shell 里，`ssh host cmd` 这种非交互调用拿不到），没设代理时把这一点
+// 说出来——光一句 context deadline exceeded 让人以为是 GitHub 挂了。
+func unreachable(err error) error {
+	for _, k := range []string{"HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"} {
+		if os.Getenv(k) != "" {
+			return i18n.Ef(err, "cannot reach GitHub: {err}", nil)
+		}
+	}
+	return i18n.Ef(err, "cannot reach GitHub (no https_proxy is set; does this machine need one?): {err}", nil)
 }
 
 // apiMessage 从 API 的错误体里取 `message`（整段 JSON 塞进一行报错里没法读）。

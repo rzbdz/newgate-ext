@@ -42,6 +42,20 @@ func TestInfer(t *testing.T) {
 	if _, sure := infer("", "dist.json"); sure {
 		t.Fatal("no injected source (go run / tests) must not decide anything")
 	}
+	// snode1 的现场：/root 存在但 0700，普通用户 stat 里面的路径是 EACCES。
+	locked := filepath.Join(repo, "locked")
+	if err := os.MkdirAll(filepath.Join(locked, "src"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(locked, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+	if os.Geteuid() != 0 { // root 不受权限位约束，测不出这一条
+		if s, sure := infer(filepath.Join(locked, "src"), "dist.json"); !sure || s.Mode != modeRelease {
+			t.Fatalf("unreadable source: %+v sure=%v, want a recorded release decision", s, sure)
+		}
+	}
 	if s, sure := infer(repo, "dist-missing.json"); !sure || s.Mode != modeRelease {
 		t.Fatalf("a checkout without this specification is not ours: %+v sure=%v", s, sure)
 	}

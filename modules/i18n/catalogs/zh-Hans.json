@@ -680,6 +680,10 @@
       "reviewed": true,
       "text": "{path} 解析失败: {err}"
     },
+    "cannot reach GitHub (no https_proxy is set; does this machine need one?): {err}": {
+      "reviewed": true,
+      "text": "连不上 GitHub（没有设 https_proxy；这台机器是不是要走代理？）：{err}"
+    },
     "cannot reach GitHub: {err}": {
       "reviewed": true,
       "text": "连不上 GitHub：{err}"

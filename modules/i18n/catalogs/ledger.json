@@ -367,6 +367,7 @@
         "path"
       ]
     },
+    "cannot reach GitHub (no https_proxy is set; does this machine need one?): {err}": {},
     "cannot reach GitHub: {err}": {},
     "cannot reach {addr}: {err}": {
       "args": [
