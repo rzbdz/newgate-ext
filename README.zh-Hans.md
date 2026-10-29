@@ -36,7 +36,8 @@ Release 里本平台的产物并核对校验和；开发机则在自己的仓库
 `build/build.sh` 重编——走哪种在第一次运行时定下，`newgate self-update` 可以看、可以改。
 `newgate upgrade@v0.9.0` 钉到某个 tag（那个 tag 没发版就 clone 下来现编）。新二进制
 先试跑再换上，旧的留给 `newgate self-update rollback`，daemon 交接 socket，跑着的会话
-感觉不到。
+感觉不到；交接失败就自动换回旧版、用旧版把 daemon 拉起来。它不静默执行：先说要做
+什么，再为二进制和模块数据各问一次（`-y` 跳过提问）。
 
 指纹由 [lm-detector](https://github.com/Ikaleio/lm-detector) 提供（MIT），参考数据
 来自 [lm.ikale.io](https://lm.ikale.io/docs/sdk)。谢谢这个项目。

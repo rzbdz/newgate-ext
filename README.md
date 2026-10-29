@@ -44,7 +44,10 @@ decided on the first run, and `newgate self-update` shows or changes it.
 `newgate upgrade@v0.9.0` pins a tag (no release for it? it clones that ref and
 builds it). The new binary is smoke-tested before it replaces the old one, the old
 one is kept for `newgate self-update rollback`, and the daemon hands its socket
-over, so a running session never notices.
+over, so a running session never notices — and if the handoff fails, the old
+binary is put back and the daemon restarted on it. Nothing runs silently:
+`upgrade` shows what it would do and asks once for the binary and once for the
+module data (`-y` to skip the questions).
 
 Fingerprinting is powered by [lm-detector](https://github.com/Ikaleio/lm-detector)
 (MIT), with reference data from [lm.ikale.io](https://lm.ikale.io/docs/sdk).

@@ -260,6 +260,10 @@
       "reviewed": true,
       "text": "主页"
     },
+    "If a new binary fails to take over the daemon it is rolled back automatically; newgate self-update rollback swaps back by hand.": {
+      "reviewed": true,
+      "text": "新二进制接管不了守护进程时会自动回滚；也可以用 newgate self-update rollback 手动换回。"
+    },
     "Interface": {
       "reviewed": true,
       "text": "界面"
@@ -276,6 +280,10 @@
       "reviewed": true,
       "text": "档位"
     },
+    "Refresh this module data now? [y/N] ": {
+      "reviewed": true,
+      "text": "现在刷新这 {n} 项模块数据吗？[y/N] "
+    },
     "Remote": {
       "machine": true,
       "text": "远端"
@@ -287,6 +295,10 @@
     "Repair the tail shape (hand 4)": {
       "reviewed": true,
       "text": "修尾部形状（第 4 手）"
+    },
+    "Replace the newgate binary now? [y/N] ": {
+      "reviewed": true,
+      "text": "现在替换 newgate 二进制吗？[y/N] "
     },
     "Responses input left untouched ({err})": {
       "reviewed": true,
@@ -327,6 +339,10 @@
     "Theme": {
       "reviewed": true,
       "text": "皮肤"
+    },
+    "Upgrades newgate itself and the data its modules own. Nothing happens silently: it first looks (like --check), then asks once for the newgate binary and once for the module data, and only does what you confirmed.": {
+      "reviewed": true,
+      "text": "升级 newgate 本身以及各模块自带的数据。不会静默执行：先看一遍（同 --check），再分别为 newgate 二进制和模块数据各问一次，只做你确认过的。"
     },
     "Usage: newgate omo [ls | use <key> <binding> | unset <key> | mode current|suggested | explain <key>]": {
       "reviewed": true,
@@ -456,6 +472,10 @@
       "reviewed": true,
       "text": "动作"
     },
+    "actions in this build": {
+      "reviewed": true,
+      "text": "这份构建里的动作"
+    },
     "add a target": {
       "machine": true,
       "text": "添加目标"
@@ -467,6 +487,10 @@
     "after the restart no daemon is running; see newgate logs": {
       "reviewed": true,
       "text": "重启之后没有 daemon 在跑；看 newgate logs"
+    },
+    "after the restart the daemon (pid {pid}) does not answer on its control port; see newgate logs": {
+      "reviewed": true,
+      "text": "重启之后守护进程（pid {pid}）的控制端口不应答；看 newgate logs"
     },
     "all profiles": {
       "reviewed": true,
@@ -635,6 +659,10 @@
     "cannot fix the permissions of {path}: {err}": {
       "reviewed": true,
       "text": "修正 {path} 权限失败: {err}"
+    },
+    "cannot keep the current binary as {prev}, so there would be no way back; nothing was replaced: {err}": {
+      "reviewed": true,
+      "text": "没法把当前二进制留成 {prev}，换了就没有退路；什么都没换：{err}"
     },
     "cannot listen on {addr}: {err}": {
       "machine": true,
@@ -948,6 +976,10 @@
       "reviewed": true,
       "text": "发行版 {dist} 没有声明 GitHub 仓库；用 `newgate self-update release <owner/repo>` 设一个，或者改用 git 模式"
     },
+    "do not ask; go ahead with everything that has something to do": {
+      "reviewed": true,
+      "text": "不询问，有事可做的全部直接执行"
+    },
     "download the latest GitHub release of {repo} and swap it in (graceful daemon handoff)": {
       "reviewed": true,
       "text": "下载 {repo} 最新的 GitHub Release 并换上（守护进程优雅交接）"
@@ -1011,6 +1043,10 @@
     "every subagent / agent team / workflow; set it to inherit to hand that back to per-slot resolution": {
       "reviewed": true,
       "text": "所有 subagent / agent team / workflow；设 inherit 可交还给各自解析"
+    },
+    "examples": {
+      "reviewed": true,
+      "text": "例子"
     },
     "extension calls need Content-Type: application/json (got {ct})": {
       "reviewed": true,
@@ -1180,10 +1216,6 @@
       "reviewed": true,
       "text": "注入 {patch}（GLM 把缺省当默认思考）"
     },
-    "installed {version} at {target} (could not keep a copy of the previous one)": {
-      "reviewed": true,
-      "text": "已把 {version} 装到 {target}（没能留下旧版的副本）"
-    },
     "installed {version} at {target}; the previous binary is kept as {prev}": {
       "reviewed": true,
       "text": "已把 {version} 装到 {target}；旧版留在 {prev}"
@@ -1220,6 +1252,10 @@
       "machine": true,
       "text": "lazy 在首次请求时拨号，空闲即释放；persistent 保持常开"
     },
+    "left as it is": {
+      "reviewed": true,
+      "text": "保持原样"
+    },
     "lift Codex tools from input[0] to the top level": {
       "reviewed": true,
       "text": "把 Codex 的工具从 input[0] 抬到顶层"
@@ -1231,6 +1267,14 @@
     "lifted {n} tool declaration from input[0] to the top level (most upstreams read tools only there)": {
       "reviewed": true,
       "text": "把 {n} 条工具声明从 input[0] 抬到了顶层（多数上游只在那里读工具）"
+    },
+    "like -y, and also reinstall the same version or go back to an older one": {
+      "reviewed": true,
+      "text": "同 -y，并且允许重装同一版本或退回更旧的版本"
+    },
+    "list the upgrade actions in this build": {
+      "reviewed": true,
+      "text": "列出这份构建里的升级动作"
     },
     "local changes archived to {dir} (restore from there)": {
       "reviewed": true,
@@ -1444,6 +1488,10 @@
       "reviewed": true,
       "text": "没有声明"
     },
+    "not asking without a terminal; run again with -y to go ahead": {
+      "reviewed": true,
+      "text": "没有终端，不询问也不执行；要执行请加 -y 重跑"
+    },
     "not defined": {
       "reviewed": true,
       "text": "没有定义"
@@ -1524,6 +1572,14 @@
       "reviewed": true,
       "text": "开着 —— {left} 后自动关闭（newgate nothink off 可提前关）"
     },
+    "only look: what would change; nothing is downloaded, replaced or restarted": {
+      "reviewed": true,
+      "text": "只看：会有什么变化；不下载、不替换、不重启"
+    },
+    "only this action (see --list)": {
+      "reviewed": true,
+      "text": "只跑这一个动作（见 --list）"
+    },
     "opencode": {
       "reviewed": true,
       "text": "opencode"
@@ -1531,6 +1587,10 @@
     "opencode is not installed on this machine — nothing on this card takes effect yet. Install it with `newgate opencode -y`.": {
       "reviewed": true,
       "text": "这台机器上没有装 opencode —— 这张卡上的设置暂时都不会生效。用 `newgate opencode -y` 装上它。"
+    },
+    "options": {
+      "reviewed": true,
+      "text": "选项"
     },
     "or byte-for-byte at http://127.0.0.1:{port}/ui/ (started by the daemon)": {
       "machine": true,
@@ -1551,6 +1611,10 @@
     "past max attempts": {
       "reviewed": true,
       "text": "超出尝试上限"
+    },
+    "pin the binary to a tag, branch or commit (a release if one exists, otherwise built from source); actions without versions are skipped": {
+      "reviewed": true,
+      "text": "把二进制钉到某个 tag、分支或提交（有 Release 就用 Release，没有就从源码构建）；没有版本概念的动作会被跳过"
     },
     "port http://127.0.0.1:{port}/ui/": {
       "machine": true,
@@ -2460,17 +2524,13 @@
       "reviewed": true,
       "text": "升级动作 {id} 没有版本概念；去掉 @{version}"
     },
-    "upgrade finished: {n} succeeded": {
+    "upgrade finished: {summary}": {
       "reviewed": true,
-      "text": "升级完成：{n} 个成功"
+      "text": "升级结束：{summary}"
     },
-    "upgrade finished: {ok} succeeded, {failed} failed": {
+    "upgrade newgate and the data its modules own, asking first; @version pins a tag, branch or commit": {
       "reviewed": true,
-      "text": "升级完成：{ok} 个成功，{failed} 个失败"
-    },
-    "upgrade newgate and the data its modules own; @version pins a tag, branch or commit": {
-      "reviewed": true,
-      "text": "升级 newgate 以及各模块自带的数据；@版本 钉到某个 tag、分支或提交"
+      "text": "升级 newgate 以及各模块自带的数据，执行前会先询问；@版本 钉到某个 tag、分支或提交"
     },
     "upgrade newgate itself and the dynamic data modules own, through actions each module registers": {
       "reviewed": true,
@@ -2572,9 +2632,9 @@
       "reviewed": true,
       "text": "此刻装着的：{version}，装配于 {took}"
     },
-    "what it refreshes": {
+    "what it upgrades": {
       "reviewed": true,
-      "text": "刷新什么"
+      "text": "升级什么"
     },
     "when the user explicitly runs newgate naked on/forever, Claude Code's classifier requests (every gate: Bash, sandbox network, workflow, handoff) are short-circuited into an approval without a single LLM call — no more 15-30s classifier latency and no more sessions wedged by a wrong block\non = a 60-second self-limiting window; forever = always on (every request is logged, status warns)\nonly the classifier family is touched (non-streaming + its prompt marker or stop_sequences); compact summaries and title generation still get a real answer\nnewgate naked off / st off both end it": {
       "reviewed": true,
@@ -2796,6 +2856,10 @@
       "reviewed": true,
       "text": "{n} 个动作"
     },
+    "{n} already current": {
+      "reviewed": true,
+      "text": "{n} 项已是最新"
+    },
     "{n} candidate did not make it: {reasons}": {
       "other": "{n} 个候选没进链：{reasons}",
       "reviewed": true
@@ -2812,9 +2876,17 @@
       "machine": true,
       "text": "{n} 个连接"
     },
+    "{n} declined": {
+      "reviewed": true,
+      "text": "{n} 项未确认"
+    },
     "{n} dialling on start": {
       "machine": true,
       "text": "启动时拨号 {n} 个"
+    },
+    "{n} failed": {
+      "reviewed": true,
+      "text": "{n} 项失败"
     },
     "{n} key has a suggested tier (see newgate omo ls)": {
       "reviewed": true,
@@ -2863,6 +2935,10 @@
     "{n} unreadable": {
       "machine": true,
       "text": "{n} 个无法读取"
+    },
+    "{n} upgraded": {
+      "reviewed": true,
+      "text": "{n} 项已升级"
     },
     "{n} with a forwarding port": {
       "machine": true,
@@ -2988,9 +3064,21 @@
       "reviewed": true,
       "text": "{value} 既不是档位（heavy/normal/mid/light/vision）、也不是已注册的动态角色键、也不是 provider/模型"
     },
-    "{version} is installed, but the daemon handoff failed: {err}": {
+    "{version} did not take over the daemon ({cause}), and rolling back failed too: {err}; the new binary is still at {target}, the old one at {prev}": {
       "reviewed": true,
-      "text": "{version} 已经装上，但守护进程交接失败：{err}"
+      "text": "{version} 没能接管守护进程（{cause}），回滚也失败了：{err}；新二进制仍在 {target}，旧的在 {prev}"
+    },
+    "{version} did not take over the daemon ({cause}); rolled back to {old}, and the daemon runs it again": {
+      "reviewed": true,
+      "text": "{version} 没能接管守护进程（{cause}）；已回滚到 {old}，守护进程已重新跑在它上面"
+    },
+    "{version} did not take over the daemon ({cause}); the binary is back at {old}, but the daemon did not come back either: {err} — run newgate start": {
+      "reviewed": true,
+      "text": "{version} 没能接管守护进程（{cause}）；二进制已换回 {old}，但守护进程也没能恢复：{err}——请运行 newgate start"
+    },
+    "{version} did not take over the daemon ({err}); rolling back": {
+      "reviewed": true,
+      "text": "{version} 没能接管守护进程（{err}）；正在回滚"
     },
     "↑/↓ or j/k move · ←/→ or Tab switch pane · Enter apply · d follow the default · r reload · q quit": {
       "reviewed": true,

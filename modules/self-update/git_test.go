@@ -110,7 +110,7 @@ func TestGitModeFastForwardsBuildsAndInstalls(t *testing.T) {
 
 	// 同一个提交再来一次：不编。
 	u.current = got
-	msg, err := u.run(context.Background(), upgradeapi.Request{})
+	msg, err := u.runMsg(context.Background(), upgradeapi.Request{})
 	if err != nil || !strings.Contains(msg, "already at") {
 		t.Fatalf("second run: %q %v", msg, err)
 	}

@@ -69,12 +69,18 @@ newgate verify --json                   # 机器可读
 ## `newgate upgrade`
 
 ```bash
-newgate upgrade                   # 升级二进制 + 刷新各模块的数据
+newgate upgrade                   # 先看一遍，再分两次问：换二进制吗？刷新模块数据吗？
 newgate upgrade --check           # 只看有没有新的，什么都不动
+newgate upgrade -y                # 不问，有事可做的直接做（-f 再加上允许重装/倒退）
 newgate upgrade --list            # 有哪些动作（binary、fingerprint-data …）
 newgate upgrade fingerprint-data  # 只刷新指纹参考库
 newgate upgrade@v0.9.0            # 把二进制钉到某个 tag（也可以是分支、提交）
+newgate upgrade --help            # 完整说明，含这份构建里实际有哪些动作
 ```
+
+**不静默执行**：`upgrade` 先只看一遍，把每个动作「会做什么 / 已经是最新」打出来，
+然后**分两次**问 y/N——一次问 newgate 二进制，一次问各模块挂进来的数据动作；已经
+是最新的不问。没有终端又没给 `-y` 时不执行、以 1 退出（脚本看得出「其实没升」）。
 
 `upgrade` 是模块**登记升级动作**的入口：谁拥有那份东西，谁提供怎么拿、怎么校验。
 二进制本身也是其中一个动作（`binary`，由 `self-update` 模块登记），所以一条命令
@@ -113,7 +119,10 @@ newgate self-update rollback        # 换回上一版（再敲一次又换回来
 - git 模式**绝不替你做决定**：工作区有改动、本地有没推的提交、分叉、detached——
   都不拉，照编手上这份；
 - daemon 在跑就用新二进制执行 `newgate restart`（socket 交接，会话不断），换完核对
-  daemon 真的跑在新文件上。
+  daemon 真的跑在新文件上、并且在答话；**交接失败、新进程起不来或不答话，自动换回
+  旧版并用旧版把 daemon 拉回来**；
+- 留不下 `.prev` 就不换（没有退路的替换不做）；下载/构建中途被打断留下的半成品，
+  下一次升级时清掉。
 
 发布仓库写在规格书里（`dist.json` 的 `"github": "owner/repo"`）：fork 的人改这一行，
 升级通道就接到了自己的仓库。

@@ -75,11 +75,13 @@ func New() modules.Component {
 					Describe: func() string {
 						return i18n.T("download the latest model fingerprint reference bank", nil)
 					},
-					Run: func(ctx context.Context, req upgradeapi.Request) (string, error) {
+					Run: func(ctx context.Context, req upgradeapi.Request) (upgradeapi.Result, error) {
 						if req.Check {
-							return svc.UpgradeStatus(), nil
+							msg, current := svc.UpgradeStatus()
+							return upgradeapi.Result{Message: msg, UpToDate: current}, nil
 						}
-						return svc.Upgrade(ctx)
+						msg, err := svc.Upgrade(ctx)
+						return upgradeapi.Done(msg), err
 					},
 				})
 				if err != nil {

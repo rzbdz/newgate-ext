@@ -62,7 +62,7 @@ func (u *updater) github() string {
 	return u.info.GitHub
 }
 
-func runAction(ctx context.Context, req upgradeapi.Request) (string, error) {
+func runAction(ctx context.Context, req upgradeapi.Request) (upgradeapi.Result, error) {
 	return newUpdater().run(ctx, req)
 }
 
@@ -89,9 +89,9 @@ func (u *updater) note(text string) {
 	fmt.Fprintln(u.out, "  "+style.Dim("· "+text))
 }
 
-func (u *updater) run(ctx context.Context, req upgradeapi.Request) (string, error) {
+func (u *updater) run(ctx context.Context, req upgradeapi.Request) (upgradeapi.Result, error) {
 	if u.info.Distribution == "" {
-		return "", i18n.E("this binary does not know which distribution it is (specification {spec}); rebuild it with build/build.sh",
+		return upgradeapi.Result{}, i18n.E("this binary does not know which distribution it is (specification {spec}); rebuild it with build/build.sh",
 			i18n.A{"spec": u.info.Spec})
 	}
 	if req.Version != "" {
@@ -104,22 +104,22 @@ func (u *updater) run(ctx context.Context, req upgradeapi.Request) (string, erro
 }
 
 // latestRelease 是 release 模式的「最新」。
-func (u *updater) latestRelease(ctx context.Context, req upgradeapi.Request) (string, error) {
+func (u *updater) latestRelease(ctx context.Context, req upgradeapi.Request) (upgradeapi.Result, error) {
 	repo := u.github()
 	if repo == "" {
-		return "", i18n.E("distribution {dist} declares no GitHub repository; set one with `newgate self-update release <owner/repo>` or use git mode",
+		return upgradeapi.Result{}, i18n.E("distribution {dist} declares no GitHub repository; set one with `newgate self-update release <owner/repo>` or use git mode",
 			i18n.A{"dist": u.info.Distribution})
 	}
 	gh := u.client(repo)
 	rel, err := gh.latest(ctx)
 	if errors.Is(err, errNoRelease) {
-		return "", i18n.E("{repo} has no published release yet", i18n.A{"repo": repo})
+		return upgradeapi.Result{}, i18n.E("{repo} has no published release yet", i18n.A{"repo": repo})
 	}
 	if err != nil {
-		return "", err
+		return upgradeapi.Result{}, err
 	}
 	if msg, skip := u.notNewer(rel.Tag, req); skip {
-		return msg, nil
+		return upgradeapi.Current(msg), nil
 	}
 	a, ok := rel.asset(u.assetName())
 	if !ok {
@@ -129,8 +129,8 @@ func (u *updater) latestRelease(ctx context.Context, req upgradeapi.Request) (st
 		return u.fromSource(ctx, req, rel.Tag)
 	}
 	if req.Check {
-		return i18n.T("{tag} is available (this binary is {current}); upgrade would install {asset}",
-			i18n.A{"tag": rel.Tag, "current": u.current, "asset": a.Name}), nil
+		return upgradeapi.Done(i18n.T("{tag} is available (this binary is {current}); upgrade would install {asset}",
+			i18n.A{"tag": rel.Tag, "current": u.current, "asset": a.Name})), nil
 	}
 	return u.installRelease(ctx, gh, rel, a, req)
 }
@@ -165,10 +165,10 @@ func (u *updater) notNewer(tag string, req upgradeapi.Request) (string, bool) {
 }
 
 // pinned 是 `upgrade@<ref>`：先找同名 Release，没有（或者本平台没有产物）就从源码编。
-func (u *updater) pinned(ctx context.Context, req upgradeapi.Request) (string, error) {
+func (u *updater) pinned(ctx context.Context, req upgradeapi.Request) (upgradeapi.Result, error) {
 	ref := req.Version
 	if !req.Force && u.current == u.info.Distribution+"-"+ref {
-		return i18n.T("already at {tag}", i18n.A{"tag": ref}), nil
+		return upgradeapi.Current(i18n.T("already at {tag}", i18n.A{"tag": ref})), nil
 	}
 	if repo := u.github(); repo != "" {
 		gh := u.client(repo)
@@ -177,8 +177,8 @@ func (u *updater) pinned(ctx context.Context, req upgradeapi.Request) (string, e
 		case err == nil:
 			if a, ok := rel.asset(u.assetName()); ok {
 				if req.Check {
-					return i18n.T("release {tag} has {asset}; upgrade would install it",
-						i18n.A{"tag": rel.Tag, "asset": a.Name}), nil
+					return upgradeapi.Done(i18n.T("release {tag} has {asset}; upgrade would install it",
+						i18n.A{"tag": rel.Tag, "asset": a.Name})), nil
 				}
 				return u.installRelease(ctx, gh, rel, a, req)
 			}
@@ -188,29 +188,29 @@ func (u *updater) pinned(ctx context.Context, req upgradeapi.Request) (string, e
 			u.note(i18n.T("{repo} has no release named {ref}; building it from source",
 				i18n.A{"repo": repo, "ref": ref}))
 		default:
-			return "", err
+			return upgradeapi.Result{}, err
 		}
 	}
 	return u.fromSource(ctx, req, ref)
 }
 
-func (u *updater) installRelease(ctx context.Context, gh *releaseClient, rel *ghRelease, a ghAsset, req upgradeapi.Request) (string, error) {
+func (u *updater) installRelease(ctx context.Context, gh *releaseClient, rel *ghRelease, a ghAsset, req upgradeapi.Request) (upgradeapi.Result, error) {
 	sums, err := gh.sums(ctx, rel)
 	if err != nil {
-		return "", err
+		return upgradeapi.Result{}, err
 	}
 	want, ok := sums[a.Name]
 	if !ok {
-		return "", i18n.E("{file} of {tag} does not list {asset}; refusing to install an unverified binary",
+		return upgradeapi.Result{}, i18n.E("{file} of {tag} does not list {asset}; refusing to install an unverified binary",
 			i18n.A{"file": sumsAsset, "tag": rel.Tag, "asset": a.Name})
 	}
 	target, err := u.target()
 	if err != nil {
-		return "", err
+		return upgradeapi.Result{}, err
 	}
 	unlock, err := lockUpgrade()
 	if err != nil {
-		return "", err
+		return upgradeapi.Result{}, err
 	}
 	defer unlock()
 	if a.Size > 0 {
@@ -222,7 +222,7 @@ func (u *updater) installRelease(ctx context.Context, gh *releaseClient, rel *gh
 	}
 	f, err := stage(target)
 	if err != nil {
-		return "", err
+		return upgradeapi.Result{}, err
 	}
 	got, err := gh.download(ctx, a, f)
 	if cerr := f.Close(); err == nil {
@@ -230,11 +230,11 @@ func (u *updater) installRelease(ctx context.Context, gh *releaseClient, rel *gh
 	}
 	if err != nil {
 		_ = os.Remove(f.Name())
-		return "", err
+		return upgradeapi.Result{}, err
 	}
 	if got != want {
 		_ = os.Remove(f.Name())
-		return "", i18n.E("checksum mismatch for {asset}: got {got}, {file} says {want}",
+		return upgradeapi.Result{}, i18n.E("checksum mismatch for {asset}: got {got}, {file} says {want}",
 			i18n.A{"asset": a.Name, "got": got[:12], "file": sumsAsset, "want": want[:min(12, len(want))]})
 	}
 	u.note(i18n.T("checksum verified against {file}", i18n.A{"file": sumsAsset}))
@@ -242,13 +242,13 @@ func (u *updater) installRelease(ctx context.Context, gh *releaseClient, rel *gh
 }
 
 // fromRepo 是 git 模式的「最新」：同步本地 checkout，编，换。
-func (u *updater) fromRepo(ctx context.Context, req upgradeapi.Request) (string, error) {
+func (u *updater) fromRepo(ctx context.Context, req upgradeapi.Request) (upgradeapi.Result, error) {
 	repo := u.st.Repo
 	if err := checkRepo(repo, u.info.Spec); err != nil {
-		return "", i18n.Ef(err, "git mode: {err}; point it elsewhere with `newgate self-update git <dir>`", nil)
+		return upgradeapi.Result{}, i18n.Ef(err, "git mode: {err}; point it elsewhere with `newgate self-update git <dir>`", nil)
 	}
 	if err := requireTools(); err != nil {
-		return "", err
+		return upgradeapi.Result{}, err
 	}
 	for _, n := range syncRepo(ctx, repo, req.Check) {
 		u.note(n)
@@ -256,38 +256,38 @@ func (u *updater) fromRepo(ctx context.Context, req upgradeapi.Request) (string,
 	rev := describe(ctx, repo)
 	next := u.info.Distribution + "-" + rev
 	if rev != "" && !req.Force && next == u.current && !strings.HasSuffix(rev, "-dirty") {
-		return i18n.T("already at {version} (built from {repo})", i18n.A{"version": u.current, "repo": repo}), nil
+		return upgradeapi.Current(i18n.T("already at {version} (built from {repo})", i18n.A{"version": u.current, "repo": repo})), nil
 	}
 	if req.Check {
-		return i18n.T("upgrade would build {version} from {repo} (this binary is {current})",
-			i18n.A{"version": next, "repo": repo, "current": u.current}), nil
+		return upgradeapi.Done(i18n.T("upgrade would build {version} from {repo} (this binary is {current})",
+			i18n.A{"version": next, "repo": repo, "current": u.current})), nil
 	}
 	return u.buildAndInstall(ctx, repo, req)
 }
 
 // fromSource 是「临时 clone 一份 ref 再编」：没有可用 Release 的 `@ref`、以及本平台
 // 不在 Release 矩阵里的时候。开发者的本地 checkout 不被切换（那是他正在改的树）。
-func (u *updater) fromSource(ctx context.Context, req upgradeapi.Request, ref string) (string, error) {
+func (u *updater) fromSource(ctx context.Context, req upgradeapi.Request, ref string) (upgradeapi.Result, error) {
 	url, err := u.cloneURL(ctx)
 	if err != nil {
-		return "", err
+		return upgradeapi.Result{}, err
 	}
 	if err := requireTools(); err != nil {
-		return "", err
+		return upgradeapi.Result{}, err
 	}
 	if err := refExists(ctx, url, ref); err != nil {
-		return "", err
+		return upgradeapi.Result{}, err
 	}
 	if req.Check {
-		return i18n.T("upgrade would clone {url} at {ref} and build it", i18n.A{"url": url, "ref": ref}), nil
+		return upgradeapi.Done(i18n.T("upgrade would clone {url} at {ref} and build it", i18n.A{"url": url, "ref": ref})), nil
 	}
 	src, cleanup, err := cloneRef(ctx, url, ref, u.buildLog)
 	if err != nil {
-		return "", err
+		return upgradeapi.Result{}, err
 	}
 	defer cleanup()
 	if err := checkRepo(src, u.info.Spec); err != nil {
-		return "", i18n.Ef(err, "{ref} cannot build this distribution: {err}", i18n.A{"ref": ref})
+		return upgradeapi.Result{}, i18n.Ef(err, "{ref} cannot build this distribution: {err}", i18n.A{"ref": ref})
 	}
 	return u.buildAndInstall(ctx, src, req)
 }
@@ -306,56 +306,72 @@ func (u *updater) cloneURL(ctx context.Context) (string, error) {
 	return "", i18n.E("no repository to build from: distribution {dist} declares no GitHub repository", i18n.A{"dist": u.info.Distribution})
 }
 
-func (u *updater) buildAndInstall(ctx context.Context, repo string, req upgradeapi.Request) (string, error) {
+func (u *updater) buildAndInstall(ctx context.Context, repo string, req upgradeapi.Request) (upgradeapi.Result, error) {
 	target, err := u.target()
 	if err != nil {
-		return "", err
+		return upgradeapi.Result{}, err
 	}
 	unlock, err := lockUpgrade()
 	if err != nil {
-		return "", err
+		return upgradeapi.Result{}, err
 	}
 	defer unlock()
 	u.note(i18n.T("building {spec} for {platform} in {repo}",
 		i18n.A{"spec": u.info.Spec, "platform": u.goos + "/" + u.goarch, "repo": repo}))
 	artifact, cleanup, err := buildRepo(ctx, repo, u.info.Spec, u.goos, u.goarch, u.buildLog)
 	if err != nil {
-		return "", err
+		return upgradeapi.Result{}, err
 	}
 	defer cleanup()
 	candidate, err := stageFrom(artifact, target)
 	if err != nil {
-		return "", err
+		return upgradeapi.Result{}, err
 	}
 	return u.finish(ctx, candidate, target, req)
 }
 
 // finish：试跑候选 → 换上 → 交接 daemon。
-func (u *updater) finish(ctx context.Context, candidate, target string, req upgradeapi.Request) (string, error) {
+func (u *updater) finish(ctx context.Context, candidate, target string, req upgradeapi.Request) (upgradeapi.Result, error) {
 	got, err := smoke(ctx, candidate)
 	if err != nil {
 		_ = os.Remove(candidate)
-		return "", i18n.Ef(err, "the new binary does not run here, nothing was replaced: {err}", nil)
+		return upgradeapi.Result{}, i18n.Ef(err, "the new binary does not run here, nothing was replaced: {err}", nil)
 	}
 	if !req.Force && !strings.HasPrefix(got, u.info.Distribution+"-") {
 		_ = os.Remove(candidate)
-		return "", i18n.E("the new binary reports {version}, which is not a {dist} build; nothing was replaced (--force to install it anyway)",
+		return upgradeapi.Result{}, i18n.E("the new binary reports {version}, which is not a {dist} build; nothing was replaced (--force to install it anyway)",
 			i18n.A{"version": got, "dist": u.info.Distribution})
 	}
 	prev, err := install(candidate, target)
 	if err != nil {
-		return "", err
+		return upgradeapi.Result{}, err
 	}
-	if prev != "" {
-		u.note(i18n.T("installed {version} at {target}; the previous binary is kept as {prev}",
-			i18n.A{"version": got, "target": target, "prev": prev}))
-	} else {
-		u.note(i18n.T("installed {version} at {target} (could not keep a copy of the previous one)",
-			i18n.A{"version": got, "target": target}))
-	}
+	u.note(i18n.T("installed {version} at {target}; the previous binary is kept as {prev}",
+		i18n.A{"version": got, "target": target, "prev": prev}))
 	msg, err := u.restart(target, u.out)
 	if err != nil {
-		return "", i18n.Ef(err, "{version} is installed, but the daemon handoff failed: {err}", i18n.A{"version": got})
+		return upgradeapi.Result{}, u.rollBack(ctx, target, got, err)
 	}
-	return i18n.T("{old} → {new}; {daemon}", i18n.A{"old": u.current, "new": got, "daemon": msg}), nil
+	return upgradeapi.Done(i18n.T("{old} → {new}; {daemon}", i18n.A{"old": u.current, "new": got, "daemon": msg})), nil
+}
+
+// rollBack 是「换上去之后才失败」的退路：daemon 交接不上、新进程起不来或者不答话。
+// 把 .prev 换回来，再用**旧的那份**把 daemon 拉回来（它没在跑时 restart 等于
+// start）。新版本留成 .prev，想再试可以 `newgate self-update rollback`。
+//
+// 退路本身也会失败（旧版也起不来——那多半不是二进制的问题，是端口/配置），那时
+// 两个错都报出来，并且说清楚手上现在是哪一份。
+func (u *updater) rollBack(ctx context.Context, target, bad string, cause error) error {
+	u.note(i18n.T("{version} did not take over the daemon ({err}); rolling back", i18n.A{"version": bad, "err": cause.Error()}))
+	old, err := rollback(ctx, target)
+	if err != nil {
+		return i18n.E("{version} did not take over the daemon ({cause}), and rolling back failed too: {err}; the new binary is still at {target}, the old one at {prev}",
+			i18n.A{"version": bad, "cause": cause.Error(), "err": err.Error(), "target": target, "prev": target + ".prev"})
+	}
+	if _, err := u.restart(target, u.out); err != nil {
+		return i18n.E("{version} did not take over the daemon ({cause}); the binary is back at {old}, but the daemon did not come back either: {err} — run newgate start",
+			i18n.A{"version": bad, "cause": cause.Error(), "old": old, "err": err.Error()})
+	}
+	return i18n.E("{version} did not take over the daemon ({cause}); rolled back to {old}, and the daemon runs it again",
+		i18n.A{"version": bad, "cause": cause.Error(), "old": old})
 }

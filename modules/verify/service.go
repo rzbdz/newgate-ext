@@ -2,6 +2,7 @@ package verify
 
 import (
 	"context"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -211,16 +212,23 @@ func (s *service) Upgrade(ctx context.Context) (string, error) {
 //
 // 「远端有没有新的」要下一份 bundle 才知道（参考库没有便宜的版本探针），而
 // --check 的约定是不动任何东西——所以这里老实说「手上是哪一版、上次查是什么时候」。
-func (s *service) UpgradeStatus() string {
+//
+// 第二个返回值是「根本没什么可刷新」：参考库钉在本地目录上（DataEnv）时，upgrade
+// 不该为它再问一次 y/N。
+func (s *service) UpgradeStatus() (string, bool) {
+	if src := strings.TrimSpace(os.Getenv(DataEnv)); src != "" {
+		return i18n.T("reference data is read from the local directory {dir}; nothing to refresh",
+			i18n.A{"dir": src}), true
+	}
 	v := s.cache.dataVersion()
 	if v == "" {
-		return i18n.T("no reference data cached yet; upgrade would download it", nil)
+		return i18n.T("no reference data cached yet; upgrade would download it", nil), false
 	}
 	if at, ok := s.cache.dataCheckedAt(); ok {
 		return i18n.T("cached {version}, last checked {ago} ago; upgrade would check for a newer bank",
-			i18n.A{"version": shortHash(v), "ago": strings.TrimSuffix(time.Since(at).Round(time.Minute).String(), "0s")})
+			i18n.A{"version": shortHash(v), "ago": strings.TrimSuffix(time.Since(at).Round(time.Minute).String(), "0s")}), false
 	}
-	return i18n.T("cached {version}; upgrade would check for a newer bank", i18n.A{"version": shortHash(v)})
+	return i18n.T("cached {version}; upgrade would check for a newer bank", i18n.A{"version": shortHash(v)}), false
 }
 
 // shortHash 把参考库的版本（一串 sha256）截成能读的长度，与 git 的短哈希同一个惯例。

@@ -41,8 +41,18 @@ func installTarget() (string, error) {
 
 // stage 在目标的**同一个目录**里建候选文件：rename 只在同一个文件系统里是原子的。
 // 权限沿用旧文件（daemon 可能以另一个用户跑，它要能执行这份新的）。
+//
+// 调用方持有升级锁，所以同目录里残留的候选（上一次升级被 Ctrl-C / kill 在下载或
+// 构建中途打断留下的）一定没人在用，顺手清掉——否则每断一次就在 bin 目录里多一个
+// 十几 MB 的隐藏文件。
 func stage(target string) (*os.File, error) {
-	f, err := os.CreateTemp(filepath.Dir(target), "."+filepath.Base(target)+".new-")
+	pattern := "." + filepath.Base(target) + ".new-"
+	if stale, _ := filepath.Glob(filepath.Join(filepath.Dir(target), pattern+"*")); len(stale) > 0 {
+		for _, f := range stale {
+			_ = os.Remove(f)
+		}
+	}
+	f, err := os.CreateTemp(filepath.Dir(target), pattern)
 	if err != nil {
 		return nil, i18n.Ef(err, "cannot write next to {target}: {err}", i18n.A{"target": target})
 	}
@@ -106,7 +116,9 @@ func smoke(ctx context.Context, path string) (string, error) {
 	return f[1], nil
 }
 
-// install 把候选换上去，旧的那份留成 <target>.prev。
+// install 把候选换上去，旧的那份留成 <target>.prev。**留不下旧版就不换**：
+// 换上去之后的每一种失败（daemon 交接不上、新进程起不来）都靠 .prev 回退，没有它
+// 等于没有退路。
 //
 // 旧版用**硬链接**留：先 link 再 rename，任何一刻 target 这个路径上都有一个完整
 // 的二进制（先把 target 挪成 .prev 的话，中间那一下 PATH shim 会找不到命令）。
@@ -117,7 +129,9 @@ func install(candidate, target string) (string, error) {
 	_ = os.Remove(prev)
 	if err := os.Link(target, prev); err != nil {
 		if err := copyFile(target, prev); err != nil {
-			prev = ""
+			_ = os.Remove(candidate)
+			return "", i18n.Ef(err, "cannot keep the current binary as {prev}, so there would be no way back; nothing was replaced: {err}",
+				i18n.A{"prev": prev})
 		}
 	}
 	if err := os.Rename(candidate, target); err != nil {
@@ -203,9 +217,23 @@ func restartDaemon(target string, log io.Writer) (string, error) {
 	if err := cmd.Run(); err != nil {
 		return "", i18n.Ef(err, "`newgate restart` failed: {err}", nil)
 	}
-	after, _ := controlplane.State()
+	// 不只看「有个进程」：要它**在答话**（控制面的 status 回得上来）。一个起得来、
+	// 却在服务循环里出毛病的新版本，`version` 那一下是试不出来的。restart 自己最多
+	// 等 5 秒，这里再给几秒余量。
+	var after *controlplane.Info
+	var doc *controlplane.Doc
+	for i := 0; i < 20; i++ {
+		if after, doc = controlplane.State(); after != nil && doc != nil {
+			break
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
 	if after == nil {
 		return "", i18n.E("after the restart no daemon is running; see newgate logs", nil)
+	}
+	if doc == nil {
+		return "", i18n.E("after the restart the daemon (pid {pid}) does not answer on its control port; see newgate logs",
+			i18n.A{"pid": after.PID})
 	}
 	if runtime.GOOS == "linux" && !sameFile("/proc/"+strconv.Itoa(after.PID)+"/exe", target) {
 		return "", i18n.E("the daemon (pid {pid}) is still running an old binary; see newgate logs",

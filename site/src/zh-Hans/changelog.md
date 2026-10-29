@@ -13,7 +13,10 @@
   产物、对校验和），或者开发机上从本地仓库 `fetch` + `build/build.sh`；走哪种在第一次
   运行时定下来，`newgate self-update` 可以看、可以改。`newgate upgrade@<tag>` 钉版本：
   有 Release 用 Release，没有就临时 clone 那个 ref 现编。换之前先试跑，旧版留成
-  `.prev`，`newgate self-update rollback` 换回去；daemon 走 socket 交接，会话不断。
+  `.prev`，`newgate self-update rollback` 换回去；daemon 走 socket 交接，会话不断，
+  交接失败会自动回滚。
+- **`upgrade` 不再静默执行**：先看一遍，再分别为二进制和模块数据各问一次 y/N；
+  `-y` 不问，`-f` 不问且允许重装/倒退。
 - 规格书多了一个 `github` 字段：发布在哪个仓库。fork 的人改这一行，升级通道就是自己的。
 
 ### v0.8.x

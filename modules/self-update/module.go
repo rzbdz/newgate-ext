@@ -85,6 +85,8 @@ func New() modules.Component {
 					Describe:  describeAction,
 					Run:       runAction,
 					Versioned: true,
+					// 换 newgate 本身：`newgate upgrade` 单独为它问一次（见 upgrade 的 Kind）。
+					Kind: upgradeapi.KindProgram,
 				})
 				if err != nil {
 					return err

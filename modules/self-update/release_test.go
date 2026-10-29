@@ -165,7 +165,7 @@ func TestReleaseUpgradeInstallsAndKeepsPrevious(t *testing.T) {
 	gh.publish("v0.9.0", map[string][]byte{asset: fakeBinary("default-v0.9.0")})
 	h := newHarness(t, gh, "default-v0.8.0")
 
-	msg, err := h.u.run(context.Background(), upgradeapi.Request{})
+	msg, err := h.u.runMsg(context.Background(), upgradeapi.Request{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +239,7 @@ func TestReleaseNotNewerIsSkippedWithoutForce(t *testing.T) {
 
 	for _, cur := range []string{"default-v0.8.0", "default-v0.8.0-40-gabcdef0"} {
 		h := newHarness(t, gh, cur)
-		msg, err := h.u.run(context.Background(), upgradeapi.Request{})
+		msg, err := h.u.runMsg(context.Background(), upgradeapi.Request{})
 		if err != nil || h.installedVersion(t) != cur {
 			t.Fatalf("%s: msg %q err %v; must stay", cur, msg, err)
 		}
@@ -247,7 +247,7 @@ func TestReleaseNotNewerIsSkippedWithoutForce(t *testing.T) {
 
 	// 手上是一个没打 tag 的提交编的（upgrade@<分支> 钉上去的）：没法比，不替人换。
 	h0 := newHarness(t, gh, "default-d5899f6")
-	if msg, err := h0.u.run(context.Background(), upgradeapi.Request{}); err != nil || h0.installedVersion(t) != "default-d5899f6" {
+	if msg, err := h0.u.runMsg(context.Background(), upgradeapi.Request{}); err != nil || h0.installedVersion(t) != "default-d5899f6" {
 		t.Fatalf("untagged build: msg %q err %v; must stay", msg, err)
 	}
 
@@ -265,7 +265,7 @@ func TestCheckChangesNothing(t *testing.T) {
 	gh := newFakeGitHub(t)
 	gh.publish("v0.9.0", map[string][]byte{asset: fakeBinary("default-v0.9.0")})
 	h := newHarness(t, gh, "default-v0.8.0")
-	msg, err := h.u.run(context.Background(), upgradeapi.Request{Check: true})
+	msg, err := h.u.runMsg(context.Background(), upgradeapi.Request{Check: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -316,7 +316,7 @@ func TestPinnedWithoutReleaseFallsBackToSource(t *testing.T) {
 	run(t, seed, "push", "-q", "origin", "HEAD:main", "--tags")
 	h.u.cloneBase = base
 
-	msg, err := h.u.run(context.Background(), upgradeapi.Request{Version: "v1.0.0-unreleased", Check: true})
+	msg, err := h.u.runMsg(context.Background(), upgradeapi.Request{Version: "v1.0.0-unreleased", Check: true})
 	if err != nil || !strings.Contains(msg, origin) || !strings.Contains(msg, "v1.0.0-unreleased") {
 		t.Fatalf("no release: msg %q err %v; want a source build of the ref", msg, err)
 	}
@@ -325,7 +325,7 @@ func TestPinnedWithoutReleaseFallsBackToSource(t *testing.T) {
 	}
 
 	// 本平台没有产物：同样改走源码。
-	msg, err = h.u.run(context.Background(), upgradeapi.Request{Check: true})
+	msg, err = h.u.runMsg(context.Background(), upgradeapi.Request{Check: true})
 	if err != nil || !strings.Contains(msg, "v0.9.0") || !strings.Contains(msg, "clone") {
 		t.Fatalf("no asset for this platform: msg %q err %v; want a source build of v0.9.0", msg, err)
 	}
@@ -366,6 +366,29 @@ func TestRateLimitedAPIFallsBackToTheWebEndpoints(t *testing.T) {
 	}
 }
 
+// runMsg 是测试里的便捷形：只要那句话。
+func (u *updater) runMsg(ctx context.Context, req upgradeapi.Request) (string, error) {
+	r, err := u.run(ctx, req)
+	return r.Message, err
+}
+
+// 「没什么可做」要以 UpToDate 报出来：upgrade 据此不再追问 y/N。
+func TestNothingToDoIsReportedAsUpToDate(t *testing.T) {
+	gh := newFakeGitHub(t)
+	gh.publish("v0.8.0", map[string][]byte{asset: fakeBinary("default-v0.8.0")})
+	for _, cur := range []string{"default-v0.8.0", "default-v0.8.0-3-gabcdef0", "default-d5899f6"} {
+		h := newHarness(t, gh, cur)
+		res, err := h.u.run(context.Background(), upgradeapi.Request{Check: true})
+		if err != nil || !res.UpToDate {
+			t.Errorf("%s: %+v %v, want UpToDate", cur, res, err)
+		}
+	}
+	h := newHarness(t, gh, "default-v0.7.0")
+	if res, err := h.u.run(context.Background(), upgradeapi.Request{Check: true}); err != nil || res.UpToDate {
+		t.Errorf("older binary: %+v %v, want something to do", res, err)
+	}
+}
+
 func TestParseSums(t *testing.T) {
 	got := parseSums("ABC  newgate-a\nbad line here x\ndef *newgate-b\n")
 	if got["newgate-a"] != "abc" || got["newgate-b"] != "def" || len(got) != 2 {
@@ -393,5 +416,69 @@ func TestModuleRegistersVersionedBinaryAction(t *testing.T) {
 		if a.ID == actionID {
 			t.Fatal("the action outlived Stop")
 		}
+	}
+}
+
+// 换上去之后才失败（daemon 交接不上 / 新进程起不来 / 不答话）：自动换回旧版，
+// 再用旧版把 daemon 拉回来。这是「任何一步失败都要能退回去」里最要紧的一条——
+// 失败发生在二进制已经换掉之后。
+func TestHandoffFailureRollsBack(t *testing.T) {
+	gh := newFakeGitHub(t)
+	gh.publish("v0.9.0", map[string][]byte{asset: fakeBinary("default-v0.9.0")})
+	h := newHarness(t, gh, "default-v0.8.0")
+	var ranWith []string
+	h.u.restart = func(target string, _ io.Writer) (string, error) {
+		v, _ := smoke(context.Background(), target)
+		ranWith = append(ranWith, v)
+		if len(ranWith) == 1 {
+			return "", errors.New("the new daemon does not answer")
+		}
+		return "back", nil
+	}
+	_, err := h.u.run(context.Background(), upgradeapi.Request{})
+	if err == nil || !strings.Contains(err.Error(), "rolled back to default-v0.8.0") {
+		t.Fatalf("err = %v, want a rollback report", err)
+	}
+	if got := h.installedVersion(t); got != "default-v0.8.0" {
+		t.Fatalf("after a failed handoff the binary is %s, want the old one back", got)
+	}
+	if strings.Join(ranWith, ",") != "default-v0.9.0,default-v0.8.0" {
+		t.Fatalf("restarted with %v, want the new one, then the old one", ranWith)
+	}
+	// 坏掉的那份留成 .prev（想再试可以 rollback），不是被删掉。
+	if v, _ := smoke(context.Background(), h.target+".prev"); v != "default-v0.9.0" {
+		t.Fatalf(".prev = %s, want the failed new version", v)
+	}
+}
+
+// 退路上 daemon 也拉不回来：二进制照样换回旧版，并且明说要手动 start。
+func TestHandoffFailureWhenTheOldDaemonDoesNotComeBackEither(t *testing.T) {
+	gh := newFakeGitHub(t)
+	gh.publish("v0.9.0", map[string][]byte{asset: fakeBinary("default-v0.9.0")})
+	h := newHarness(t, gh, "default-v0.8.0")
+	h.u.restart = func(string, io.Writer) (string, error) { return "", errors.New("port in use") }
+	_, err := h.u.run(context.Background(), upgradeapi.Request{})
+	if err == nil || !strings.Contains(err.Error(), "newgate start") {
+		t.Fatalf("err = %v, want it to say how to bring the daemon back", err)
+	}
+	if got := h.installedVersion(t); got != "default-v0.8.0" {
+		t.Fatalf("binary = %s, want the old one", got)
+	}
+}
+
+// 下载/构建被 Ctrl-C 打断会在 bin 目录里留下候选；下一次升级（持锁）清掉它们。
+func TestStaleCandidatesAreCleanedUp(t *testing.T) {
+	gh := newFakeGitHub(t)
+	gh.publish("v0.9.0", map[string][]byte{asset: fakeBinary("default-v0.9.0")})
+	h := newHarness(t, gh, "default-v0.8.0")
+	stale := filepath.Join(filepath.Dir(h.target), ".newgate.new-123")
+	if err := os.WriteFile(stale, []byte("half a download"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.u.run(context.Background(), upgradeapi.Request{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(stale); err == nil {
+		t.Fatal("the interrupted candidate is still there")
 	}
 }

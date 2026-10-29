@@ -108,13 +108,21 @@
     "GitHub's answer has no tag_name": {},
     "Global default": {},
     "Home": {},
+    "If a new binary fails to take over the daemon it is rolled back automatically; newgate self-update rollback swaps back by hand.": {},
     "Interface": {},
     "Naked": {},
     "Nothink": {},
     "Profiles": {},
+    "Refresh this module data now? [y/N] ": {
+      "args": [
+        "n"
+      ],
+      "other": "Refresh these {n} module data items now? [y/N] "
+    },
     "Remote": {},
     "Repair the Responses tail shape (hand 5)": {},
     "Repair the tail shape (hand 4)": {},
+    "Replace the newgate binary now? [y/N] ": {},
     "Responses input left untouched ({err})": {
       "args": [
         "err"
@@ -139,6 +147,7 @@
     "The colours of this interface. Saved to state.json and applied at once — no reload. Nothing but tokens changes: a theme cannot move anything around.": {},
     "The model name codex itself sends — copy it out of `codex debug models` (the slug).": {},
     "Theme": {},
+    "Upgrades newgate itself and the data its modules own. Nothing happens silently: it first looks (like --check), then asks once for the newgate binary and once for the module data, and only does what you confirmed.": {},
     "Usage: newgate omo [ls | use <key> <binding> | unset <key> | mode current|suggested | explain <key>]": {},
     "Usage: newgate omo explain <slot key>": {},
     "Usage: newgate omo unset <slot key>": {},
@@ -179,9 +188,15 @@
     "a white theme for the web interface": {},
     "accepted but not rendered": {},
     "action": {},
+    "actions in this build": {},
     "add a target": {},
     "adopt them all": {},
     "after the restart no daemon is running; see newgate logs": {},
+    "after the restart the daemon (pid {pid}) does not answer on its control port; see newgate logs": {
+      "args": [
+        "pid"
+      ]
+    },
     "all profiles": {},
     "already at {tag}": {
       "args": [
@@ -321,6 +336,11 @@
     "cannot fix the permissions of {path}: {err}": {
       "args": [
         "path"
+      ]
+    },
+    "cannot keep the current binary as {prev}, so there would be no way back; nothing was replaced: {err}": {
+      "args": [
+        "prev"
       ]
     },
     "cannot listen on {addr}: {err}": {
@@ -608,6 +628,7 @@
         "dist"
       ]
     },
+    "do not ask; go ahead with everything that has something to do": {},
     "download the latest GitHub release of {repo} and swap it in (graceful daemon handoff)": {
       "args": [
         "repo"
@@ -648,6 +669,7 @@
     "error": {},
     "every intercepted request logs [naked], and newgate status keeps showing a red warning": {},
     "every subagent / agent team / workflow; set it to inherit to hand that back to per-slot resolution": {},
+    "examples": {},
     "extension calls need Content-Type: application/json (got {ct})": {
       "args": [
         "ct"
@@ -763,12 +785,6 @@
         "patch"
       ]
     },
-    "installed {version} at {target} (could not keep a copy of the previous one)": {
-      "args": [
-        "target",
-        "version"
-      ]
-    },
     "installed {version} at {target}; the previous binary is kept as {prev}": {
       "args": [
         "prev",
@@ -800,6 +816,7 @@
     "label": {},
     "lazy": {},
     "lazy dials on the first request and lets go when idle; persistent keeps it open": {},
+    "left as it is": {},
     "lift Codex tools from input[0] to the top level": {},
     "lifted {n} tool declaration from input[0] to the top level (DeepSeek reads tools only there)": {
       "args": [
@@ -813,6 +830,8 @@
       ],
       "other": "lifted {n} tool declarations from input[0] to the top level (most upstreams read tools only there)"
     },
+    "like -y, and also reinstall the same version or go back to an older one": {},
+    "list the upgrade actions in this build": {},
     "local changes archived to {dir} (restore from there)": {
       "args": [
         "dir"
@@ -952,6 +971,7 @@
     "none": {},
     "none are configured yet": {},
     "none declared": {},
+    "not asking without a terminal; run again with -y to go ahead": {},
     "not defined": {},
     "not listening: {err}": {
       "args": [
@@ -1000,8 +1020,11 @@
         "left"
       ]
     },
+    "only look: what would change; nothing is downloaded, replaced or restarted": {},
+    "only this action (see --list)": {},
     "opencode": {},
     "opencode is not installed on this machine — nothing on this card takes effect yet. Install it with `newgate opencode -y`.": {},
+    "options": {},
     "or byte-for-byte at http://127.0.0.1:{port}/ui/ (started by the daemon)": {
       "args": [
         "port"
@@ -1016,6 +1039,7 @@
       ]
     },
     "past max attempts": {},
+    "pin the binary to a tag, branch or commit (a release if one exists, otherwise built from source); actions without versions are skipped": {},
     "port http://127.0.0.1:{port}/ui/": {
       "args": [
         "port"
@@ -1690,18 +1714,12 @@
         "version"
       ]
     },
-    "upgrade finished: {n} succeeded": {
+    "upgrade finished: {summary}": {
       "args": [
-        "n"
+        "summary"
       ]
     },
-    "upgrade finished: {ok} succeeded, {failed} failed": {
-      "args": [
-        "failed",
-        "ok"
-      ]
-    },
-    "upgrade newgate and the data its modules own; @version pins a tag, branch or commit": {},
+    "upgrade newgate and the data its modules own, asking first; @version pins a tag, branch or commit": {},
     "upgrade newgate itself and the dynamic data modules own, through actions each module registers": {},
     "upgrade would build {version} from {repo} (this binary is {current})": {
       "args": [
@@ -1793,7 +1811,7 @@
         "version"
       ]
     },
-    "what it refreshes": {},
+    "what it upgrades": {},
     "when the user explicitly runs newgate naked on/forever, Claude Code's classifier requests (every gate: Bash, sandbox network, workflow, handoff) are short-circuited into an approval without a single LLM call — no more 15-30s classifier latency and no more sessions wedged by a wrong block\non = a 60-second self-limiting window; forever = always on (every request is logged, status warns)\nonly the classifier family is touched (non-streaming + its prompt marker or stop_sequences); compact summaries and title generation still get a real answer\nnewgate naked off / st off both end it": {},
     "where the architecture diagram is served (dev builds)": {},
     "where the browser interface is served, and how to reach it": {},
@@ -2092,6 +2110,11 @@
       ],
       "other": "{n} actions"
     },
+    "{n} already current": {
+      "args": [
+        "n"
+      ]
+    },
     "{n} candidate did not make it: {reasons}": {
       "args": [
         "reasons"
@@ -2114,7 +2137,17 @@
         "n"
       ]
     },
+    "{n} declined": {
+      "args": [
+        "n"
+      ]
+    },
     "{n} dialling on start": {
+      "args": [
+        "n"
+      ]
+    },
+    "{n} failed": {
       "args": [
         "n"
       ]
@@ -2191,6 +2224,11 @@
       ]
     },
     "{n} unreadable": {
+      "args": [
+        "n"
+      ]
+    },
+    "{n} upgraded": {
       "args": [
         "n"
       ]
@@ -2382,8 +2420,33 @@
         "value"
       ]
     },
-    "{version} is installed, but the daemon handoff failed: {err}": {
+    "{version} did not take over the daemon ({cause}), and rolling back failed too: {err}; the new binary is still at {target}, the old one at {prev}": {
       "args": [
+        "cause",
+        "err",
+        "prev",
+        "target",
+        "version"
+      ]
+    },
+    "{version} did not take over the daemon ({cause}); rolled back to {old}, and the daemon runs it again": {
+      "args": [
+        "cause",
+        "old",
+        "version"
+      ]
+    },
+    "{version} did not take over the daemon ({cause}); the binary is back at {old}, but the daemon did not come back either: {err} — run newgate start": {
+      "args": [
+        "cause",
+        "err",
+        "old",
+        "version"
+      ]
+    },
+    "{version} did not take over the daemon ({err}); rolling back": {
+      "args": [
+        "err",
         "version"
       ]
     },

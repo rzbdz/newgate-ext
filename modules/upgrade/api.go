@@ -48,14 +48,41 @@ type Action struct {
 	Title func() string
 	// Describe 说明这一下会动什么、代价是什么（要下载吗、会花 token 吗）。
 	Describe func() string
-	// Run 执行升级。返回的字符串是**给人看的结果**（新版本号、下载了什么），
-	// 由命令原样打印；error 表示这一下失败了（命令会继续跑其余动作）。
-	Run func(ctx context.Context, req Request) (string, error)
+	// Run 执行升级。Result 是**给人看的结果**（新版本号、下载了什么）以及「是不是
+	// 根本没什么可做」；error 表示这一下失败了（命令会继续跑其余动作）。
+	Run func(ctx context.Context, req Request) (Result, error)
 	// Versioned 声明这个动作认识 Request.Version。没声明的动作在用户点了版本时
 	// 被跳过：把 `@v0.9.0` 交给一个只会「拿最新」的动作，它要么忽略（静默），
 	// 要么各自报一种错——两种都不如在这里统一说一句。
 	Versioned bool
+	// Kind 决定它和谁一起被问（见 Kind 的注释）。零值是 KindData。
+	Kind Kind
 }
+
+// Kind 是动作的类别。`newgate upgrade` 不静默执行：它先只看一遍、再**按类别各问
+// 一次** y/N——换 newgate 本身与刷新模块的数据是两种分量的事（前者会重启 daemon，
+// 后者只是下一份文件），合在一句「要升级吗」里，用户没法只要其中一半。
+type Kind int
+
+const (
+	// KindData：模块自己的动态数据/配置（指纹参考库之类）。这一类合起来问一次。
+	KindData Kind = iota
+	// KindProgram：换 newgate 自己（self-update 的 binary）。单独问一次。
+	KindProgram
+)
+
+// Result 是一个动作这一次的结论。
+type Result struct {
+	// Message 由命令原样打印。
+	Message string
+	// UpToDate 说「已经是最新/没什么可做」。只看那一遍里报了它的动作不会被追问，
+	// 也不会再执行——问一句「要升级吗」然后什么都不做，是在浪费用户的确认。
+	UpToDate bool
+}
+
+// Done 与 Current 是两个常用的构造：做了（或只看时「会做」）什么 / 已经是最新。
+func Done(msg string) Result    { return Result{Message: msg} }
+func Current(msg string) Result { return Result{Message: msg, UpToDate: true} }
 
 // Request 是这一次 `newgate upgrade` 的参数。
 type Request struct {
@@ -65,7 +92,7 @@ type Request struct {
 	// Check 只看不动：报出「会做什么 / 有没有新的」，**不许改动任何东西**
 	// （不下载到最终位置、不替换、不重启）。动作做不到只看的时候就直说做不到。
 	Check bool
-	// Force 允许重装同一个版本、允许倒退到更旧的版本。
+	// Force 允许重装同一个版本、允许倒退到更旧的版本（`-f` 同时也免确认）。
 	Force bool
 }
 

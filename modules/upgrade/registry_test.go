@@ -10,7 +10,7 @@ func action(id string) Action {
 		ID:       id,
 		Title:    func() string { return id },
 		Describe: func() string { return "test" },
-		Run:      func(context.Context, Request) (string, error) { return "ok", nil },
+		Run:      func(context.Context, Request) (Result, error) { return Done("ok"), nil },
 	}
 }
 
