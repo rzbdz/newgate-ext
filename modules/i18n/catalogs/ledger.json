@@ -436,6 +436,7 @@
         "host"
       ]
     },
+    "cannot run `go version`: {err}": {},
     "cannot save: {err}": {
       "args": [
         "err"
@@ -1917,6 +1918,12 @@
         "asset",
         "file",
         "tag"
+      ]
+    },
+    "{go} is too old to build newgate (needs go1.{min} or newer, which fetches the toolchain go.mod asks for); install a newer Go, or use a release": {
+      "args": [
+        "go",
+        "min"
       ]
     },
     "{head} · the highest priority globally, ahead of any profile": {

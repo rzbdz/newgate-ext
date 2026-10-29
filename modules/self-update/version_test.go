@@ -54,3 +54,15 @@ func TestCompareCountsCommitsAfterTheTag(t *testing.T) {
 		}
 	}
 }
+
+func TestGoVersionPattern(t *testing.T) {
+	for in, want := range map[string]string{
+		"go version go1.13.8 linux/amd64":   "13",
+		"go version go1.27.1 linux/amd64":   "27",
+		"go version go1.21rc2 darwin/arm64": "21",
+	} {
+		if m := goVersionRe.FindStringSubmatch(in); m == nil || m[1] != want {
+			t.Errorf("%q → %v, want minor %s", in, m, want)
+		}
+	}
+}

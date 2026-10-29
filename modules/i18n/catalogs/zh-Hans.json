@@ -748,6 +748,10 @@
       "machine": true,
       "text": "无法解析 {host}：{err}"
     },
+    "cannot run `go version`: {err}": {
+      "reviewed": true,
+      "text": "跑不了 `go version`：{err}"
+    },
     "cannot save: {err}": {
       "machine": true,
       "text": "无法保存：{err}"
@@ -2675,6 +2679,10 @@
     "{file} of {tag} does not list {asset}; refusing to install an unverified binary": {
       "reviewed": true,
       "text": "{tag} 的 {file} 里没有 {asset}；不安装没法校验的二进制"
+    },
+    "{go} is too old to build newgate (needs go1.{min} or newer, which fetches the toolchain go.mod asks for); install a newer Go, or use a release": {
+      "reviewed": true,
+      "text": "{go} 太旧，编不了 newgate（至少要 go1.{min}，它会自己去取 go.mod 要的工具链）；装一个新的 Go，或者用 Release"
     },
     "{head} · the highest priority globally, ahead of any profile": {
       "reviewed": true,

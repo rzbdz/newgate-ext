@@ -56,6 +56,31 @@ func requireTools() error {
 	if len(missing) > 0 {
 		return i18n.E("building from source needs {tools} on PATH", i18n.A{"tools": strings.Join(missing, ", ")})
 	}
+	return checkGo()
+}
+
+// minGo 是能编本仓库的最老的 go 命令：1.21 起 go 会按 go.mod 的 `go` 行自己去下
+// 对应的工具链（GOTOOLCHAIN=auto），更老的直接报一串看不懂的语法错。
+//
+// 2026-10-29 snode1 的现场：PATH 上是 go1.13.8，而 go.mod 写着 1.27——不拦的话，
+// `upgrade@<ref>` 会先 clone 几十 MB，再死在 build.sh 里的 `go run ./tools/distgen`。
+const minGo = 21
+
+var goVersionRe = regexp.MustCompile(`go1\.(\d+)`)
+
+func checkGo() error {
+	out, err := exec.Command("go", "version").Output()
+	if err != nil {
+		return i18n.Ef(err, "cannot run `go version`: {err}", nil)
+	}
+	m := goVersionRe.FindStringSubmatch(string(out))
+	if m == nil {
+		return nil // 认不出来（自编的 devel 版）就放行，让构建自己说话
+	}
+	if minor, _ := strconv.Atoi(m[1]); minor < minGo {
+		return i18n.E("{go} is too old to build newgate (needs go1.{min} or newer, which fetches the toolchain go.mod asks for); install a newer Go, or use a release",
+			i18n.A{"go": strings.TrimSpace(strings.TrimPrefix(string(out), "go version ")), "min": minGo})
+	}
 	return nil
 }
 
