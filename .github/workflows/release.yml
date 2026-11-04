@@ -68,6 +68,26 @@ jobs:
 
       # 打 tag 推上来 = 发一版：产物挂到 Release 上，谁都能直接下。
       # 手动触发（workflow_dispatch）只上传 artifact，不发 Release。
+      #
+      # Release notes 来自 CHANGELOG.md 里与 tag 对应的那一节（`v0.8.1` →
+      # `## [0.8.1]`）。**没有那一节就红**，不退回自动生成的提交列表：
+      # 自动 notes 只会把「改了什么」摊成一串 commit subject，而发版说明是给人
+      # 读的。2026-11-04 的 v0.8.1 就是这个形状的反面教材（Release 上只有一条
+      # compare 链接）。补 changelog 是发版的一部分，不是发版之后的文档工作。
+      - name: 从 CHANGELOG.md 取这一版的说明
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          ver="${GITHUB_REF_NAME#v}"
+          awk -v v="$ver" '
+            index($0, "## [" v "]") == 1 { on = 1; next }
+            on && /^## \[/ { exit }
+            on { print }
+          ' CHANGELOG.md > RELEASE_NOTES.md
+          if ! grep -q '[^[:space:]]' RELEASE_NOTES.md; then
+            echo "CHANGELOG.md 里没有 [${ver}] 这一节——发版前先补上（Release notes 就是它）" >&2
+            exit 1
+          fi
+
       - name: 发布 Release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
@@ -75,5 +95,5 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" \
             --title "$GITHUB_REF_NAME" \
-            --generate-notes \
+            --notes-file RELEASE_NOTES.md \
             dist/newgate-* dist/SHA256SUMS

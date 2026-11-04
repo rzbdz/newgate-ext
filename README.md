@@ -204,4 +204,5 @@ whole of it — everything else is modules.
 [why it is built this way](https://github.com/rzbdz/newgate/blob/main/docs/03-architecture.md) ·
 [the extension guide](https://github.com/rzbdz/newgate/blob/main/docs/09-extension-guide.md) ·
 [releases](https://github.com/rzbdz/newgate-ext/releases) ·
+[changelog](CHANGELOG.md) ·
 [CLAUDE.md](CLAUDE.md) — the house rules a contributor follows

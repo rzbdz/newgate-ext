@@ -169,4 +169,5 @@ newgate 分成两半，这个分法本身就是要紧的东西：
 [为什么这么设计](https://github.com/rzbdz/newgate/blob/main/docs/03-architecture.md) ·
 [扩展指南](https://github.com/rzbdz/newgate/blob/main/docs/09-extension-guide.md) ·
 [发布](https://github.com/rzbdz/newgate-ext/releases) ·
+[更新日志](CHANGELOG.md) ·
 [CLAUDE.md](CLAUDE.md) — 贡献者（人或 agent）要守的家规

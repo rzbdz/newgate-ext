@@ -242,11 +242,18 @@ import 的共享叶子（`config/domain`、`cli/extension`、`gateway/policy`…
 ## 6. 发布
 
 ```bash
+# 先把这一版写进 CHANGELOG.md（一节一个 tag），再打 tag。
 git tag v0.1.0 && git push origin main --tags   # CI 编平台矩阵并挂到 GitHub Release
 ```
 
 产物直接可下载（`gh release download <tag>` 或 Release 页面）。发行节奏是发行版
 作者的事：内核今天合了什么，不该决定你的产品什么时候发新版。
+
+**CHANGELOG.md 是 Release notes 的唯一来源**（2026-11-04 起）：流水线取
+`## [<tag 去掉 v>]` 那一节当 Release body，**找不到就红**——不退回
+`--generate-notes` 的提交清单（那个只把「改了什么」摊成一串 subject，而发版
+说明是给人读的）。所以发版顺序是「补 changelog → 打 tag → 推」；条目按
+Added / Changed / Fixed 分组，写用户能看见的行为，不写提交号。
 
 ### 发出去的东西被谁读（2026-10-29 起）
 
