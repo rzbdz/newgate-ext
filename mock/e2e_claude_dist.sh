@@ -42,6 +42,9 @@ BIN_SRC="${NEWGATE_E2E_BIN:-$ROOT/dist/newgate-$DIST_NAME-$(uname -s | tr 'A-Z' 
 SANDBOX="${NEWGATE_E2E_SANDBOX:-$(mktemp -d /tmp/newgate-dist-e2e.XXXXXX)}"
 UP_PORT="${NEWGATE_E2E_UP_PORT:-18091}"
 PROXY_PORT="${NEWGATE_E2E_PROXY_PORT:-18899}"
+# 「暂时不通、后来恢复」的上游：第 26 章用它造一条真熔断，再证明 probe 成功
+# 之后请求**马上**能走（2026-11-04 的现场）。先不开，等熔断建立之后再起来。
+REVIVE_PORT="${NEWGATE_E2E_REVIVE_PORT:-18093}"
 FAKEBIN="$SANDBOX/fakebin"
 # 二进制是**多调用型**的：argv0 决定这次调用归谁（newgate / claude / opencode …）。
 # 发布产物叫 newgate-<发行版>-<平台>-<架构>，直接拿它当 newgate 用会被当成
@@ -69,6 +72,7 @@ unset LC_ALL LC_MESSAGES LANG LANGUAGE 2>/dev/null || true
 cleanup() {
   "$BIN" stop >/dev/null 2>&1 || true
   [ -n "${UP_PID:-}" ] && kill "$UP_PID" 2>/dev/null
+  [ -n "${REVIVE_PID:-}" ] && kill "$REVIVE_PID" 2>/dev/null
   # 调试用：NEWGATE_E2E_KEEP=1 保留沙箱（日志、假上游收到的 body 都在里面），
   # 出红的时候不至于对着一个删掉的目录猜。
   if [ -n "${NEWGATE_E2E_KEEP:-}" ]; then
@@ -189,12 +193,15 @@ elif scenario in ("bg_plain", "bg_adaptive", "bg_other", "bg_realname"):
 PY
 chmod +x "$FAKEBIN/claude"
 
-# ---- 配置：ds + glm 两个 provider，指向假上游 ----
+# ---- 配置：ds + glm + rev 三个 provider，指向假上游 ----
+# rev 是第 26 章那条「暂时不通」的上游：它的端口此刻没有监听，探活会失败并
+# 建立一条真熔断；章节后面才在那个端口上起一个假上游。
 cat > "$NEWGATE_HOME/providers.json" <<EOF
 {
   "providers": {
     "ds":  { "base_url": "http://127.0.0.1:$UP_PORT/v1", "api_key": "sk-ds",  "protocol": "anthropic" },
-    "glm": { "base_url": "http://127.0.0.1:$UP_PORT/v1", "api_key": "sk-glm", "protocol": "anthropic" }
+    "glm": { "base_url": "http://127.0.0.1:$UP_PORT/v1", "api_key": "sk-glm", "protocol": "anthropic" },
+    "rev": { "base_url": "http://127.0.0.1:$REVIVE_PORT/v1", "api_key": "sk-rev", "protocol": "anthropic" }
   }
 }
 EOF
@@ -209,6 +216,11 @@ cat > "$NEWGATE_HOME/mappings/glm.json" <<'EOF'
   "roles": {
     "heavy": "glm/glm-4-plus", "mid": "glm/glm-4-plus",
     "light": "glm/glm-4.5-air", "vision": "glm/glm-4.5-air" } }
+EOF
+# rev-model **只绑在这一份 profile 里**：正是 2026-11-04 现场的形状（deepseek-flash
+# 只绑在 ds 里）。它不可用时，反查若跟着准入过滤一起走，就会被误报成「不认识」。
+cat > "$NEWGATE_HOME/mappings/rev.json" <<'EOF'
+{ "name": "rev", "priority": 30, "roles": { "mid": "rev/rev-model" } }
 EOF
 cat > "$NEWGATE_HOME/state.json" <<EOF
 { "default_profile": "ds", "port": $PROXY_PORT }
@@ -532,6 +544,79 @@ check "OpenAI 方言的请求一个字节都不动" "$GOT" "ABSENT"
 "$BIN" nothink off >/dev/null 2>&1
 sleep 0.5
 check "newgate nothink off：回到客户端写的 adaptive" "$(nk_thinking)" '{"type": "adaptive"}'
+
+echo; echo "== 26. 点名 profile 与熔断恢复（2026-11-04 现场） =="
+# 现场形状：全局 profile 不是 ds、唯一绑定了 deepseek-flash 的 ds binding 被
+# 熔断，客户端发来 ds 注入的真实模型名。旧行为三件事都不对：
+#   - 反查跟着准入过滤走 → 模型从链上被摘掉 → 404「既不是档位，也不在任何
+#     profile 的绑定里」，而它明明绑在 ds 里；
+#   - 点名（--profile）只在解析后截断 → 被点名 profile 的候选全灭时，链头已经
+#     是别人的 profile，截断留下的就是「静默换 profile」；
+#   - probe 成功之后还要等 60s 隔离期满才回链 → 用户唯一的恢复动作变成安慰剂。
+# 这一章用一条**先不通、后恢复**的上游（rev，端口上面没有服务）把三件事分开验。
+check_port_busy() { curl -sf "http://127.0.0.1:$REVIVE_PORT/__mock/requests" >/dev/null 2>&1; }
+if check_port_busy; then
+  bad "端口 $REVIVE_PORT 已经有服务在听，这一章的前提不成立（换 NEWGATE_E2E_REVIVE_PORT）"
+else
+  ok "rev 上游此刻不通（端口 $REVIVE_PORT 没有监听）"
+fi
+
+# 一次失败的主动探活就够摘牌（探活不受连续失败阈值约束）。
+"$BIN" probe rev >/dev/null 2>&1 || true
+BRK="$("$BIN" breaker 2>&1)"
+case "$BRK" in
+  *"rev/rev-model"*) ok "失败的 probe 当场摘掉 rev/rev-model" ;;
+  *) bad "probe 失败后 breaker 表里找不到 rev/rev-model" ;;
+esac
+
+# 1) 点名 rev：rev 没候选时**不许**拿 ds 的候选顶上。
+RESETUP
+CODE=$(curl -s -o "$SANDBOX/pin_unavailable.out" -w '%{http_code}' -X POST \
+  "http://127.0.0.1:$PROXY_PORT/a/claude/p/rev/v1/messages" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"rev-model","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}')
+check "点名 rev、rev 被熔断：404" "$CODE" "404"
+case "$(cat "$SANDBOX/pin_unavailable.out")" in
+  *"bound to tier mid"*) ok "404 认出模型所属档位（不再说「不在任何 profile 的绑定里」）" ;;
+  *) bad "404 文案没认出档位：$(cat "$SANDBOX/pin_unavailable.out")" ;;
+esac
+N_UP=$(curl -s "http://127.0.0.1:$UP_PORT/__mock/requests" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')
+check "点名 rev 时没有静默换到 ds 的上游" "$N_UP" "0"
+
+# 2) 不点名：模型名仍然认识，只是那条 binding 不可用 → 按同档位链 fallback。
+RESETUP
+CODE=$(curl -s -o "$SANDBOX/fallback.out" -w '%{http_code}' -X POST \
+  "http://127.0.0.1:$PROXY_PORT/v1/messages" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"rev-model","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}')
+check "没点名时模型不可用：按 mid 链 fallback 回 200" "$CODE" "200"
+GOT=$(curl -s "http://127.0.0.1:$UP_PORT/__mock/requests" | python3 -c '
+import json,sys
+r=json.load(sys.stdin)
+print(r[-1]["body"].get("model") if r else "NO_REQUEST")')
+check "fallback 落到 ds 的 mid 候选" "$GOT" "deepseek-flash"
+
+# 3) 上游恢复 + 一次成功的 probe → 点名请求**立刻**能走（不等 60s 隔离期）。
+python3 "$CORE/mock/fake_upstream.py" --port "$REVIVE_PORT" >"$SANDBOX/revive_upstream.log" 2>&1 &
+REVIVE_PID=$!
+for _ in $(seq 30); do
+  check_port_busy && break; sleep 0.1
+done
+check_port_busy || { bad "恢复用的假上游没在 $REVIVE_PORT 起来"; }
+# 探活是权威证据：成功即合闸。冷却期（60s）还没到，所以这一条只有在 probe
+# 能提前解封时才绿——正是 2026-11-04 那次「probe 完还是 404」的回归。
+"$BIN" probe rev >/dev/null 2>&1 || true
+curl -sf "http://127.0.0.1:$REVIVE_PORT/__mock/reset" -X POST >/dev/null 2>&1 || true
+CODE=$(curl -s -o "$SANDBOX/pin_recovered.out" -w '%{http_code}' -X POST \
+  "http://127.0.0.1:$PROXY_PORT/a/claude/p/rev/v1/messages" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"rev-model","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}')
+check "成功的 probe 之后点名请求立刻回 200（不等 60s）" "$CODE" "200"
+GOT=$(curl -s "http://127.0.0.1:$REVIVE_PORT/__mock/requests" | python3 -c '
+import json,sys
+r=json.load(sys.stdin)
+print(r[-1]["body"].get("model") if r else "NO_REQUEST")')
+check "恢复后走的就是被点名 profile 的那条 binding" "$GOT" "rev-model"
 
 echo
 echo "结果: $PASS 通过, $FAIL 失败"
