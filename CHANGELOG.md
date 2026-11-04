@@ -12,6 +12,13 @@ finished release.
 
 ## [Unreleased]
 
+### Fixed
+
+- Two newgate daemons on one machine (different `NEWGATE_HOME` and port) no
+  longer fight over Hermes' `config.yaml`. Only the daemon the file already
+  points at syncs the `/model` list; moving it to another port is an explicit
+  `newgate on hermes`.
+
 ## [0.8.2] - 2026-11-04
 
 ### Added

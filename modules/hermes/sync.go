@@ -3,6 +3,7 @@ package hermes
 import (
 	"io/ioutil"
 	"log"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -69,6 +70,13 @@ func syncOnce() {
 	if !(Takeover{}).IsTakenOver(target) {
 		return
 	}
+	// 只同步**指着我自己**的那份文件。2026-11-04 实测：同一台机器上起了第二个
+	// 守护进程（另一个 NEWGATE_HOME、另一个端口），两边每十秒各把 base_url 改成
+	// 自己的端口，hermes 的请求在两个代理之间来回跳。文件此刻指着谁，谁才是这份
+	// 接管的主人；端口要换，是 `newgate on hermes` 的事（显式、一次）。
+	if !pointsAt(target, proxyPort()) {
+		return
+	}
 	res, err := syncCatalog()
 
 	syncMu.Lock()
@@ -126,4 +134,14 @@ func readDoc(path string) (*doc, error) {
 		return nil, err
 	}
 	return parseDoc(string(b)), nil
+}
+
+// pointsAt 文件里 `providers.newgate` 的 base_url 是不是本机这个端口。
+func pointsAt(target string, port int) bool {
+	d, err := readDoc(target)
+	if err != nil {
+		return false
+	}
+	u, ok := d.get("providers", ProviderID, "base_url")
+	return ok && strings.HasPrefix(u, "http://127.0.0.1:"+strconv.Itoa(port)+"/")
 }

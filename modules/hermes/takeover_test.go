@@ -340,3 +340,27 @@ func TestModelsListerMatchesTheCatalog(t *testing.T) {
 		t.Error("不存在的 profile 交回缺省清单")
 	}
 }
+
+// 同一台机器上两个守护进程（不同端口）：只有文件指着的那一个同步，另一个不碰。
+// 否则两边每十秒各把 base_url 改成自己的端口（2026-11-04 实测的来回跳）。
+func TestSyncOnlyByTheDaemonTheFilePointsAt(t *testing.T) {
+	target := sandbox(t)
+	if _, err := (Takeover{}).Apply(8899); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := ioutil.ReadFile(target)
+	st := store.LoadState()
+	st.Port = 18950 // 这个进程是「另一个」守护进程
+	if err := store.SaveState(st); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveProfile(&domain.Profile{Name: "kimi",
+		Roles: map[string]domain.Candidates{"mid": bind("kimi", "kimi-k3")}}); err != nil {
+		t.Fatal(err)
+	}
+	syncOnce()
+	after, _ := ioutil.ReadFile(target)
+	if string(after) != string(before) {
+		t.Errorf("文件指着 8899，18950 那个守护进程不该动它")
+	}
+}
