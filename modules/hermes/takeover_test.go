@@ -322,3 +322,21 @@ func TestAuxiliaryWithStrayScalarsIsStillTakenOver(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// 代理那一侧答的 /models 与写进文件的模型表是同一份（同一个函数算的）。
+func TestModelsListerMatchesTheCatalog(t *testing.T) {
+	sandbox(t)
+	ids, ok := modelsLister{}.ListModels(ID, "ds")
+	if !ok || strings.Join(ids, ",") != strings.Join(domain.Roles, ",")+",smt-deepseek/deepseek-flash" {
+		t.Errorf("钉住 ds = %v %v", ids, ok)
+	}
+	if ids, ok := (modelsLister{}).ListModels(ID, ""); !ok || strings.Join(ids, ",") != strings.Join(domain.Roles, ",") {
+		t.Errorf("跟着走那一行只列档位：%v", ids)
+	}
+	if _, ok := (modelsLister{}).ListModels("claude", ""); ok {
+		t.Error("别的客户端不归它答")
+	}
+	if _, ok := (modelsLister{}).ListModels(ID, "nope"); ok {
+		t.Error("不存在的 profile 交回缺省清单")
+	}
+}

@@ -53,10 +53,16 @@ finished release.
 - The gateway answers a GET or HEAD without a body (local-server probes such as
   `/api/tags`, `/v1/props`, `/version`) with 404 instead of a 400, and no longer
   counts it as a failure.
+- `GET …/v1/models` under a client's URL can be answered by that client's
+  module. Hermes uses it: the `newgate` row lists the tiers, each
+  `newgate-<profile>` row lists the tiers plus that profile's models, and a
+  binding you change in a profile shows up in `/model` right away. Every other
+  client gets the same list as before.
 
 ### Kernel
 
-- Bumped to `9e66dc4`: the bodyless-probe 404 above.
+- Bumped to `7b84ff2`: the bodyless-probe 404 and the per-client `/models`
+  answer (`special.ModelLister`) above.
 
 ## [0.8.1] - 2026-11-04
 

@@ -34,10 +34,11 @@ import (
 //   - **api_key 写一个占位值而不是留空**：留空时 hermes 会按顺序去拿 `OPENAI_API_KEY`
 //     / `OPENROUTER_API_KEY`——用户真的钥匙会被发到代理（虽然代理会丢掉它，但那本不
 //     该出门）。占位值要 ≥4 个字符且不是 `dummy` 这类词，否则同样被当成「没给」。
-//   - **`discover_models: false`**：不写的话 /model 会去问 `<base>/models`，拿到的是
-//     代理那份通用清单（只有档位），**替换掉**我们写的具体模型——pinned 那几行就只剩
-//     档位了。代价是 hermes 每次归一化 providers 时打一句「unknown config keys
-//     ignored: discover_models」的 warning（这个键它在 picker 里认、在归一化里不认）。
+//   - **不写 `discover_models: false`**：/model 会去问 `<base>/models` 并用问到的替换
+//     这里的模型表，而那份清单由本模块在代理那一侧答（st-models.go），与这里写的是
+//     同一个函数算的。写那个键的代价是 hermes 每归一化一次就往 errors.log 里记一条
+//     「unknown config keys ignored」（实测一次 `hermes chat` 九条）。这里的 `models:`
+//     仍然要写：每个模型的 context_length 只能从这里来。
 //   - **delegation 清掉 base_url**：它有 base_url 时 api_mode 被写死成
 //     chat_completions、provider 被忽略（delegate_tool.py）；清掉才走具名 provider。
 //   - **auxiliary 清掉 base_url / api_key**：两者都在时它直接当自定义端点用，
@@ -228,7 +229,6 @@ func providerEntry(key, url string, ids []string, win int) omap {
 		{"api_key", placeholderKey},
 		{"api_mode", apiMode},
 		{"default_model", "normal"},
-		{"discover_models", false},
 		{"models", models},
 	}
 }

@@ -1284,6 +1284,10 @@
       "reviewed": true,
       "text": "hermes 没被接管——先跑 newgate on hermes"
     },
+    "hermes' /model replaces its configured model table with whatever <base>/models returns; answer the tiers for the follow row and tiers + that profile's bound models for each pinned row": {
+      "reviewed": true,
+      "text": "hermes 的 /model 会用 <base>/models 问到的清单替换它配置里的模型表；跟着走的那一行答档位，每个钉住的行答档位 + 那份 profile 绑的模型"
+    },
     "hermes' YAML parser disagrees with the planned change at {where}": {
       "reviewed": true,
       "text": "hermes 的 YAML 解析器与计划的改动对不上：{where}"

@@ -830,6 +830,7 @@
     },
     "hermes is not installed on this machine": {},
     "hermes is not taken over — run newgate on hermes first": {},
+    "hermes' /model replaces its configured model table with whatever <base>/models returns; answer the tiers for the follow row and tiers + that profile's bound models for each pinned row": {},
     "hermes' YAML parser disagrees with the planned change at {where}": {
       "args": [
         "where"

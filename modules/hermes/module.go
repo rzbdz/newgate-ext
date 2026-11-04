@@ -9,6 +9,7 @@ import (
 	viewapi "github.com/rzbdz/newgate/lib/view"
 	cliapi "github.com/rzbdz/newgate/modules/cli/extension"
 	confighookapi "github.com/rzbdz/newgate/modules/confighook"
+	gatewayapi "github.com/rzbdz/newgate/modules/gateway"
 )
 
 // New 声明 Hermes 客户端组件。
@@ -28,6 +29,9 @@ func New() modules.Component {
 			// （骨架发行版关掉了 gateway）就不同步——`newgate on hermes` 与
 			// `newgate hermes-gateway sync` 照常可用，只是不自动。
 			modules.Optional(servingapi.Capability),
+			// 网关：替 hermes 的 URL 回答 /models（st-models.go）。弱依赖——骨架发行版
+			// 关掉了 gateway，那时也就没有代理可问。
+			modules.Optional(gatewayapi.Capability),
 		},
 		Provides: []modules.Provision{
 			modules.Provide(Capability, Client{AgentID: ID}),
@@ -67,6 +71,11 @@ func New() modules.Component {
 					return err
 				}
 				if err := add(ui.RegisterCommand(gatewayCommand{})); err != nil {
+					return err
+				}
+			}
+			if gw, ok := modules.Get(ctx, gatewayapi.Capability); ok {
+				if err := add(gw.RegisterRequestHook(modelsLister{})); err != nil {
 					return err
 				}
 			}

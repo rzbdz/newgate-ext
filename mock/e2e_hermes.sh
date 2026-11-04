@@ -8,6 +8,7 @@
 #   2  「跟着 newgate 走」：缺省模型是档位名，落到哪个模型由 profile 决定；
 #   3  「在 hermes 里直接点名」：`newgate-<profile>` 那一行的 URL 钉在那份 profile 上，
 #      `provider/model` 这种名字进来，上游收到的是那份 profile 绑的模型；
+#      而 /model 问到的清单（代理替 hermes 答的 /models）与文件里写的是同一份；
 #   4  hermes 对本机 base_url 的探测（/api/tags …）本地 404，不刷失败数；
 #   5  守护进程在跑时新加一份 profile，几秒内 /model 的清单就同步进文件——而且
 #      **只动清单**：用户在 hermes 里选过的主模型不被改回去；
@@ -173,6 +174,11 @@ check "点名 demo/mock-alt（钉在 alt 上）" "$(ASK /a/hermes/p/alt/v1 demo/
 check "上游收到的是 alt 绑的模型（前缀被剥掉）" "$(LASTUP)" "mock-alt"
 check "钉住那一行的档位名走那份 profile" "$(ASK /a/hermes/p/alt/v1 normal)" "200"
 check "确实是 alt 的 normal" "$(LASTUP)" "mock-alt"
+
+modelids() { curl -s "http://127.0.0.1:$PORT$1/models" | python3 -c 'import json,sys;print(",".join(m["id"] for m in json.load(sys.stdin)["data"]))'; }
+check "/model 问到的跟着走那一行：只有档位" "$(modelids /a/hermes/v1)" "heavy,normal,mid,light,vision"
+check "/model 问到的钉住 alt 那一行：档位 + 它绑的模型" "$(modelids /a/hermes/p/alt/v1)" "heavy,normal,mid,light,vision,demo/mock-alt"
+hasnt "不写 discover_models（hermes 的归一化不认它，每轮一条 warning）" 'discover_models' "$CFG"
 
 echo
 echo "== 3. hermes 的本机服务探测：404，不算失败 =="
