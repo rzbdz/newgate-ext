@@ -17,10 +17,18 @@
 
 ---
 
-One local gateway between Claude Code / OpenCode and the models you choose. It
-stays out of the way of the flow: your session keeps running while you switch
-providers, and when a new model — or a fresh upstream quirk — shows up, adapting
-to it is one small module, in your own fork, on your own schedule.
+One local gateway between your coding agents — Claude Code, Codex, OpenCode,
+Hermes — and the models you choose. It stays out of the way of the flow: your
+session keeps running while you switch providers, and when a new model — or a
+fresh upstream quirk — shows up, adapting to it is one small module, in your own
+fork, on your own schedule.
+
+![The browser console: one tab per agent, one card per profile, first-byte latency on every model](site/src/screenshot-home.png)
+
+<sub>The home screen of `newgate`'s browser console. Pick an agent at the top,
+then click a card to put that agent on that profile — live, no restart. Every
+badge is the measured first-byte latency of that binding (green is fast, amber is
+slow), and ·)) probes the whole card again.</sub>
 
 ## New: probe and fingerprints, built in
 
