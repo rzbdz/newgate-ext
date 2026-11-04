@@ -22,6 +22,7 @@
     "theme-light",
     "theme-anthropic",
     "codex",
+    "hermes",
     "codex_deepseek",
     "arch-diagram",
     "ssh-tunnel"

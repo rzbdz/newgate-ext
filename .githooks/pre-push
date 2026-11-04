@@ -70,6 +70,9 @@ bash mock/e2e_ask.sh
 # codex 的两种接管模式，以及「codex 自己的模型名认回档位」那条链（含「加一行
 # 新模型不用重启就生效」）。也要假上游。
 bash mock/e2e_codex_modes.sh
+# hermes 的接管：config.yaml 字节手术、两种用法、清单自动同步（不改回用户的选择）、
+# 按键还原。也要假上游。
+bash mock/e2e_hermes.sh
 # Codex × DeepSeek 的工具交叉（抬/降级两个方向 + 响应侧改回 + 开关点真的被读）。
 # 也要假上游。它锁的是**不报错**的那一类故障：不抬的话模型看不见工具，请求照样
 # 200、正文看着也像模像样，只有一个 tool_result 都拿不到。

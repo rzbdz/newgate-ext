@@ -12,6 +12,52 @@ finished release.
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-11-04
+
+### Added
+
+- **Hermes Agent support** (`newgate on hermes` / `newgate off hermes`). The
+  takeover edits `$HERMES_HOME/config.yaml` (default `~/.hermes`) so the main
+  loop, `delegate_task` subagents and every auxiliary task (vision, compression,
+  titles, approval, session search, web extract, curator …) go through newgate.
+  Two ways of choosing a model live side by side:
+  - **follow newgate**: the default model is a tier name (`normal`), and the
+    active profile decides which real model serves it;
+  - **pick in Hermes**: `/model` lists a `newgate` row (the tiers) and one
+    `newgate-<profile>` row per profile, pinned to that profile and listing every
+    model it binds as `provider/model`.
+- Hermes slots (`model`, `delegation`, `vision`, `compression`, `auxiliary`) are
+  set on the new **Hermes** card in the web UI or kept at their defaults
+  (normal / mid / vision / mid / light).
+- **The `/model` list follows your profiles.** While the daemon runs, a new,
+  changed or deleted profile is synced into `config.yaml` within seconds. Only
+  newgate's own `providers.newgate*` rows are touched — a model you picked in
+  Hermes with `/model … --global` is never reverted. The Hermes gateway re-reads
+  the file on every message, so no restart is needed for the list.
+- `newgate hermes-gateway [sync|restart]`, a `Hermes` line in `newgate status`,
+  and sync / restart buttons on the card. After the first takeover newgate tells
+  you when the running Hermes gateway still uses the old upstream for vision, web
+  extract and approval (it copies those into its environment at start-up); the
+  restart is a graceful `hermes gateway restart`, and it is your call.
+- Editing `config.yaml` is byte surgery: only the keys above change, everything
+  else stays byte for byte. Before writing, Hermes' own YAML parser must agree
+  that the new file equals the old one plus exactly the intended changes;
+  otherwise nothing is written. A file Hermes changed in the meantime is not
+  overwritten, and an unreadable newgate config leaves the file alone.
+- `newgate off hermes` restores key by key: the values newgate wrote go back to
+  what they were before the takeover, and anything you changed in Hermes in the
+  meantime is kept.
+
+### Changed
+
+- The gateway answers a GET or HEAD without a body (local-server probes such as
+  `/api/tags`, `/v1/props`, `/version`) with 404 instead of a 400, and no longer
+  counts it as a failure.
+
+### Kernel
+
+- Bumped to `9e66dc4`: the bodyless-probe 404 above.
+
 ## [0.8.1] - 2026-11-04
 
 ### Added

@@ -22,6 +22,7 @@ import (
 	ext_deepseek "github.com/rzbdz/newgate-ext/modules/deepseek"
 	ext_glm "github.com/rzbdz/newgate-ext/modules/glm"
 	ext_hello "github.com/rzbdz/newgate-ext/modules/hello"
+	ext_hermes "github.com/rzbdz/newgate-ext/modules/hermes"
 	ext_home "github.com/rzbdz/newgate-ext/modules/home"
 	ext_i18n "github.com/rzbdz/newgate-ext/modules/i18n"
 	ext_modellist "github.com/rzbdz/newgate-ext/modules/modellist"
@@ -63,6 +64,7 @@ func Specs() map[string]app.Selection {
 				{Dir: "claudecode", Component: ext_claudecode.New()},
 				{Dir: "opencode", Component: ext_opencode.New()},
 				{Dir: "opencodeomo", Component: ext_opencodeomo.New()},
+				{Dir: "hermes", Component: ext_hermes.New()},
 				{Dir: "web-dashboard", Component: ext_web_dashboard.New()},
 				{Dir: "modellist", Component: ext_modellist.New()},
 				{Dir: "upgrade", Component: ext_upgrade.New()},
@@ -95,6 +97,7 @@ func Specs() map[string]app.Selection {
 				{Dir: "theme-light", Component: ext_theme_light.New()},
 				{Dir: "theme-anthropic", Component: ext_theme_anthropic.New()},
 				{Dir: "codex", Component: ext_codex.New()},
+				{Dir: "hermes", Component: ext_hermes.New()},
 				{Dir: "codex_deepseek", Component: ext_codex_deepseek.New()},
 				{Dir: "arch-diagram", Component: ext_arch_diagram.New()},
 				{Dir: "ssh-tunnel", Component: ext_ssh_tunnel.New()},
@@ -120,6 +123,7 @@ func Specs() map[string]app.Selection {
 				{Dir: "claudecode", Component: ext_claudecode.New()},
 				{Dir: "opencode", Component: ext_opencode.New()},
 				{Dir: "opencodeomo", Component: ext_opencodeomo.New()},
+				{Dir: "hermes", Component: ext_hermes.New()},
 				{Dir: "upgrade", Component: ext_upgrade.New()},
 				{Dir: "self-update", Component: ext_self_update.New()},
 				{Dir: "verify", Component: ext_verify.New()},
@@ -147,6 +151,7 @@ func Specs() map[string]app.Selection {
 				{Dir: "theme-light", Component: ext_theme_light.New()},
 				{Dir: "theme-anthropic", Component: ext_theme_anthropic.New()},
 				{Dir: "codex", Component: ext_codex.New()},
+				{Dir: "hermes", Component: ext_hermes.New()},
 				{Dir: "codex_deepseek", Component: ext_codex_deepseek.New()},
 				{Dir: "ssh-tunnel", Component: ext_ssh_tunnel.New()},
 			},

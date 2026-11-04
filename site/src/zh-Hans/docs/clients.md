@@ -4,7 +4,7 @@
 字节备份，`off` 做逐字节恢复。
 
 ```bash
-newgate on claude      # / codex / opencode
+newgate on claude      # / codex / opencode / hermes
 newgate off claude
 newgate status         # 一眼看到每家现在是什么状态
 ```
@@ -41,6 +41,35 @@ Oh My OpenAgent（OMO）是一个独立的模块，它消费 OpenCode、Config �
 
 Codex 有自己的两套形态，见 [Codex 模式](/docs/codex/)——它的模型目录**编在它自己
 的二进制里**，所以这里的做法与其他两家不一样。
+
+## Hermes
+
+[Hermes Agent](https://github.com/NousResearch/hermes-agent) 走配置 takeover：改写
+`$HERMES_HOME/config.yaml`（缺省 `~/.hermes`）。它会话里能用 `/model` 换模型，所以
+接管之后两种用法并存：
+
+- **跟着 newgate 走**：缺省模型写成档位名（`normal`），落到哪个真模型由 newgate 的
+  profile 决定，profile 改了下一条消息就跟着变。delegation 与辅助任务（看图、压缩、
+  起标题……）同样按档位走，档位在 Hermes 那张卡上改。
+- **在 Hermes 里直接点名**：`/model` 的列表里有一行 `newgate`（只有档位），以及每份
+  profile 一行 `newgate-<profile>`——钉在那份 profile 上，列出它的档位和它绑定的每个
+  具体模型（`provider/model`）。
+
+profile 变了，守护进程会在几秒内把那份清单同步进 `config.yaml`（**只动
+`providers.newgate*` 那几行**，你在 Hermes 里 `/model … --global` 选过的不会被改回去）。
+Hermes 的消息网关每条消息都重读这份文件，所以**不用重启**；唯一要重启的是第一次接管
+之后——网关启动时把看图 / 网页摘要 / 审批的模型抄进了环境变量。`newgate status` 会提示，
+重启与否你决定：
+
+```bash
+newgate hermes-gateway            # 清单新不新、网关要不要重启
+newgate hermes-gateway sync       # 现在就同步一次
+newgate hermes-gateway restart    # 让 Hermes 收尾正在跑的会话，再重启网关
+```
+
+改 `config.yaml` 是字节手术：只碰上面那几格，别的逐字节不动；写之前还会用 **Hermes
+自己的 YAML 解析器**比一遍「原文件 + 这次改动」与「改完的文件」，对不上就不写。
+`newgate off hermes` 按键还原：接管写过的几格放回原样，你在接管期间改过的别的东西保留。
 
 ## 出问题时
 

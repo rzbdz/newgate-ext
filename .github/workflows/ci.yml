@@ -173,6 +173,14 @@ jobs:
       - name: codex 的两种接管模式（假上游）
         run: bash mock/e2e_codex_modes.sh
 
+      # hermes 的接管：config.yaml 的字节手术（别人的东西不动、混进 auxiliary 的标量
+      # 不挡路）、两种用法都通（档位名跟着 newgate 走 / `newgate-<profile>` 钉住点名，
+      # 断言的是**上游收到的模型名**）、它对本机 base_url 的服务探测 404 不刷失败数、
+      # 守护进程在跑时新 profile 自动同步进清单而**不改回**用户在 hermes 里选的主模型，
+      # 以及 `off` 按键还原（接管期间用户改的别的东西保留）。
+      - name: hermes 的接管与 /model 清单同步（假上游）
+        run: bash mock/e2e_hermes.sh
+
       # Codex × DeepSeek 的**工具交叉**：旧版把工具挂在 input[0]（DeepSeek 不读那里）、
       # 新版放顶层但可能夹着 custom（上游只认 apply_patch），以及响应侧要把降级过的
       # 调用改回 custom_tool_call。锁的是**不报错**的那一类故障——不抬的话模型看不见
