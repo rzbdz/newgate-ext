@@ -14,6 +14,15 @@ finished release.
 
 ### Fixed
 
+- **Claude Code is capped at a 512K context window.** Every injected model name
+  used to carry the `[1m]` suffix, and profiles could declare
+  `context_window: 1000000`. A long session then grew to 1.01M tokens, the next
+  request failed with `400 Input tokens exceed the model context limit`, and
+  `/compact` could not rescue it — the compaction request itself carries the
+  whole conversation and is over the limit too. Model names are now injected
+  bare; the window travels through `CLAUDE_CODE_MAX_CONTEXT_TOKENS` and is
+  capped at 512K (auto-compact at 400K), leaving room for newgate's reasoning
+  backfill, which can grow a request by about 14%.
 - Two newgate daemons on one machine (different `NEWGATE_HOME` and port) no
   longer fight over Hermes' `config.yaml`. Only the daemon the file already
   points at syncs the `/model` list; moving it to another port is an explicit

@@ -22,10 +22,12 @@
 #      在**建链之前**改道 light 档——含 fallback，light 挂了沿 light 链换
 #      人，不回 mid；其他后台调用（compact 总结这类）不改道；主循环的流式
 #      请求不受影响。
-#   7. 窗口声明：Claude Code 不认识注入的真实模型名（glm-4-plus），按
-#      「未知模型」默认 200k 窗口提前 compact。profile 里声明了
-#      context_window/auto_compact_window 就在启动时注入对应的
-#      CLAUDE_CODE_* env；没声明的 profile 一个都不注入。
+#   7. 窗口声明：Claude Code 不认识注入的模型名（glm-4-plus / normal），
+#      按「未知模型」假设窗口。profile 里声明了 context_window/
+#      auto_compact_window 就在启动时注入对应的 CLAUDE_CODE_* env；但
+#      Claude Code 客户端把窗口封在 512K、compact 封在 400K（2026-11-12
+#      现场：1M 顶到真实窗口最后一格，400 之后连 /compact 都发不出去）。
+#      没声明窗口的 profile 拿到上限值，没声明 compact 的交给客户端自己算。
 #   8. 运行期开关与 special 层开关（第 19/20 章）：探针用内核自己的
 #      schema-repair，这样这一层不依赖任何发行版模块。
 #
@@ -243,11 +245,12 @@ echo; echo "== 2. newgate claude --profile=ds =="
 curl -sf "http://127.0.0.1:$UP_PORT/__mock/reset" -X POST >/dev/null
 OUT="$("$BIN" claude --profile=ds 2>"$SANDBOX/ds.err")"
 echo "$OUT" | sed 's/^/    /'
-# 真实模型名 + `[1m]`：后缀是 Claude Code 的能力标记，跟模型名一起注入（见
-# modules/claudecode）。下一行断言**上游收到的是剥掉标记的名字**——两件事必须
-# 同时成立，只对一半就是「标记漏了」或「标记漏到上游去了」。
-check "opus 档注入的是真实模型名（带 1M 标记）" \
-  "$(echo "$OUT" | grep '^OPUS_MODEL=' | cut -d= -f2-)" "deepseek-chat[1m]"
+# 真实模型名，**裸的**：2026-11-12 起不再拼 `[1m]`（1M 声明把会话顶到
+# 真实窗口最后一格，400 之后连 /compact 都发不出去，见 modules/claudecode）。
+# 窗口改由 CLAUDE_CODE_MAX_CONTEXT_TOKENS 声明并封顶 512K。下一行断言上游
+# 收到的就是这个名字。
+check "opus 档注入的是真实模型名（裸名）" \
+  "$(echo "$OUT" | grep '^OPUS_MODEL=' | cut -d= -f2-)" "deepseek-chat"
 echo "$OUT" | grep '^BASE_URL=' | grep -q "/a/claude/p/ds" \
   && ok "base URL 带上 /a/claude/p/ds" \
   || bad "base URL 应含 /a/claude/p/ds（实际 $(echo "$OUT" | grep '^BASE_URL=')）"
@@ -258,8 +261,8 @@ echo; echo "== 3. newgate claude --profile=glm（切换） =="
 curl -sf "http://127.0.0.1:$UP_PORT/__mock/reset" -X POST >/dev/null
 OUT="$("$BIN" claude --profile=glm 2>"$SANDBOX/glm.err")"
 echo "$OUT" | sed 's/^/    /'
-check "切到 glm 后 opus 档是 glm-4-plus（带 1M 标记）" \
-  "$(echo "$OUT" | grep '^OPUS_MODEL=' | cut -d= -f2-)" "glm-4-plus[1m]"
+check "切到 glm 后 opus 档是 glm-4-plus（裸名）" \
+  "$(echo "$OUT" | grep '^OPUS_MODEL=' | cut -d= -f2-)" "glm-4-plus"
 GOT=$(curl -s "http://127.0.0.1:$UP_PORT/__mock/requests" | python3 -c 'import json,sys;r=json.load(sys.stdin);print(r[0]["body"]["model"] if r else "NONE")')
 check "上游收到 glm 的 glm-4-plus" "$GOT" "glm-4-plus"
 
@@ -269,10 +272,10 @@ echo; echo "== 4. 不带 profile 用默认（ds）：动态模式，槽位 = 档
 # 对 Claude Code 也是未知模型，MAX_CONTEXT_TOKENS 一样生效）。
 curl -sf "http://127.0.0.1:$UP_PORT/__mock/reset" -X POST >/dev/null
 OUT="$("$BIN" claude 2>"$SANDBOX/default.err")"
-check "默认（动态）：opus 槽 = 主力档 normal（带 1M 标记）" \
-  "$(echo "$OUT" | grep '^OPUS_MODEL=' | cut -d= -f2-)" "normal[1m]"
-check "默认（动态）：窗口声明照注入（ds 没配 → 空）" \
-  "$(echo "$OUT" | grep '^WIN_MAX=' | cut -d= -f2-)" ""
+check "默认（动态）：opus 槽 = 主力档 normal（裸名）" \
+  "$(echo "$OUT" | grep '^OPUS_MODEL=' | cut -d= -f2-)" "normal"
+check "默认（动态）：窗口声明=客户端上限（ds 没配 → 512K）" \
+  "$(echo "$OUT" | grep '^WIN_MAX=' | cut -d= -f2-)" "512000"
 
 echo; echo "== 5. 不存在的 profile 要立刻报错（退出码 65） =="
 "$BIN" claude --profile=nope >/dev/null 2>"$SANDBOX/nope.err"
@@ -550,19 +553,20 @@ for KEY in "special.claude-bg.route_light" "count_tokens.forwarded" "count_token
     || bad "metrics 缺 $KEY（输出：$(echo "$MOUT" | head -3)）"
 done
 
-echo; echo "== 14. 窗口声明：声明了才注入，跟被选中的 profile 走 =="
-# Claude Code 不认识我们注入的真实模型名，按「未知模型」默认 200k 窗口
-# 提前 compact（2026-09 实测 glm-5.3 会话 125k 就在 compact）。glm 声明
-# 了 1M/500k → 两个 env 都注入；ds 没声明 → 一个都不注入。
+echo; echo "== 14. 窗口声明：跟 profile 走，但封顶 512K/400K =="
+# Claude Code 不认识我们注入的模型名，按「未知模型」假设窗口。glm 声明了
+# 1M/500k → 被客户端的上限压到 512K/400K（2026-11-12 现场：1M 顶到最后一格，
+# 400 之后连 /compact 都发不出去）；ds 没声明 → 窗口用上限 512K，compact
+# 交给客户端自己按窗口算。
 OUT="$(E2E_SCENARIO=plain "$BIN" claude --profile=glm 2>/dev/null)"
-check "glm: MAX_CONTEXT_TOKENS=1000000" \
-  "$(echo "$OUT" | grep '^WIN_MAX=' | cut -d= -f2-)" "1000000"
-check "glm: AUTO_COMPACT_WINDOW=500000" \
-  "$(echo "$OUT" | grep '^WIN_COMPACT=' | cut -d= -f2-)" "500000"
+check "glm: MAX_CONTEXT_TOKENS 封到 512000" \
+  "$(echo "$OUT" | grep '^WIN_MAX=' | cut -d= -f2-)" "512000"
+check "glm: AUTO_COMPACT_WINDOW 封到 400000" \
+  "$(echo "$OUT" | grep '^WIN_COMPACT=' | cut -d= -f2-)" "400000"
 OUT="$(E2E_SCENARIO=plain "$BIN" claude --profile=ds 2>/dev/null)"
-check "ds（没声明）: MAX_CONTEXT_TOKENS 为空" \
-  "$(echo "$OUT" | grep '^WIN_MAX=' | cut -d= -f2-)" ""
-check "ds（没声明）: AUTO_COMPACT_WINDOW 为空" \
+check "ds（没声明）: MAX_CONTEXT_TOKENS=512000（用上限）" \
+  "$(echo "$OUT" | grep '^WIN_MAX=' | cut -d= -f2-)" "512000"
+check "ds（没声明）: AUTO_COMPACT_WINDOW 为空（客户端自己算）" \
   "$(echo "$OUT" | grep '^WIN_COMPACT=' | cut -d= -f2-)" ""
 
 echo; echo "== 16. naked：Bash 分类器被短路，上游一个请求都收不到 =="
