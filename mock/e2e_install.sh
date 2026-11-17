@@ -52,6 +52,18 @@ mkdir -p "$NEWGATE_HOME/mappings" "$(dirname "$BIN")" "$FAKEBIN" "$OFFPATH"
 #
 # 密闭之后本脚本自己用的 cat / rm / chmod / dirname 也还在（都在 /usr/bin 或
 # /bin），而 bash 在 /bin——所以这一条对脚本本身是透明的。
+#
+# **但 /usr/bin 里有真的 npm**（系统的 node 那一份，prefix 是 /usr）。2026-11-17
+# 实测：少了 HOME 这一层隔离之后，codex 的 facts 从真实 ~/.nvm 里找到了 codex，
+# 于是「没装」那条路一次都没走到；而某一次的向导 e2e 直接把真的
+# `npm install -g` 跑进了 /usr/lib/node_modules，在这台机器上装出了一个
+# /usr/bin/codex。那件事本不该由一条测试做出来。
+#
+# 所以 HOME 也一起指进沙箱：客户端模块的 facts 会去认 ~/.nvm / ~/.local/bin
+# （那是它们的知识，见 modules/codex 的 facts.go），而「这台机器上有没有」在测试
+# 里必须由**测试**说了算。
+export HOME="$SANDBOX/home"
+mkdir -p "$HOME"
 export PATH="$FAKEBIN:$SANDBOX/bin:/usr/bin:/bin"
 
 cleanup() {
