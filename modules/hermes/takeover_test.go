@@ -364,3 +364,50 @@ func TestSyncOnlyByTheDaemonTheFilePointsAt(t *testing.T) {
 		t.Errorf("文件指着 8899，18950 那个守护进程不该动它")
 	}
 }
+
+// TestHermesPythonRejectsANonPythonLauncher 是 2026-11-17 那次「后台同步卡住」的
+// 回归守卫。
+//
+// 现场：hermes 的官方安装器在 `~/.local/bin/hermes` 放的是
+// `#!/bin/sh` + `exec …` 的**壳**。`hermesPython` 那时直接信任 shebang，于是
+// 拿 `/bin/sh` 当解释器去跑一段 python（`sh -I -c '<python>' a b c d`）——sh 从
+// **继承来的终端**读 stdin，那条命令永远不返回。接管与同步两处都会卡，
+// 而超时分支是 fail-open 的，所以外面看起来只是「同步没发生」。
+//
+// 判据是：拿不到一个**名字像 python** 的解释器就返回空串（调用方降级成读回
+// 校验），而不是把一个别的东西当解释器去跑。
+func TestHermesPythonRejectsANonPythonLauncher(t *testing.T) {
+	testkit.Sandbox(t)
+	dir := t.TempDir()
+
+	writeLauncher := func(body string) string {
+		p := filepath.Join(dir, "hermes")
+		if err := ioutil.WriteFile(p, []byte(body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+
+	// 官方安装器那种壳：shebang 是 `#!/bin/sh`，后面 exec 真的入口。
+	// 把它当解释器拿去跑一段 python，就是 2026-11-17 那次卡住的现场。
+	sh := writeLauncher("#!/bin/sh\nexec \"$HOME/.hermes/hermes-agent/.hermes/bin/hermes\" \"$@\"\n")
+	if got := pythonFor(sh); got != "" {
+		t.Fatalf("把 %q 当成了 hermes 的 python 解释器（那会让 verify 卡住）", got)
+	}
+
+	// 真的 python 入口：认它（两种 shebang 写法都要认——venv 用绝对路径，
+	// 用户装的常用 `env python3`）。
+	for _, body := range []string{
+		"#!/usr/bin/env python3\n# real launcher\n",
+		"#!/usr/bin/python3\n# real launcher\n",
+	} {
+		p := writeLauncher(body)
+		got := pythonFor(p)
+		if got == "" {
+			t.Fatalf("认不出 %q 那种 shebang", strings.TrimSpace(body))
+		}
+		if base := filepath.Base(got); !strings.HasPrefix(base, "python") {
+			t.Fatalf("返回的不是 python：%q", got)
+		}
+	}
+}

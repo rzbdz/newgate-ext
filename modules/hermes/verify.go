@@ -156,6 +156,10 @@ func verifyEdits(src, out string, edits []edit, orig string) (verified, error) {
 		filepath.Join(dir, "edits.json"), filepath.Join(dir, "orig.yaml"))
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	// stdin 显式接到 /dev/null：上面的判断已经保证这里是个 python，但**任何**
+	// 子进程都不该从继承来的终端读（2026-11-17 那次卡住就是 shell 在读 stdin，
+	// 连着一条真实终端）。这道是第二层，代价为零。
+	cmd.Stdin = nil
 	done := make(chan error, 1)
 	if err := cmd.Start(); err != nil {
 		return verified{}, nil
@@ -196,8 +200,15 @@ func lastLine(s string) string {
 //
 // 找的顺序：真实入口（跳过 shim，见 Agent().FindReal 的同一条判据）→ 解析链接 →
 // 读第一行。任何一步不成立返回空串（调用方降级，见文件头）。
-func hermesPython() string {
-	bin := realHermes()
+func hermesPython() string { return pythonFor(realHermes()) }
+
+// pythonFor 是上面那条判断的**函数形态**（入口路径进来，解释器出去）。
+//
+// 拆出来是为了可测：hermesPython 的第一判据是「PATH 上真正的 hermes」（
+// Agent().FindReal），而在一台装着 hermes 的开发机上那条路永远先命中真实的
+// 入口——测试沙箱里的假入口根本轮不到。判断本身（shebang → 解释器）与「从哪
+// 找到入口」是两件事，分开之后那条判据可以被直接钉住。
+func pythonFor(bin string) string {
 	if bin == "" {
 		return ""
 	}
@@ -227,6 +238,24 @@ func hermesPython() string {
 			return ""
 		}
 		py = p
+	}
+	// **shebang 必须真的指向一个 python。**
+	//
+	// 2026-11-17 现场：hermes 的官方安装器在 `~/.local/bin/hermes` 放的是一个
+	// `#!/bin/sh` + `exec …/.hermes/bin/hermes` 的**壳**，而它不是 PATH 上第一个
+	// 命中的那个；这里于是拿到 `/bin/sh`，紧接着跑的是
+	// `/bin/sh -I -c '<整段 python>' base new edits orig`——`sh -c` 把后四个
+	// 参数当成位置参数，脚本从 stdin 读，而 stdin 是继承来的真实终端。
+	// 症状：一次接管/同步**卡住**（20s 超时之后还要等那个子进程），后台同步那条
+	// goroutine 再也走不到下一个 tick，于是「新 profile 十秒内同步进来」变成
+	// 永远不同步。它一声不响，因为超时分支是 fail-open 的。
+	//
+	// 判据用**名字**而不是「跑一下试试」：跑一下就是我们要避免的那件事（真的
+	// 起了一个 shell）。叫 python / python3 / python3.12 的才算；`venv/bin/python3`
+	// 与 `env python3` 两条路都落在这条判断之内。
+	base := filepath.Base(py)
+	if !strings.HasPrefix(base, "python") {
+		return ""
 	}
 	if info, err := os.Stat(py); err != nil || info.IsDir() || info.Mode()&0o111 == 0 {
 		return ""
