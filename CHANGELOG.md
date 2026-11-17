@@ -60,6 +60,14 @@ finished release.
   longer fight over Hermes' `config.yaml`. Only the daemon the file already
   points at syncs the `/model` list; moving it to another port is an explicit
   `newgate on hermes`.
+- **Hermes' `/model` list no longer stops syncing on machines where the
+  official installer put a shell wrapper at `~/.local/bin/hermes`.** newgate
+  reads the interpreter out of the launcher's shebang to cross-check its YAML
+  edits; the wrapper's shebang is `#!/bin/sh`, so a shell was asked to run the
+  check script and sat waiting on the inherited terminal. Takeover and the
+  background sync both blocked (the timeout path is fail-open, so the only
+  visible symptom was a new profile never appearing in `/model`). Only a
+  `python*` interpreter is accepted now, and the child never inherits stdin.
 
 ## [0.8.2] - 2026-11-04
 
