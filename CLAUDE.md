@@ -239,6 +239,28 @@ import 的共享叶子（`config/domain`、`cli/extension`、`gateway/policy`…
 - 它是**只读 + 只答 loopback**（判据与 web-dashboard 那道门同一条：挡 DNS rebinding
   要看 Host，不是看对端地址）。
 
+## 5b. 首次配置：`newgate config`
+
+`modules/setup` 是**新机器上的第一件产品决定**：`newgate config` 一套向导做完
+「选客户端 → 一个 base/key/模型 → 落盘 → 装 + 接管 → 起代理」。
+
+- **它不自己实现任何一件事**：装卸走 confighook 的 `AgentInstaller`（装法是客户端
+  模块的知识，claude/codex/opencode 是 npm，hermes 是官方脚本），接管与起代理走
+  内核的 `runtime.Control`（`newgate on|start` 的同一份实现），按键走 `lib/term`
+  （与 `modules/tui` 共用一份 raw mode）。加一家客户端 = 它的模块注册一个安装器，
+  这里一行都不用改。
+- **bootstrap 只要求三样**：一个 base URL、一个 key、一个模型名。四个档位 + vision
+  全指向那一个模型——否则「某类请求没有可用候选」会在第一天出现，而用户看不出那是
+  当初没填。之后要拆档位是 `newgate tui` 或直接让 AI 改 `mappings/default.kv`。
+- **已经能跑的机器重跑它不会被问上游**（判据是「全局默认那份 profile 解析得出候选
+  且 provider 有 key」，不是「文件存在」——`init` 铺出来的占位配置文件全都在）。
+- **写盘只写自己的三份**，别人的 provider 一字不动，尤其是 `api_key_env` 那几家的
+  明文绝不落盘（见 `modules/setup/providers.go`）。
+- **不许把「跳过」报成「成功」**：配置型客户端第一次接管会「跳过（没有配置文件）」，
+  收尾必须写 `not taken over yet` 并给出「先跑一次再 `newgate on`」。
+- 端到端是 `mock/e2e_config.sh`（pty + 假 npm/curl + 假 `/models`）；它**密闭 PATH**，
+  否则会让向导在这台开发机上跑真的安装命令。
+
 ## 6. 发布
 
 ```bash

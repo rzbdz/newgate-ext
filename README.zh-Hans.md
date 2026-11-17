@@ -149,13 +149,24 @@ ssh-agent，永远不要密码**——所以那份 target 列表可以住在 `st
 ## Install
 
 ```bash
-gh release download --repo rzbdz/newgate-ext -p '*linux-amd64'
-mv newgate-default-linux-amd64 ~/.local/bin/newgate && chmod +x ~/.local/bin/newgate
-newgate init && newgate on claude     # 以及：newgate on opencode
+curl -fsSL https://raw.githubusercontent.com/rzbdz/newgate-ext/main/install.sh | bash
+newgate config
 ```
 
-一个静态二进制，无运行期依赖。`newgate init` 铺一份带占位符的配置；把 key 填进
-`providers.json`（或用 `NEWGATE_KEY_*` 环境变量），重开 shell 继续干活。
+一个静态二进制，无运行期依赖。安装脚本会校验 Release 的 `SHA256SUMS`，把二进制
+落到 `~/.local/bin`。
+
+`newgate config` 就是全部设置：勾选哪些客户端要走 newgate（claude、codex、
+opencode、hermes），贴**一个 base URL 和一个 key**，从上游的模型清单里挑一个——
+它写配置、装上缺的客户端、接管、再起代理。每一档起初都指向那一个模型，所以第一个
+请求就能跑；之后用 `newgate tui` 把档位拆开，或者干脆让 AI 自己改（它能读
+`~/.config/newgate/providers.json` 和 `mappings/*.kv`）。
+
+已经有能用的配置？再跑 `newgate config` 只问客户端，不会问你的上游
+（要改就 `--reconfigure`）。
+
+不想用向导：`newgate init` 铺占位配置，把 key 填进 `providers.json`（或用
+`NEWGATE_KEY_*` 环境变量），然后 `newgate on claude`、`newgate start`。
 
 ## 这个仓库是什么
 

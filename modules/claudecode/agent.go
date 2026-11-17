@@ -9,6 +9,15 @@ import (
 
 const ID = "claude"
 
+// NpmPackage 是官方发行渠道上那个包（2026-11-17 由
+// `https://registry.npmjs.org/@anthropic-ai/claude-code` 的 dist-tags 核过）。
+//
+// 为什么用 npm 而不是 `https://claude.ai/install.sh`：那一行在 2026-11-17 实测
+// 返回的是**官网的 HTML**（303 KB 的 Next.js 页面），`curl | bash` 会把它当脚本
+// 执行。npm 那个包是官方发布的、`bin` 里就是 `claude`，而且 codex 已经走同一条
+// 渠道——两条安装路径而不是三条，读的人少记一件事。
+const NpmPackage = "@anthropic-ai/claude-code"
+
 // Agent 返回 Claude Code 的描述符。
 //
 // # 窗口为什么不再用模型名后缀 [1m]

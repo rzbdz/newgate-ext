@@ -3,6 +3,7 @@
   "github": "rzbdz/newgate-ext",
   "modules": [
     "i18n",
+    "setup",
     "simple-cli",
     "deepseek",
     "glm",

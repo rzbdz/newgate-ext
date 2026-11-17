@@ -184,14 +184,27 @@ reachable through here.
 ## Install
 
 ```bash
-gh release download --repo rzbdz/newgate-ext -p '*linux-amd64'
-mv newgate-default-linux-amd64 ~/.local/bin/newgate && chmod +x ~/.local/bin/newgate
-newgate init && newgate on claude     # and: newgate on opencode
+curl -fsSL https://raw.githubusercontent.com/rzbdz/newgate-ext/main/install.sh | bash
+newgate config
 ```
 
-One static binary, no runtime dependencies. `newgate init` lays down a config
-with placeholders; put your keys in `providers.json` (or in `NEWGATE_KEY_*`
-environment variables), then reopen the shell and keep working.
+One static binary, no runtime dependencies. The installer verifies the release's
+`SHA256SUMS` and drops the binary in `~/.local/bin`.
+
+`newgate config` is the whole setup: pick which clients should go through
+newgate (claude, codex, opencode, hermes), paste **one base URL and one key**,
+pick a model from the endpoint's list — and it writes the config, installs the
+clients that are missing, takes them over and starts the proxy. Every tier
+starts on that one model, so the first request works; split the tiers later with
+`newgate tui`, or hand that job to the agent itself (it can read
+`~/.config/newgate/providers.json` and `mappings/*.kv`).
+
+Already have a working config? Re-running `newgate config` asks only about
+clients, never about your upstream (`--reconfigure` to change it).
+
+No curl/wizard if you would rather do it by hand: `newgate init`, put your keys
+in `providers.json` (or in `NEWGATE_KEY_*` environment variables), then
+`newgate on claude` and `newgate start`.
 
 ## What this repository is
 

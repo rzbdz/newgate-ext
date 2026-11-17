@@ -12,6 +12,39 @@ finished release.
 
 ## [Unreleased]
 
+### Added
+
+- **One-line install, then one-command setup.** `curl -fsSL …/install.sh | bash`
+  puts the static binary in `~/.local/bin/newgate` (verifying the release's
+  `SHA256SUMS`, keeping the previous binary as `newgate.prev`). `newgate config`
+  is the first-run wizard: pick which clients should go through newgate, type
+  one base URL and one key, pick a model from the endpoint's `/models` list (or
+  type it), and it writes `providers.json` + `mappings/default.kv` +
+  `state.json`, installs the clients that are missing (claude, codex, opencode,
+  hermes — each through its own module's installer), takes them over, and starts
+  the proxy. Every tier of the bootstrap profile points at that one model, so
+  the whole chain works immediately; split the tiers later with `newgate tui`
+  or by asking the agent to do it.
+  - Re-running it asks only for clients: a machine that already has a usable
+    profile is not asked for its base URL again (`--reconfigure` forces it).
+  - It never touches clients you did not tick, and it says "not taken over yet"
+    (with the `run <client>`-then-`newgate on` line) when a config-mode client
+    has not written its config file yet — instead of pretending it was taken over.
+  - Without a terminal it writes nothing and prints the manual steps.
+- **Installers for Claude Code and OpenCode** (`npm i -g @anthropic-ai/claude-code`,
+  `npm i -g opencode-ai`) alongside the existing codex / hermes ones, so
+  `newgate <client> -y` and the wizard can install them.
+- `install.sh` at the repository root: the one-liner above.
+
+### Changed
+
+- The **runtime** port grew a second face. `TakeOver` / `Release` / `TakeOverAll`
+  / `TakeoverStatus` / `Start` are now on a `runtime-control` capability
+  (`runtime.Control`), so a module can do what `newgate on|off|start` do without
+  importing the kernel's internals. `newgate start` and the wizard run the same
+  implementation; `StartOptions.SkipTakeover` lets the wizard start the proxy
+  without taking over clients it was told to leave alone.
+
 ### Fixed
 
 - **Claude Code is capped at a 512K context window.** Every injected model name

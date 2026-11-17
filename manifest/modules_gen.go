@@ -30,6 +30,7 @@ import (
 	ext_opencode "github.com/rzbdz/newgate-ext/modules/opencode"
 	ext_opencodeomo "github.com/rzbdz/newgate-ext/modules/opencodeomo"
 	ext_self_update "github.com/rzbdz/newgate-ext/modules/self-update"
+	ext_setup "github.com/rzbdz/newgate-ext/modules/setup"
 	ext_simple_cli "github.com/rzbdz/newgate-ext/modules/simple-cli"
 	ext_ssh_tunnel "github.com/rzbdz/newgate-ext/modules/ssh-tunnel"
 	ext_theme_anthropic "github.com/rzbdz/newgate-ext/modules/theme-anthropic"
@@ -78,6 +79,7 @@ func Specs() map[string]app.Selection {
 		"dist-dev.json": {
 			Extra: []app.Entry{
 				{Dir: "i18n", Component: ext_i18n.New()},
+				{Dir: "setup", Component: ext_setup.New()},
 				{Dir: "home", Component: ext_home.New()},
 				{Dir: "tui", Component: ext_tui.New()},
 				{Dir: "deepseek", Component: ext_deepseek.New()},
@@ -114,6 +116,7 @@ func Specs() map[string]app.Selection {
 			Disable: []string{"cli"},
 			Extra: []app.Entry{
 				{Dir: "i18n", Component: ext_i18n.New()},
+				{Dir: "setup", Component: ext_setup.New()},
 				{Dir: "simple-cli", Component: ext_simple_cli.New()},
 				{Dir: "deepseek", Component: ext_deepseek.New()},
 				{Dir: "glm", Component: ext_glm.New()},
@@ -132,6 +135,7 @@ func Specs() map[string]app.Selection {
 		"dist.json": {
 			Extra: []app.Entry{
 				{Dir: "i18n", Component: ext_i18n.New()},
+				{Dir: "setup", Component: ext_setup.New()},
 				{Dir: "home", Component: ext_home.New()},
 				{Dir: "tui", Component: ext_tui.New()},
 				{Dir: "deepseek", Component: ext_deepseek.New()},

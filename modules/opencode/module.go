@@ -16,7 +16,7 @@ import (
 
 // New 声明 OpenCode 客户端组件：提供家族身份，并在生命周期内注册客户端描述符。
 func New() modules.Component {
-	var release modules.Release
+	var releases []modules.Release
 	return modules.Component{
 		Name:     "opencode",
 		Desc:     func() string { return i18n.T("the OpenCode client", nil) },
@@ -28,10 +28,23 @@ func New() modules.Component {
 		},
 		Start: func(_ context.Context, ctx modules.Context) error {
 			var err error
-			release, err = modules.MustGet(ctx, confighookapi.ConfigHooksCapability).
-				RegisterAgent(Agent())
-			return err
+			var release modules.Release
+			hooks := modules.MustGet(ctx, confighookapi.ConfigHooksCapability)
+			release, err = hooks.RegisterAgent(Agent())
+			if err != nil {
+				return err
+			}
+			releases = append(releases, release)
+			// 安装方式：`newgate config` 在没装的机器上走的就是它（与 codex /
+			// claude / hermes 同一条口子，见内核 confighook.AgentInstaller）。
+			release, err = hooks.RegisterAgentInstaller(ID, confighookapi.ExecInstaller(
+				"npm", "install", "--global", NpmPackage))
+			if err != nil {
+				return err
+			}
+			releases = append(releases, release)
+			return nil
 		},
-		Stop: func(context.Context) error { return modules.ReleaseAll([]modules.Release{release}) },
+		Stop: func(context.Context) error { return modules.ReleaseAll(releases) },
 	}
 }

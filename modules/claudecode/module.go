@@ -61,6 +61,15 @@ func New() modules.Component {
 				return err
 			}
 			releases = append(releases, release)
+			// 安装方式：`newgate config` 或 `newgate claude -y` 在没装的机器上
+			// 走的就是它。命令写在这里而不是内核里——换渠道是这家客户端的事
+			// （见内核 confighook 的 AgentInstaller）。
+			release, err = config.RegisterAgentInstaller(ID, confighookapi.ExecInstaller(
+				"npm", "install", "--global", NpmPackage))
+			if err != nil {
+				return err
+			}
+			releases = append(releases, release)
 			release, err = config.RegisterStateField("claudecode", "classifier_override")
 			if err != nil {
 				return err

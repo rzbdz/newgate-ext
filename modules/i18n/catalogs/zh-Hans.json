@@ -1,5 +1,17 @@
 {
   "messages": {
+    "  ✓ {agent}: {what}": {
+      "reviewed": true,
+      "text": "  ✓ {agent}：{what}"
+    },
+    "  ✗ {agent}: installed, but taking it over failed: {err}": {
+      "reviewed": true,
+      "text": "  ✗ {agent}：装好了，但接管失败：{err}"
+    },
+    "  ✗ {agent}: {err}": {
+      "reviewed": true,
+      "text": "  ✗ {agent}：{err}"
+    },
     " and {n} in all": {
       "reviewed": true,
       "text": " 等 {n} 个"
@@ -27,6 +39,10 @@
     "(model list out of date — the daemon syncs it within seconds, or: newgate on hermes)": {
       "reviewed": true,
       "text": "（模型清单过期了——守护进程几秒内会同步，或者：newgate on hermes）"
+    },
+    "(no command declared)": {
+      "reviewed": true,
+      "text": "（没有声明安装命令）"
     },
     "(no messages field, cannot audit)\n": {
       "reviewed": true,
@@ -67,6 +83,14 @@
     ", ": {
       "reviewed": true,
       "text": "、"
+    },
+    ", not taken over yet": {
+      "reviewed": true,
+      "text": "，尚未接管"
+    },
+    ", taken over ({first})": {
+      "reviewed": true,
+      "text": "，已接管（{first}）"
     },
     ", {n} had no original text to backfill and were **left untouched**{detail} — those rounds the model cannot see its own reasoning": {
       "reviewed": true,
@@ -112,6 +136,10 @@
       "reviewed": true,
       "text": "@版本"
     },
+    "API key": {
+      "reviewed": true,
+      "text": "API key（密钥）"
+    },
     "An update is available": {
       "reviewed": true,
       "text": "有新版本"
@@ -139,6 +167,10 @@
     "Backfill the thinking block (hand 3)": {
       "reviewed": true,
       "text": "补 thinking 块（第 3 手）"
+    },
+    "Base URL": {
+      "reviewed": true,
+      "text": "Base URL（地址）"
     },
     "Bash classifier: the whole chain is rerouted to light": {
       "reviewed": true,
@@ -204,6 +236,10 @@
       "reviewed": true,
       "text": "客户端"
     },
+    "Clients already taken over stay checked-off; nothing about them changes if you skip them.": {
+      "reviewed": true,
+      "text": "已经接管过的客户端默认不勾；跳过它们不会改变任何东西。"
+    },
     "Codex": {
       "reviewed": true,
       "text": "Codex"
@@ -228,6 +264,10 @@
       "reviewed": true,
       "text": "Codex 把工具定义放在 input[0]（additional_tools）里，而 DeepSeek 只从顶层 tools 读工具；不抬上去模型一个工具都看不见，会用它自己的文本格式作答，客户端因此一个 tool_result 都拿不到"
     },
+    "Configuration": {
+      "reviewed": true,
+      "text": "配置"
+    },
     "Connections": {
       "machine": true,
       "text": "连接"
@@ -243,6 +283,14 @@
     "DeepSeek's /responses accepts `custom` tools only for apply_patch and answers 400 for every other one (the message inside a namespace is a different one); with the degrade off a Codex request carrying any other custom tool is rejected outright": {
       "reviewed": true,
       "text": "DeepSeek 的 /responses 只认 apply_patch 一个 custom 工具，其余一律 400（藏在 namespace 里时换一句）；关掉降级，任何带别的 custom 工具的 Codex 请求都会被直接拒掉"
+    },
+    "Done": {
+      "reviewed": true,
+      "text": "完成"
+    },
+    "Everything else — more providers, per-client profiles, per-tier models — can be changed later: `newgate tui`, or just ask the agent to do it.": {
+      "reviewed": true,
+      "text": "其余（更多上游、给某个客户端单独指定档位、每一档换成别的模型）以后都能改：`newgate tui`，或者直接让 AI 去做。"
     },
     "Fingerprint reference data": {
       "reviewed": true,
@@ -316,17 +364,41 @@
       "reviewed": true,
       "text": "界面"
     },
+    "Model name": {
+      "reviewed": true,
+      "text": "模型名"
+    },
     "Naked": {
       "reviewed": true,
       "text": "裸奔"
+    },
+    "Name for this provider": {
+      "reviewed": true,
+      "text": "这个上游叫什么"
+    },
+    "Next": {
+      "reviewed": true,
+      "text": "下一步"
+    },
+    "No clients selected — nothing was changed.": {
+      "reviewed": true,
+      "text": "一个客户端都没选——什么都没改。"
     },
     "Not checked yet": {
       "reviewed": true,
       "text": "还没检查过"
     },
+    "Nothing was changed.": {
+      "reviewed": true,
+      "text": "什么都没改。"
+    },
     "Nothink": {
       "reviewed": true,
       "text": "不思考"
+    },
+    "One upstream is enough to bootstrap: every tier will use it until you split them up.": {
+      "reviewed": true,
+      "text": "先配一个上游就够开工了：在你把它们拆开之前，每一档都用它。"
     },
     "Profiles": {
       "reviewed": true,
@@ -388,6 +460,10 @@
       "reviewed": true,
       "text": "这块界面的配色。存进 state.json，当场生效，不用刷新。一套皮肤能改的只有那一组颜色令牌——它动不了版面。"
     },
+    "The endpoint lists these models — pick the default one": {
+      "reviewed": true,
+      "text": "这个地址列出了这些模型——挑一个当默认的"
+    },
     "The model name codex itself sends — copy it out of `codex debug models` (the slug).": {
       "reviewed": true,
       "text": "codex 自己发出来的那个模型名——从 `codex debug models` 里抄（抄 slug 那一栏）"
@@ -395,6 +471,10 @@
     "Theme": {
       "reviewed": true,
       "text": "皮肤"
+    },
+    "Type it yourself": {
+      "reviewed": true,
+      "text": "自己填一个"
     },
     "Up to date": {
       "reviewed": true,
@@ -428,6 +508,10 @@
       "reviewed": true,
       "text": "验证"
     },
+    "Which clients should go through newgate?": {
+      "reviewed": true,
+      "text": "哪些客户端要走 newgate？"
+    },
     "Which tier a request naming that model resolves to. Required — a row without one is rejected on save.": {
       "reviewed": true,
       "text": "点名这个模型的请求落到哪一档。必填——没有档位的那一行保存会被拒"
@@ -435,6 +519,10 @@
     "White": {
       "reviewed": true,
       "text": "白"
+    },
+    "Without one, do the same steps by hand:": {
+      "reviewed": true,
+      "text": "没有终端的话，按这几步手动做："
     },
     "[naked] forever mode: the classifier request was approved directly, the upstream was not called": {
       "reviewed": true,
@@ -455,6 +543,10 @@
     "`newgate restart` failed: {err}": {
       "reviewed": true,
       "text": "`newgate restart` 失败：{err}"
+    },
+    "a base URL starts with http:// or https://": {
+      "reviewed": true,
+      "text": "base URL 要以 http:// 或 https:// 开头"
     },
     "a command cannot be nil": {
       "reviewed": true,
@@ -491,6 +583,10 @@
     "a path, never key material. Leave empty to use the usual files and ssh-agent": {
       "machine": true,
       "text": "一个路径，绝不是密钥内容。留空则使用常规文件和 ssh-agent"
+    },
+    "a provider name, a base URL and a model are all required": {
+      "reviewed": true,
+      "text": "上游名、base URL、模型名三者都必须有"
     },
     "a reference is written as @key (e.g. @normal), got {value}": {
       "reviewed": true,
@@ -544,6 +640,10 @@
       "machine": true,
       "text": "添加目标"
     },
+    "added provider {name}": {
+      "reviewed": true,
+      "text": "新增上游 {name}"
+    },
     "adopt them all": {
       "reviewed": true,
       "text": "全部采纳"
@@ -567,6 +667,10 @@
     "already at {version} (built from {repo})": {
       "reviewed": true,
       "text": "已经是 {version}（从 {repo} 编的）"
+    },
+    "already installed": {
+      "reviewed": true,
+      "text": "已经装着"
     },
     "already on the chain": {
       "reviewed": true,
@@ -672,6 +776,10 @@
       "reviewed": true,
       "text": "绑定方式只能是 current 或 suggested，收到 {value}"
     },
+    "bootstrap chain written by newgate config": {
+      "reviewed": true,
+      "text": "newgate config 写下的初始链"
+    },
     "build/build.sh failed: {err}": {
       "reviewed": true,
       "text": "build/build.sh 失败：{err}"
@@ -707,6 +815,10 @@
     "cannot build the model-list request for {url}: {err}": {
       "reviewed": true,
       "text": "无法为 {url} 构造模型清单请求：{err}"
+    },
+    "cannot build the request: {err}": {
+      "reviewed": true,
+      "text": "请求都拼不出来：{err}"
     },
     "cannot derive the auth token: {err}": {
       "reviewed": true,
@@ -812,6 +924,10 @@
       "reviewed": true,
       "text": "读不了 {url} 的响应：{err}"
     },
+    "cannot read the model list: {err}": {
+      "reviewed": true,
+      "text": "读不了模型清单：{err}"
+    },
     "cannot read the newgate config ({err}); hermes' config.yaml was left alone": {
       "reviewed": true,
       "text": "读不出 newgate 的配置（{err}）；hermes 的 config.yaml 没动"
@@ -827,6 +943,10 @@
     "cannot read this profile": {
       "reviewed": true,
       "text": "读不了这份档位"
+    },
+    "cannot read {file}: {err}": {
+      "reviewed": true,
+      "text": "读不了 {file}：{err}"
     },
     "cannot read {path}: {err}": {
       "machine": true,
@@ -879,6 +999,10 @@
     "cannot write the bookkeeping: {err}": {
       "reviewed": true,
       "text": "写记账失败: {err}"
+    },
+    "cannot write the configuration: {err}": {
+      "reviewed": true,
+      "text": "写配置失败：{err}"
     },
     "cannot write the registry: {err}": {
       "reviewed": true,
@@ -1044,6 +1168,10 @@
       "other": "把 {n} 条 custom 工具降级成了普通 function（DeepSeek 除 apply_patch 外不认任何 custom，一律 400）",
       "reviewed": true
     },
+    "derived from the host, editable": {
+      "reviewed": true,
+      "text": "从地址里推出来的，可以改"
+    },
     "detached HEAD: not pulling": {
       "reviewed": true,
       "text": "HEAD 是 detached 的：不拉取"
@@ -1124,6 +1252,10 @@
       "reviewed": true,
       "text": "提前关闭：newgate nothink off"
     },
+    "enter next · esc back · ctrl-c quit": {
+      "reviewed": true,
+      "text": "回车下一步 · esc 返回 · ctrl-c 退出"
+    },
     "error": {
       "reviewed": true,
       "text": "错误"
@@ -1176,6 +1308,10 @@
       "reviewed": true,
       "text": "字段"
     },
+    "fill in {file} (base_url, api_key, models)": {
+      "reviewed": true,
+      "text": "填好 {file}（base_url、api_key、models）"
+    },
     "fingerprint": {
       "reviewed": true,
       "text": "指纹"
@@ -1199,6 +1335,22 @@
     "fingerprints are evidence, not proof: fix the request parameters and repeat when it matters": {
       "reviewed": true,
       "text": "指纹是证据，不是证明：固定请求参数，重要的时候多验几轮"
+    },
+    "first request a client sends will be routed by tier; watch it with `newgate logs -f`": {
+      "reviewed": true,
+      "text": "客户端的第一个请求会按档位路由；用 `newgate logs -f` 看它走哪儿"
+    },
+    "first setup": {
+      "reviewed": true,
+      "text": "首次配置"
+    },
+    "first-run setup: pick clients, one upstream, and go (newgate config)": {
+      "reviewed": true,
+      "text": "首次配置向导：选客户端、配一个上游、直接开工（newgate config）"
+    },
+    "first-run wizard: install and take over clients, write the first upstream, start the proxy": {
+      "reviewed": true,
+      "text": "首次配置向导：安装并接管客户端、写下第一个上游、把代理起起来"
     },
     "follow the global default ({profile})": {
       "reviewed": true,
@@ -1256,6 +1408,10 @@
       "reviewed": true,
       "text": "全局缺省已改成 {profile}"
     },
+    "global default → {name}": {
+      "reviewed": true,
+      "text": "全局默认 → {name}"
+    },
     "glossary": {
       "reviewed": true,
       "text": "术语"
@@ -1263,6 +1419,10 @@
     "handshake and authentication succeeded": {
       "machine": true,
       "text": "握手与认证成功"
+    },
+    "have the agent do the rest: it can read {file} and {dir}": {
+      "reviewed": true,
+      "text": "剩下的交给 AI：它能读 {file} 和 {dir}"
     },
     "hello from newgate-ext": {
       "reviewed": true,
@@ -1312,6 +1472,10 @@
       "machine": true,
       "text": "主机密钥"
     },
+    "how it shows up in newgate; letters, digits, - and .": {
+      "reviewed": true,
+      "text": "它在 newgate 里显示的名字；字母、数字、- 和 ."
+    },
     "how to reach it": {
       "machine": true,
       "text": "如何访问"
@@ -1360,9 +1524,21 @@
       "reviewed": true,
       "text": "注入 {patch}（GLM 把缺省当默认思考）"
     },
+    "installed": {
+      "reviewed": true,
+      "text": "已装好"
+    },
     "installed {version} at {target}; the previous binary is kept as {prev}": {
       "reviewed": true,
       "text": "已把 {version} 装到 {target}；旧版留在 {prev}"
+    },
+    "installed, already taken over": {
+      "reviewed": true,
+      "text": "已装好，且已接管"
+    },
+    "installed, but taking it over failed: {err}": {
+      "reviewed": true,
+      "text": "装好了，但接管失败：{err}"
     },
     "it is protected by a passphrase; add it to ssh-agent (`ssh-add {path}`) and leave identity empty": {
       "machine": true,
@@ -1484,6 +1660,10 @@
       "reviewed": true,
       "text": "模块动态角色，非 omo 槽位"
     },
+    "moved {old} aside to {bak} (the .kv wins)": {
+      "reviewed": true,
+      "text": "把 {old} 挪到 {bak}（.kv 才是生效的那份）"
+    },
     "msg[{i}] has no reasoning_content  {keys}\n": {
       "reviewed": true,
       "text": "msg[{i}] 没有 reasoning_content  {keys}\n"
@@ -1527,6 +1707,10 @@
     "newgate binary": {
       "reviewed": true,
       "text": "newgate 二进制"
+    },
+    "newgate config needs an interactive terminal ({err})": {
+      "reviewed": true,
+      "text": "newgate config 需要一台交互终端（{err}）"
     },
     "newgate upgrade --check shows whether there is something newer; newgate upgrade@<tag> pins a version": {
       "reviewed": true,
@@ -1660,6 +1844,10 @@
       "reviewed": true,
       "text": "没有定义"
     },
+    "not installed — will be installed": {
+      "reviewed": true,
+      "text": "没装——这次会装上"
+    },
     "not listed in /model: {what}": {
       "reviewed": true,
       "text": "没列进 /model：{what}"
@@ -1679,6 +1867,10 @@
     "note: {msg}": {
       "reviewed": true,
       "text": "注意: {msg}"
+    },
+    "note: {warn}": {
+      "reviewed": true,
+      "text": "提示：{warn}"
     },
     "nothink forever is on — every request goes upstream with thinking off": {
       "reviewed": true,
@@ -1768,6 +1960,10 @@
       "machine": true,
       "text": "或完全一致的 http://127.0.0.1:{port}/ui/（由 daemon 启动）"
     },
+    "or just `{bin}` — the PATH shim sends it through newgate": {
+      "reviewed": true,
+      "text": "或者直接敲 `{bin}`——PATH shim 会把它送到 newgate"
+    },
     "other": {
       "reviewed": true,
       "text": "其他"
@@ -1788,9 +1984,21 @@
       "reviewed": true,
       "text": "把二进制钉到某个 tag、分支或提交（有 Release 就用 Release，没有就从源码构建）；没有版本概念的动作会被跳过"
     },
+    "point tiers at it in {dir}/*.kv": {
+      "reviewed": true,
+      "text": "在 {dir}/*.kv 里把档位指过去"
+    },
     "port http://127.0.0.1:{port}/ui/": {
       "machine": true,
       "text": "转发到 http://127.0.0.1:{port}/ui/"
+    },
+    "press enter to accept, or type another name": {
+      "reviewed": true,
+      "text": "回车采用，或者自己打一个名字"
+    },
+    "press m to type a name that is not listed": {
+      "reviewed": true,
+      "text": "按 m 手动填一个不在清单里的名字"
     },
     "previewing needs Content-Type: application/json (got {ct})": {
       "reviewed": true,
@@ -1852,6 +2060,10 @@
       "reviewed": true,
       "text": "provider {name} 没有 api_key_env，密钥得来自密钥通道（宿主上 config secrets）"
     },
+    "provider {name} in {file} is malformed: {err}": {
+      "reviewed": true,
+      "text": "{file} 里 {name} 这个上游写坏了：{err}"
+    },
     "provider.{id} injected (all pre-existing providers kept)": {
       "reviewed": true,
       "text": "provider.{id} 已注入（原有 provider 全部保留）"
@@ -1859,6 +2071,10 @@
     "provider/model, or @key to follow another tier. Empty = the Bash classifier rides the light tier.": {
       "reviewed": true,
       "text": "provider/model，或 @键名 跟别的档位走。留空 = Bash 分类器走 light 档。"
+    },
+    "proxy running · 127.0.0.1:{port} · profile {profile}": {
+      "reviewed": true,
+      "text": "代理在跑 · 127.0.0.1:{port} · 档位 {profile}"
     },
     "reach a remote machine's web interface over SSH": {
       "machine": true,
@@ -2000,6 +2216,14 @@
       "machine": true,
       "text": "运行 `newgate tunnel test {id}` 逐步排查"
     },
+    "run {bin} once so it writes its config, then: newgate on {agent}": {
+      "reviewed": true,
+      "text": "先跑一次 {bin} 让它写出配置文件，然后：newgate on {agent}"
+    },
+    "running: {cmd}": {
+      "reviewed": true,
+      "text": "正在跑：{cmd}"
+    },
     "same family": {
       "reviewed": true,
       "text": "同族"
@@ -2092,6 +2316,14 @@
       "machine": true,
       "text": "ssh_config 为此主机设置了 {key}，但本模块只建立直接连接 —— 该设置被忽略"
     },
+    "start an agent: {cmd}": {
+      "reviewed": true,
+      "text": "起一个 AI 客户端：{cmd}"
+    },
+    "start the proxy: {cmd}": {
+      "reviewed": true,
+      "text": "把代理起起来：{cmd}"
+    },
     "state": {
       "machine": true,
       "text": "状态"
@@ -2103,6 +2335,10 @@
     "status blocks": {
       "reviewed": true,
       "text": "状态块"
+    },
+    "stored in providers.json (0660); you can move it to an environment variable later": {
+      "reviewed": true,
+      "text": "存在 providers.json 里（0660）；之后可以把它挪到环境变量"
     },
     "strict refuses an unknown machine; accept-new records it the first time and still refuses if it later changes": {
       "machine": true,
@@ -2147,6 +2383,10 @@
     "tail shape left untouched ({err})": {
       "reviewed": true,
       "text": "尾部形状未改动（{err}）"
+    },
+    "take clients over: {cmd}": {
+      "reviewed": true,
+      "text": "接管客户端：{cmd}"
     },
     "taken over": {
       "reviewed": true,
@@ -2296,6 +2536,10 @@
       "reviewed": true,
       "text": "endpoint 是空的（先 newgate config join <endpoint>）"
     },
+    "the endpoint your keys belong to; OpenAI-compatible gateways (newapi, one-api, DeepSeek, GLM …) all work": {
+      "reviewed": true,
+      "text": "你的 key 所属的地址；OpenAI 兼容的网关（newapi、one-api、DeepSeek、GLM……）都可以"
+    },
     "the envelope claims to be the {got} channel, but {want} was expected": {
       "reviewed": true,
       "text": "信封自称是 {got} 通道，这里要的是 {want}"
@@ -2315,6 +2559,10 @@
     "the envelope is empty": {
       "reviewed": true,
       "text": "信封是空的"
+    },
+    "the exact name this endpoint accepts, e.g. deepseek-chat": {
+      "reviewed": true,
+      "text": "这个地址认的模型名，例如 deepseek-chat"
     },
     "the fable tier (the most expensive); also the marker used to spot a third-party model family falling back automatically": {
       "reviewed": true,
@@ -2388,6 +2636,10 @@
       "reviewed": true,
       "text": "界面只监听 loopback，其他网卡上没有监听"
     },
+    "the key is stored in providers.json (mode 0660, readable by your group); to keep it out of the file, put it in the environment as {env} and set api_key_env instead": {
+      "reviewed": true,
+      "text": "key 存在了 providers.json 里（0660，同组可读）；想让它不落盘，就把它放进环境变量 {env}，并把配置改成 api_key_env"
+    },
     "the landing screen: every chain this machine resolves right now, in one view": {
       "reviewed": true,
       "text": "首屏：这台机器此刻解析出来的每一条链，一屏看完"
@@ -2448,9 +2700,17 @@
       "reviewed": true,
       "text": "上游返回了一份空的模型清单"
     },
+    "the provider does not list models": {
+      "reviewed": true,
+      "text": "这个上游不提供模型清单"
+    },
     "the provider field is not an object: {err}": {
       "reviewed": true,
       "text": "provider 字段不是对象: {err}"
+    },
+    "the proxy did not start: {err}": {
+      "reviewed": true,
+      "text": "代理没起来：{err}"
     },
     "the registry is empty": {
       "reviewed": true,
@@ -2592,6 +2852,10 @@
       "reviewed": true,
       "text": "这份产物提供不了 web 界面：既没有共享端口（porthub），也没有服务期回调（serving）"
     },
+    "this build has no runtime module, so it cannot take clients over; use newgate init and newgate on instead": {
+      "reviewed": true,
+      "text": "这份装配里没有 runtime 模块，没法接管客户端；请改用 newgate init 与 newgate on"
+    },
     "this build has no shared port, so the interface listens on its own port (the gateway is on a different one)": {
       "reviewed": true,
       "text": "这份产物没有共享端口，界面监听自己的端口（网关在另一个端口上）"
@@ -2627,6 +2891,10 @@
     "this machine's {name} was modified locally (your changes will not be overwritten)": {
       "reviewed": true,
       "text": "本机的 {name} 被本地改过（不会覆盖你的改动）"
+    },
+    "this one is required": {
+      "reviewed": true,
+      "text": "这一格必须填"
     },
     "this page is a best-effort copy of the remote interface: paths inside it are rewritten. if something looks broken, use the forwarding port instead — that one is byte-for-byte.": {
       "machine": true,
@@ -2692,6 +2960,10 @@
       "machine": true,
       "text": "两个目标都叫 \"{id}\""
     },
+    "type the model name": {
+      "reviewed": true,
+      "text": "填模型名"
+    },
     "unavailable": {
       "reviewed": true,
       "text": "不可用"
@@ -2711,6 +2983,10 @@
     "unknown action {action}": {
       "reviewed": true,
       "text": "没有 {action} 这个动作"
+    },
+    "unknown agent {agent}": {
+      "reviewed": true,
+      "text": "不认识的客户端 {agent}"
     },
     "unknown command \"{cmd}\" (see the list with newgate status)": {
       "reviewed": true,
@@ -2739,6 +3015,10 @@
     "unusable": {
       "machine": true,
       "text": "不可用"
+    },
+    "updated provider {name}": {
+      "reviewed": true,
+      "text": "更新了上游 {name}"
     },
     "upgrade action {id} has no versions; drop @{version}": {
       "reviewed": true,
@@ -2896,6 +3176,10 @@
       "machine": true,
       "text": "目标当前是否连接由 daemon 负责——本命令运行在自己的进程中，看不到它（Web 界面可以）"
     },
+    "which model?": {
+      "reviewed": true,
+      "text": "用哪个模型？"
+    },
     "why: {why}": {
       "reviewed": true,
       "text": "建议依据 {why}"
@@ -2912,6 +3196,10 @@
       "reviewed": true,
       "text": "profile 里直接写键名同样有效：omo-sisyphus=@normal, terra/medium"
     },
+    "wrote profile {name} ({n} tiers → {model})": {
+      "reviewed": true,
+      "text": "写下档位文件 {name}（{n} 个档位 → {model}）"
+    },
     "{agent} already follows the global default": {
       "reviewed": true,
       "text": "{agent} 已经在跟随全局缺省"
@@ -2920,9 +3208,21 @@
       "reviewed": true,
       "text": "{agent} 已改回跟随全局缺省"
     },
+    "{agent} is not installed, and this build knows no way to install it; install it yourself, then run this again": {
+      "reviewed": true,
+      "text": "{agent} 没装，而这份装配不知道该怎么装它；自己装上之后重跑一次"
+    },
     "{agent} now uses {profile}": {
       "reviewed": true,
       "text": "{agent} 现在使用 {profile}"
+    },
+    "{agent} was installed but is still not on PATH — open a new shell and run newgate config again": {
+      "reviewed": true,
+      "text": "{agent} 装好了，但这个 shell 的 PATH 里还找不到它——开个新 shell 再跑一次 newgate config"
+    },
+    "{agent} writes its config file on first run; start it once ({cmd}), then run newgate on {agent}": {
+      "reviewed": true,
+      "text": "{agent} 第一次运行才会写出配置文件；先跑一次（{cmd}），然后 newgate on {agent}"
     },
     "{api}; the github.com fallback failed too: {web}": {
       "reviewed": true,
@@ -2972,6 +3272,10 @@
       "reviewed": true,
       "text": "{err}（nonce 长度 {got}，应为 {want}）"
     },
+    "{file} already exists and was left alone; models were not re-pointed": {
+      "reviewed": true,
+      "text": "{file} 已经存在，原样留着；模型没有指过去"
+    },
     "{file} changed on disk since this page loaded it — reload and apply again ({err})": {
       "reviewed": true,
       "text": "{file} 在页面加载之后被别的东西改过——刷新页面再应用一次（{err}）"
@@ -2991,6 +3295,10 @@
     "{file} is not valid JSON": {
       "reviewed": true,
       "text": "{file} 不是合法的 JSON"
+    },
+    "{file} is not valid JSON: {err}": {
+      "reviewed": true,
+      "text": "{file} 不是合法 JSON：{err}"
     },
     "{file} of {tag} does not list {asset}; refusing to install an unverified binary": {
       "reviewed": true,
@@ -3304,6 +3612,10 @@
       "reviewed": true,
       "text": "{title} 是只读的"
     },
+    "{url} answered HTTP {status}": {
+      "reviewed": true,
+      "text": "{url} 回了 HTTP {status}"
+    },
     "{url} answered HTTP {status}: {body}": {
       "reviewed": true,
       "text": "{url} 返回 HTTP {status}：{body}"
@@ -3312,6 +3624,10 @@
       "reviewed": true,
       "text": "{url} 的响应超过 {n} 字节 —— 那不是一份模型清单"
     },
+    "{url} answered with no models": {
+      "reviewed": true,
+      "text": "{url} 一个模型都没列"
+    },
     "{url} did not answer with a model list: {err}": {
       "reviewed": true,
       "text": "{url} 没有返回模型清单：{err}"
@@ -3319,6 +3635,10 @@
     "{url} has no model list (HTTP {status})": {
       "reviewed": true,
       "text": "{url} 没有模型清单接口（HTTP {status}）"
+    },
+    "{url} rejected the key (HTTP {status}); paste a model name by hand": {
+      "reviewed": true,
+      "text": "{url} 拒了这个 key（HTTP {status}）；手动填一个模型名"
     },
     "{url} rejected the request (HTTP {status}) — the key may be wrong or not allowed to list models: {body}": {
       "reviewed": true,
@@ -3351,6 +3671,14 @@
     "· the gateway started before the takeover: vision / web extract / approval still use the old upstream until newgate hermes-gateway restart": {
       "reviewed": true,
       "text": "· 网关早于接管启动：看图 / 网页摘要 / 审批仍走旧上游，直到 newgate hermes-gateway restart"
+    },
+    "↑/↓ move · space toggle · a all · enter continue · esc back · ctrl-c quit": {
+      "reviewed": true,
+      "text": "↑/↓ 移动 · 空格切换 · a 全选 · 回车继续 · esc 返回 · ctrl-c 退出"
+    },
+    "↑/↓ or j/k move · enter choose · m type a name instead · esc back · ctrl-c quit": {
+      "reviewed": true,
+      "text": "↑/↓ 或 j/k 移动 · 回车选它 · m 改成手填 · esc 返回 · ctrl-c 退出"
     },
     "↑/↓ or j/k move · ←/→ or Tab switch pane · Enter apply · d follow the default · r reload · q quit": {
       "reviewed": true,

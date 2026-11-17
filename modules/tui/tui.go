@@ -1,15 +1,12 @@
 package tui
 
 import (
-	"bufio"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
-	"syscall"
-	"unsafe"
 
+	term "github.com/rzbdz/newgate-ext/lib/term"
 	"github.com/rzbdz/newgate/lib/i18n"
 	"github.com/rzbdz/newgate/lib/style"
 	"github.com/rzbdz/newgate/modules/config/domain"
@@ -17,51 +14,6 @@ import (
 	agentapi "github.com/rzbdz/newgate/modules/confighook"
 	"github.com/rzbdz/newgate/modules/gateway/controlplane"
 )
-
-// ---------- 零依赖 raw mode ----------
-
-type termios struct {
-	Iflag, Oflag, Cflag, Lflag uint32
-	Line                       uint8
-	Cc                         [32]uint8
-	Ispeed, Ospeed             uint32
-}
-
-const (
-	tcgets = 0x5401
-	tcsets = 0x5402
-)
-
-func ioctl(fd uintptr, req uintptr, t *termios) error {
-	_, _, e := syscall.Syscall(syscall.SYS_IOCTL, fd, req, uintptr(unsafe.Pointer(t)))
-	if e != 0 {
-		return e
-	}
-	return nil
-}
-
-func enterRaw() (*termios, error) {
-	fd := os.Stdin.Fd()
-	var old termios
-	if err := ioctl(fd, tcgets, &old); err != nil {
-		return nil, err
-	}
-	raw := old
-	raw.Lflag &^= syscall.ECHO | syscall.ICANON | syscall.ISIG
-	raw.Iflag &^= syscall.IXON | syscall.ICRNL
-	raw.Cc[syscall.VMIN] = 1
-	raw.Cc[syscall.VTIME] = 0
-	if err := ioctl(fd, tcsets, &raw); err != nil {
-		return nil, err
-	}
-	return &old, nil
-}
-
-func restore(old *termios) {
-	if old != nil {
-		_ = ioctl(os.Stdin.Fd(), tcsets, old)
-	}
-}
 
 // ---------- 渲染 ----------
 
@@ -78,68 +30,6 @@ const (
 	// default」这种标签。右栏从固定列开始，两栏才像一张菜单。
 	leftW = 26
 )
-
-type key int
-
-const (
-	kUp key = iota
-	kDown
-	kLeft
-	kRight
-	kTab
-	kEnter
-	kQuit
-	kReload
-	kClear
-	kOther
-)
-
-func readKey(r *bufio.Reader) key {
-	b, err := r.ReadByte()
-	if err != nil {
-		return kQuit
-	}
-	switch b {
-	case '\r', '\n', ' ':
-		return kEnter
-	case '\t':
-		return kTab
-	case 'q', 'Q', 3:
-		return kQuit
-	case 27: // ESC：单独出现是退出，后面跟 [A/B/C/D 是方向键
-		if r.Buffered() >= 2 {
-			b2, _ := r.ReadByte()
-			b3, _ := r.ReadByte()
-			if b2 == '[' {
-				switch b3 {
-				case 'A':
-					return kUp
-				case 'B':
-					return kDown
-				case 'C':
-					return kRight
-				case 'D':
-					return kLeft
-				}
-			}
-			return kOther
-		}
-		return kQuit
-	case 'k':
-		return kUp
-	case 'j':
-		return kDown
-	case 'h':
-		return kLeft
-	case 'l':
-		return kRight
-	case 'r', 'R':
-		return kReload
-	case 'd', 'D', 8, 127:
-		return kClear
-	}
-	return kOther
-}
 
 // ---------- 状态 ----------
 
@@ -176,51 +66,61 @@ func Run(catalog agentapi.AgentCatalog) error {
 	if err != nil || len(names) == 0 {
 		return i18n.E("no profiles yet; run `newgate init` first", nil)
 	}
-	old, err := enterRaw()
+	t, err := term.Open()
 	if err != nil {
 		// 底层错误由 Ef 放进 {err}（消息里必须写它，见 lib/i18n 的注释）；
 		// `newgate --set-profile` 是命令+flag，原样留在译文里。
 		return i18n.Ef(err, "this terminal does not support the TUI ({err}); use `newgate --set-profile <name>` instead", nil)
 	}
-	defer restore(old)
+	defer t.Close()
 	fmt.Print(hideC)
 	defer fmt.Print(showC + reset + "\n")
 
 	m := &model{catalog: catalog, names: names}
 	m.reload("")
-	in := bufio.NewReader(os.Stdin)
 	for {
 		m.draw()
-		switch readKey(in) {
-		case kUp:
+		ev := t.ReadEvent()
+		switch ev.Key {
+		case term.KeyUp:
 			m.move(-1)
-		case kDown:
+		case term.KeyDown:
 			m.move(1)
-		case kLeft:
+		case term.KeyLeft:
 			if m.focus == 1 {
 				m.focus = 0
 				m.msg = ""
 			}
-		case kRight:
+		case term.KeyRight:
 			if m.focus == 0 {
 				m.focus = 1
 				m.syncProfileCur()
 				m.msg = ""
 			}
-		case kTab:
+		case term.KeyTab:
 			m.focus = 1 - m.focus
 			if m.focus == 1 {
 				m.syncProfileCur()
 			}
 			m.msg = ""
-		case kEnter:
+		case term.KeyEnter:
 			m.apply()
-		case kClear:
-			m.clearOverride()
-		case kReload:
-			m.reload("")
-		case kQuit:
+		case term.KeyInterrupt, term.KeyEsc, term.KeyEOF:
 			return nil
+		case term.KeyRune:
+			// 与原来那套字母快捷键一致：q 退出、d 取消覆盖、r 重读。
+			switch ev.Rune {
+			case 'q', 'Q':
+				return nil
+			case 'd', 'D':
+				m.clearOverride()
+			case 'r', 'R':
+				m.reload("")
+			case 'j':
+				m.move(1)
+			case 'k':
+				m.move(-1)
+			}
 		}
 	}
 }

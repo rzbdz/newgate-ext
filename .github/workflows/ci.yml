@@ -153,6 +153,12 @@ jobs:
       - name: 模型清单的端到端（假上游）
         run: bash mock/e2e_modellist.sh
 
+      # 第一次拿到一台机器时的那三分钟：`newgate config` 那套向导（选客户端 →
+      # 一个 base/key/模型 → 落盘 → 真装 + 真接管 → 起代理）。它用假终端（pty）
+      # 与假包管理器，所以既不需要人，也不在这台机器上装任何东西。
+      - name: 首次配置向导（newgate config，假终端 + 假 npm + 假上游）
+        run: bash mock/e2e_config.sh
+
       # 「这个客户端没装」那条路：问一句、best-effort 装、然后照常启动；以及
       # 它的边界——工具**在**的时候一个字都不碰它的命令行。用**假 npm**，所以这
       # 条既不上网也不在这台机器上真装东西（沙箱的 PATH 是密闭的）。
