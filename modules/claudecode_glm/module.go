@@ -23,7 +23,7 @@ func New() modules.Component {
 	var releases []modules.Release
 	return modules.Component{
 		Name: "claudecode-glm",
-		Desc: func() string { return i18n.T("the Claude Code × GLM crossing", nil) },
+		Desc: func() string { return i18n.T("Claude Code × GLM: what breaks when the two meet, and the fix", nil) },
 		Type: "bridge",
 		Requires: []modules.Requirement{
 			modules.Need(gatewayapi.Capability),
