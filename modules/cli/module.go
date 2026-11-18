@@ -285,7 +285,7 @@ func New() modules.Component {
 	return modules.Component{
 		Name: "cli",
 		Desc: func() string {
-			return i18n.T("the terminal interface: dispatch, layout and injection points, with no business knowledge", nil)
+			return i18n.T("the terminal UI: command dispatch, layout, injection points (newgate --help)", nil)
 		},
 		Type: "cli",
 		// **No Requires**: the UI depends on no module (see TestCLIDependenciesOnlyShrink
