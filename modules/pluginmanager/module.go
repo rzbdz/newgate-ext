@@ -41,7 +41,9 @@ func New() modules.Component {
 	var releases []modules.Release
 	return modules.Component{
 		Name: "plugin-manager",
-		Desc: func() string { return i18n.T("the module list and the runtime switch points", nil) },
+		Desc: func() string {
+			return i18n.T("the module list and each module's runtime switches (newgate plugin)", nil)
+		},
 		Type: TypeInfra,
 		Requires: []modules.Requirement{
 			// ui is a **weak dependency** (see component.Optional): with the UI installed,
