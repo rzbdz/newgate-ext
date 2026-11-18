@@ -76,7 +76,7 @@ func New() modules.Component {
 	self := &instance{views: views}
 	return modules.Component{
 		Name: Name,
-		Desc: func() string { return i18n.T("the web configuration interface: a BFF and the front-end bundle", nil) },
+		Desc: func() string { return i18n.T("the browser UI: config, breakers, logs, switches (newgate web)", nil) },
 		Type: "cli", // the established value for this "UI shell" kind (tui / simple-cli use it too)
 		Requires: []modules.Requirement{
 			// Shared port (the norm).
