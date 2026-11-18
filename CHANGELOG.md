@@ -12,6 +12,10 @@ finished release.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.9.0] - 2026-11-18
+
 ### Changed
 
 - **The kernel now ships no modules.** `rzbdz/newgate` is a framework: the
@@ -21,13 +25,13 @@ finished release.
   libraries — moved here and lives in `modules/` and `lib/` next to the upstream
   patches and client adapters. The split follows the line "the kernel is
   mechanism, the distribution is product".
-  - A build now names every module it installs in its spec; `disable` is gone
-    from the specs (there is nothing in the kernel to disable). `dist-hello.json`
-    is the smallest example: `i18n`, `entry`, `hello`.
+  - **A spec now names every module it installs, and nothing else.** The
+    `disable` key is gone — the kernel has nothing left to disable, and every
+    spec that still writes it fails at generation time instead of being
+    silently ignored. `dist-hello.json` is the smallest example: `i18n`,
+    `entry`, `hello`.
   - The composition root takes two hooks (`app.Options.Trace`,
     `OnAssemblyFailure`) instead of knowing where the product keeps its log.
-  - Behaviour is unchanged: the whole end-to-end suite passes against the
-    product binary, as before.
 - **One way to assemble a graph, and the order is part of the declaration.**
   There used to be two: a loader could hand over a frozen start order (the
   build-time "precomputed plan") and get a shortcut, while everything else got
@@ -35,10 +39,12 @@ finished release.
   components **in start order**; `component.Resolve` verifies that order and
   never sorts; whoever writes a declaration (the generator, `testkit`, a test
   with its own table) computes it once with `component.Ordered`. The generated
-  manifest is now a single table per spec — `manifest/order_gen.go` is deleted,
-  so "the component list" and "the start order" can no longer disagree. A
-  dependency cycle is reported where an order is actually computed, i.e. at
-  build time, naming the components.
+  manifest is now a single table per spec — "the component list" and "the start
+  order" can no longer disagree — and a dependency cycle is reported where an
+  order is actually computed, i.e. at build time, naming the components.
+  - A process installs **one** spec: `Loader.Load()` constructs that spec's
+    modules and nothing else (it used to build all five and throw four away on
+    every command).
 
 ### Added
 
@@ -47,7 +53,8 @@ finished release.
   expires (up to ten minutes). `newgate plugin breaker off` now admits
   everything immediately and clears what is currently delisted; the table keeps
   counting what fails, so `newgate breaker` still shows it. Turn it back on when
-  you know the upstreams are fine.
+  you know the upstreams are fine (`newgate probe` clears the old verdicts if
+  you would rather do that first).
 - **One-line install, then one-command setup.** `curl -fsSL …/install.sh | bash`
   puts the static binary in `~/.local/bin/newgate` (verifying the release's
   `SHA256SUMS`, keeping the previous binary as `newgate.prev`). `newgate config`
@@ -69,9 +76,6 @@ finished release.
   `npm i -g opencode-ai`) alongside the existing codex / hermes ones, so
   `newgate <client> -y` and the wizard can install them.
 - `install.sh` at the repository root: the one-liner above.
-
-### Changed
-
 - The **runtime** port grew a second face. `TakeOver` / `Release` / `TakeOverAll`
   / `TakeoverStatus` / `Start` are now on a `runtime-control` capability
   (`runtime.Control`), so a module can do what `newgate on|off|start` do without
@@ -102,6 +106,17 @@ finished release.
   background sync both blocked (the timeout path is fail-open, so the only
   visible symptom was a new profile never appearing in `/model`). Only a
   `python*` interpreter is accepted now, and the child never inherits stdin.
+- **`newgate upgrade` reported `dev` and refused its own build.** The version
+  had stopped reaching `lib/buildinfo` when the kernel stopped knowing the
+  distribution, and nobody took over — so every freshly built binary called
+  itself `dev` and could not be compared against the running one.
+
+### Kernel
+
+- Bumped to `fb91751`: no module table, no `Precomputed`/runtime sort (the
+  start order arrives with the declaration), `policy.Env` lends contributors the
+  current config snapshot, and `component.Ordered` verifies the order it just
+  computed.
 
 ## [0.8.2] - 2026-11-04
 
