@@ -42,7 +42,7 @@ const ID = "anthropic"
 func New() modules.Component {
 	return modules.Component{
 		Name:     Name,
-		Desc:     func() string { return i18n.T("the Anthropic brand palette for the web interface", nil) },
+		Desc:     func() string { return i18n.T("an Anthropic-palette skin for the web UI", nil) },
 		Type:     "cli",
 		Requires: []modules.Requirement{modules.Optional(webapi.ThemeCapability)},
 		Start:    start,
