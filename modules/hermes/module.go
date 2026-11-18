@@ -17,7 +17,9 @@ func New() modules.Component {
 	var releases []modules.Release
 	return modules.Component{
 		Name: "hermes",
-		Desc: func() string { return i18n.T("the Hermes Agent client", nil) },
+		Desc: func() string {
+			return i18n.T("the Hermes Agent client: install, config.yaml takeover, /model sync", nil)
+		},
 		Type: "client",
 		Requires: []modules.Requirement{
 			modules.Need(confighookapi.ConfigHooksCapability),
