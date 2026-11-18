@@ -45,7 +45,7 @@ func New() modules.Component {
 	return modules.Component{
 		Name: "locale",
 		Desc: func() string {
-			return i18n.T("which language this process speaks: resolve it, install the tables, honour disk overrides", nil)
+			return i18n.T("which language this process speaks (env > config > system), and installs its tables", nil)
 		},
 		Type: TypeInfra,
 		Requires: []modules.Requirement{
