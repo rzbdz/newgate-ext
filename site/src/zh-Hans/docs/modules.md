@@ -38,13 +38,15 @@ func New() modules.Component {
 }
 ```
 
-**不需要改任何清单**：装配清单由 `tools/genmodules` 在构建期扫 `modules/` 生成，
-目录进来就自动在图上。判据只有一条：根 `module.go` 导出 `func New() modules.Component`。
+**只需要在规格书里点名它**：`dist*.json` 的 `modules` 就是这张表，`tools/distgen`
+把它和启动顺序一起编译进 `manifest/modules_gen.go`。判据只有一条：根 `module.go`
+导出 `func New() modules.Component`。
 
 ## 目录名不必是 Go 标识符
 
 `simple-cli` 这种名字是合法的目录名。生成器会把 import 别名拧成 `ext_simple_cli`
-（判据在内核的 `tools/genmodules/scan.Ident`，两个仓库共用一份实现）。
+（判据在内核的 `tools/genmodules/scan.Ident`，两个仓库共用一份实现——名字留着，
+因为这个包在 2026-11-18 之后只服务发行版的生成器，规则没变）。
 
 ## 三条最常踩的
 
@@ -167,10 +169,10 @@ Start: func(_ context.Context, ctx modules.Context) error {
 
 ```jsonc
 // dist-mine.json
-{ "distribution": "mine", "modules": ["tui", "deepseek", "my-module"], "disable": [] }
+{ "distribution": "mine", "modules": ["tui", "deepseek", "my-module"] }
 ```
 
-然后 `go run ./tools/distgen`（把名字编进装配清单）再 `build/build.sh`。
+然后 `go run ./tools/distgen`（算出启动序、编进模块表）再 `build/build.sh`。
 
 ## 用户可见的文案
 

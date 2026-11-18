@@ -28,9 +28,26 @@ finished release.
     `OnAssemblyFailure`) instead of knowing where the product keeps its log.
   - Behaviour is unchanged: the whole end-to-end suite passes against the
     product binary, as before.
+- **One way to assemble a graph, and the order is part of the declaration.**
+  There used to be two: a loader could hand over a frozen start order (the
+  build-time "precomputed plan") and get a shortcut, while everything else got
+  the runtime topological sort. Both are gone. `Loader.Load()` returns the
+  components **in start order**; `component.Resolve` verifies that order and
+  never sorts; whoever writes a declaration (the generator, `testkit`, a test
+  with its own table) computes it once with `component.Ordered`. The generated
+  manifest is now a single table per spec — `manifest/order_gen.go` is deleted,
+  so "the component list" and "the start order" can no longer disagree. A
+  dependency cycle is reported where an order is actually computed, i.e. at
+  build time, naming the components.
 
 ### Added
 
+- **One switch to pause the health table.** A network wobble trips every
+  binding at once, and once the link is back they stay out until their cooldown
+  expires (up to ten minutes). `newgate plugin breaker off` now admits
+  everything immediately and clears what is currently delisted; the table keeps
+  counting what fails, so `newgate breaker` still shows it. Turn it back on when
+  you know the upstreams are fine.
 - **One-line install, then one-command setup.** `curl -fsSL …/install.sh | bash`
   puts the static binary in `~/.local/bin/newgate` (verifying the release's
   `SHA256SUMS`, keeping the previous binary as `newgate.prev`). `newgate config`

@@ -16,15 +16,13 @@ newgate 分成两半，而**这个分法本身就是重点**：
 // dist-mine.json  →  build/build.sh  →  每个平台一个静态二进制
 {
   "distribution": "mine",
-  "modules": ["tui", "deepseek", "glm", "claudecode", "opencode"],
-  "disable": []
+  "modules": ["tui", "deepseek", "glm", "claudecode", "opencode"]
 }
 ```
 
-- `modules` 是**你自己的** `modules/` 里要装的目录名；
-- `disable` 是要关掉的内核模块。想关掉内核**全部**（骨架发行版就是这么干的）写
-  `"disable": ["*"]`——**别把目录名列满**：列满的名单是内核那张模块表的副本，内核
-  加一个模块时它不会跟着变，于是你会静默多装一个。
+- `modules` 是**你自己的** `modules/` 里要装的目录名，也是这份发行版装的全部内容
+  ——内核一个模块都不带，所以没有「关掉内核的那些」这回事了（`disable` 这个键
+  2026-11-18 删了，写进去是构建期报错）。
 - 编出来叫 `newgate-mine-<平台>-<架构>`。
 
 ```bash

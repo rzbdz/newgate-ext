@@ -142,6 +142,25 @@ tier` 这类命令走的是 `controlplane.Doc.Available()`，它是**只读**的
 verifier 为 nil（默认）时行为与以前完全一致——这一步是纯粹的加固，不是必需
 依赖。
 
+### 网络抖动把整张表清空时：一个开关
+
+availability 账本是「连续 2 次失败 / 60s」（见 `modules/breaker/policy.go`）。按
+binding 看是对的，但**同因失败**不是：一次掉线会让链上每个 binding 各挨两下，整张表
+一起摘掉；链路恢复之后它们还得等自己的 cooldown 到期（回退到 10 分钟封顶），于是
+「网络好了、模型全不可用」。
+
+`newgate plugin breaker off`（开关点 `breaker.admission`，出厂开）：
+
+- **立刻**让所有 binding 重新进候选链；
+- 顺手清掉已摘牌的记录（一次，在第一个看到开关关闭的请求上），`newgate breaker`
+  立刻变空表——「可以走但表上写着摘牌」是自相矛盾；
+- **账本照记**：失败数、shape 跳过、spared、探活结论都留着，所以 `newgate breaker`
+  与 `metrics` 仍然答得出「谁在失败」；
+- 开回来时行为与以前逐字相同。开之前想清旧账也可以先跑一次 `newgate probe`（探活是
+  权威结论，立即解封）。
+
+不设 TTL 是刻意的：触发它的原因是外部的，什么时候结束只有你知道。
+
 ### 记账盲区
 
 `health.json` 与 `newgate breaker` 里的行 = 账本记录 ∪ 探活结论 ∪ 延迟评分。

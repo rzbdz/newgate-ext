@@ -45,8 +45,9 @@ newgate-ext/           ← 你在这里（发行版：产品），这个仓库�
    两条要同步的东西，买到的却只是「fork 时不带产品模块」，而那件事规格书本来就能
    做：想从零开始，写一份自己的 `dist*.json`、模块列表自己填，`dist-hello.json`
    就是活的最小样例（框架 + 一个 hello，编出来直接跑）。
-4. **内核对发行版一无所知**。`app.Selection` 是那条接缝：组合根的装配逻辑在内核，
-   「装哪些」由这里给。别指望内核认识任何模块名——它连 `deepseek` 这个词都不该有。
+4. **内核对发行版一无所知**。`modules.Loader` 是那条接缝：组合根的装配逻辑在内核，
+   「装哪些、按什么顺序」由这里给。别指望内核认识任何模块名——它连 `deepseek`
+   这个词都不该有。
 
 ## 1. 改哪边（判据）
 
@@ -169,7 +170,7 @@ NEWGATE_PLATFORMS="linux/amd64 linux/arm64 darwin/arm64" build/build.sh dist/
   `NEWGATE_DISTS: dist.json`），CI 则编**全部**规格书（「另一份配置编不过」这种
   故障本地看不见，谁也不天天编骨架配置）。
 
-- 脚本做四件事：检查 `core/` → 生成装配清单（`tools/distgen`）→ 编静态二进制
+- 脚本做四件事：检查 `core/` → 生成模块表（`tools/distgen`）→ 编静态二进制
   → 拷到 `dist/`。本地与 CI（`.github/workflows/release.yml`）走的是同一条路。
 - **多调用型二进制**：argv0 决定这次调用归谁（`newgate` / `claude` / `opencode` …）。
   所以拿产物去跑之前，**先按正确的名字落一份**——直接跑
@@ -179,12 +180,17 @@ NEWGATE_PLATFORMS="linux/amd64 linux/arm64 darwin/arm64" build/build.sh dist/
   每一份规格书都必须在 `modules` 里点名它要装的**全部**模块（内核的那几个也在这里，
   因为内核自己不带）。`dist-hello.json` 是最小样例：`i18n` + `entry` + `hello`。
   点了不存在的目录、或两份规格书之间漏了某个必需模块，`distgen` 生成/构图期报错。
-  （旧写法 `"disable": ["*"]` 编成 `app.Selection.AllCore` 仍在 `Selection` 里保留着
-  给第三方组合根用，但本仓库的规格书已经不用它了。）
+  （`disable` 这个键 2026-11-18 删掉了：内核没有模块可关，五份规格书里它都是空的。
+  现在写进去是**构建期报错**，不是静默忽略。）
 - 换规格书 = 改 `dist.json` 或加一份 `dist*.json`，**不用改任何 Go 代码**：
   `distgen` 会把全部规格书生成进 `manifest/modules_gen.go`（那份文件要提交），
   构建时用 `-X distinfo.spec=<文件名>` 选一份。
-- **`manifest/modules_gen.go` 是生成物但进版本控制**：它记着「这份提交装了什么」。
+- **那张表里的顺序就是启动顺序**（2026-11-18）：`Loader.Load()` 交出来的切片即启动
+  序（provider 在前），运行时 `component.Resolve` 只校验、不排序。顺序由 `distgen`
+  的第二趟算：起 `tools/distgen/orderprobe` 新进程跑 `component.Ordered`，再按结果
+  重写同一张表。所以「清单」和「顺序」不是两张表，不会互相对不上。
+- **`manifest/modules_gen.go` 是生成物但进版本控制**：它记着「这份提交装了什么、按
+  什么顺序装」。
   改了规格书或模块目录就要重新生成（`go run ./tools/distgen`），
   CI 有一步 `-check` 拦「忘了生成」。
 
