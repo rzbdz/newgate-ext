@@ -45,7 +45,7 @@ func New() modules.Component {
 	return modules.Component{
 		Name: "ask",
 		Desc: func() string {
-			return i18n.T("ask one prompt through the running proxy, and print just the answer", nil)
+			return i18n.T("one prompt in, body text out — for scripts (newgate ask); reasoning goes to stderr", nil)
 		},
 		Type: "cli",
 		Requires: []modules.Requirement{
