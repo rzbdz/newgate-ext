@@ -127,7 +127,7 @@ echo
 echo "== 1. takeover is the default: config.toml gets the tier name =="
 "$BIN" on codex >"$SANDBOX/on1.log" 2>&1
 has "model is written as the tier name" '^model = "normal"' "$CODEX_HOME/config.toml"
-has "the user's own comment is still there (takeover is byte surgery, not a TOML round trip)" 'a comment I wrote myself' "$CODEX_HOME/config.toml"
+has "the user's own comment is still there (takeover is byte surgery, not a TOML round trip)" 'A comment I wrote myself' "$CODEX_HOME/config.toml"
 
 echo
 echo "== 2. switch to rename: write codex's own model name =="
