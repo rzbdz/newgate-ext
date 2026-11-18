@@ -1,8 +1,10 @@
-// Package codex 描述 Codex（OpenAI 官方 CLI）客户端。
+// Package codex describes the Codex (OpenAI's official CLI) client.
 //
-// 本模块只做三件事：注册**描述符**（它是什么）、**安装方式**（怎么装）、以及
-// 运行期事实（装没装）。模型怎么接管、有哪些槽位，属于后续的配置模块——这种切法
-// 让「装得上」与「接得管」各自可测，也让基础客户端不反向依赖某个可选能力。
+// This module does exactly three things: register the **descriptor** (what
+// it is), the **install method** (how to install), and runtime facts (installed or
+// not). How models are taken over and which slots exist belong to the later config
+// module -- this split makes "installable" and "configurable" testable separately,
+// and keeps the base client from depending on an optional capability in reverse.
 package codex
 
 import (
@@ -18,7 +20,7 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// New 声明 Codex 客户端组件。
+// New declares the Codex client component.
 func New() modules.Component {
 	var releases []modules.Release
 	return modules.Component{
@@ -27,23 +29,24 @@ func New() modules.Component {
 		Type: "client",
 		Requires: []modules.Requirement{
 			modules.Need(confighookapi.ConfigHooksCapability),
-			// 动态角色（codex 的模型名 → 档位，见 models.go）。**强依赖**而不是
-			// 弱依赖：那张表登记不上时的症状是「在 codex 里换了个模型就 404」，
-			// 而那正是本模块现在要解决的事——静默降级在这里是不能接受的。
+			// Dynamic roles (codex's model names -> tiers, see models.go). **A hard
+			// dependency** rather than a weak one: the symptom when that table cannot
+			// be registered is "switch a model in codex and get a 404", which is exactly
+			// what this module now fixes -- silent degradation is unacceptable here.
 			modules.Need(configapi.Capability),
-			// web 界面：在就把「Codex 档位」那张卡挂上去（见 view.go），不在就跳过。
-			// 弱依赖——本模块的功能一个都不少，只是没有浏览器入口。
+			// Web UI: if present, mount the "Codex models" card (see view.go); if not, skip. A weak
+			// dependency -- none of this module's functionality is lost, there is just no browser entry.
 			modules.Optional(viewapi.Capability),
-			// 网关：装配这一手（client → 通用上游的 tool lift）需要一个能 Register
-			// request hook 的端口。**弱依赖**：骨架发行版（dist-hello）关掉了
-			// gateway，那时 hook 不挂、客户端没有转发——但客户端本身的描述符/事实
-			// 不受影响，强行 Need 会让 hello 跑不起来。
+			// Gateway: this move (client -> generic upstream tool lift) needs a port that can Register
+			// a request hook. **Weak dependency**: the skeleton distribution (dist-hello) turns gateway
+			// off, and then the hook is not mounted and the client has no forwarding -- but the client's
+			// own descriptor/facts are unaffected, and forcing a Need would keep hello from starting.
 			modules.Optional(gatewayapi.Capability),
-			// plugin-manager：抬工具那一手的**运行期开关点**（`codex.lift-tools`）。
-			// 弱依赖——它不在时抬工具照常跑，只是没有开关可关（见 st-tools.go 的
-			// registerToolsLift）。
+			// plugin-manager: the **runtime switch point** for the tool-lifting move
+			// (`codex.lift-tools`). A weak dependency -- without it tool lifting runs as usual,
+			// there is just no switch to turn it off (see registerToolsLift in st-tools.go).
 			modules.Optional(pluginmanagerapi.Capability),
-			// 终端界面：在就把接管模式报进 status（见 status.go），不在就跳过。
+			// Terminal UI: if present, report the takeover mode into status (see status.go); if not, skip.
 			modules.Optional(cliapi.Capability),
 		},
 		Provides: []modules.Provision{
@@ -57,9 +60,9 @@ func New() modules.Component {
 			}
 			releases = append(releases, release)
 
-			// 安装方式：`newgate codex -y`（或没装时问一句）走的就是它。
-			// 命令写在这里而不是内核里——换包名、换渠道是这家客户端的事（见
-			// confighook 的 AgentInstaller）。
+			// Install method: `newgate codex -y` (or the question when not installed) goes through
+			// it. The command is written here rather than in the kernel -- changing the package
+			// name or channel is this client's business (see AgentInstaller in confighook).
 			release, err = hooks.RegisterAgentInstaller(ID, confighookapi.ExecInstaller(
 				"npm", "install", "--global", NpmPackage))
 			if err != nil {
@@ -73,28 +76,28 @@ func New() modules.Component {
 			}
 			releases = append(releases, release)
 
-			// 接管：改写 ~/.codex/config.toml（见 takeover.go）。档位与窗口声明
-			// 都在 **Apply 那一刻**现算——槽位映射与活动 profile 都是用户随时能改
-			// 的，注册期读一次就会冻在那里。
+			// Takeover: rewrite ~/.codex/config.toml (see takeover.go). The tier and window declarations
+			// are computed at **the moment of Apply** -- the slot mapping and the active profile can
+			// be changed by the user at any time, and reading once at registration would freeze them.
 			release, err = hooks.BindTakeover(ID, Takeover{})
 			if err != nil {
 				return err
 			}
 			releases = append(releases, release)
 
-			// codex 的模型名 ↔ 档位（见 models.go）。这份贡献**跟着接管模式走**：
-			// 只有 rename 模式下才真的登记出角色来，理由写在 rolesProvider 上
-			// ——无条件登记会短路掉「具体模型名反解回档位」那条路，而那会改掉
-			// **没让路的人**的行为。
+			// codex's model names <-> tiers (see models.go). This contribution **follows the takeover
+			// mode**: roles are really registered only in rename mode, for the reason on rolesProvider
+			// -- unconditional registration would short-circuit the "resolve a concrete model name back
+			// to a tier" path, and that would change the behavior of **people who did not opt in**.
 			release, err = modules.MustGet(ctx, configapi.Capability).RegisterRoleProvider(rolesProvider{})
 			if err != nil {
 				return err
 			}
 			releases = append(releases, release)
 
-			// 工具方言归一化（lift，见 st-tools.go）。没有网关上就跳过——
-			// 见 Optional 的注释。开关点报给 plugin-manager（它不在时那一手照
-			// 常跑，只是没有运行期开关——见 registerToolsLift）。
+			// Tool dialect normalization (lift, see st-tools.go). Skip with no gateway -- see
+			// the Optional comment. The switch point is reported to plugin-manager (without it
+			// that move runs as usual, just with no runtime switch -- see registerToolsLift).
 			if gw, ok := modules.Get(ctx, gatewayapi.Capability); ok {
 				pm, _ := modules.Get(ctx, pluginmanagerapi.Capability)
 				hookReleases, err := registerToolsLift(gw, pm)
@@ -104,7 +107,7 @@ func New() modules.Component {
 				releases = append(releases, hookReleases...)
 			}
 
-			// web 界面：登记「Codex 档位」那张卡（见 view.go）。
+			// Web UI: register the "Codex models" card (see view.go).
 			if v, ok := modules.Get(ctx, viewapi.Capability); ok {
 				release, err := registerView(v)
 				if err != nil {
@@ -112,8 +115,9 @@ func New() modules.Component {
 				}
 				releases = append(releases, release)
 			}
-			// 终端：接管模式那一行（见 status.go）。模式在网页上能切，终端里
-			// 至少要能看见——这正是「新功能没有注入」的一处。
+			// Terminal: the takeover-mode line (see status.go). The mode can be
+			// switched on the web page; the terminal should at least see it --
+			// this is exactly one place where "a new feature has no injection".
 			if ui, ok := modules.Get(ctx, cliapi.Capability); ok {
 				release, err := ui.RegisterStatus(status{})
 				if err != nil {

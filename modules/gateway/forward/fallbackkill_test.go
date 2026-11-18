@@ -95,7 +95,7 @@ func newFallbackRig(t *testing.T) *fallbackRig {
 
 	srv, logs := newLoggingTestServer()
 	if _, err := srv.Filters.Register(shapeTestFilter{advance: true}); err != nil {
-		t.Fatalf("注册策略: %v", err)
+		t.Fatalf("registering the policy: %v", err)
 	}
 	front := httptest.NewServer(http.HandlerFunc(srv.handleProxy))
 	t.Cleanup(front.Close)
@@ -127,25 +127,25 @@ func TestFallbackOnByDefaultStillSwaps(t *testing.T) {
 
 	resp, body := rig.post(t, "/v1/chat/completions")
 	if resp.StatusCode != 200 || body != `{"ok":true}` {
-		t.Fatalf("默认该换到第二站并原样回它的 200；got %d %q\n%s", resp.StatusCode, body, rig.logs.String())
+		t.Fatalf("by default it should fail over to the second stop and return its 200 as is; got %d %q\n%s", resp.StatusCode, body, rig.logs.String())
 	}
 	if n := atomic.LoadInt64(rig.hits1); n != 1 {
-		t.Errorf("第一站被敲了 %d 次, want 1", n)
+		t.Errorf("the first stop was hit %d times, want 1", n)
 	}
 	// 上游挂了重试会把同一站再敲一次，所以这里只断言「被敲过」。
 	if n := atomic.LoadInt64(rig.hits2); n == 0 {
-		t.Error("第二站一次都没被敲——链没接上，这条测试的其余断言都会空转")
+		t.Error("the second stop was never hit - the chain is not wired, so the rest of this test passes vacuously")
 	}
 	if resp.Header.Get("X-Newgate-Failover") == "" {
-		t.Error("换了人却没有 X-Newgate-Failover 这一行——现场无法从响应里看出来")
+		t.Error("it failed over but there is no X-Newgate-Failover line - the scene cannot be seen from the response")
 	}
 	logs := rig.logs.String()
 	if !strings.Contains(logs, "advancing to next chain step") {
-		t.Errorf("换了人却没留痕：\n%s", logs)
+		t.Errorf("it failed over but left no trace:\n%s", logs)
 	}
 	// 留痕的落点：这一发在日志里该自报「换了人」（成功路径按 i>0 打这句）。
 	if !strings.Contains(logs, "(failover)") {
-		t.Errorf("成功那条日志没标 failover：\n%s", logs)
+		t.Errorf("the success log line is not marked failover:\n%s", logs)
 	}
 	if got := metrics.Default.Snapshot()["chain.failover"]; got != 1 {
 		t.Errorf("chain.failover = %d, want 1", got)
@@ -170,29 +170,29 @@ func TestPinnedProfileStopsAtTheHead(t *testing.T) {
 	resp, body := rig.post(t, "/a/claude/p/pinned-test/v1/chat/completions")
 
 	if n := atomic.LoadInt64(rig.hits2); n != 0 {
-		t.Fatalf("点名了 profile 却换了人：第二站被敲了 %d 次", n)
+		t.Fatalf("a profile was named yet it failed over: the second stop was hit %d times", n)
 	}
 	if n := atomic.LoadInt64(rig.hits1); n != 1 {
-		t.Errorf("第一站被敲了 %d 次, want 1", n)
+		t.Errorf("the first stop was hit %d times, want 1", n)
 	}
 	// 这一发必须**撞在上游上**：用户要的就是上游的原文，不是被谁接住之后的 200。
 	if resp.StatusCode != 400 {
-		t.Fatalf("状态码 = %d, want 400（点名的那个挂了就该如实报）", resp.StatusCode)
+		t.Fatalf("status = %d, want 400 (the named one is down, so report it as is)", resp.StatusCode)
 	}
 	if body != fallbackShapeBody {
-		t.Errorf("上游原文被改动了\n want: %q\n got:  %q", fallbackShapeBody, body)
+		t.Errorf("the upstream text was changed\n want: %q\n got:  %q", fallbackShapeBody, body)
 	}
 	if got := resp.Header.Get("X-Newgate-Failover"); got != "" {
-		t.Errorf("没换人却写了 X-Newgate-Failover: %q", got)
+		t.Errorf("no failover happened yet X-Newgate-Failover was written: %q", got)
 	}
 	logs := rig.logs.String()
 	// 被砍掉的那几步连同原因都要在日志里——不静默。格式是 formatSteps 的
 	// `profile:provider/model`，所以这里能精确到那一步是谁。
 	if !strings.Contains(logs, "profile pinned-test is pinned, dropping 1 fallback step: other:other-ok/real-model-1") {
-		t.Errorf("没有留下「砍掉了谁、为什么」：\n%s", logs)
+		t.Errorf("nothing recorded 'who was dropped and why':\n%s", logs)
 	}
 	if strings.Contains(logs, "advancing to next chain step") {
-		t.Errorf("钉住 profile 之后还往前走了：\n%s", logs)
+		t.Errorf("it moved on even though the profile was pinned:\n%s", logs)
 	}
 	if got := metrics.Default.Snapshot()["chain.failover"]; got != 0 {
 		t.Errorf("chain.failover = %d, want 0", got)
@@ -211,23 +211,23 @@ func TestFallbackOffStopsAtTheHead(t *testing.T) {
 	resp, body := rig.post(t, "/v1/chat/completions")
 
 	if n := atomic.LoadInt64(rig.hits2); n != 0 {
-		t.Fatalf("fallback 关着却换了人：第二站被敲了 %d 次", n)
+		t.Fatalf("fallback is off yet it failed over: the second stop was hit %d times", n)
 	}
 	if n := atomic.LoadInt64(rig.hits1); n != 1 {
-		t.Errorf("第一站被敲了 %d 次, want 1", n)
+		t.Errorf("the first stop was hit %d times, want 1", n)
 	}
 	if resp.StatusCode != 400 {
-		t.Fatalf("状态码 = %d, want 400（关掉 fallback 就是让请求直接撞在上游上）", resp.StatusCode)
+		t.Fatalf("status = %d, want 400 (turning fallback off means the request hits the upstream directly)", resp.StatusCode)
 	}
 	if body != fallbackShapeBody {
-		t.Errorf("上游原文被改动了\n want: %q\n got:  %q", fallbackShapeBody, body)
+		t.Errorf("the upstream text was changed\n want: %q\n got:  %q", fallbackShapeBody, body)
 	}
 	if got := resp.Header.Get("X-Newgate-Failover"); got != "" {
-		t.Errorf("没换人却写了 X-Newgate-Failover: %q", got)
+		t.Errorf("no failover happened yet X-Newgate-Failover was written: %q", got)
 	}
 	logs := rig.logs.String()
 	if !strings.Contains(logs, "fallback is off, dropping 1 chain step: other:other-ok/real-model-1") {
-		t.Errorf("没有留下「砍掉了谁、为什么」：\n%s", logs)
+		t.Errorf("nothing recorded 'who was dropped and why':\n%s", logs)
 	}
 	if got := metrics.Default.Snapshot()["chain.failover"]; got != 0 {
 		t.Errorf("chain.failover = %d, want 0", got)
@@ -258,22 +258,22 @@ func TestFallbackOffIgnoresTheTimeoutBudget(t *testing.T) {
 
 	resp, body := rig.post(t, "/v1/chat/completions")
 	if resp.StatusCode != 400 {
-		t.Fatalf("状态码 = %d, want 400（预算只该影响「还要不要等下一站」）", resp.StatusCode)
+		t.Fatalf("status = %d, want 400 (the budget should only affect whether to wait for the next stop)", resp.StatusCode)
 	}
 	if body != fallbackShapeBody {
-		t.Errorf("上游原文被改动了\n got: %q", body)
+		t.Errorf("the upstream text was changed\n got: %q", body)
 	}
 	if n := atomic.LoadInt64(rig.hits1); n != 1 {
-		t.Errorf("第一站被敲了 %d 次, want 1（预算不该拦下第一发）", n)
+		t.Errorf("the first stop was hit %d times, want 1 (the budget must not block the first request)", n)
 	}
 	if n := atomic.LoadInt64(rig.hits2); n != 0 {
-		t.Errorf("第二站被敲了 %d 次——链只剩一步时那道预算闸根本轮不到", n)
+		t.Errorf("the second stop was hit %d times - with one step left in the chain the budget gate never applies", n)
 	}
 	if got := metrics.Default.Snapshot()["chain.budget_exhausted"]; got != 0 {
-		t.Errorf("chain.budget_exhausted = %d, want 0（只剩一步时这条判断根本轮不到）", got)
+		t.Errorf("chain.budget_exhausted = %d, want 0 (with one step left this check never applies)", got)
 	}
 	if trail := resp.Header.Get("X-Newgate-Chain"); strings.Contains(trail, "budget-exhausted") {
-		t.Errorf("X-Newgate-Chain 里出现 budget-exhausted: %q", trail)
+		t.Errorf("budget-exhausted appears in X-Newgate-Chain: %q", trail)
 	}
 }
 

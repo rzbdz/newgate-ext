@@ -5,41 +5,41 @@ import (
 	"time"
 )
 
-// StateKey 是 state.json 里本模块拥有的字段名（由 module.go 向 confighook 登记）。
+// StateKey is this module's field name in state.json (registered with confighook by module.go).
 //
-// 它留在**机器本地**是对的：开关是现场调试动作，不是车队配置。共享配置层的
-// 托管文件集合里不含 state.json，所以「A 机器关掉某个开关」不会漂到 B 机器。
+// **Machine-local** is right: switches are live debugging actions, not fleet config. The
+// shared config layer does not manage state.json, so machine A's off never drifts to B.
 const StateKey = "plugin_manager"
 
-// Entry 是一次显式设定的记录。
+// Entry is the record of one explicit setting.
 type Entry struct {
-	// Until 是这条设定的失效时刻（RFC3339，零值 = 不限时）。**懒过期**：没人
-	// 在后台扫它，读的时候比一下当前时间就算数。daemon 因此不持 timer，重启
-	// 也不残留任何东西。
+	// Until is this setting's expiry time (RFC3339, zero value = no limit). **Lazy expiry**:
+	// nothing scans it in the background - the read just compares the current time. So the
+	// daemon holds no timer, and a restart leaves nothing behind.
 	Until time.Time `json:"until,omitempty"`
 }
 
-// Config 是 state.json 里 plugin_manager 字段的形状。
+// Config is the shape of the plugin_manager field in state.json.
 //
-// 两张表是**独立**的，而不是一张 map 加一个极性字段：
+// The two tables are **independent**, not one map plus a polarity field:
 //
-//   - Off 是「出厂开、用户关掉」的 kill switch；
-//   - On 是「出厂关、用户打开」的 mode。
+//   - Off is the kill switch for "factory on, user turned it off";
+//   - On is the mode for "factory off, user opened it".
 //
-// 一条 Path 只会出现在其中一张里，由 CLI 按 Switch.Default 决定写哪张。这样做
-// 的好处都在热路径上：Off() 和 On() 各自只看自己那张表，**都不需要查注册表**，
-// 于是核心的转发循环里只有一次 map 查找。坏处是 JSON 里有两张表，但它是自解释的。
+// A Path is in only one, chosen by the CLI from Switch.Default. All the payoff is on the
+// hot path: Off() and On() read only their own table, **no registry lookup**, so the
+// forwarding loop does one map lookup. The cost: two JSON tables, but they self-explain.
 type Config struct {
 	Off map[string]Entry `json:"off,omitempty"`
 	On  map[string]Entry `json:"on,omitempty"`
 }
 
-// Parse 解析 state.json 里的原始字节。
+// Parse parses the raw bytes in state.json.
 //
-// **永不失败**：坏 JSON、缺字段、类型不对，一律当「用户什么都没设过」。这是
-// fail-open 的落点——读不出来就照常工作，绝不因为一段坏配置把某个功能关掉。
-// 与 modules/claudecode 的 ParseNakedConfig 同款（那份注释记着两次因为过期判断
-// 分叉而出的 bug，所以这里只有这一个解析入口，所有读点都走它）。
+// **Never fails**: bad JSON, missing fields, wrong types all mean "the user set nothing".
+// This is where fail-open lands - unreadable, work as usual, never disable a feature over
+// bad config. Same as modules/claudecode's ParseNakedConfig (that note records two bugs
+// born from diverging expiry checks, so there is one parse entry and every read uses it).
 func Parse(raw []byte) Config {
 	var c Config
 	if len(raw) == 0 {
@@ -51,14 +51,14 @@ func Parse(raw []byte) Config {
 	return c
 }
 
-// Marshal 序列化成写回 state.json 的字节。
+// Marshal serializes into the bytes written back to state.json.
 func (c Config) Marshal() ([]byte, error) { return json.Marshal(c) }
 
-// lookup 在给定的那张表里找一条设定，并做懒过期判断。
+// lookup finds one setting in the given table and does the lazy expiry check.
 //
-// 返回 (生效, 失效时刻)。过期的当没设过——**并且不删**：删除需要写盘，而热路径
-// 是只读的。过期项留着的代价只是 JSON 里多一行，CLI 下次写入时会顺带清掉它
-// （见 Config.Prune）。
+// Returns (in effect, expiry). Expired counts as never set - **and is not deleted**:
+// deleting needs a disk write, and the hot path is read-only. A leftover expired entry
+// costs one extra JSON line, and the CLI's next write sweeps it away (see Config.Prune).
 func lookup(table map[string]Entry, path string) (bool, time.Time) {
 	e, ok := table[path]
 	if !ok {
@@ -70,7 +70,7 @@ func lookup(table map[string]Entry, path string) (bool, time.Time) {
 	return true, e.Until
 }
 
-// Prune 去掉已过期的设定，供 CLI 每次写入前顺手清理（热路径不做这件事）。
+// Prune drops expired settings, for the CLI to sweep before each write (the hot path does not).
 func (c Config) Prune() Config {
 	out := Config{}
 	keep := func(dst *map[string]Entry, src map[string]Entry) {

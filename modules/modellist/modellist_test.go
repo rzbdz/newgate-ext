@@ -26,7 +26,7 @@ func useProvider(t *testing.T, name string, p domain.Provider) {
 	t.Helper()
 	testkit.Sandbox(t)
 	if err := store.SaveProviders(&domain.Providers{Providers: map[string]domain.Provider{name: p}}); err != nil {
-		t.Fatalf("写 providers.json: %v", err)
+		t.Fatalf("writing providers.json: %v", err)
 	}
 }
 
@@ -56,26 +56,26 @@ func TestOpenAIListsModelsWithGroups(t *testing.T) {
 		t.Fatalf("List: %v", err)
 	}
 	if !cat.Supported || cat.Adapter != "openai" {
-		t.Fatalf("应该是 openai 适配器成功，实际 %+v", cat)
+		t.Fatalf("the openai adapter should succeed, got %+v", cat)
 	}
 	if path != "/models" {
-		t.Errorf("第一跳 /v1/models 404 之后该落到 /models，实际最后请求 %q", path)
+		t.Errorf("after /v1/models 404s on the first hop it should fall to /models, got %q as the final request", path)
 	}
 	if auth != "Bearer sk-test" {
-		t.Errorf("OpenAI 方言该用 Bearer，实际 %q", auth)
+		t.Errorf("the OpenAI dialect should use Bearer, got %q", auth)
 	}
 	if len(cat.Models) != 2 {
-		t.Errorf("重复 id 该去掉（上游分页边界可能重复），实际 %+v", cat.Models)
+		t.Errorf("duplicate ids should be removed (upstream pagination boundaries may repeat), got %+v", cat.Models)
 	}
 	if cat.Models[0].Group != "chat" || cat.Models[1].Group != "reasoning" {
-		t.Errorf("owned_by 该变成分组，实际 %+v", cat.Models)
+		t.Errorf("owned_by should become the group, got %+v", cat.Models)
 	}
 	if len(cat.Groups) != 2 || cat.Groups[0] != "chat" {
-		t.Errorf("分组按第一次出现排序，实际 %v", cat.Groups)
+		t.Errorf("groups are ordered by first appearance, got %v", cat.Groups)
 	}
 	// 声明的协议是 openai，第一条路就成功了；不该再去试 anthropic。
 	if cat.Endpoint == "" || !strings.HasSuffix(cat.Endpoint, "/models") {
-		t.Errorf("Endpoint 该是实际问到的地址，实际 %q", cat.Endpoint)
+		t.Errorf("Endpoint should be the address actually queried, got %q", cat.Endpoint)
 	}
 }
 
@@ -105,16 +105,16 @@ func TestAnthropicPaginatesWithItsOwnHeaders(t *testing.T) {
 		t.Fatalf("List: %v", err)
 	}
 	if !cat.Supported || cat.Adapter != "anthropic" {
-		t.Fatalf("应该是 anthropic 适配器成功，实际 %+v", cat)
+		t.Fatalf("the anthropic adapter should succeed, got %+v", cat)
 	}
 	if calls != 2 {
-		t.Errorf("has_more 该走第二页，实际请求 %d 次", calls)
+		t.Errorf("has_more should fetch the second page, got %d requests", calls)
 	}
 	if key != "sk-ant" || version == "" {
-		t.Errorf("Anthropic 方言该带 x-api-key 与 anthropic-version，实际 key=%q version=%q", key, version)
+		t.Errorf("the Anthropic dialect should send x-api-key and anthropic-version, got key=%q version=%q", key, version)
 	}
 	if len(cat.Models) != 2 || cat.Models[1].Name != "Claude B" {
-		t.Errorf("两页该并成一份清单（display_name → name），实际 %+v", cat.Models)
+		t.Errorf("the two pages should merge into one list (display_name -> name), got %+v", cat.Models)
 	}
 }
 
@@ -129,19 +129,19 @@ func TestUnsupportedIsAnAnswerNotAnError(t *testing.T) {
 	useProvider(t, "nope", domain.Provider{BaseURL: srv.URL, Protocol: "openai"})
 	cat, err := newTestService().List(context.Background(), "nope", Options{})
 	if err != nil {
-		t.Fatalf("问不到不是 HTTP 错误：界面要的是 supported=false + 原因，实际 error=%v", err)
+		t.Fatalf("failing to query is not an HTTP error: the UI wants supported=false plus a reason, got error=%v", err)
 	}
 	if cat.Supported {
-		t.Fatal("上游全 404 时不该说它支持")
+		t.Fatal("when the upstream 404s everything it must not say it is supported")
 	}
 	if cat.Models == nil || len(cat.Models) != 0 {
-		t.Errorf("Models 该是空数组而不是 nil（前端不必写两条分支），实际 %#v", cat.Models)
+		t.Errorf("Models should be an empty array, not nil (the front end need not write two branches), got %#v", cat.Models)
 	}
 	if !strings.Contains(cat.Note, "no model list") {
-		t.Errorf("Note 该说清原因，实际 %q", cat.Note)
+		t.Errorf("Note should state the reason, got %q", cat.Note)
 	}
 	if atomic.LoadInt32(&hits) < 2 {
-		t.Errorf("两条适配器 × 候选地址都该试过，实际只打了 %d 次", hits)
+		t.Errorf("both adapters times all candidate addresses should have been tried, only %d requests were made", hits)
 	}
 }
 
@@ -157,13 +157,13 @@ func TestAnEmptyListFallsBackLikeUnsupported(t *testing.T) {
 		t.Fatal(err)
 	}
 	if cat.Supported {
-		t.Fatal("一个模型都没有时界面必须回落到声明清单，不能画一个空菜单")
+		t.Fatal("with no models at all the UI must fall back to the declared list, not draw an empty menu")
 	}
 	if !strings.Contains(cat.Note, "empty model list") {
-		t.Errorf("Note 该说「空清单」，实际 %q", cat.Note)
+		t.Errorf("Note should say 'empty list', got %q", cat.Note)
 	}
 	if cat.Adapter != "openai" || cat.Endpoint == "" {
-		t.Errorf("原因里该保留「问过哪儿」，实际 adapter=%q endpoint=%q", cat.Adapter, cat.Endpoint)
+		t.Errorf("the reason should keep 'where it asked', got adapter=%q endpoint=%q", cat.Adapter, cat.Endpoint)
 	}
 }
 
@@ -177,10 +177,10 @@ func TestAuthFailureIsReportedAsAReason(t *testing.T) {
 	useProvider(t, "bad", domain.Provider{BaseURL: srv.URL, Protocol: "openai"})
 	cat, err := newTestService().List(context.Background(), "bad", Options{})
 	if err != nil {
-		t.Fatalf("认证失败也要变成 supported=false（界面回落到声明清单），实际 error=%v", err)
+		t.Fatalf("an auth failure must also become supported=false (the UI falls back to the declared list), got error=%v", err)
 	}
 	if cat.Supported || !strings.Contains(cat.Note, "401") {
-		t.Errorf("Note 该点名 HTTP 401，实际 supported=%v note=%q", cat.Supported, cat.Note)
+		t.Errorf("Note should name HTTP 401, got supported=%v note=%q", cat.Supported, cat.Note)
 	}
 }
 
@@ -197,41 +197,41 @@ func TestCacheAndRefresh(t *testing.T) {
 
 	first, err := svc.List(context.Background(), "p", Options{})
 	if err != nil || !first.Supported {
-		t.Fatalf("第一次: %+v / %v", first, err)
+		t.Fatalf("first call: %+v / %v", first, err)
 	}
 	second, err := svc.List(context.Background(), "p", Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !second.Cached {
-		t.Error("第二次该命中缓存——下拉打开十几次不该问上游十几次")
+		t.Error("the second call should hit the cache - opening the dropdown a dozen times must not ask the upstream a dozen times")
 	}
 	if got := atomic.LoadInt32(&hits); got != 1 {
-		t.Errorf("缓存命中时上游只该被打一次，实际 %d", got)
+		t.Errorf("on a cache hit the upstream should be hit only once, got %d", got)
 	}
 	third, err := svc.List(context.Background(), "p", Options{Refresh: true})
 	if err != nil || third.Cached {
-		t.Fatalf("refresh 该绕过缓存: cached=%v err=%v", third.Cached, err)
+		t.Fatalf("refresh should bypass the cache: cached=%v err=%v", third.Cached, err)
 	}
 	if got := atomic.LoadInt32(&hits); got != 2 {
-		t.Errorf("refresh 之后该再问一次，实际 %d", got)
+		t.Errorf("after refresh it should ask again, got %d", got)
 	}
 }
 
 func TestUnknownProviderIsAnError(t *testing.T) {
 	useProvider(t, "known", domain.Provider{BaseURL: "http://127.0.0.1:9", Protocol: "openai"})
 	if _, err := newTestService().List(context.Background(), "missing", Options{}); err == nil {
-		t.Fatal("名字不存在是一个真的错误（调用方问错了），不该伪装成「不支持」")
+		t.Fatal("an unknown name is a real error (the caller asked wrong); it must not be disguised as 'unsupported'")
 	}
 }
 
 func TestSafeURLStripsCredentials(t *testing.T) {
 	got := safeURL("https://user:secret@example.com/v1/models?x=1")
 	if strings.Contains(got, "secret") || strings.Contains(got, "user@") {
-		t.Errorf("URL 里的 userinfo 不该端到界面/日志上，实际 %q", got)
+		t.Errorf("userinfo in the URL must not reach the UI or the log, got %q", got)
 	}
 	if !strings.Contains(got, "example.com/v1/models") {
-		t.Errorf("地址本身要留着（看的人才知道问的是哪儿），实际 %q", got)
+		t.Errorf("the address itself must be kept (the reader needs to know where it asked), got %q", got)
 	}
 }
 
@@ -262,10 +262,10 @@ func TestParseModelShapes(t *testing.T) {
 				groups = append(groups, m.Group)
 			}
 			if strings.Join(ids, ",") != strings.Join(c.ids, ",") {
-				t.Errorf("ids = %v，想要 %v", ids, c.ids)
+				t.Errorf("ids = %v, want %v", ids, c.ids)
 			}
 			if strings.Join(groups, ",") != strings.Join(c.group, ",") {
-				t.Errorf("groups = %v，想要 %v", groups, c.group)
+				t.Errorf("groups = %v, want %v", groups, c.group)
 			}
 		})
 	}
@@ -285,13 +285,13 @@ func TestHandleReadsTheExtensionRequest(t *testing.T) {
 	}
 	cat, ok := out.(*Catalog)
 	if !ok || !cat.Supported {
-		t.Fatalf("扩展端点该交出 Catalog，实际 %#v", out)
+		t.Fatalf("the extension endpoint should produce a Catalog, got %#v", out)
 	}
 	if _, err := svc.handle(webapi.ExtensionRequest{Context: context.Background()}); err == nil {
-		t.Error("空请求体该报错（他说不清要问谁）")
+		t.Error("an empty request body should error (it does not say whom to ask)")
 	}
 	if _, err := svc.handle(webapi.ExtensionRequest{Context: context.Background(), Body: json.RawMessage(`{`)}); err == nil {
-		t.Error("坏 JSON 该报错")
+		t.Error("bad JSON should error")
 	}
 }
 
@@ -322,14 +322,14 @@ func TestModuleRegistersAndReleasesTheEndpoint(t *testing.T) {
 	g := testkit.Start(t, web, New())
 	g.Before("fake-web", Name)
 	if _, ok := fake.registered[Endpoint]; !ok {
-		t.Fatalf("装上了界面就该登记 %q，实际 %v", Endpoint, fake.registered)
+		t.Fatalf("with the UI installed it should register %q, got %v", Endpoint, fake.registered)
 	}
 	// Service 端口本身也要在：没装界面时功能仍然可用。
 	if _, ok := testkit.Maybe(g, Capability); !ok {
-		t.Fatal("Service 端口该无条件提供——界面不在只是没有入口")
+		t.Fatal("the Service port should be provided unconditionally - a missing UI just means no entry point")
 	}
 	g.Stop()
 	if fake.released != 1 || len(fake.registered) != 0 {
-		t.Errorf("Stop 该撤销登记，实际 released=%d registered=%v", fake.released, fake.registered)
+		t.Errorf("Stop should unregister, got released=%d registered=%v", fake.released, fake.registered)
 	}
 }

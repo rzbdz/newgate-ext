@@ -22,7 +22,7 @@ func testPlugin() tools {
 	}
 }
 
-// reqWithOff 造一个上下文，并把给定的开关点关掉。与 deepseek 那份同款。
+// reqWithOff builds a context with the given switch points turned off. Same as the deepseek one.
 func reqWithOff(t *testing.T, off ...string) *special.Request {
 	t.Helper()
 	cfg := pluginmanager.Config{Off: map[string]pluginmanager.Entry{}}
@@ -37,9 +37,9 @@ func reqWithOff(t *testing.T, off ...string) *special.Request {
 		ModuleConfig: map[string][]byte{pluginmanager.StateKey: raw}}}
 }
 
-// codexRequest 是一份**照抄真实现场**的最小请求：工具树挂在 input[0] 的
-// additional_tools 里，两层 namespace，一个 custom（exec）+ 一个 function（wait）。
-// 真实现的形状见 /tmp/codexcap 的抓包（2026-09-21）。
+// codexRequest is a minimal request **copied from the real scene**: the tool tree hangs
+// in input[0]'s additional_tools, two levels of namespace, one custom (exec) + one
+// function (wait). For the real shape see the capture in /tmp/codexcap (2026-09-21).
 const codexRequest = `{"model":"normal","stream":true,"tool_choice":"auto",` +
 	`"input":[{"type":"additional_tools","id":"at_1","role":"developer","tools":[` +
 	`{"type":"namespace","name":"functions","description":"","tools":[` +
@@ -65,8 +65,9 @@ func TestMatchOnlyCodexDeepSeekIntersection(t *testing.T) {
 	}
 }
 
-// 抬上来之后：顶层有 tools、custom 变成了 function、原生 function 一字不动、
-// input[0] 那条还在（实测上游对多出来的那条不报错，删它没有依据）。
+// After the lift: the top level has tools, custom became function, the native
+// function is untouched byte for byte, and the input[0] item is still there (measured,
+// the upstream does not error on the extra one, so deleting it has no basis).
 func TestApplyLiftsToolsAndDegradesCustom(t *testing.T) {
 	out, notes, err := testPlugin().Apply([]byte(codexRequest), &special.Request{})
 	if err != nil {
@@ -98,18 +99,19 @@ func TestApplyLiftsToolsAndDegradesCustom(t *testing.T) {
 	if len(doc.Input) != 2 || doc.Input[0]["type"] != Tools {
 		t.Fatalf("the additional_tools item must stay in input: %v", doc.Input)
 	}
-	// 两条 note：抬了 2 条（叶子数，不是降级数），其中 1 条被降级。见 Apply 里
-	// 「note 分两条报」那段。
+	// Two notes: lifted 2 (leaf count, not downgrade count), of which 1 was
+	// downgraded. See the "note is reported as two lines" passage in Apply.
 	if len(notes) != 2 ||
 		!strings.Contains(notes[0], "lifted 2 tool declarations") ||
 		!strings.Contains(notes[1], "degraded 1 custom tool ") {
-		t.Fatalf("the rewrite must be reported (不静默): %v", notes)
+		t.Fatalf("the rewrite must be reported (never silent): %v", notes)
 	}
 }
 
-// 一个 custom 都没有（全是原生 function）时**照样要报抬了几条**：抬才是修根因
-// 的那一步，而这时降级数是 0。note 只报降级数会让日志说「抬了 0 条」而请求明明
-// 被改了——这正是「不静默」那条规矩要消掉的那种谎。
+// Even with not one custom (all native function) it **still reports how many were lifted**:
+// the lift is the step that fixes the root cause, and here the downgrade count is 0.
+// Reporting only the downgrade count would make the log say "lifted 0" while the request was
+// plainly changed -- exactly the kind of lie the "do not be silent" rule exists to remove.
 func TestApplyReportsTheLiftEvenWithNothingDegraded(t *testing.T) {
 	body := []byte(`{"model":"normal","input":[{"type":"additional_tools","tools":[` +
 		`{"type":"namespace","name":"functions","tools":[` +
@@ -128,8 +130,8 @@ func TestApplyReportsTheLiftEvenWithNothingDegraded(t *testing.T) {
 	}
 }
 
-// 没有 additional_tools 的请求一个字节都不动，也不报 note——
-// 「不归我管」与「动了手」必须能分开。
+// A request without additional_tools is untouched byte for byte, and reports
+// no note -- "not mine to handle" and "took action" must be distinguishable.
 func TestApplyLeavesForeignRequestsAlone(t *testing.T) {
 	body := []byte(`{"model":"normal","input":[{"type":"message","role":"user"}]}`)
 	out, notes, err := testPlugin().Apply(body, &special.Request{})
@@ -141,10 +143,10 @@ func TestApplyLeavesForeignRequestsAlone(t *testing.T) {
 	}
 }
 
-// 新版 Codex 把工具直接放在顶层 tools 里（含 namespace 分组与 web_search），
-// 此时没有 input[0] 可抬——但里面那条 custom 仍会被 DeepSeek 以
-// `400 Unsupported custom tool` 拒掉（实测 2026-09-21）。所以顶层那份也要降级：
-// custom → function，别的一个字节不动。
+// New Codex puts tools directly in the top-level tools (including namespace groups
+// and web_search); there is no input[0] to lift here -- but the custom inside is still
+// rejected by DeepSeek with `400 Unsupported custom tool` (measured 2026-09-21). So the
+// top-level copy must be downgraded too: custom -> function, not one other byte touched.
 func TestApplyDegradesCustomInTopLevelTools(t *testing.T) {
 	body := []byte(`{"model":"normal","stream":true,"tools":[` +
 		`{"type":"function","name":"exec_command","description":"run","parameters":{"type":"object","properties":{}}},` +
@@ -182,12 +184,12 @@ func TestApplyDegradesCustomInTopLevelTools(t *testing.T) {
 		t.Fatalf("a degraded tool must carry parameters: %v", doc.Tools[3])
 	}
 	if len(notes) != 1 || !strings.Contains(notes[0], "degraded 1 custom tool") {
-		t.Fatalf("the rewrite must be reported (不静默): %v", notes)
+		t.Fatalf("the rewrite must be reported (never silent): %v", notes)
 	}
 }
 
-// 顶层一个 custom 都没有（Codex 0.155.1 在默认沙箱下就是这种：全是 function +
-// 一个 namespace + web_search）→ 一个字节都不动，也不报 note。
+// Not one custom at the top level (Codex 0.155.1 under the default sandbox is exactly this:
+// all function + one namespace + web_search) -> not one byte touched, and no note reported.
 func TestApplyLeavesCleanTopLevelToolsAlone(t *testing.T) {
 	body := []byte(`{"model":"normal","tools":[` +
 		`{"type":"function","name":"exec_command","description":"run","parameters":{"type":"object","properties":{}}},` +
@@ -203,7 +205,8 @@ func TestApplyLeavesCleanTopLevelToolsAlone(t *testing.T) {
 	}
 }
 
-// 顶层已经有 tools 时走替换，不是插入（Codex 两份形状都发过：缺席与 null）。
+// When the top level already has tools it is replacement, not
+// insertion (Codex has sent both shapes: absent and null).
 func TestApplyReplacesExistingToolsKey(t *testing.T) {
 	body := []byte(`{"model":"normal","tools":null,"input":[{"type":"additional_tools","tools":[` +
 		`{"type":"custom","name":"exec","description":"d"}]}]}`)
@@ -222,14 +225,15 @@ func TestApplyReplacesExistingToolsKey(t *testing.T) {
 	}
 }
 
-// 开关点必须**真的被读**：关掉之后请求一个字节都不动、响应侧也不认领。
+// The switch point must **really be read**: once off, the request
+// is untouched byte for byte and the response side claims nothing.
 //
-// 这条是 2026-09-21 补的，因为现场实测到了它的缺席：`newgate plugin
-// codex-deepseek.lift-tools off` 报了「已关闭」，而 live 上顶层 tools 照样被抬
-// 上来——开关点报了名却没人读，那是**比没有开关更糟**的一种谎。
+// This was added on 2026-09-21 because its absence was measured live: `newgate plugin
+// codex-deepseek.lift-tools off` reported "off", while on live the top-level tools were still
+// lifted -- a switch that reports a name nobody reads is a lie **worse than having no switch**.
 //
-// 两侧一起验：只读一侧的话，「请求没改、响应却被改成 custom_tool_call」这种
-// 把客户端弄坏的不对称会漏过去。
+// Both sides are checked together: reading only one side would let "the request was not changed but
+// the response was changed to custom_tool_call" slip through, an asymmetry that breaks the client.
 func TestSwitchOffStopsBothDirections(t *testing.T) {
 	plugin := testPlugin()
 	off := reqWithOff(t, SwitchDegradeTools)
@@ -239,30 +243,30 @@ func TestSwitchOffStopsBothDirections(t *testing.T) {
 		t.Fatal(err)
 	}
 	if string(out) != codexRequest || len(notes) != 0 {
-		t.Fatalf("关掉之后请求必须逐字不动：%s notes=%v", out, notes)
+		t.Fatalf("with it off the request must stay byte-for-byte: %s notes=%v", out, notes)
 	}
 	if got := plugin.Egress(off, []byte(codexRequest)); got != nil {
-		t.Fatalf("关掉之后响应侧不该认领，got %v", got)
+		t.Fatalf("with it off the response side must not claim, got %v", got)
 	}
 
-	// 顶层那条路线也要一起关掉——两条路线是同一手。
+	// The top-level route must be turned off as well -- the two routes are the same move.
 	top := []byte(`{"model":"normal","tools":[{"type":"custom","name":"exec","description":"d"}]}`)
 	out, notes, err = plugin.Apply(top, off)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(out) != string(top) || len(notes) != 0 {
-		t.Fatalf("关掉之后顶层也不该动：%s notes=%v", out, notes)
+		t.Fatalf("with it off the top level must not change either: %s notes=%v", out, notes)
 	}
 
-	// 反向：开关开着（快照缺席 = 没关）时照常动手，免得上面那条测试变成
-	// 「怎么都不动」也能过。
+	// The other way round: with the switch on (missing snapshot = not off) it
+	// acts as usual, so the test above cannot pass by "never acting at all".
 	if out, notes, _ := plugin.Apply([]byte(codexRequest), &special.Request{}); string(out) == codexRequest || len(notes) == 0 {
-		t.Fatalf("没关的时候必须照常抬：%s notes=%v", out, notes)
+		t.Fatalf("when not off it must lift as usual: %s notes=%v", out, notes)
 	}
 }
 
-// apply_patch 是上游原生认的 custom 工具，不许降级。
+// apply_patch is the custom tool the upstream natively recognizes; it must not be downgraded.
 func TestApplyKeepsApplyPatchCustom(t *testing.T) {
 	body := []byte(`{"model":"normal","input":[{"type":"additional_tools","tools":[` +
 		`{"type":"custom","name":"apply_patch","description":"d"}]}]}`)
@@ -278,11 +282,12 @@ func TestApplyKeepsApplyPatchCustom(t *testing.T) {
 	}
 }
 
-// 顶层 namespace **里面**藏着的 custom 也得降级——这是上游那句 `Currently
-// custom tools are not allowed inside a namespace` 的根因（实测 2026-09-21）。
+// A custom hidden **inside** a top-level namespace must be downgraded
+// too -- this is the root cause of the upstream's `Currently custom
+// tools are not allowed inside a namespace` (measured 2026-09-21).
 //
-// namespace 的外壳不动（DeepSeek 真的把它当分组用，扁平化会破坏它），只把里面
-// 那条 custom 改写成 function。
+// The namespace shell is untouched (DeepSeek really uses it as a group, and
+// flattening would break it); only the custom inside is rewritten to function.
 func TestApplyDegradesCustomInsideTopLevelNamespace(t *testing.T) {
 	body := []byte(`{"model":"normal","tools":[` +
 		`{"type":"function","name":"exec_command","description":"run","parameters":{"type":"object","properties":{}}},` +
@@ -324,8 +329,8 @@ func TestApplyDegradesCustomInsideTopLevelNamespace(t *testing.T) {
 	}
 }
 
-// namespace 里面**全是** native function / 没有 custom → namespace 整段逐字
-// 不动。**这是字节手术的规矩**：能不动就不动。
+// A namespace **entirely** of native functions / no custom -> the whole namespace is untouched
+// byte for byte. **This is the byte-surgery rule**: if it can be left alone, leave it alone.
 func TestApplyLeavesNamespaceWithFunctionsAlone(t *testing.T) {
 	body := []byte(`{"model":"normal","tools":[` +
 		`{"type":"namespace","name":"multi_agent_v1","tools":[` +
@@ -352,8 +357,9 @@ func TestEgressClaimsOnlyWhenSomethingWasDegraded(t *testing.T) {
 	}
 }
 
-// 顶层那份被降级的 custom 同样要在响应侧被改回 custom_tool_call——两条来源
-// （input[0] 抬上来的、顶层本来就有的）对响应侧是同一件事，判据必须都认。
+// A downgraded custom at the top level must be changed back to custom_tool_call
+// on the response side too -- the two sources (lifted from input[0], already at the
+// top level) are one thing to the response side, and the criterion must accept both.
 func TestEgressClaimsForTopLevelDegradedTools(t *testing.T) {
 	plugin := testPlugin()
 	body := []byte(`{"model":"normal","tools":[` +
@@ -369,7 +375,8 @@ func TestEgressClaimsForTopLevelDegradedTools(t *testing.T) {
 	}
 }
 
-// 响应侧：被降级过的工具，其 function_call 事件要整套改回 custom_tool_call。
+// Response side: for a downgraded tool, its function_call
+// event is changed back to custom_tool_call as a whole.
 func TestEgressRewritesTheDegradedToolCall(t *testing.T) {
 	plugin := testPlugin()
 	e := plugin.Egress(nil, []byte(codexRequest))
@@ -405,13 +412,14 @@ func TestEgressRewritesTheDegradedToolCall(t *testing.T) {
 	}
 }
 
-// 真现场的那条路：参数是**几十个 delta** 吐出来的，而 output_item.done 上那份
-// arguments 是**空的**（实测 2026-09-21，deepseek-flash 一条 exec 调用发了 53 个
-// delta，收尾那条 item 的 arguments 是 ""）。
+// The real scene's route: the parameters come out as **dozens of deltas**, while the
+// arguments on output_item.done is **empty** (measured 2026-09-21, deepseek-flash
+// sent 53 deltas for one exec call, and the arguments of the closing item was "").
 //
-// 少了这一步的后果不是「报错」，是**静默地交出一段空代码**：codex 拿空字符串去
-// eval，报一个与真正原因毫无关系的错。所以这条测试盯的是 output_item.done 上的
-// input 必须是**攒起来的那份原文**。
+// The consequence of missing this step is not "an error", it is **silently
+// handing over an empty piece of code**: codex evals the empty string and
+// reports an error with nothing to do with the real cause. So this test watches
+// that the input on output_item.done must be **the accumulated source**.
 func TestEgressAccumulatesDeltasForTheDoneItem(t *testing.T) {
 	plugin := testPlugin()
 	e := plugin.Egress(nil, []byte(codexRequest))
@@ -427,7 +435,7 @@ func TestEgressAccumulatesDeltasForTheDoneItem(t *testing.T) {
 			t.Fatalf("delta %q must be rewritten", chunk)
 		}
 	}
-	// 收尾那条 item 的 arguments 是空的——上游就是这么发的。
+	// The arguments of the closing item is empty -- that is how the upstream sends it.
 	itemDone := []byte("data: " + `{"type":"response.output_item.done","output_index":2,"item":{"type":"function_call","id":"i2","status":"completed","arguments":"","call_id":"c2","name":"exec"}}` + "\n\n")
 	out := string(e.Egress(itemDone))
 	if out == "" {
@@ -461,7 +469,7 @@ func mustJSON(s string) string {
 	return string(b)
 }
 
-// 别的工具（原生 function）的调用事件一个字节都不许动。
+// Call events of other tools (native functions) must not be touched byte for byte.
 func TestEgressLeavesOtherToolsAlone(t *testing.T) {
 	plugin := testPlugin()
 	e := plugin.Egress(nil, []byte(codexRequest))
@@ -469,14 +477,16 @@ func TestEgressLeavesOtherToolsAlone(t *testing.T) {
 	if out := e.Egress(added); out != nil {
 		t.Fatalf("a native function call must not be touched: %s", out)
 	}
-	// 而且它不该被记成「我们的」，所以后续的 arguments 事件也不动。
+	// And it should not be recorded as "ours", so the
+	// subsequent arguments events are not touched either.
 	delta := []byte("data: " + `{"type":"response.function_call_arguments.delta","delta":"x","item_id":"i2","output_index":2}` + "\n\n")
 	if out := e.Egress(delta); out != nil {
 		t.Fatalf("the delta of a native function must not be touched: %s", out)
 	}
 }
 
-// completed 汇总里那几条也要改回 custom——codex 在流结束后还会读它一次。
+// The few entries in the completed summary must be changed back
+// to custom too -- codex reads it once more after the stream ends.
 func TestEgressRewritesCompletedOutput(t *testing.T) {
 	plugin := testPlugin()
 	e := plugin.Egress(nil, []byte(codexRequest))
@@ -492,7 +502,7 @@ func TestEgressRewritesCompletedOutput(t *testing.T) {
 			Output []map[string]any `json:"output"`
 		} `json:"response"`
 	}
-	// 载荷前面是 "data: "，剥掉再解析。
+	// The payload is preceded by "data: "; strip it before parsing.
 	payload := strings.TrimPrefix(strings.TrimSpace(string(out)), "data: ")
 	if err := json.Unmarshal([]byte(payload), &doc); err != nil {
 		t.Fatalf("rewritten completed is not JSON: %v\n%s", err, out)
@@ -505,7 +515,7 @@ func TestEgressRewritesCompletedOutput(t *testing.T) {
 	}
 }
 
-// 非 JSON 的载荷、以及没有 data 行的事件，一律不碰（注释行、[DONE]、keepalive）。
+// Non-JSON payloads and events with no data line are left alone (comment lines, [DONE], keepalive).
 func TestEgressIgnoresNonJSONPayloads(t *testing.T) {
 	plugin := testPlugin()
 	e := plugin.Egress(nil, []byte(codexRequest))
@@ -520,8 +530,8 @@ func TestEgressIgnoresNonJSONPayloads(t *testing.T) {
 	}
 }
 
-// 拆壳：上游回的是 {"input": "<原文>"}，codex 要的是里面那串原文。
-// 拆不出来时原样返回（绝不编一段它没写过的代码）。
+// Unwrap: the upstream replies {"input": "<source>"}, and codex wants the source inside.
+// When it cannot be unwrapped, return as is (never make up a piece of code it never wrote).
 func TestUnwrapInput(t *testing.T) {
 	if got := unwrapInput(`{"input":"const r = 1;"}`); got != "const r = 1;" {
 		t.Fatalf("unwrapInput = %q", got)

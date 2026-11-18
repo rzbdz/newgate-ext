@@ -19,22 +19,22 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// Prefix 是这一节在共享端口上的落脚点。
+// Prefix is this section's foothold on the shared port.
 //
-// 挂在 web-dashboard 的 `/ui` 底下，因为**它就是那一类东西**：一个界面，只是人在
-// 别处。porthub 按段匹配、最长前缀优先，所以 `/ui/remote/…` 落到这里、`/ui/…`
-// 照旧落到 web-dashboard——两边都不用知道对方存在（这也是为什么这个前缀是
-// "/ui/remote" 而不是 "/ui"：抢别人已经挂上的前缀，porthub 会当场报错）。
+// It hangs under web-dashboard's `/ui` because **it is that kind of thing**: a UI, only
+// elsewhere. porthub matches by segment, longest prefix first, so `/ui/remote/...` lands
+// here and `/ui/...` still lands on web-dashboard - neither side knows the other exists
+// (which is also why the prefix is "/ui/remote" and not "/ui": taking a taken prefix errors).
 //
-// 不用 `/a`、`/v1`（数据面）与 `/__newgate`（控制面）：porthub 会拒。
+// Not `/a`, `/v1` (data plane) or `/__newgate` (control plane): porthub rejects them.
 const Prefix = "/ui/remote"
 
-// proxy 是共享端口上那条 route 的 handler（`Prefix` 已经由调用方剥掉）。
+// proxy is the handler of the shared port's route (`Prefix` already stripped by the caller).
 type proxy struct {
 	pool *pool
-	// loaded 每次请求**现读配置**：用户在浏览器里改一个 target、或者 CLI 敲一条
-	// add，下一个请求就该按新的走。缓存它的话，「刚改完没生效」会变成一条只能靠
-	// 重启绕过的怪现象。
+	// loaded reads config **per request**: a target edited in the browser, or a CLI `add`,
+	// must apply to the next request. Caching it turns "just changed, not effective" into
+	// a weird phenomenon only a restart fixes.
 	loaded func() Loaded
 
 	mu         sync.Mutex
@@ -51,14 +51,14 @@ func newProxy(p *pool, loaded func() Loaded) *proxy {
 }
 
 func (p *proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// 这道门与别的 route 贡献者各自复制一份（porthub 不提供）。这里用的是
-	// arch-diagram 那份**严格版**（只认回环 IP 与 localhost），不是 web-dashboard
-	// 那份（那份还放行局域网 IP，因为它自己有第二道写门）。
+	// Each route contributor copies this gate (porthub does not provide one). This uses
+	// arch-diagram's **strict** version (loopback IPs and localhost only), not
+	// web-dashboard's (it allows LAN IPs too, as it has its own second write gate).
 	//
-	// 为什么这里更严：这条 route 背后是**另一台机器**，而本地这道门是唯一一道
-	// ——远端那道查的是它自己收到的 Host，而从这里过去的 Host 是我们保留下来的
-	// 浏览器填的那个（见 reverseFor 里那一段）。所以「谁能打开这个地址」这件事，
-	// 全押在这一行上。
+	// Why stricter here: behind this route is **another machine**, and the local gate is
+	// the only one - the remote checks the Host it receives, and connections from here
+	// carry the browser's Host we preserved (see reverseFor). So "who can open this"
+	// rests entirely on this line.
 	if !loopbackHost(r) {
 		writePlain(w, http.StatusForbidden, i18n.T(
 			"this tunnel answers on loopback only; open it as http://127.0.0.1:{port}{prefix}/",
@@ -67,15 +67,15 @@ func (p *proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.URL.Path == "" {
-		// 正好是 `/ui/remote` 而没有尾斜杠：浏览器会把相对地址按当前文档解析，
-		// 从 `/ui/remote` 出发 `api/snapshot` 会变成 `/ui/remote/api/snapshot`
-		// ——那里把 api 当成了 target 的名字。302（不是 301）：永久重定向会被
-		// 浏览器近乎永久地缓存，将来改前缀就纠正不回来了。
+		// Exactly `/ui/remote` with no trailing slash: browsers resolve relative addresses
+		// against the current document, so from `/ui/remote` `api/snapshot` becomes
+		// `/ui/remote/api/snapshot` - api read as a target name. 302 (not 301): a permanent
+		// redirect is cached near-forever, so a future prefix change could not be undone.
 		http.Redirect(w, r, Prefix+"/", http.StatusFound)
 		return
 	}
 
-	// StripPrefix 之后："…"（`/ui/remote/` 给的是 "/"）、或者 "/<id>"、"/<id>/…"。
+	// After StripPrefix: "..." (`/ui/remote/` yields "/"), or "/<id>", "/<id>/...".
 	rest := strings.TrimPrefix(r.URL.Path, "/")
 	id, hasTail := rest, false
 	if i := strings.IndexByte(rest, '/'); i >= 0 {
@@ -93,19 +93,19 @@ func (p *proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !hasTail {
-		// 只有**光秃秃一个 id**（`/ui/remote/ds`）要补斜杠。判据是「id 后面没有
-		// 别的段」，**不是**「路径不以斜杠结尾」——后者对
-		// `/ui/remote/ds/api/snapshot` 也成立，而补一个斜杠会把每一个 API 调用
-		// 都变成一次 302（实测踩过：整条 route 上没有一个请求真的到过远端）。
+		// Only a **bare id** (`/ui/remote/ds`) gets a slash. The criterion is "nothing
+		// after the id", **not** "does not end with a slash" - the latter is true for
+		// `/ui/remote/ds/api/snapshot`, and adding a slash would turn every API call into
+		// a 302 (measured: no request ever reached the remote).
 		//
-		// 302（不是 301）：永久重定向会被浏览器近乎永久地缓存。
+		// 302 (not 301): a permanent redirect is cached near-forever by browsers.
 		http.Redirect(w, r, Prefix+"/"+url.PathEscape(id)+"/", http.StatusFound)
 		return
 	}
 
-	// 远端的路径在这里算**一次**，并且在这一步就把爬出远端 `/ui` 那一棵的拒掉
-	// ——理由见 remotePath。算出来的值直接传给反代（不是让它在 Rewrite 里再算
-	// 一遍）：那样「拒掉」与「转发」用的是同一个结果，中间没有第二条路可走。
+	// The remote path is computed **once** here, and anything climbing out of the remote
+	// `/ui` tree is refused at this step - reasons in remotePath. The value goes straight
+	// to the reverse proxy (not recomputed in Rewrite): refusal and forwarding share it.
 	remote, ok := remotePath(id, r.URL.Path)
 	if !ok {
 		writePlain(w, http.StatusNotFound, i18n.T(
@@ -118,48 +118,48 @@ func (p *proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p.reverseFor(t, remote).ServeHTTP(w, r)
 }
 
-// reverseFor 组装这条 route 的 ReverseProxy。
+// reverseFor assembles this route's ReverseProxy.
 //
-// 每次现建一个 ReverseProxy 是廉价的（一个结构体）；真正要缓存的是它背后的
-// **http.Transport**——连接池在它里面（见 transportFor）。
+// Building a ReverseProxy per request is cheap (one struct); what must be cached is
+// the **http.Transport** behind it - the pool lives there (see transportFor).
 func (p *proxy) reverseFor(t Target, remote string) *httputil.ReverseProxy {
 	local := LocalPrefix(t.ID)
 	return &httputil.ReverseProxy{
 		Transport: p.transportFor(t),
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.Out.URL.Scheme = "http"
-			// Host 只是给 Transport 看的键：它不按这个拨号（DialContext 恒拨配置里
-			// 那一对）。给一个稳定值，让连接池只有一格。
+			// Host is only a key for Transport: it does not dial by it (DialContext always
+			// dials the configured pair). A stable value keeps the pool to one slot.
 			pr.Out.URL.Host = "tunnel"
-			// remote 是调用方算好并验过的（ServeHTTP 里那一处）。这里**不重算**：
-			// 两个地方各算一次的话，将来有人只改了一边，症状是「拒掉的路径被发出去
-			// 了」或者反过来——而那种错在测试里是绿的。
+			// remote is computed and verified by the caller (in ServeHTTP). **Not recomputed**
+			// here: two computations mean a future edit to one side sends refused paths (or the
+			// reverse) - and that kind of error is green in tests.
 			pr.Out.URL.Path = remote
 			pr.Out.URL.RawPath = ""
 
-			// **保留客户端的 Host**（Go 的默认行为是把它换成目标主机）。
+			// **Keep the client's Host** (Go's default replaces it with the target host).
 			//
-			// 这一行是整条 route 能不能工作的关键，理由在远端那一侧：远端 BFF 有
-			// 一道 DNS-rebinding 门，它查的是**请求的 Host 头**——只放行 IP 字面量
-			// 与 localhost。浏览器填的 Host 是它导航到的地址（127.0.0.1:8899，或者
-			// 局域网 IP），两种都过。换成 "tunnel" 或任何域名，远端会**当场 403**，
-			// 而本机这一侧一切正常——那种错会让人从改写一路查到远端 sshd，最后才
-			// 发现是一行 header。
+			// This line decides whether the route works at all, for the remote side's reason:
+			// the remote BFF has a DNS-rebinding gate that inspects **the request's Host** -
+			// only IP literals and localhost pass. The browser's Host is where it navigated to
+			// (127.0.0.1:8899, or a LAN IP), both pass. Replaced with "tunnel" or any domain,
+			// the remote returns **403** while everything locally looks fine - an error that
+			// sends people from rewriting through to the remote sshd, to find one header.
 			pr.Out.Host = pr.In.Host
 
-			// 摘掉 Accept-Encoding：**压缩过的正文没法改写**（见 rewrite.go）。
+			// Drop Accept-Encoding: **compressed bodies cannot be rewritten** (see rewrite.go).
 			//
-			// 代价说清楚：这条路上少了一次压缩，而多走的是本地回环 + 一条 SSH 通道
-			// （远端界面一个页面几百 KB）。不摘的后果是**每个页面都白屏**——远端会
-			// gzip，我们改不了，浏览器拿到的是指向本机 /ui/assets 的地址。
+			// The cost, stated: one less compression, over localhost plus an SSH channel (a
+			// remote page is a few hundred KB). Not dropping it **whites out every page** -
+			// the remote gzips, we cannot rewrite, and the browser gets local /ui/assets URLs.
 			pr.Out.Header.Del("Accept-Encoding")
 		},
-		// -1 = 立刻刷。远端界面是轮询式的（几秒一次快照），不刷的话每次都要等
-		// 缓冲区满或响应结束才到浏览器——交互会「一顿一顿」。
+		// -1 = flush at once. The remote UI polls (a snapshot every few seconds); without
+		// flushing, each waits for a full buffer or the end of the response - interaction stutters.
 		FlushInterval: -1,
 		ModifyResponse: func(resp *http.Response) error {
-			// Location 单独一处（见 rewriteLocation 的注释：不改的症状是悄悄跳到
-			// 本机自己的界面上，而两者长得几乎一样）。
+			// Location is its own step (see rewriteLocation: unrewritten, it silently jumps to
+			// the local UI, which looks almost identical).
 			if loc := resp.Header.Get("Location"); loc != "" {
 				resp.Header.Set("Location", rewriteLocation(loc, local))
 			}
@@ -169,9 +169,9 @@ func (p *proxy) reverseFor(t Target, remote string) *httputil.ReverseProxy {
 			body, err := io.ReadAll(resp.Body)
 			_ = resp.Body.Close()
 			if err != nil {
-				// 读到一半断了：把错误交回 ReverseProxy，它会走 ErrorHandler。
-				// **不能**返回一份半截的正文——那在浏览器里是一个「看起来正常、
-				// 其实被截断」的 HTML，比一个明确的错误糟得多。
+				// Broken mid-read: hand the error back to ReverseProxy, which routes it to
+				// ErrorHandler. **Never** return a half body - that is an HTML page that "looks
+				// fine, but is truncated", far worse than a clear error.
 				return err
 			}
 			next := rewritePrefix(body, local)
@@ -186,29 +186,29 @@ func (p *proxy) reverseFor(t Target, remote string) *httputil.ReverseProxy {
 	}
 }
 
-// remotePath 把本机这条 route 后面的那一段，接到远端自己的绝对前缀上。
+// remotePath joins the part after this route's prefix onto the remote's own absolute prefix.
 //
-//	本机 /ui/remote/ds/            → 远端 /ui/
-//	本机 /ui/remote/ds/api/snap    → 远端 /ui/api/snap
+//	local  /ui/remote/ds/            -> remote /ui/
+//	local  /ui/remote/ds/api/snap    -> remote /ui/api/snap
 //
-// 论证一次，因为它是整套改写的地基：浏览器看到的地址**本来就是**
-// `/ui/remote/<id>/…`，也就是「远端地址前面多了一段」。所以剥掉那一段就是远端要
-// 的东西——而正文里的绝对地址（`/ui/assets/…`）被我们改写成 `/ui/remote/<id>/…`
-// 之后，浏览器发回来正好又落在这条规则上。**两边是同一件事的两面**，改了一边就
-// 得改另一边。
+// Argued once, because it is the foundation of all rewriting: the browser's address
+// **already is** `/ui/remote/<id>/...`, i.e. "the remote address with a prefix". So
+// stripping it is what the remote wants - and absolute addresses in bodies
+// (`/ui/assets/...`) rewritten to `/ui/remote/<id>/...` come back exactly under this
+// rule. **Two sides of one thing**; change one and you must change the other.
 //
-// # 第二个返回值：这条路径有没有爬出远端的 `/ui`
+// # Second return: did this path climb out of the remote's `/ui`
 //
-// 拼出来的路径里可能带 `..`（`/ui/remote/ds/../__newgate/upgrade` → 接上之后是
-// `/ui/../__newgate/upgrade`）。**必须在这里规范化并拒绝**，理由与内核那条
-// 「绝不盲发 `/__newgate/upgrade`」是同一个：远端的 `/__newgate` 是它的控制面
-// （`upgrade` 会 fork 一个新进程）、`/v1` 是它的数据面。
+// The joined path may carry `..` (`/ui/remote/ds/../__newgate/upgrade` -> after joining
+// `/ui/../__newgate/upgrade`). **Must be normalized and refused**, same reason as the
+// kernel's "never blindly send `/__newgate/upgrade`": the remote's `/__newgate` is its
+// control plane (`upgrade` forks a new process), `/v1` its data plane.
 //
-// 今天那条路径**恰好**打不到控制面（远端 porthub 按 `/ui` 前缀把它交给了
-// web-dashboard，落到 SPA 兜底），但那是**运气**：只要中间任何一层把路径规范化
-// 一次（一个反代、一个 mux、一个将来的实现），`/ui/../__newgate/upgrade` 就变成
-// 了 `/__newgate/upgrade`。安全边界不能建在「今天这条链路上没有别人会 clean 路径」
-// 上面。
+// Today that path **happens** not to reach the control plane (the remote porthub hands
+// it to web-dashboard under `/ui`, the SPA fallback), but that is **luck**: if any
+// layer normalizes the path once (a proxy, a mux, a future implementation),
+// `/ui/../__newgate/upgrade` becomes `/__newgate/upgrade`. A security boundary cannot
+// rest on "nothing else on this chain cleans paths today".
 func remotePath(id, local string) (string, bool) {
 	rel := strings.TrimPrefix(local, "/")
 	rel = strings.TrimPrefix(rel, id)
@@ -218,20 +218,20 @@ func remotePath(id, local string) (string, bool) {
 	if p != strings.TrimSuffix(RemoteUIPrefix, "/") && !strings.HasPrefix(p, RemoteUIPrefix) {
 		return "", false
 	}
-	// Clean 会把尾斜杠收掉，而**远端那棵树的根要留着它**：`/ui` 在远端是一次
-	// 302（到 `/ui/`），而那次重定向会被我们改写回这条 route 上，于是浏览器多跑
-	// 一个来回——功能上没错，但没有理由付这个钱。
+	// Clean trims a trailing slash, but **the remote tree's root must keep it**: `/ui`
+	// is a 302 on the remote (to `/ui/`), and we rewrite that Location back to this route,
+	// costing the browser one more round trip - correct, but no reason to pay for it.
 	if strings.HasSuffix(raw, "/") && !strings.HasSuffix(p, "/") {
 		p += "/"
 	}
 	return p, true
 }
 
-// transportFor 拿某个 target 的 http.Transport。
+// transportFor returns a target's http.Transport.
 //
-// 一条 SSH 连接上开出来的通道由**这条 Transport 的连接池**管着：它按 HTTP 的
-// keep-alive 复用，空闲 conn 超时（30s）后关掉——而关掉会释放借约，于是空闲回收
-// 才有机会把 SSH 连接本身也断掉。两个超时是**配着来的**，改一个要看另一个。
+// Channels over one SSH connection are pooled by **this Transport**: HTTP keep-alive
+// reuse, idle conns closed after 30s - and closing releases the lease, letting idle
+// reaping drop the SSH connection too. The two timeouts are **tied together**.
 func (p *proxy) transportFor(t Target) *http.Transport {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -242,32 +242,32 @@ func (p *proxy) transportFor(t Target) *http.Transport {
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 			return p.dialTunnel(ctx, t)
 		},
-		// 不压缩：见 Rewrite 里摘 Accept-Encoding 那段。两处是**同一件事**的两面
-		// （一个管发出去的 Accept-Encoding，一个管 Go 自己要不要解压），少一个就会
-		// 出现「有时能改写、有时不能」。
+		// No compression: see dropping Accept-Encoding in Rewrite. The two are **one thing's**
+		// two sides (what we send, and whether Go decompresses); miss one and rewriting
+		// becomes "sometimes works, sometimes not".
 		DisableCompression: true,
-		// 通道的尽头就是远端那个明文端口，没有第二跳。
+		// The channel's far end is the remote's plaintext port, no second hop.
 		MaxIdleConns:          8,
 		MaxIdleConnsPerHost:   8,
 		IdleConnTimeout:       30 * time.Second,
 		ExpectContinueTimeout: time.Second,
-		// 不设 ResponseHeaderTimeout：远端那个端口如果真的卡住，用户按一下刷新就能
-		// 重来；设一个短的超时会把「远端在忙」也一并杀掉，而那种失败看起来像断线。
+		// No ResponseHeaderTimeout: if the remote port really stalls, a refresh retries; a
+		// short timeout would also kill "the remote is busy", which looks like a disconnect.
 	}
 	if old, ok := p.transports[t.ID]; ok {
-		// 地址变了：旧 Transport 里那些连接指向的已经不是这里了。关掉空闲的，
-		// 在途的让它跑完（CloseIdleConnections 不碰在途的）。
+		// Address changed: the old Transport's connections no longer point here. Close the
+		// idle ones, let in-flight ones finish (CloseIdleConnections leaves them alone).
 		old.tr.CloseIdleConnections()
 	}
 	p.transports[t.ID] = transportEntry{target: t, tr: tr}
 	return tr
 }
 
-// closeIdle 关掉所有 target 的空闲 HTTP 连接。
+// closeIdle closes all targets' idle HTTP connections.
 //
-// 停机时必须先走这一步：那些**空闲连接还占着一次 SSH 借约**（见 leasedConn），
-// 而 pool.Close 会等在途借约归零。不关的话，停机要一直等到连接池自己的
-// IdleConnTimeout（30s）到期才走得动——看起来就是「停不干净」。
+// Shutdown must do this first: those **idle connections still hold an SSH lease** (see
+// leasedConn), and pool.Close waits for in-flight leases to hit zero. Otherwise shutdown
+// waits for the pool's own IdleConnTimeout (30s) - "does not stop cleanly".
 func (p *proxy) closeIdle() {
 	p.mu.Lock()
 	trs := make([]*http.Transport, 0, len(p.transports))
@@ -280,7 +280,7 @@ func (p *proxy) closeIdle() {
 	}
 }
 
-// dialTunnel 为一条 HTTP 连接开一条 SSH 通道，并把借约绑在它的生命周期上。
+// dialTunnel opens an SSH channel for one HTTP connection, tying a lease to its lifetime.
 func (p *proxy) dialTunnel(ctx context.Context, t Target) (net.Conn, error) {
 	l, err := p.pool.Acquire(ctx, t)
 	if err != nil {
@@ -294,11 +294,11 @@ func (p *proxy) dialTunnel(ctx context.Context, t Target) (net.Conn, error) {
 	return &leasedConn{Conn: conn, lease: l}, nil
 }
 
-// leasedConn 让「HTTP 连接关掉」与「SSH 连接的借用还回去」是同一件事。
+// leasedConn makes "the HTTP connection closed" and "the SSH borrow returned" one thing.
 //
-// 不绑的话，连接池里每一条空闲连接都会永远占着一次借用（refs 永不归零），于是
-// SSH 连接**永远不会被空闲回收**——而这件事在功能上完全看不出来，只是 daemon 会
-// 一直挂着一堆不再使用的 SSH 连接。
+// Untied, every idle connection in the pool holds a borrow forever (refs never zero), so
+// the SSH connection is **never idle-reaped** - invisible functionally; the daemon just
+// keeps a pile of unused SSH connections.
 type leasedConn struct {
 	net.Conn
 	lease *lease
@@ -311,13 +311,13 @@ func (c *leasedConn) Close() error {
 	return err
 }
 
-// ---------- 几个页面 ----------
+// ---------- a few pages ----------
 
-// index 是 `/ui/remote/` 上那张索引。
+// index is the index at `/ui/remote/`.
 //
-// 它是**朴素 HTML**，不依赖前端产物：这条 route 必须在 web-dashboard 缺席的装配里
-// 也成立（那时 `/ui` 根本不存在，而 tunnel 照常该能列出来）。这也让它「就是几个
-// 链接」，没有一页白屏的余地。
+// It is **plain HTML**, no front-end artifacts: this route must work in an assembly
+// without web-dashboard (where `/ui` does not exist and tunnel should still list). That
+// also keeps it "just a few links", with no room for a blank page.
 func (p *proxy) index(w http.ResponseWriter, loaded Loaded) {
 	var b strings.Builder
 	b.WriteString("<!doctype html><meta charset=\"utf-8\"><title>")
@@ -357,10 +357,10 @@ func (p *proxy) index(w http.ResponseWriter, loaded Loaded) {
 	_, _ = io.WriteString(w, b.String())
 }
 
-// unknown 是「这个 id 不认识」。
+// unknown is "this id is not recognized".
 //
-// 刻意**列出认识的那些**：手敲地址是这条 route 最常见的用法（用户从终端复制一个
-// 链接过来），而敲错一个字符时，一个只写着 404 的页面会让人以为整条 tunnel 坏了。
+// It deliberately **lists the known ones**: typing the address by hand is this route's
+// most common use (copying a link), and a page with only a 404 makes a typo look broken.
 func (p *proxy) unknown(w http.ResponseWriter, loaded Loaded, id string) {
 	ids := make([]string, 0, len(loaded.Targets))
 	for _, t := range loaded.Targets {
@@ -376,21 +376,21 @@ func (p *proxy) unknown(w http.ResponseWriter, loaded Loaded, id string) {
 	writePlain(w, http.StatusNotFound, msg)
 }
 
-// tunnelError 是「拨不过去」时给的那一页。
+// tunnelError is the page when "cannot dial through".
 //
-// 它必须**说清卡在哪**：SSH 连不上（网络 / 地址错）、主机密钥不认识、远端那个端口
-// 没人听——这三种在用户那里的下一步动作完全不同。一个空的 502 会让人从「是不是我
-// 的浏览器有问题」开始排查。
+// It must **say where it stopped**: SSH unreachable (network / bad address), unknown
+// host key, nobody listening on the remote port - three different next actions. An empty
+// 502 sends people off debugging "is my browser broken".
 func tunnelError(w http.ResponseWriter, t Target, err error) {
 	writePlain(w, http.StatusBadGateway, i18n.T("{id}: {err}", i18n.A{"id": t.ID, "err": err})+
 		"\n\n"+i18n.T("run `newgate tunnel test {id}` for a step-by-step answer",
 		i18n.A{"id": t.ID}))
 }
 
-// writePlain 是一段纯文本。
+// writePlain is a plain-text body.
 //
-// 用 text/plain 而不是 HTML：内容是**错误原文**（里面有地址、有 sshd 的话、有路径），
-// 包进 HTML 就得转义，而转义漏一处就是一个注入点——这些字符串有一半来自远端。
+// text/plain, not HTML: the content is **raw error text** (addresses, sshd's words,
+// paths), so HTML needs escaping, and one miss is an injection point.
 func writePlain(w http.ResponseWriter, code int, msg string) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
@@ -398,19 +398,19 @@ func writePlain(w http.ResponseWriter, code int, msg string) {
 	_, _ = io.WriteString(w, msg+"\n")
 }
 
-// ---------- 门与工具 ----------
+// ---------- gates and tools ----------
 
-// loopbackHost 报告这次请求的 Host 头**指向本机**。
+// loopbackHost reports whether this request's Host header **points at this machine**.
 //
-// **不是** lib/httpx.IsLoopback：那个判的是出站拨号（「我要连的目标是不是本机」），
-// 所以空串与 0.0.0.0 都算本机——拨号时那是合理的默认值。这里是入口判据，问的是
-// 「这次请求是冲着哪个名字来的」，空 Host 必须**拒**（HTTP/1.0 的请求可以没有
-// Host，而那正是脚本工具的常见形状）。两个问题，两个答案，不要合并。
+// **Not** lib/httpx.IsLoopback: that judges outbound dialing ("is my target local"), so
+// empty and 0.0.0.0 count as local there - a reasonable default when dialing. This is an
+// ingress criterion: "which name is this request for"; empty Host must be **refused**
+// (HTTP/1.0 may omit Host - the usual shape of script tools). Two questions, two answers.
 //
-// 与 modules/arch-diagram/handler.go 那份逐字相同是**有意的**：这条 route 把一台
-// 远端机器的控制台带进来，比那份架构图敏感，判据只该更严不该更松。第三份副本是
-// 一个真实的坏味道（该提到 lib/ 去），但那是内核仓库的改动，与这次不是一件事
-// ——留这条注释，是为了让下一个读到它的人知道这已经是第三份了。
+// Being word-for-word identical to modules/arch-diagram/handler.go is **intentional**:
+// this route brings in a remote machine's console, more sensitive than the arch diagram,
+// so its criterion should be stricter, never looser. A third copy is a real smell (it
+// should move to lib/), but that is a kernel change - the comment for the next reader.
 func loopbackHost(r *http.Request) bool {
 	host := r.Host
 	if h, _, err := net.SplitHostPort(host); err == nil {

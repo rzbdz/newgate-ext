@@ -7,17 +7,17 @@ import (
 	"github.com/rzbdz/newgate-ext/testing/testkit"
 )
 
-// 编译期锁住：假实现必须和真接口同步。接口加了方法而这里没跟上，
-// 整包测试直接编译失败，而不是某个用例静默拿到零值。
+// Compile-time pin: the fake must track the real interface. A new method not mirrored here
+// fails the whole package's build, instead of a case silently getting zero values.
 var _ agentapi.AgentCatalog = (*testkit.FakeCatalog)(nil)
 
 func TestSandboxIsolatesState(t *testing.T) {
 	env := testkit.Sandbox(t)
 	if got := env.Home; got == "" {
-		t.Fatal("沙箱没给 NEWGATE_HOME")
+		t.Fatal("the sandbox did not set NEWGATE_HOME")
 	}
 	if env.Targets == env.Home {
-		t.Fatal("NEWGATE_TARGET_DIR 不该和 NEWGATE_HOME 同路径")
+		t.Fatal("NEWGATE_TARGET_DIR must not be the same path as NEWGATE_HOME")
 	}
 }
 
@@ -28,12 +28,12 @@ func TestFakeCatalogNamesAreSorted(t *testing.T) {
 	)
 	names := catalog.Names()
 	if len(names) != 2 || names[0] != "claude" || names[1] != "opencode" {
-		t.Fatalf("Names() = %v，期望按字母序 [claude opencode]", names)
+		t.Fatalf("Names() = %v, want alphabetical [claude opencode]", names)
 	}
 	if _, ok := catalog.Get("claude"); !ok {
-		t.Fatal("Get(claude) 找不到")
+		t.Fatal("Get(claude) not found")
 	}
 	if _, ok := catalog.Get("nope"); ok {
-		t.Fatal("Get(nope) 不该找到")
+		t.Fatal("Get(nope) should not be found")
 	}
 }

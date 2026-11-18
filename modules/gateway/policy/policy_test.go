@@ -135,29 +135,29 @@ func (b *binder) BindEnv(env Env) { b.got = env }
 func TestEmptyRegistryIsTheMinimalSystem(t *testing.T) {
 	r := New()
 	if !r.Empty() {
-		t.Fatal("新账本应该是空的")
+		t.Fatal("a new ledger should be empty")
 	}
 	if ok, why := r.Admit("p", "m"); !ok || why != "" {
-		t.Errorf("最小系统：全部候选可用, got (%v, %q)", ok, why)
+		t.Errorf("minimal system: all candidates usable, got (%v, %q)", ok, why)
 	}
 	if n := r.Rank("p", "m", 1024); n != NeutralRank {
-		t.Errorf("最小系统：不重排（中性键）, got %d", n)
+		t.Errorf("minimal system: no reordering (neutral key), got %d", n)
 	}
 	if v := r.Judge(Outcome{Kind: ConnectionFailed}); v.Stop || v.Attribute ||
 		len(v.Metrics) != 0 || v.Note != "" || v.Evidence != nil {
-		t.Errorf("最小系统：结局期没有意见, got %+v", v)
+		t.Errorf("minimal system: no opinion at outcome time, got %+v", v)
 	}
 	if doc := r.Doc(); doc != nil {
-		t.Errorf("最小系统：控制面没有额外一节, got %v", doc)
+		t.Errorf("minimal system: no extra control-plane section, got %v", doc)
 	}
 	if acks := r.ObserveProbes([]ProbeObservation{{Provider: "p"}}); acks != nil {
-		t.Errorf("最小系统：探活结论收下但没有回应, got %v", acks)
+		t.Errorf("minimal system: probe conclusion accepted but not answered, got %v", acks)
 	}
 	if id, label := r.MetricGroup("anything"); id != "" || label != "" {
-		t.Errorf("最小系统：不认领任何计数器, got (%q, %q)", id, label)
+		t.Errorf("minimal system: claims no counters, got (%q, %q)", id, label)
 	}
 	if h := r.MetricHint("anything"); h != "" {
-		t.Errorf("最小系统：不给任何说明, got %q", h)
+		t.Errorf("minimal system: gives no note, got %q", h)
 	}
 	r.Flush(nil) // 没有 Flusher，不该 panic
 	r.BindEnv(&envrec{})
@@ -173,17 +173,17 @@ func TestEmptyRegistryIsTheMinimalSystem(t *testing.T) {
 func TestRegisterRejectsAnonymousAndDuplicate(t *testing.T) {
 	r := New()
 	if _, err := r.Register(named{}); err == nil {
-		t.Error("没有名字的贡献者应该被拒")
+		t.Error("a contributor without a name should be rejected")
 	}
 	if _, err := r.Register(nil); err == nil {
-		t.Error("nil 贡献者应该被拒")
+		t.Error("a nil contributor should be rejected")
 	}
 	if _, err := r.Register(named{name: "a"}); err != nil {
 		t.Fatal(err)
 	}
 	_, err := r.Register(named{name: "a"})
 	if err == nil || i18n.ID(err) != "policy: contributor {name} is already registered" {
-		t.Errorf("同名重复注册应该被拒并说清原因, got %v", err)
+		t.Errorf("a duplicate registration under the same name should be rejected with a reason, got %v", err)
 	}
 }
 
@@ -200,11 +200,11 @@ func TestRegisterRejectsSecondAdmitter(t *testing.T) {
 	}
 	_, err := r.Register(&admitter{named: named{name: "second"}})
 	if err == nil || i18n.ID(err) != "policy: only one contributor may be an admitter; {name} is already taken by {holder} (it carries side effects, see the Admitter docs)" {
-		t.Fatalf("第二个准入者应该被拒, got %v", err)
+		t.Fatalf("the second admission should be rejected, got %v", err)
 	}
 	// 拒绝之后账本得干净：不能被半个注册留下痕迹。
 	if len(r.Filters()) != 1 {
-		t.Errorf("拒绝之后贡献者数 = %d, want 1", len(r.Filters()))
+		t.Errorf("contributors after the rejection = %d, want 1", len(r.Filters()))
 	}
 }
 
@@ -224,13 +224,13 @@ func TestRegisterRejectsDocKeyCollision(t *testing.T) {
 		"breakers": json.RawMessage(`[]`)}}
 	_, err := r.Register(second)
 	if err == nil || i18n.ID(err) != "policy: state document field {key} is already taken by {owner}" {
-		t.Fatalf("同一个状态字段被两家占用应该被拒, got %v", err)
+		t.Fatalf("the same state field claimed by two contributors should be rejected, got %v", err)
 	}
 	// 不撞车的能进来。
 	third := &controller{named: named{name: "c"}, doc: map[string]json.RawMessage{
 		"quotas": json.RawMessage(`{}`)}}
 	if _, err := r.Register(third); err != nil {
-		t.Fatalf("字段不撞车却进不来: %v", err)
+		t.Fatalf("fields that do not collide still cannot get in: %v", err)
 	}
 }
 
@@ -247,10 +247,10 @@ func TestReleaseIsScopedAndIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !r.Empty() {
-		t.Error("注销之后账本应该空了")
+		t.Error("the ledger should be empty after unregistering")
 	}
 	if err := release(); err != nil {
-		t.Errorf("重复注销必须无害（Stop 要幂等），得到 %v", err)
+		t.Errorf("a repeated unregister must be harmless (Stop must be idempotent), got %v", err)
 	}
 
 	// 注销 → 再注册同名：那个旧句柄不该把新注册删掉。
@@ -266,7 +266,7 @@ func TestReleaseIsScopedAndIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(r.Filters()) != 2 {
-		t.Errorf("陈旧句柄把别人的注册删掉了：现在剩 %d 个", len(r.Filters()))
+		t.Errorf("a stale handle deleted someone else's registration: %d remain now", len(r.Filters()))
 	}
 	_ = stale
 }
@@ -287,11 +287,11 @@ func TestAdmitAsksExactlyOncePerCandidate(t *testing.T) {
 	for _, candidate := range []string{"p1/m1", "p2/m2", "p3/m3"} {
 		parts := strings.SplitN(candidate, "/", 2)
 		if ok, _ := r.Admit(parts[0], parts[1]); !ok {
-			t.Fatalf("%s 应该可用", candidate)
+			t.Fatalf("%s should be usable", candidate)
 		}
 	}
 	if a.asked != 3 {
-		t.Errorf("三个候选问了 %d 次, want 3", a.asked)
+		t.Errorf("three candidates asked %d times, want 3", a.asked)
 	}
 }
 
@@ -303,14 +303,14 @@ func TestAdmitAsksExactlyOncePerCandidate(t *testing.T) {
 func TestJudgeMergesVerdictsAndToleratesPanic(t *testing.T) {
 	r := New()
 	stops := &adjudicator{named: named{name: "stops"}, verdict: func(Outcome) Verdict {
-		return Verdict{Stop: true, Metrics: []string{"b.metric"}, Note: "  [我停]"}
+		return Verdict{Stop: true, Metrics: []string{"b.metric"}, Note: "  [I stop]"}
 	}}
 	attrs := &adjudicator{named: named{name: "attrs"}, verdict: func(Outcome) Verdict {
 		return Verdict{Attribute: true, Metrics: []string{"a.metric", "b.metric"},
 			Evidence: &Evidence{Tag: "t", Subject: "s"}}
 	}}
 	boom := &adjudicator{named: named{name: "boom"}, verdict: func(Outcome) Verdict {
-		panic("策略崩了")
+		panic("the policy crashed")
 	}}
 	for _, f := range []Filter{stops, attrs, boom} {
 		if _, err := r.Register(f); err != nil {
@@ -319,19 +319,19 @@ func TestJudgeMergesVerdictsAndToleratesPanic(t *testing.T) {
 	}
 	v := r.Judge(Outcome{Provider: "p", Model: "m", Kind: RejectedStatus, Status: 400})
 	if !v.Stop || !v.Attribute {
-		t.Errorf("Stop/Attribute 是 OR：任何一位说停就停, got %+v", v)
+		t.Errorf("Stop/Attribute is an OR: any single stop stops it, got %+v", v)
 	}
 	if strings.Join(v.Metrics, ",") != "a.metric,b.metric" {
-		t.Errorf("Metrics 是去重并按字典序（输出要稳定），got %v", v.Metrics)
+		t.Errorf("Metrics are deduplicated and sorted (output must be stable), got %v", v.Metrics)
 	}
-	if v.Note != "  [我停]" {
-		t.Errorf("Note 按注册顺序拼接, got %q", v.Note)
+	if v.Note != "  [I stop]" {
+		t.Errorf("Note pieces are joined in registration order, got %q", v.Note)
 	}
 	if v.Evidence == nil || v.Evidence.Tag != "t" {
-		t.Errorf("Evidence 取第一个非 nil, got %+v", v.Evidence)
+		t.Errorf("Evidence takes the first non-nil, got %+v", v.Evidence)
 	}
 	if len(attrs.outcomes) != 1 {
-		t.Errorf("每一位裁决者都该被问到, got %d", len(attrs.outcomes))
+		t.Errorf("every judge should be asked, got %d", len(attrs.outcomes))
 	}
 }
 
@@ -346,10 +346,10 @@ func TestObserveDeliversToEveryAdjudicator(t *testing.T) {
 	}
 	r.Observe(Outcome{Kind: Succeeded, RequestBytes: 1234, TTFT: 20 * time.Millisecond})
 	if len(a.observeds) != 1 || a.observeds[0].RequestBytes != 1234 || len(b.observeds) != 1 {
-		t.Errorf("成功观测量没送到每一位: a=%v b=%v", a.observeds, b.observeds)
+		t.Errorf("a success observation was not delivered to everyone: a=%v b=%v", a.observeds, b.observeds)
 	}
 	if len(a.outcomes) != 0 {
-		t.Errorf("Observe 不该顺带走一遍判决（那会让策略把成功当失败记一次）: %v", a.outcomes)
+		t.Errorf("Observe must not run a verdict along the way (that would make a policy book a success as a failure): %v", a.outcomes)
 	}
 }
 
@@ -367,17 +367,17 @@ func TestDocMergesTopLevelKeys(t *testing.T) {
 	}
 	doc := r.Doc()
 	if len(doc) != 2 {
-		t.Fatalf("文档合并结果 = %v", doc)
+		t.Fatalf("document merge result = %v", doc)
 	}
 	if string(doc["breakers"]) != "[1]" {
-		t.Errorf("贡献者的值被改动了: %s", doc["breakers"])
+		t.Errorf("a contributor's value was changed: %s", doc["breakers"])
 	}
 }
 
 // TestObserveProbesFansOut 锁住探活结论的分发与 ack 收集。
 func TestObserveProbesFansOut(t *testing.T) {
 	r := New()
-	a := &controller{named: named{name: "a"}, acks: []ProbeAck{{Opened: true, Note: "开了"}}}
+	a := &controller{named: named{name: "a"}, acks: []ProbeAck{{Opened: true, Note: "on"}}}
 	b := &controller{named: named{name: "b"}}
 	for _, c := range []*controller{a, b} {
 		if _, err := r.Register(c); err != nil {
@@ -387,10 +387,10 @@ func TestObserveProbesFansOut(t *testing.T) {
 	obs := []ProbeObservation{{Provider: "p", Model: "m"}}
 	acks := r.ObserveProbes(obs)
 	if len(a.got) != 1 || len(b.got) != 1 {
-		t.Errorf("结论没送到每一位控制面贡献者: a=%d b=%d", len(a.got), len(b.got))
+		t.Errorf("the conclusion was not delivered to every control-plane contributor: a=%d b=%d", len(a.got), len(b.got))
 	}
-	if len(acks) != 1 || !acks[0].Opened || acks[0].Note != "开了" {
-		t.Errorf("ack 没被收回来: %+v", acks)
+	if len(acks) != 1 || !acks[0].Opened || acks[0].Note != "on" {
+		t.Errorf("the ack was not collected: %+v", acks)
 	}
 }
 
@@ -399,8 +399,8 @@ func TestObserveProbesFansOut(t *testing.T) {
 func TestMetricNamingTakesTheFirstClaim(t *testing.T) {
 	r := New()
 	for _, n := range []namer{
-		{named: named{name: "a"}, prefix: "breaker.", group: "breaker", label: "熔断", hint: "熔断器打开"},
-		{named: named{name: "b"}, prefix: "breaker.", group: "other", label: "别的", hint: "别的说明"},
+		{named: named{name: "a"}, prefix: "breaker.", group: "breaker", label: "breaker", hint: "breaker open"},
+		{named: named{name: "b"}, prefix: "breaker.", group: "other", label: "other", hint: "other note"},
 	} {
 		if _, err := r.Register(n); err != nil {
 			t.Fatal(err)
@@ -408,17 +408,17 @@ func TestMetricNamingTakesTheFirstClaim(t *testing.T) {
 	}
 	// 断言**身份**：它是语言无关的那一半，也是排序用的那一半。说法跟着语言走，
 	// 在这里钉住它只会让翻译一改测试就红。
-	if id, label := r.MetricGroup("breaker.opened"); id != "breaker" || label != "熔断" {
-		t.Errorf("分组取第一位认领的, got (%q, %q)", id, label)
+	if id, label := r.MetricGroup("breaker.opened"); id != "breaker" || label != "breaker" {
+		t.Errorf("the group takes the first claimant, got (%q, %q)", id, label)
 	}
-	if h := r.MetricHint("breaker.opened"); h != "熔断器打开" {
-		t.Errorf("说明取第一位认领的, got %q", h)
+	if h := r.MetricHint("breaker.opened"); h != "breaker open" {
+		t.Errorf("the note takes the first claimant, got %q", h)
 	}
 	if id, label := r.MetricGroup("chain.failover"); id != "" || label != "" {
-		t.Errorf("没人认领的该给空串（调用方兜底）, got (%q, %q)", id, label)
+		t.Errorf("with no claimant it should give an empty string (caller falls back), got (%q, %q)", id, label)
 	}
 	if h := r.MetricHint("chain.failover"); h != "" {
-		t.Errorf("没人认领的说明该给空串（调用方兜底）, got %q", h)
+		t.Errorf("with no claimant the note should be an empty string (caller falls back), got %q", h)
 	}
 }
 
@@ -426,7 +426,7 @@ func TestMetricNamingTakesTheFirstClaim(t *testing.T) {
 // 但绝不阻断停机。
 func TestFlushReportsFailuresWithoutBlocking(t *testing.T) {
 	r := New()
-	boom := errors.New("磁盘满")
+	boom := errors.New("disk full")
 	bad := &flusher{named: named{name: "bad"}, flush: func() error { return boom }}
 	good := &flusher{named: named{name: "good"}}
 	for _, f := range []Filter{bad, good} {
@@ -439,10 +439,10 @@ func TestFlushReportsFailuresWithoutBlocking(t *testing.T) {
 		logged = append(logged, format+"|"+strings.Join(toStrings(args), ","))
 	})
 	if bad.n != 1 || good.n != 1 {
-		t.Errorf("每个人都要落一次盘: bad=%d good=%d", bad.n, good.n)
+		t.Errorf("everyone should be persisted once: bad=%d good=%d", bad.n, good.n)
 	}
 	if len(logged) != 1 || !strings.Contains(logged[0], "bad") {
-		t.Errorf("落盘失败必须说出来并点名: %v", logged)
+		t.Errorf("a persist failure must be reported and named: %v", logged)
 	}
 }
 
@@ -460,7 +460,7 @@ func TestBindEnvReachesOnlyBinders(t *testing.T) {
 	env := &envrec{}
 	r.BindEnv(env)
 	if b.got != Env(env) {
-		t.Error("实现了 EnvBinder 的人没拿到运行期能力")
+		t.Error("someone implementing EnvBinder did not get the runtime capability")
 	}
 }
 

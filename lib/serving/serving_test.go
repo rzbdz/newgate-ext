@@ -7,9 +7,9 @@ import (
 	"testing"
 )
 
-// 这条边的全部行为就是「什么时候跑」和「坏了怎么办」。两条都要锁死：跑早了等于
-// 每条 CLI 命令都开一个监听（这正是它存在的原因），坏了拖垮别人等于一个界面
-// 起不来把数据面带走。
+// This edge's entire behavior is "when it runs" and "what happens when it breaks". Both must
+// be pinned: running early means every CLI command opens a listener (exactly why it exists);
+// breaking drags others down means one UI failing to start takes the data plane with it.
 
 func TestRegistrationDoesNotStartAnything(t *testing.T) {
 	r := NewRegistry()
@@ -21,14 +21,14 @@ func TestRegistrationDoesNotStartAnything(t *testing.T) {
 		t.Fatal(err)
 	}
 	if n := started.Load(); n != 0 {
-		t.Fatalf("登记就跑起来了 %d 次——Start 期间登记，而 Start 每条命令都跑", n)
+		t.Fatalf("registration started serving %d times -- registering during Start, and Start runs once per command", n)
 	}
 	stop, err := r.Notify()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if n := started.Load(); n != 1 {
-		t.Fatalf("通知时该跑一次，实际 %d", n)
+		t.Fatalf("must run once on notify, actually %d", n)
 	}
 	stop()
 }
@@ -49,12 +49,13 @@ func TestNotifyIsIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	if n := started.Load(); n != 1 {
-		t.Errorf("同一个进程里被通知两次，监听只该起一次（第二次是重复绑定端口）: %d", n)
+		t.Errorf("notified twice in the same process but the listener must start only once (the second time would rebind the port): %d", n)
 	}
 }
 
-// TestOneFailureDoesNotStopTheOthers：fail-open。一个界面起不来（端口被占、
-// 权限不对）不该让整个服务进程进入失败状态——数据面照常转发。
+// TestOneFailureDoesNotStopTheOthers: fail-open. One UI failing to
+// start (port taken, bad permissions) must not put the whole serving
+// process into a failed state -- the data plane keeps forwarding.
 func TestOneFailureDoesNotStopTheOthers(t *testing.T) {
 	r := NewRegistry()
 	var okRan atomic.Int64
@@ -71,18 +72,19 @@ func TestOneFailureDoesNotStopTheOthers(t *testing.T) {
 	}
 	_, err := r.Notify()
 	if err == nil {
-		t.Fatal("失败该报出来（调用方要写日志），只是不许拦住别人")
+		t.Fatal("a failure must be reported (the caller writes the log), it just must not block others")
 	}
 	if !strings.Contains(err.Error(), "broken") || !strings.Contains(err.Error(), "address already in use") {
-		t.Errorf("报错要点名是谁、以及为什么: %v", err)
+		t.Errorf("the error must name who and why: %v", err)
 	}
 	if okRan.Load() != 1 {
-		t.Errorf("前面的失败不该挡住后面的监听: %d", okRan.Load())
+		t.Errorf("an earlier failure must not block later listeners: %d", okRan.Load())
 	}
 }
 
-// TestStopIsReverseOrderAndIdempotent：停机按登记的**逆序**走（后起的先停，
-// 与组件图的生命周期同一条规矩），而且重复调用只生效一次（退出路径可能两次走到）。
+// TestStopIsReverseOrderAndIdempotent: stopping goes in **reverse** registration order
+// (later started, earlier stopped, the same rule as the component graph's lifecycle),
+// and a repeated call takes effect only once (the exit path may reach it twice).
 func TestStopIsReverseOrderAndIdempotent(t *testing.T) {
 	r := NewRegistry()
 	var order []string
@@ -101,7 +103,7 @@ func TestStopIsReverseOrderAndIdempotent(t *testing.T) {
 	stop()
 	stop()
 	if got := strings.Join(order, ","); got != "second,first" {
-		t.Errorf("停机顺序错了（该逆序、且只走一遍）: %q", got)
+		t.Errorf("shutdown order is wrong (must be reverse and only once): %q", got)
 	}
 }
 
@@ -119,22 +121,22 @@ func TestReleaseOnlyRemovesItsOwn(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := rel(); err != nil {
-		t.Fatalf("撤销该是幂等的: %v", err)
+		t.Fatalf("revoke must be idempotent: %v", err)
 	}
 	if _, err := r.Notify(); err != nil {
 		t.Fatal(err)
 	}
 	if ran.Load() != 0 {
-		t.Error("撤销之后不该还被通知")
+		t.Error("must not still be notified after revoke")
 	}
 }
 
 func TestRejectsNamelessOrNil(t *testing.T) {
 	r := NewRegistry()
 	if _, err := r.OnServe("", func() (func(), error) { return nil, nil }); err == nil {
-		t.Error("没有名字的监听该被拒绝（失败时报错要点名是谁）")
+		t.Error("a listener without a name must be rejected (the error must name who)")
 	}
 	if _, err := r.OnServe("x", nil); err == nil {
-		t.Error("nil 回调该被拒绝")
+		t.Error("a nil callback must be rejected")
 	}
 }

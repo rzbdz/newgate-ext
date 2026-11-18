@@ -1,8 +1,8 @@
 package upstream
 
-// 这个文件是两个方言的报文形状：非流式响应体、SSE 块序列、以及 DeepSeek 思考
-// 模式的最严口径。每段都标了 mock/fake_upstream.py 里对应的那段，
-// 改之前先去读 python 版——那边的行为是唯一真相，这里只是它的替身。
+// This file is the message shapes of two dialects: non-streaming bodies, SSE chunks, and
+// DeepSeek thinking mode's strictest form. Each piece names its counterpart in
+// mock/fake_upstream.py; read the python first - it is the only truth, this is its stand-in.
 
 import (
 	"encoding/json"
@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// strictReasoningError 是 python STRICT_REASONING_ERR 的逐字翻版。
+// strictReasoningError is a verbatim copy of python's STRICT_REASONING_ERR.
 func strictReasoningError() map[string]any {
 	return map[string]any{
 		"type": "error",
@@ -21,21 +21,21 @@ func strictReasoningError() map[string]any {
 	}
 }
 
-// strictReasoningViolation 复刻 python 的 strict_reasoning_violation，判据是
-// **尾部形状**（2026-09-18 按实测重写，原来的实现照抄的是官方文档口径——
-// 「每条 assistant 都得回传非空推理」——那条口径在真实上游上不成立）：
+// strictReasoningViolation replicates python's strict_reasoning_violation; the criterion
+// is **tail shape** (rewritten 2026-09-18 from measurement; the old code copied the docs'
+// "every assistant must echo non-empty reasoning", which does not hold upstream):
 //
-//	最后一条 role:user 消息的 content[] 非空、且里面**全是** tool_result 块 → 违规
+//	last role:user content[] non-empty with **all** tool_result blocks -> violation
 //
-// 实测依据（打真实 smt-deepseek/deepseek-flash，每格 3/3）：reasoning_content
-// 是真实原文、省略、空串还是占位符，对结果**毫无影响**；同一个请求体只在那个
-// content[] 里多一个非空 text 块（哪怕只有一个空格）就从 400 变 200。
+// Measured (real smt-deepseek/deepseek-flash, 3/3 per cell): reasoning_content as real
+// text, omitted, empty or placeholder, **changes nothing**; one extra non-empty text
+// block in that content[] (even a single space) turns the 400 into a 200.
 //
-// 报错文案仍是上游那句（它把「你这轮没有新指令」报成了「推理没回传」）——
-// 文案与真实原因不一致，正是不能按文案判、只能按形状判的原因。
+// The error text is still upstream's (it reports "no new instruction this turn" as
+// "reasoning not echoed") - text and real cause disagree, which is why shape, not text.
 //
-// 复刻时别加回这三个已经被证伪的闸门：带 tools、思考没关、每条 assistant 都查。
-// 实测里 thinking:disabled 连 tools 都不带，一样 400。
+// Do not re-add the three disproven gates: has tools, thinking not off, every assistant.
+// Measured, thinking:disabled with no tools at all is a 400 just the same.
 func strictReasoningViolation(body map[string]any) bool {
 	if body == nil {
 		return false
@@ -65,14 +65,14 @@ func strictReasoningViolation(body map[string]any) bool {
 	return true
 }
 
-// anthropicMessage 是非流式 anthropic 响应（python 的 do_POST 里那一段）。
+// anthropicMessage is the non-streaming anthropic response (python's do_POST part).
 //
-// content 的顺序是**语义**，不是排版：thinking 块在前、紧跟 tool_use，
-// thinkcache 的观察者正是靠这个相邻关系把推理原文和 tool id 绑在一起
-// （e2e 第 8 章的回填断言依赖它）。别重排。
+// content's order is **semantics**, not layout: thinking block first, then tool_use; the
+// thinkcache observer binds reasoning text to tool id through that adjacency (e2e chapter
+// 8's backfill assertion relies on it). Do not reorder.
 //
-// tool_use 只在请求带了 tools 时出现，id 固定 ToolUseID——固定才方便断言
-// 「回填的那一发认的是哪个 tool 调用」。
+// tool_use appears only with tools in the request, id fixed at ToolUseID - fixed so the
+// assertion "which tool call the backfill hit" is easy.
 func anthropicMessage(model string, tools bool) map[string]any {
 	content := []any{
 		map[string]any{
@@ -104,7 +104,7 @@ func anthropicMessage(model string, tools bool) map[string]any {
 	}
 }
 
-// chatCompletion 是非流式 openai 响应（python 里最后那个 return）。
+// chatCompletion is the non-streaming openai response (the last return in python).
 func chatCompletion(model string) map[string]any {
 	return map[string]any{
 		"id":     ChatCompletionID,
@@ -122,33 +122,33 @@ func chatCompletion(model string) map[string]any {
 	}
 }
 
-// streamWords 是流式正文的切法（python 里那个 ["MOCK","-","STREAM", f" {model}"]）。
-// 逐词发是为了让每一块都是独立的一次 write——代理要是攒着不发，块就数不出来。
-// 拼起来是两个方言共用的一句话：MOCK-STREAM <model>。
+// streamWords is how the streaming body is split (the ["MOCK","-","STREAM", f" {model}"]).
+// Word by word so each chunk is its own write - a proxy that buffers sends nothing to count.
+// Joined, the two dialects share one sentence: MOCK-STREAM <model>.
 func streamWords(model string) []string {
 	return []string{"MOCK", "-", "STREAM", " " + model}
 }
 
-// stream 逐块吐一条 SSE，每块之间留间隔——用来验证代理没有把整个响应缓冲下来。
+// stream emits SSE chunk by chunk with a gap between - verifying the proxy does not
+// buffer the whole response.
 //
-// Anthropic 方言按 Claude Code 的真实形态吐块：thinking 块在前、带 tools 时
-// 加 tool_use 块——thinkcache 观察者靠这两个块的相邻关系把推理内容和 tool id
-// 关联起来（e2e 第 8 章的回填断言依赖它）。
+// Anthropic dialect follows Claude Code's real form: thinking block first, plus tool_use
+// with tools - the thinkcache observer links reasoning to tool id by adjacency (e2e 8).
 func (s *Server) stream(w http.ResponseWriter, r *http.Request, model string, anthropic, slow, tools bool) {
 	delay := s.delays(slow)
 
 	header := w.Header()
 	header.Set("Content-Type", "text/event-stream")
 	header.Set("Cache-Control", "no-cache")
-	// Connection: close 与 Transfer-Encoding: identity 一起，让这条响应回到
-	// python 版的裸字节流形态：没有 Content-Length、没有 chunked，体以
-	// 「连接关掉」为界。Go 默认会给 HTTP/1.1 的无长度响应加 chunked
-	// （net/http 源码里的原话是 "use chunked transfer encoding to avoid
-	// closing the connection at EOF"），那会让网关看到 bash e2e 里不存在的
-	// 一种分帧。显式写 identity 之后 net/http 走的是它在同一段注释里引的
-	// SSE 推荐姿势（不分块 + 响应完关连接），分帧与 python 逐字节一致。
-	// 别当成冗余删掉：删了测试照样过，但「代理怎么处理无长度流式」这段
-	// 覆盖就悄悄没了。
+	// Connection: close plus Transfer-Encoding: identity return this response to python's raw
+	// byte stream: no Content-Length, no chunked, body bounded by the closed connection. Go
+	// adds chunked to HTTP/1.1 responses with no length by default (net/http: "use chunked
+	// transfer encoding to avoid closing the connection at EOF"), so the gateway would see a
+	// framing the bash e2e never has. With identity, net/http follows the SSE recommendation
+	// it quotes in the same comment (no chunks + close at end), so framing matches python
+	// byte for byte.
+	// Do not delete as redundant: tests still pass, but "how the proxy handles lengthless
+	// streaming" quietly loses its coverage.
 	header.Set("Connection", "close")
 	header.Set("Transfer-Encoding", "identity")
 	w.WriteHeader(http.StatusOK)
@@ -168,11 +168,11 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request, model string, an
 		return true
 	}
 
-	// pause 模拟 python 的 time.sleep(delay)。python 那边客户端断了会
-	// BrokenPipeError 收摊；这里 select 在请求 context 上，测试结束或客户端
-	// 断开时不会留下一个卡在 sleep 里的 handler（httptest.Server.Close 要等
-	// 所有在途 handler 退干净，卡住就成了「测试结束挂 5 秒」的那种怪现象）。
-	// 返回 false = 该收摊了。
+	// pause mimics python's time.sleep(delay). python's client disconnect raises
+	// BrokenPipeError and wraps up; here select is on the request context, so the end of the
+	// test or a client hang-up leaves no handler stuck in sleep (httptest.Server.Close waits
+	// for all in-flight handlers; stuck = "the test hangs 5 seconds at the end").
+	// false = time to wrap up.
 	pause := func() bool {
 		if delay <= 0 {
 			return r.Context().Err() == nil
@@ -268,8 +268,8 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request, model string, an
 		})
 	}
 
-	// 收尾的 [DONE] 两个方言都发——python 版就是这样的（anthropic 官方并不发
-	// 这一行，但 python 版发了，而 e2e 锁的行为正是对着它跑出来的，照搬）。
+	// The closing [DONE] goes out for both dialects - python does that (anthropic does not
+	// send this line, but python does, and the e2e locks behaviour against it; copy it).
 	_, _ = w.Write([]byte("data: [DONE]\n\n"))
 	if flusher != nil {
 		flusher.Flush()

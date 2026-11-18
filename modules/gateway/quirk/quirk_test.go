@@ -11,25 +11,25 @@ func TestLearnNeverGuesses(t *testing.T) {
 		status int
 		body   string
 	}{
-		{"无关的 400", 400, `{"error":{"message":"invalid request: max_tokens too large"}}`},
-		{"5xx 是上游自己挂了，与请求形状无关", 500, `{"error":{"message":"始终思考"}}`},
+		{"unrelated 400", 400, `{"error":{"message":"invalid request: max_tokens too large"}}`},
+		{"5xx means the upstream itself is down, unrelated to the request shape", 500, `{"error":{"message":"always thinks"}}`},
 		{"429", 429, `{"error":{"message":"rate limit"}}`},
-		{"空 body", 400, ``},
-		{"只有一句普通的话，不含任何签名", 400, `{"error":{"message":"bad request"}}`},
+		{"empty body", 400, ``},
+		{"just one ordinary sentence with no signature at all", 400, `{"error":{"message":"bad request"}}`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			table := NewTable()
 			if _, err := table.RegisterSignature(Signature{
-				Flag: NoThinkingDisable, Any: []string{"不支持关闭思考"}, Label: "该模型始终思考",
+				Flag: NoThinkingDisable, Any: []string{"does not support disabling thinking"}, Label: "this model always thinks",
 			}); err != nil {
 				t.Fatal(err)
 			}
 			if got := table.Learn("prov", "model-y", tt.status, []byte(tt.body)); got != nil {
-				t.Fatalf("不该学到却学到了: %v", got)
+				t.Fatalf("it learned something it should not have: %v", got)
 			}
 			if table.Has("prov", "model-y", NoThinkingDisable) {
-				t.Fatal("不该打 flag 却打了")
+				t.Fatal("it flagged something it should not have")
 			}
 		})
 	}
@@ -43,10 +43,10 @@ func TestFlagsAreScopedToProviderAndModel(t *testing.T) {
 	table := NewTable()
 	table.Mark("kimi", "kimi-k2.7-code", NoThinkingDisable)
 	if !table.Has("kimi", "kimi-k2.7-code", NoThinkingDisable) {
-		t.Fatal("自己没记上")
+		t.Fatal("it did not record it itself")
 	}
 	if table.Has("kimi", "kimi-k2.7", NoThinkingDisable) || table.Has("glm", "kimi-k2.7-code", NoThinkingDisable) {
-		t.Fatal("串到别的 provider/model 上了")
+		t.Fatal("it leaked to another provider/model")
 	}
 }
 
@@ -66,6 +66,6 @@ func TestSnapshotShowsLearnedFlags(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatalf("快照里看不到刚记下的 flag: %v", table.Snapshot())
+		t.Fatalf("the flag just recorded is not visible in the snapshot: %v", table.Snapshot())
 	}
 }

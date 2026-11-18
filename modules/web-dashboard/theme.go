@@ -11,30 +11,30 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// 本文件是皮肤登记处的实现（形状见 api.go），外加「这一台机器选了哪一套」这件事。
+// This file is the theme registry (shape in api.go), plus "which one this machine chose".
 //
-// # 为什么选中哪一套是本模块的状态
+// # Why which-one-is-chosen is this module's state
 //
-// 与网关那几个开关同一条（见 core/modules/gateway/gatewaystate）：**谁的状态谁自己
-// 托管**，住在 state.json 的 `ModuleConfig[Key]` 里，core 不认识这个键。"用哪套皮肤"
-// 是这块界面自己的偏好，不是配置语义的一部分——把它抬进 domain.State 的话，内核就
-// 得认识一个纯前端的概念。
+// Same rule as the gateway switches (core/modules/gateway/gatewaystate): **whoever owns
+// the state hosts it**, in state.json's `ModuleConfig[Key]`; core does not know this key.
+// "Which theme" is this UI's own preference, not part of config semantics - hoisting it
+// into domain.State would force the kernel to know a purely front-end concept.
 
-// themeKey 是 state.json 的 ModuleConfig 里属于本模块的字段名。
+// themeKey is this module's field name inside state.json's ModuleConfig.
 const themeKey = "web-dashboard"
 
-// themeState 是本模块在 state.json 里自己那一段。
+// themeState is this module's own section in state.json.
 //
-// 一个字段也单开一个结构体：ModuleConfig 里存的是**整段原文**，往一个裸字符串里
-// 塞值，下次想加第二个偏好（比如密度、字号）时就要做兼容读。
+// Even one field gets its own struct: ModuleConfig stores **the raw section**, and dumping
+// a value into a bare string forces compat reads for the next preference (density, font).
 type themeState struct {
-	// Theme 是选中的皮肤 ID。空 = 没选过，界面走出厂那套令牌
-	// （也就是 app.css 的 `:root`，它自己跟着系统深浅走）。
+	// Theme is the chosen theme ID. Empty = never chosen, the UI uses factory tokens
+	// (app.css's `:root`, which follows the system light/dark on its own).
 	Theme string `json:"theme,omitempty"`
 }
 
-// loadThemeState 读本模块那一段。**永不失败**：没有这一段、或者 JSON 坏掉都当
-// 「没选过」——读不出来就退回出厂那套，比拿一段读不懂的东西去改界面好。
+// loadThemeState reads this module's section. **Never fails**: missing section or bad JSON
+// means "never chosen" - fall back to factory tokens rather than restyle from junk.
 func loadThemeState() themeState {
 	var s themeState
 	raw := store.LoadState().ModuleConfig[themeKey]
@@ -45,10 +45,10 @@ func loadThemeState() themeState {
 	return s
 }
 
-// selectedTheme 是这台机器选中的皮肤 ID（空 = 没选过）。
+// selectedTheme is the theme ID chosen on this machine (empty = never chosen).
 func selectedTheme() string { return loadThemeState().Theme }
 
-// setSelectedTheme 记下选中的皮肤。
+// setSelectedTheme records the chosen theme.
 func setSelectedTheme(id string) error {
 	raw, err := json.Marshal(themeState{Theme: id})
 	if err != nil {
@@ -62,12 +62,12 @@ func setSelectedTheme(id string) error {
 	return store.SaveState(st)
 }
 
-// themeRegistry 是登记进来的那几套皮肤（接口见 api.go 的 ThemeService）。
+// themeRegistry holds the registered themes (interface in api.go's ThemeService).
 type themeRegistry struct {
-	// 加锁而不是「注册期结束之后只读」：这个界面是**挂在共享端口上的**，而共享
-	// 端口的 HTTP 服务在网关 Start 的时候就起来了——也就是说别的模块还在 Start
-	// 里注册皮肤时，浏览器已经能打到 /api/themes 上。那个窗口很短，但它的表现是
-	// 一次并发读写 map（Go 直接崩进程），不是一次难看的数据。
+	// A lock, not "read-only after registration": this UI **hangs on the shared port**, whose
+	// HTTP server starts with the gateway's Start - so while other modules still register
+	// themes in their Start, a browser can already hit /api/themes. The window is short, but
+	// it would be a concurrent map read/write (Go kills the process), not ugly data.
 	mu   sync.RWMutex
 	byID map[string]Theme
 }
@@ -78,11 +78,11 @@ func newThemeRegistry() *themeRegistry {
 
 var _ ThemeService = (*themeRegistry)(nil)
 
-// RegisterTheme 见 api.go 的 ThemeService。
+// RegisterTheme, see api.go's ThemeService.
 //
-// 重复 ID 报错、而不是后到的覆盖先到的：一个界面上两套皮肤抢同一个身份时，
-// 「哪一套赢了」取决于装配顺序（也就是目录名的字母序），而那件事没有人看得出来。
-// 报出来的话，两个模块的作者各看一眼就知道该改谁。
+// A duplicate ID errors rather than the later one overwriting: when two themes grab one
+// identity, "which won" depends on assembly order (directory-name alphabetical order), and
+// nobody can see that. Reported, both authors look once and know which one to change.
 func (r *themeRegistry) RegisterTheme(t Theme) (modules.Release, error) {
 	if t.ID == "" {
 		return nil, i18n.E("a theme needs an id", nil)
@@ -104,11 +104,11 @@ func (r *themeRegistry) RegisterTheme(t Theme) (modules.Release, error) {
 	}, nil
 }
 
-// snapshot 是这一刻登记着的皮肤，按 ID 排（同一个进程跑两次得到同一个顺序）。
+// snapshot is the themes registered right now, sorted by ID (same order on two runs).
 //
-// 排序而不是保持注册序：注册序是**装配顺序**（目录名字母序），它没有含义，而界面
-// 上那排按钮的先后每次都不一样的话，用户每次都要重新找一遍（与 OverviewAgent
-// 按 id 排是同一条）。
+// Sorted, not registration order: registration order is **assembly order** (directory
+// names), meaningless, and if the button row changes every time users re-hunt each time
+// (same as OverviewAgent sorting by id).
 func (r *themeRegistry) snapshot() []Theme {
 	r.mu.RLock()
 	out := make([]Theme, 0, len(r.byID))
@@ -120,7 +120,7 @@ func (r *themeRegistry) snapshot() []Theme {
 	return out
 }
 
-// has 报某个 ID 登记着没有（用来判断「存下来的那套还在不在」）。
+// has reports whether an ID is registered (to tell "is the stored theme still here").
 func (r *themeRegistry) has(id string) bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -128,13 +128,13 @@ func (r *themeRegistry) has(id string) bool {
 	return ok
 }
 
-// themeDoc 是 /api/themes 的报文。
+// themeDoc is the /api/themes payload.
 type themeDoc struct {
-	// Active 是此刻生效的皮肤 ID。**空 = 出厂那套令牌**（app.css 的 :root，
-	// 它自己跟着系统深浅走）——它不是一个皮肤模块，所以不在下面的表里。
+	// Active is the effective theme ID. **Empty = factory tokens** (app.css's :root, which
+	// follows the system light/dark) - not a theme module, so it is not in the table below.
 	Active string `json:"active"`
-	// Themes 是登记着的皮肤。名字在这里就翻好（语言是后端解析出来的，前端再猜
-	// 一遍就有了第二处，见 web/src/i18n.ts 的文件头）。
+	// Themes are the registered themes. Names are translated here (the backend resolves the
+	// language; a front-end second guess would be a second source, see web/src/i18n.ts header).
 	Themes []themeItem `json:"themes"`
 }
 
@@ -145,12 +145,12 @@ type themeItem struct {
 	CSS  string `json:"css"`
 }
 
-// themeDocOf 拼一份报文。存下来的那套**不在了**（模块被关掉、目录被删）时
-// active 报空：界面于是落回出厂令牌，而不是抱着一个不存在的 ID 不动。
+// themeDocOf builds the payload. When the stored theme is **gone** (module disabled,
+// directory deleted), active is empty: the UI falls back to factory tokens instead of
+// clinging to a nonexistent ID.
 //
-// 这里不悄悄把它改掉（不写回 state.json）：用户可能只是临时关掉了那个模块，
-// 下次装回来它选的还是那一套。写回去就把这个选择**永久**抹掉了——而抹掉它的那
-// 一下，用户什么都没点。
+// No quiet rewrite (no write-back to state.json): the user may have only disabled
+// it for now; reinstall and it returns. A write-back erases that choice for good, unclicked.
 func themeDocOf(r *themeRegistry) themeDoc {
 	active := selectedTheme()
 	if active != "" && !r.has(active) {
@@ -165,31 +165,31 @@ func themeDocOf(r *themeRegistry) themeDoc {
 	return doc
 }
 
-// ---------- 那张卡 ----------
+// ---------- the card ----------
 
-// themeConceptID 是那张卡的机器标记（也是它的概念 ID）。
+// themeConceptID is the card's machine tag (also its concept ID).
 const themeConceptID = "web-dashboard.theme"
 
-// themeConcept 是「皮肤」那张卡。
+// themeConcept is the "theme" card.
 //
-// # 为什么另立一节（而不是塞进「配置」那一节）
+// # Why its own section (rather than inside "config")
 //
-// 侧栏里别处的每一节说的都是这台机器上的配置，而这一节说的是**这块界面自己长什么样**：
-// 「我的请求走哪条链」与「这个网页什么颜色」是两个问题，混在一栏里读的人会以为后者
-// 也是路由的一部分。
+// Every other sidebar section is about this machine's config; this one is about **what
+// this UI looks like**: "which chain my requests take" and "what color this page is" are
+// two questions; mixed into one column, readers think the latter is part of routing.
 //
-// # 为什么它要有这么一张卡（顶栏已经有一个下拉了）
+// # Why it needs a card at all (the top bar already has a dropdown)
 //
-// 那个下拉是**快捷方式**，不是配置的住处。这一层有两个判据：
+// That dropdown is a **shortcut**, not where config lives. Two criteria here:
 //
-//   - 一块界面上能改的东西，应当**在配置那一节里找得到**——用户找不到的东西等于
-//     不存在，而「顶栏右边那个下拉」不是一个能找的地方（它长得像视图切换，不像
-//     设置）。它也不在快照里，所以搜索、过滤、"哪些东西能改"这些一律看不见它。
-//   - 「谁的东西谁带」：这一节由本模块注册（与别的模块注册自己的节同一条路），
-//     而不是塞进 config 那一节——那份 state.json 里住着好几个模块各自的段，让
-//     config 替我们报这一格，等于让它替所有模块做决定。
+//   - Anything changeable in a UI should be **findable in the config section** - unfindable
+//     is nonexistent; "the dropdown at the top right" is not findable (it looks like a view
+//     switch, not settings), and being outside the snapshot, search/filter never see it.
+//   - "Whoever owns it brings it": this section is registered by this module (same path as
+//     other modules' sections), not stuffed into config - that state.json holds several
+//     modules' own sections, and config speaking for us would decide for all modules.
 //
-// 两处写的是同一件东西（`selectedTheme`），所以下拉与这张卡不会各说各话。
+// Both write the same thing (`selectedTheme`), so dropdown and card never disagree.
 func themeConcept(r *themeRegistry) viewapi.Concept {
 	return viewapi.Concept{
 		ID: themeConceptID, Kind: viewapi.KindToggles,
@@ -199,8 +199,8 @@ func themeConcept(r *themeRegistry) viewapi.Concept {
 			Kind:    viewapi.ToggleSelect,
 			Value:   selectedTheme(),
 			Options: themeOptions(r),
-			// 空串那一档要**点名它是谁**：它是一个合法取值（出厂那套令牌），不是一个
-			// 没得选的空档，而「跟随系统」这四个字得由后端给（语言是后端解析的）。
+			// The empty option must **name what it is**: a valid value (factory tokens), not a
+			// blank nothing-to-pick, and "follow system" must come from the backend (it localizes).
 			OptionLabels: map[string]string{
 				"": i18n.T("follow the system", nil),
 			},
@@ -210,17 +210,17 @@ func themeConcept(r *themeRegistry) viewapi.Concept {
 				"around.", nil),
 		}},
 		},
-		// **没有 File / Base**：这一格与别处的开关卡不同，它背后没有一份让用户编辑的
-		// 文件（它住在 state.json 的 module_config 里，那是本模块自己的段）。带上
-		// File 的话界面会把它与 state.json 的原文半并排，而那一半是整个文件——在
-		// 那里改一个字就可能把别的模块的段盖掉。
+		// **No File / Base**: unlike switch cards elsewhere, nothing user-editable backs this
+		// cell (it lives in state.json's module_config, this module's own section). With File
+		// the UI would put it beside state.json's raw half - the whole file - where one keystroke
+		// can overwrite another module's section.
 		Apply: func(edit json.RawMessage, _ string) (string, error) {
 			return applyThemeEdit(r, edit)
 		},
 	}
 }
 
-// themeOptions 是下拉里那几档：空串（跟随系统）打头，后面按 ID 排。
+// themeOptions are the dropdown entries: empty (follow system) first, then sorted by ID.
 func themeOptions(r *themeRegistry) []string {
 	out := []string{""}
 	for _, t := range r.snapshot() {
@@ -229,10 +229,10 @@ func themeOptions(r *themeRegistry) []string {
 	return out
 }
 
-// applyThemeEdit 落盘那一格。
+// applyThemeEdit persists that cell.
 //
-// 不认识的 ID **报错**，不悄悄落回出厂：那多半是那个模块被关掉了，而「点了没反应」
-// 与「这套皮肤没了」是两句话（与 /api/themes 那条同一条规矩）。
+// An unknown ID **errors**, not quietly back to factory: likely that module is disabled,
+// and "clicked, nothing happened" and "this theme is gone" are two sentences (see /api/themes).
 func applyThemeEdit(r *themeRegistry, edit json.RawMessage) (string, error) {
 	var patch struct {
 		Theme *string `json:"theme"`

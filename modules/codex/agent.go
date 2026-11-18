@@ -1,8 +1,9 @@
-// Package codex owns the base Codex client descriptor（OpenAI 官方的 codex CLI）。
+// Package codex owns the base Codex client descriptor (OpenAI's official codex CLI).
 //
-// 本模块是**客户端接入**那一类：它说清「codex 是什么、装在哪、怎么装」，而不掺进
-// 别的模块对该客户端的取舍。上游怪癖、交叉语义各自另开模块——与 claudecode /
-// opencode 那条边界一致。
+// This module is in the **client onboarding** class: it states "what codex
+// is, where it is installed, how to install it", without mixing in other modules'
+// trade-offs about this client. Upstream quirks and cross-cutting semantics each
+// get their own module -- consistent with the boundary for claudecode / opencode.
 package codex
 
 import (
@@ -12,36 +13,36 @@ import (
 
 const ID = "codex"
 
-// NpmPackage 是官方发行渠道上那个包。
+// NpmPackage is the package on the official distribution channel.
 //
-// 它就是**一行事实**，而且是会变的（官方换过包名、也换过渠道），所以它住在客户端
-// 模块里而不是内核里：内核不认识 npm，更不认识某一家公司的包名（见 confighook 的
-// AgentInstaller）。
+// It is **one line of fact**, and one that changes (the vendor has changed the package name
+// and the channel), so it lives in the client module rather than the kernel: the kernel does
+// not know npm, let alone one company's package name (see AgentInstaller in confighook).
 const NpmPackage = "@openai/codex"
 
 func Agent() *agentapi.Agent {
 	return &agentapi.Agent{
-		// 界面上的图标（见 icon.go：它为什么住在这个模块里）。
+		// The icon in the UI (see icon.go: why it lives in this module).
 		Icon:    iconPath,
 		ID:      ID,
 		Bin:     []string{"codex"},
 		Dialect: "openai",
-		// 模型名与 provider 走 ~/.codex/config.toml（`model` / `model_providers.*`），
-		// 没有环境变量入口——所以下面那个槽位**没有 EnvVar**：它的值由接管写进
-		// 那份 TOML，不是注入 env（见 takeover.go 的 tierOf）。
+		// The model name and provider go through ~/.codex/config.toml (`model` / `model_providers.*`),
+		// with no env var entry -- so the slot below **has no EnvVar**: its value is written
+		// into that TOML by takeover, not injected as env (see tierOf in takeover.go).
 		//
-		// 槽位仍然登记出来，而不是让接管自己去读一个写死的档位：登记之后它就与
-		// claude 的档位映射走同一套知识、同一张卡——用户改档位时不需要知道
-		// 「codex 的模型名是写进文件的」这件事。
-		// 槽位表 = codex 配置里**所有取值是模型名的键**。它只有两个，这是查过它的
-		// ConfigToml 字段表（codex 0.155，2026-09-21）之后确定的——不是我们少写了：
-		// `model` 是主模型，`review_model` 是 `codex review` 用的那一个，剩下的
-		// `model_reasoning_effort` / `model_verbosity` 那类是**档位之外的旋钮**
-		// （取值是 low/high 这种，不是模型名），塞进槽位表只会让下拉里出现一堆
-		// 不是档位的取值。
+		// The slot is still registered, rather than letting takeover read a hardcoded tier itself:
+		// once registered it shares the same knowledge and the same card as claude's tier mapping
+		// -- the user changing a tier need not know "codex's model name is written into a file".
+		// The slot table = **every key in codex's config whose value is a model name**. There are
+		// only two, settled after checking its ConfigToml field table (codex 0.155, 2026-09-21)
+		// -- not because we under-counted: `model` is the main model, `review_model` is the one
+		// `codex review` uses, and the rest like `model_reasoning_effort` / `model_verbosity`
+		// are **knobs outside the tier ladder** (values are low/high, not model names); stuffing
+		// them into the slot table would only put a pile of non-tier values in the dropdown.
 		//
-		// Claude Code 那边有四个，是因为它有四个环境变量；差异来自两家的接口面，
-		// 不是来自我们的取舍。
+		// Claude Code has four because it has four env vars; the difference comes
+		// from the two vendors' interface surfaces, not from our trade-offs.
 		Slots: []agentapi.Slot{
 			{
 				Name: "model",

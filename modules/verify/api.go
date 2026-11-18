@@ -1,68 +1,68 @@
-// Package verify 用**模型指纹**回答一个配置界面一直回答不了的问题：
+// Package verify uses **model fingerprints** to answer what a config UI never could:
 //
-//	这条 binding 写的是 gpt-5.6-terra，上游此刻真的在用它吗？
+//	this binding says gpt-5.6-terra - is the upstream really using it right now?
 //
-// # 它是什么
+// # What it is
 //
-// 指纹检测的做法不是看模型自报的名字（那当然会照着你写的名字回），而是让上游
-// 做一件**只有模型自己才会做的事**：吐几百个 1–355 之间的整数。不同的模型在
-// 选数上有各自稳定的统计特征，拿这些数字和参考库比一遍，就能排出一个「这更像
-// 谁」的名单（见 https://lm.ikale.io/docs/sdk）。本模块把这件事接成 newgate 的
-// 一条命令（`newgate verify`）与网页上的一屏（指纹）。
+// Fingerprinting does not look at the model's self-reported name (it echoes what you wrote);
+// it makes the upstream do **only a model can do**: emit a few hundred integers 1-355.
+// Different models have stable statistical quirks in picking numbers, and comparing them
+// against the reference bank ranks "who this looks like" (see https://lm.ikale.io/docs/sdk).
+// This module exposes that as a newgate command (`newgate verify`) and a web screen.
 //
-// # 为什么它住在发行版
+// # Why it lives in the distribution
 //
-// 指纹参考库与身份判断是**产品取舍**：内核的 probe 只回答「通不通、说哪种方言」，
-// 那是机制；「这个上游是不是它自称的那家」取决于你信哪一份参考库、失配时怎么
-// 报。内核不该认识 lm.ikale.io，也不该认识某一家模型目录服务。所以内核只多出
-// 一个共享的「profile → 去重后的上游」名单（config/targets），probe 与 verify
-// 共用；其余全部在这里。
+// The reference bank and identity judgment are **product choices**: the kernel's probe only
+// answers "reachable? which dialect?", which is mechanism; "is this upstream who it claims"
+// depends on which bank you trust and how a mismatch is reported. The kernel must not know
+// lm.ikale.io, nor any vendor's model catalog service. So the kernel only gained a shared
+// "profile → deduped upstreams" list (config/targets) used by both; the rest is all here.
 //
-// # 它不认识界面
+// # It does not know the UI
 //
-// 与 modellist 同一条：界面在就把扩展端点登记上去、把这一节挂到概念账本上；
-// 界面不在（`dist-simple-cli.json` 那种只有终端的装配）命令照常可用。箭头只有
-// 「本模块 → 界面」一个方向。
+// Same as modellist: with a UI, register the extension endpoint and mount this section into
+// the concept ledger; without (`dist-simple-cli.json`, terminal only) the command still works.
+// The arrow only goes "this module → UI".
 package verify
 
 import (
 	"time"
 )
 
-// Name 是这个模块在装配表与 `newgate plugin` 里的名字（= 目录名）。
+// Name is this module's name in the assembly table and in `newgate plugin` (= the dir name).
 const Name = "verify"
 
-// Endpoint 是它登记到 web BFF 上的名字：`POST /ui/api/ext/fingerprint`。
+// Endpoint is the name it registers on the web BFF: `POST /ui/api/ext/fingerprint`.
 //
-// 名字刻意**不等于模块名**：前端只认「有一个指纹端点」，不认「有一个 verify
-// 模块」（见 web-dashboard 的扩展端点注释）。机器标记，不翻译。
+// Deliberately **not the module name**: the front end knows "a fingerprint endpoint",
+// not "a verify module" (see web-dashboard's extension endpoint note). Not translated.
 const Endpoint = "fingerprint"
 
-// Match 是指纹给出的模型名与 binding 上写的模型名之间的关系。
+// Match is the relation between the model name the fingerprint gives and the one on the binding.
 //
-// 它是机器标记（前端按它上色、CLI 按它出警告），不翻译。人话在于前端/CLI
-// 各自的词表里。
+// It is a machine tag (the front end colors by it, the CLI warns by it), not translated.
+// Human wording lives in each side's own vocabulary.
 type Match string
 
 const (
-	// MatchOK 名字（去掉分隔符后）完全一致。
+	// MatchOK names are identical (after removing separators).
 	MatchOK Match = "match"
-	// MatchDated 一个是另一个加日期/快照后缀：同一个模型的另一版。
+	// MatchDated one has a date/snapshot suffix over the other: another build of the same model.
 	MatchDated Match = "dated"
-	// MatchFamily 同一个家族里的另一个模型（比如写 gpt-5.5、指纹说是 gpt-5.6）。
+	// MatchFamily another model in the same family (say gpt-5.5 written, fingerprint says gpt-5.6).
 	MatchFamily Match = "family"
-	// MatchMismatch 名字对不上，也不是同族。
+	// MatchMismatch names do not match, and are not the same family.
 	MatchMismatch Match = "mismatch"
-	// MatchUnknown 这一轮没有可用的排名（样本失败、样本不够、不是模型输出）。
+	// MatchUnknown no usable ranking this round (bad samples, too few samples, not model output).
 	MatchUnknown Match = "unknown"
-	// MatchError 连参考库都没加载成功，或 provider 配置不可用。
+	// MatchError even the reference bank failed to load, or the provider config is unusable.
 	MatchError Match = "error"
 )
 
-// Warning 报告这个结论是不是**需要人看一眼**。
+// Warning reports whether this conclusion is **worth a human look**.
 //
-// `dated` 不算：同一个模型的快照版是正常现象，把它也报成警告会让真正的失配
-// 淹在噪音里。
+// `dated` does not count: a snapshot build of the same model is normal, and warning on it
+// would drown real mismatches in noise.
 func (m Match) Warning() bool {
 	switch m {
 	case MatchFamily, MatchMismatch, MatchUnknown, MatchError:
@@ -71,7 +71,7 @@ func (m Match) Warning() bool {
 	return false
 }
 
-// Candidate 是参考库给出的一个候选（按分数从高到低）。
+// Candidate is one candidate from the reference bank (score high to low).
 type Candidate struct {
 	Model       string   `json:"model"`
 	DisplayName string   `json:"display_name,omitempty"`
@@ -81,24 +81,24 @@ type Candidate struct {
 	Probability *float64 `json:"probability,omitempty"`
 }
 
-// Entry 是一条 binding 的指纹结论。它同时是**落盘缓存**的形状。
+// Entry is one binding's fingerprint conclusion. It is also **the on-disk cache** shape.
 //
-// 缓存的意义不是省 token（verify 是用户显式发起的，每次都该真打），而是**界面
-// 上那一格**：用户打开模型下拉时看到的必须是「上一次验到的是谁」，不能因为这次
-// 没点按钮就空白。
+// The cache is not to save tokens (verify is explicit, every run really calls), but **the
+// cell in the UI**: when the model dropdown opens it must show "who was verified last time",
+// not blank just because the button was not pressed this time.
 type Entry struct {
 	Provider string `json:"provider"`
 	Model    string `json:"model"`
-	// API 是实际使用的请求格式（responses / chat_completions / messages）。
+	// API is the request format actually used (responses / chat_completions / messages).
 	API string `json:"api,omitempty"`
-	// Predicted 是参考库排第一的模型 ID；空 = 这一轮没有排名。
+	// Predicted is the bank's top-ranked model ID; empty = no ranking this round.
 	Predicted     string `json:"predicted,omitempty"`
 	PredictedName string `json:"predicted_name,omitempty"`
 	Family        string `json:"family,omitempty"`
 	FamilyName    string `json:"family_name,omitempty"`
-	// Decision 是参考库的裁决：scored / partial / unscorable / not_model。
+	// Decision is the bank's verdict: scored / partial / unscorable / not_model.
 	Decision string `json:"decision,omitempty"`
-	// Probability 是闭集内第一名的置信度；partial 时为 null（JSON 里省略）。
+	// Probability is the confidence of the top of the closed set; null for partial (omitted in JSON).
 	Probability *float64    `json:"probability,omitempty"`
 	Match       Match       `json:"match"`
 	UsedOutputs int         `json:"used_outputs,omitempty"`
@@ -106,12 +106,12 @@ type Entry struct {
 	CheckedAt   time.Time   `json:"checked_at"`
 	Build       string      `json:"build,omitempty"`
 	Error       string      `json:"error,omitempty"`
-	// CacheError 是「这一轮验成功了，但结论没能落盘」——不影响这次结论，
-	// 但决定下一次界面还看不看得到它，所以必须说出来。
+	// CacheError is "this round verified fine, but the conclusion could not be saved" - does
+	// not affect this result, but decides whether the next UI visit sees it, so it must be said.
 	CacheError string `json:"cache_error,omitempty"`
 }
 
-// RoleState 是配置界面上一行：某个 profile 的某个档位解析到了哪条 binding。
+// RoleState is one row of the config UI: which binding one profile's one tier resolved to.
 type RoleState struct {
 	Role     string `json:"role"`
 	Provider string `json:"provider,omitempty"`
@@ -119,14 +119,14 @@ type RoleState struct {
 	Err      string `json:"error,omitempty"`
 }
 
-// ProfileState 是一份 profile 的全部档位。
+// ProfileState is all tiers of one profile.
 type ProfileState struct {
 	Name  string      `json:"name"`
 	Roles []RoleState `json:"roles"`
 }
 
-// ProviderState 是上游选择器的素材。**不含凭据**：key 只在验证请求里用，
-// 一个字节都不该出现在界面报文里。
+// ProviderState is the material for the upstream selector. **No credentials**: the key is
+// only used in the verify request, and not one byte belongs in a UI payload.
 type ProviderState struct {
 	Name     string   `json:"name"`
 	Protocol string   `json:"protocol,omitempty"`
@@ -135,34 +135,34 @@ type ProviderState struct {
 	Models   []string `json:"models,omitempty"`
 }
 
-// State 是这一屏的全部素材：配置视图 + 上一次的指纹 + 参考库状态。
+// State is all the material for this screen: config view + last fingerprints + bank state.
 type State struct {
 	Profiles  []ProfileState  `json:"profiles"`
 	Providers []ProviderState `json:"providers"`
 	Entries   []Entry         `json:"entries"`
-	// Build 是参考库的 built_at（数据版本）；空 = 还没加载过。
+	// Build is the reference bank's built_at (data version); empty = never loaded.
 	Build string `json:"build,omitempty"`
-	// Loaded 说的是这个进程有没有把参考库读进来（第一次 verify 会下载约
-	// 3.6 MB 并缓存）。
+	// Loaded says whether this process has read the reference bank in (the first verify
+	// downloads about 3.6 MB and caches it).
 	Loaded bool `json:"loaded"`
-	// DataCached 说的是参考库的缓存文件在不在这台机器上。它解释「第一次验证
-	// 会下载」——文件已经在了，就只是解析（几十毫秒），不必吓人。
+	// DataCached says whether the bank's cache file is on this machine. It explains "the
+	// first verify downloads" - if the file is already there it is just parsing, no drama.
 	DataCached bool `json:"data_cached"`
-	// DataCheckedAt 是参考库缓存最后一次被下载/检查的时间（缓存文件的 mtime）。
-	// 界面用它说「尺子有多旧」；nil = 没有缓存。
+	// DataCheckedAt is when the bank cache was last downloaded/checked (the file's mtime).
+	// The UI uses it to say "how old is the ruler"; nil = no cache.
 	DataCheckedAt *time.Time `json:"data_checked_at,omitempty"`
-	// Error 是读配置/缓存时的整体错误。页面照常打开（自由验证那半仍然可用），
-	// 但要把原因写在面板上。
+	// Error is the overall error reading config/cache. The page still opens (free verification
+	// still works), but the reason must be written on the panel.
 	Error string `json:"error,omitempty"`
 }
 
-// RunRequest 是一次单点验证的输入。
+// RunRequest is the input of one single-point verification.
 type RunRequest struct {
 	Provider string `json:"provider"`
 	Model    string `json:"model"`
-	// API 空/auto = 按 provider 的 protocol 选（anthropic → messages，
-	// 其余 → chat_completions）。也可以显式指定。
+	// API empty/auto = pick by the provider's protocol (anthropic → messages, others →
+	// chat_completions). It can also be given explicitly.
 	API string `json:"api,omitempty"`
-	// Count 是挑战数（1–3）。0 = 3（参考库推荐值；3 条才有校准概率）。
+	// Count is the number of challenges (1-3). 0 = 3 (the bank's value; 3 calibrates the probability).
 	Count int `json:"count,omitempty"`
 }

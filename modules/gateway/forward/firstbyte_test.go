@@ -50,10 +50,10 @@ func TestCompactNotTightTimeout(t *testing.T) {
 	}
 
 	if got := metrics.Default.Snapshot()["timeout.first_byte.non_stream"]; got != 0 {
-		t.Fatalf("compact 不该吃分类器紧超时，却超时了（counter=%d）", got)
+		t.Fatalf("compact must not take the classifier's tight timeout, yet it timed out (counter=%d)", got)
 	}
 	if atomic.LoadUint32(&upstreamGot) == 0 {
-		t.Fatal("请求没到上游")
+		t.Fatal("the request did not reach the upstream")
 	}
 	// 客户端断开后 proxy goroutine 处理取消需要一点时间——轮询等它记账
 	deadline := time.Now().Add(2 * time.Second)
@@ -63,7 +63,7 @@ func TestCompactNotTightTimeout(t *testing.T) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatalf("应该是客户端取消（counter=%d）", metrics.Default.Snapshot()["client.cancel"])
+	t.Fatalf("should be a client cancellation (counter=%d)", metrics.Default.Snapshot()["client.cancel"])
 }
 
 const compactBody = `{"model":"heavy","max_tokens":10240,` +

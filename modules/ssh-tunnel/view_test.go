@@ -7,54 +7,54 @@ import (
 	viewapi "github.com/rzbdz/newgate-ext/lib/view"
 )
 
-// 这一族锁的是**这张卡在界面上能不能用**。全部是「到 wire 上」那类判据：同一个
-// 值在 Go 这边对、在界面上丢了一格，用户看到的东西就完全不是一回事，而编译、测试、
-// review 一个都不会红。
+// This family locks down **whether this card works in the UI**. All are "over the wire"
+// criteria: a value right on the Go side but a lost cell in the UI is a different product,
+// and compile, tests and review all stay green.
 
-// TestABlankTargetHasEveryField：一份**一条都没有**的配置，点「新增」要能填。
+// TestABlankTargetHasEveryField: a config with **not a single** entry must be fillable via "add".
 //
-// 这是这个模块的常态（一台还没配过远端的机器），而它过去是坏的：字段的形状长在
-// 每一条记录上，一条都没有的时候界面无处可抄，于是新增出来的是一张**一个输入框
-// 都没有**的空卡片。这一条防的就是那个回归——它只在一个空集上显形。
+// This is the module's normal state (a machine never configured for a remote), and it was
+// broken: the field shape grew on each record, so with no records the UI had nothing to copy
+// and "add" gave an empty card **with no inputs at all** - only an empty set shows it.
 func TestABlankTargetHasEveryField(t *testing.T) {
 	c := targetsConcept(Loaded{})
 	recs, ok := c.Data.(viewapi.Records)
 	if !ok {
-		t.Fatalf("Data 不是 Records：%T", c.Data)
+		t.Fatalf("Data is not Records: %T", c.Data)
 	}
 	if !recs.CanAdd {
-		t.Fatal("这张卡该能加")
+		t.Fatal("this card should support adding")
 	}
 	if len(recs.Blank) == 0 {
-		t.Fatal("空集上 Blank 是空的——点「新增」会得到一张没有输入框的卡片")
+		t.Fatal("Blank on an empty set is empty - clicking 'new' would give a card with no input boxes")
 	}
 
-	// 字段表必须与一条真记录的**逐字相同**。少一格的那种错看起来只像「这个字段
-	// 本来就没法配」，而它其实只是没被带出来。
+	// The field table must be **verbatim identical** to a real record's. A missing cell just
+	// looks like "that field is not configurable", when it was simply not carried over.
 	full := targetFields(Target{}.normalize())
 	if len(recs.Blank) != len(full) {
-		t.Fatalf("Blank 有 %d 格，一条真记录有 %d 格", len(recs.Blank), len(full))
+		t.Fatalf("Blank has %d cells, a real record has %d", len(recs.Blank), len(full))
 	}
 	for i := range full {
 		if recs.Blank[i].ID != full[i].ID {
-			t.Errorf("第 %d 格是 %q，想要 %q", i, recs.Blank[i].ID, full[i].ID)
+			t.Errorf("cell %d is %q, want %q", i, recs.Blank[i].ID, full[i].ID)
 		}
 	}
 
-	// 下拉的候选必须带上：没有 Options 的 select 是一个**空的**下拉，而用户对着
-	// 它只会以为界面坏了。
+	// The dropdown's options must come along: a select without Options is an **empty**
+	// dropdown, and the user just concludes the UI is broken.
 	for _, f := range recs.Blank {
 		if f.Kind != viewapi.FieldSelect {
 			continue
 		}
 		if len(f.Options) == 0 {
-			t.Errorf("下拉 %q 没有候选", f.ID)
+			t.Errorf("dropdown %q has no candidates", f.ID)
 		}
 	}
 }
 
-// TestEveryBlankFieldSurvivesJSON：上面那条是在 Go 的值上比，这条比的是**真过一遍
-// JSON** 之后的样子——界面拿到的是 JSON，中间少一格这里才看得出来。
+// TestEveryBlankFieldSurvivesJSON: the one above compares Go values; this one compares
+// **after an actual JSON round trip** - the UI gets JSON, and a lost cell only shows here.
 func TestEveryBlankFieldSurvivesJSON(t *testing.T) {
 	recs := targetsConcept(Loaded{}).Data.(viewapi.Records)
 	raw, err := json.Marshal(recs)
@@ -70,10 +70,10 @@ func TestEveryBlankFieldSurvivesJSON(t *testing.T) {
 		CanAdd bool `json:"can_add"`
 	}
 	if err := json.Unmarshal(raw, &back); err != nil {
-		t.Fatalf("解不出来：%v", err)
+		t.Fatalf("cannot decode: %v", err)
 	}
 	if !back.CanAdd || len(back.Blank) != len(recs.Blank) {
-		t.Fatalf("过了 JSON 之后 can_add=%v，blank=%d 格（Go 那边 %d 格）",
+		t.Fatalf("after JSON can_add=%v, blank=%d cells (Go has %d)",
 			back.CanAdd, len(back.Blank), len(recs.Blank))
 	}
 	seen := map[string]bool{}
@@ -83,15 +83,15 @@ func TestEveryBlankFieldSurvivesJSON(t *testing.T) {
 	for _, want := range []string{"id", "host", "user", "port", "identity",
 		"remote_host", "remote_port", "local_port", "persistent", "idle_seconds", "host_key"} {
 		if !seen[want] {
-			t.Errorf("界面上少了一格 %q", want)
+			t.Errorf("the UI is missing the cell %q", want)
 		}
 	}
 }
 
-// TestTheAddressesAreClickable：两条路的地址都该是**能点的链接**，而端口没起来的
-// 那条不该有。
+// TestTheAddressesAreClickable: both paths' addresses should be **clickable links**, and
+// the one whose port is not up should not.
 //
-// 给一个点开就是连不上的地址，比不给链接更糟：用户会以为自己配错了。
+// Giving an address that fails when clicked is worse than no link: users think they misconfigured.
 func TestTheAddressesAreClickable(t *testing.T) {
 	loaded := Loaded{Targets: []Target{target("ds")}}
 	m := newManager(newPool(newFakeDialer("127.0.0.1:1")), func() Loaded { return loaded })
@@ -100,27 +100,27 @@ func TestTheAddressesAreClickable(t *testing.T) {
 	c := statusConcept(m)
 	tbl, ok := c.Data.(viewapi.Table)
 	if !ok {
-		t.Fatalf("Data 不是 Table：%T", c.Data)
+		t.Fatalf("Data is not a Table: %T", c.Data)
 	}
 	if len(tbl.Rows) != 1 {
-		t.Fatalf("该有一行，实际 %d", len(tbl.Rows))
+		t.Fatalf("there should be one row, got %d", len(tbl.Rows))
 	}
 	route := tbl.Rows[0].Cells["route"]
 	if route.Href != "/ui/remote/ds/" {
-		t.Errorf("route 那一格不是链接：%+v", route)
+		t.Errorf("the route cell is not a link: %+v", route)
 	}
 	if route.Text != route.Href {
-		t.Errorf("链接的字与地址不一致：%+v", route)
+		t.Errorf("the link text does not match the address: %+v", route)
 	}
-	// 这个 target 没有 local_port，所以那一格是「没有」——**不该有链接**。
+	// This target has no local_port, so that cell is "none" - **there should be no link**.
 	if port := tbl.Rows[0].Cells["port"]; port.Href != "" {
-		t.Errorf("没有转发端口却有链接：%+v", port)
+		t.Errorf("there is a link but no forwarded port: %+v", port)
 	}
 }
 
 func TestAForwardingPortLinksToItsOwnRoot(t *testing.T) {
-	// 转发端口的地址是它自己的根（`http://127.0.0.1:9401/ui/`），不是共享端口上
-	// 那条 route——两者是不同的地址，点错一个会让人以为「保真那条坏了」。
+	// The forward port's address is its own root (`http://127.0.0.1:9401/ui/`), not the route
+	// on the shared port - different addresses; the wrong click looks like the faithful path broke.
 	got := forwardHref(TargetStatus{
 		Target:  target("ds"),
 		Forward: forwardStatus{Addr: "127.0.0.1:9401"},
@@ -128,8 +128,8 @@ func TestAForwardingPortLinksToItsOwnRoot(t *testing.T) {
 	if got != "http://127.0.0.1:9401/ui/" {
 		t.Errorf("forwardHref = %q", got)
 	}
-	// 端口没起来：不给链接（点开就是连不上，比没有链接更让人以为配错了）。
+	// Port not up: no link (clicking fails, which looks more like a misconfiguration than no link).
 	if got := forwardHref(TargetStatus{ForwardErr: "address already in use"}); got != "" {
-		t.Errorf("端口没起来却给了链接：%q", got)
+		t.Errorf("a link was given although the port is not up: %q", got)
 	}
 }

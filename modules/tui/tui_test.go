@@ -42,8 +42,8 @@ func seed(t *testing.T) {
 	}
 }
 
-// 这一条锁的是「左栏选客户端、右栏选 profile」真正落到 state.Active，而不是
-// 只改全局缺省——TUI 上一版只有后者，用户没法在终端里给某一家单独选链头。
+// This one locks that "left picks the client, right picks the profile" really lands in
+// state.Active, not only the global default - the earlier TUI did just the latter.
 func TestApplyPerAgentAndFollowDefault(t *testing.T) {
 	seed(t)
 	cat := fakeCatalog{agents: map[string]*agentapi.Agent{
@@ -65,7 +65,7 @@ func TestApplyPerAgentAndFollowDefault(t *testing.T) {
 		t.Fatalf("default = %q, want ds (per-agent must not touch it)", got)
 	}
 
-	// 第一项是「跟随全局缺省」：写入的是删除键，不是留下一个同值条目。
+	// The first item is "follow the global default": it writes a delete key, not a same-value entry.
 	m.scopeCur = 1
 	m.focus = 1
 	m.profileCur = 0

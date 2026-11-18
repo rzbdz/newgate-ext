@@ -6,18 +6,18 @@ import (
 	"strings"
 )
 
-// Render 把整份报告渲成一个**自包含**的 HTML。
+// Render turns the whole report into a **self-contained** HTML.
 //
-// 自包含是硬要求：产物要能离线双击打开（开发机、跳板机、发到别人手上都一样），
-// 所以没有一个外链——样式、脚本、数据全在文件里。代价是这个文件几百 KB，而它
-// 本来就是给 review 用的，不是给人天天加载的网页。
+// Self-contained is a hard requirement: the artifact must open offline (dev machine,
+// jump box, someone else's hands alike), so no external links - styles, scripts and
+// data all inside. The price is a few hundred KB, and it is for review, not daily loading.
 func Render(r Report) (string, error) {
 	blob, err := json.Marshal(r)
 	if err != nil {
 		return "", err
 	}
-	// </script> 出现在数据里会把脚本提前关掉（包路径里不会有，但数据将来会长），
-	// 转义一下比信任输入便宜。
+	// </script> in the data closes the script early (not in package paths, but data grows);
+	// escaping is cheaper than trusting input.
 	data := strings.ReplaceAll(string(blob), "</", `<\/`)
 
 	var sb strings.Builder

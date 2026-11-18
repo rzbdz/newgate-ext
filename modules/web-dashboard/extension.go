@@ -8,15 +8,15 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// 扩展端点的登记表。形状照抄 view.Registry 与 porthub.Registry：一张表、一个
-// 单调序号（撤销只撤自己那条）、重名当场报错。
+// Registry of extension endpoints. Shape copied from view.Registry and porthub.Registry:
+// one table, one monotonic token (undo only its own), duplicate names fail on the spot.
 //
-// 为什么**不**按名字覆盖：两个模块都叫 `modellist` 时，后登记的那一个会让前一个
-// 永远收不到请求，而前一个在界面上仍然有一个下拉、点开却总是 404。这种静默的
-// 「一半功能消失」正是装配期该拒绝的东西。
+// Why **not** overwrite by name: with two modules both called `modellist`, the later one
+// would starve the earlier of requests, while the earlier still has a dropdown in the UI
+// that always 404s. This silent "half the feature is gone" is what assembly should refuse.
 
-// extensionName 限定名字的字符集：它会出现在 URL 路径段里，放 `/`、`?`、`#`
-// 进去等于让「登记的名字」与「收到请求的名字」可以不一致。
+// extensionName restricts the character set: the name appears in a URL path segment, so
+// `/`, `?`, `#` would let "the registered name" differ from "the name that gets requests".
 var extensionName = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
 
 type extensionEntry struct {
@@ -34,7 +34,7 @@ func newExtensionRegistry() *extensionRegistry {
 	return &extensionRegistry{entries: map[string]extensionEntry{}}
 }
 
-// Register 收下一个扩展端点。
+// Register takes in one extension endpoint.
 func (r *extensionRegistry) Register(name string, h ExtensionHandler) (modules.Release, error) {
 	if !extensionName.MatchString(name) {
 		return nil, i18n.E("web: {name} is not a usable extension name — use lowercase letters, digits, '-' and '_'",
@@ -56,8 +56,8 @@ func (r *extensionRegistry) Register(name string, h ExtensionHandler) (modules.R
 	return func() error {
 		r.mu.Lock()
 		defer r.mu.Unlock()
-		// 按序号认人，不按名字：撤销晚到的那一条时，不能把后来者顶上去的那一条
-		// 删掉（与 view.Registry.Register 的撤销同一条理由）。
+		// Identify by token, not name: undoing a late-arriving row must not delete the row
+		// that a later registrant pushed up (same reason as view.Registry.Register's undo).
 		if cur, ok := r.entries[name]; ok && cur.id == e.id {
 			delete(r.entries, name)
 		}

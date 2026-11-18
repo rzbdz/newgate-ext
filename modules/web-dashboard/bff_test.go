@@ -14,9 +14,9 @@ import (
 	"github.com/rzbdz/newgate-ext/lib/view"
 )
 
-// BFF 的职责只有三条：把概念端出去、把修改**转交**给贡献它的那位、发静态资源。
-// 这几条测试锁的就是「它没有第四条」——多加一条（比如自己去读配置）就意味着
-// 它开始认识某个模块，而那正是这一版删掉的东西。
+// The BFF has only three duties: serve concepts, **forward** edits to the contributor, serve
+// static assets. These tests lock that there is no fourth - one more (say reading config
+// itself) means it starts knowing a module, which is what this version deleted.
 
 func testAssets() fs.FS {
 	return fstest.MapFS{
@@ -30,7 +30,7 @@ func newHandler() *Handler {
 	return NewHandler(testAssets(), view.NewRegistry(), newThemeRegistry(), newExtensionRegistry(), newPluginRegistry())
 }
 
-// contribute 登记一个贡献者：产出函数每次被调用都原样交出这批概念。
+// contribute registers a contributor: the producer hands this batch of concepts on each call.
 func contribute(t *testing.T, h *Handler, source string, concepts ...view.Concept) {
 	t.Helper()
 	if _, err := h.views.Register(source, view.Title(func() string { return source }),
@@ -39,12 +39,12 @@ func contribute(t *testing.T, h *Handler, source string, concepts ...view.Concep
 	}
 }
 
-// TestLiveSurvivesTheWire：Live 是贡献者在 Go 那边声明的，而界面靠 JSON 里那个
-// 字段决定「哪几个源要每几秒重问一次」（见前端 App.svelte 的 liveSources）。
+// TestLiveSurvivesTheWire: Live is declared by the contributor in Go, and the UI decides which
+// sources to re-ask every few seconds from the JSON field (see the front end's liveSources).
 //
-// 这一跳断了**不会报错**：字段全丢 → 一个源都不刷 → 页面安静地停在打开那一刻，
-// 而「自动刷新」那个复选框看起来一切正常。所以它值得一条断言，而不是等谁在
-// 浏览器里发现计数器不动了。
+// This hop breaking is **silent**: field lost -> no source refreshes -> the page quietly stops
+// at the moment it opened, while the "auto refresh" checkbox looks fine. So it is worth an
+// assertion, rather than waiting for someone to notice a frozen counter in the browser.
 func TestLiveSurvivesTheWire(t *testing.T) {
 	h := newHandler()
 	contribute(t, h, "somewhere",
@@ -54,7 +54,7 @@ func TestLiveSurvivesTheWire(t *testing.T) {
 
 	rec := get(t, h, "/api/snapshot")
 	if rec.Code != http.StatusOK {
-		t.Fatalf("snapshot 该 200，实际 %d", rec.Code)
+		t.Fatalf("snapshot should be 200, actual %d", rec.Code)
 	}
 	var doc snapshotDoc
 	if err := json.Unmarshal(rec.Body.Bytes(), &doc); err != nil {
@@ -65,29 +65,29 @@ func TestLiveSurvivesTheWire(t *testing.T) {
 		byID[c.ID] = c
 	}
 	if !byID["live.one"].Live {
-		t.Error("声明了 Live 的概念必须把它端到前端——丢了它，自动刷新谁都不问")
+		t.Error("a concept that declared Live must be served to the front end -- lose it and nobody is asked for the auto refresh")
 	}
 	if byID["static.one"].Live {
-		t.Error("没声明的概念不该被当成会变的：那会把整个源拖进几秒一次的轮询")
+		t.Error("a concept that did not declare it must not be treated as changing: that would drag the whole source into a poll every few seconds")
 	}
 
-	// 同一个源的**其他**概念也一起被端出去：界面的刷新粒度是源，不是这一条
-	// （见 core/lib/view 里 Concept.Live 的注释）。
+	// The **other** concepts of the same source go out too: the UI's refresh granularity is the
+	// source, not this one (see Concept.Live in core/lib/view).
 	if byID["live.one"].Source != byID["static.one"].Source {
-		t.Fatal("这条用例的前提是两个概念同源")
+		t.Fatal("this case assumes the two concepts have the same source")
 	}
 }
 
-// TestSectionsSurviveTheWire 是侧栏那一栏的**名字**从模块走到浏览器的整条路。
+// TestSectionsSurviveTheWire is the whole path of a sidebar column's **name**, module to browser.
 //
-// 名字由各模块在登记时报（`view.Title`），BFF 一个模块都不认识、只搬。这条断了
-// **不会报错**：前端的兜底是把来源名当标题画出来（那是刻意的兼容那条路），于是
-// 侧栏里出现的是 config / plugin-manager / opencode-omo 这种机器标记，看着只像
-// 「没翻」，不像一条 bug。所以它值得一条断言，而不是等谁在浏览器里看出来。
+// Names are reported at registration (`view.Title`); the BFF knows no module, it only moves.
+// Breaking this is **silent**: the front end falls back to drawing the source name as the
+// title, so the sidebar shows config / plugin-manager / opencode-omo machine tags - which
+// looks like "not translated", not a bug. Worth an assertion, not a browser discovery.
 func TestSectionsSurviveTheWire(t *testing.T) {
 	h := newHandler()
-	// 一个**此刻产不出任何概念**的源：配置目录整个读不了、omo 还没接管过——那一栏
-	// 仍然要在侧栏里有一个位置（它消失了，用户会以为那个模块没装）。
+	// A source that **can produce no concept right now**: config dir unreadable, omo never
+	// taken over - that column still needs a spot in the sidebar (vanishing says not installed).
 	if _, err := h.views.Register("quiet", view.Title(func() string { return "Quiet module" }),
 		func() ([]view.Concept, error) { return nil, nil }); err != nil {
 		t.Fatal(err)
@@ -96,7 +96,7 @@ func TestSectionsSurviveTheWire(t *testing.T) {
 
 	rec := get(t, h, "/api/snapshot")
 	if rec.Code != http.StatusOK {
-		t.Fatalf("snapshot 该 200，实际 %d", rec.Code)
+		t.Fatalf("snapshot should be 200, actual %d", rec.Code)
 	}
 	var doc snapshotDoc
 	if err := json.Unmarshal(rec.Body.Bytes(), &doc); err != nil {
@@ -107,27 +107,27 @@ func TestSectionsSurviveTheWire(t *testing.T) {
 		titles[s.Source] = s.Title
 	}
 	if len(doc.Sections) != 2 {
-		t.Fatalf("两个登记过的源都该在栏目表里，实际 %+v", doc.Sections)
+		t.Fatalf("both registered sources should be in the column table, actual %+v", doc.Sections)
 	}
 	if titles["quiet"] != "Quiet module" {
-		t.Errorf("没产出概念的源也该带着名字出现: %+v", doc.Sections)
+		t.Errorf("a source that produced no concepts should still appear with its name: %+v", doc.Sections)
 	}
-	// 标题来自登记时报的那一句，不是来源名（来源名是机器标记：它也要端出去，
-	// 但那是给前端对号用的，不是给人看的）。
+	// The title comes from the sentence reported at registration, not the source name (a
+	// machine tag: it goes out too, but for the front end to match on, not for humans).
 	if titles["config"] != "config" {
-		t.Errorf("这条用例的前提是测试里那个源名与标题同形: %+v", doc.Sections)
+		t.Errorf("this case assumes the source name and title are the same shape in the test: %+v", doc.Sections)
 	}
 	if got := doc.Sections[0].Source; got != "config" {
-		t.Errorf("栏目表按 source 排序（界面顺序要跨重启稳定），第一个该是 config，实际 %q", got)
+		t.Errorf("the column table is sorted by source (UI order must be stable across restarts), the first should be config, actual %q", got)
 	}
 }
 
-// TestLandingSurvivesTheWire：首屏落在哪一栏是**贡献者声明**的，而界面的默认位置
-// 是最后一跳才用上的东西（见核心 lib/view 的 Section.Default）。
+// TestLandingSurvivesTheWire: which column the first screen lands on is **declared by the
+// contributor**, and the UI's default position is used at the last hop (see lib/view).
 //
-// 这一跳断了**不会报错**：字段全丢 → 前端拿不到任何 default → 它回落到老规矩
-// （第一个有卡片的那一栏），于是首屏安静地落到字母序最前的那一栏上，看起来只是
-// 「排版不合我意」，不像一条 bug。所以它值得一条断言。
+// Breaking this is **silent**: field lost -> no default -> the front end falls back to the
+// old rule (the first column with cards), so the first screen lands on the alphabetically
+// first column, which looks like "a layout I do not like", not a bug. Worth an assertion.
 func TestLandingSurvivesTheWire(t *testing.T) {
 	h := newHandler()
 	if _, err := h.views.Register("home", view.Title(func() string { return "Home" }).Landing(),
@@ -140,7 +140,7 @@ func TestLandingSurvivesTheWire(t *testing.T) {
 
 	rec := get(t, h, "/api/snapshot")
 	if rec.Code != http.StatusOK {
-		t.Fatalf("snapshot 该 200，实际 %d", rec.Code)
+		t.Fatalf("snapshot should be 200, actual %d", rec.Code)
 	}
 	var doc snapshotDoc
 	if err := json.Unmarshal(rec.Body.Bytes(), &doc); err != nil {
@@ -151,19 +151,19 @@ func TestLandingSurvivesTheWire(t *testing.T) {
 		got[s.Source] = s.Default
 	}
 	if !got["home"] {
-		t.Errorf("声明了 Landing 的那一栏该把 default 端到前端: %+v", doc.Sections)
+		t.Errorf("the column that declared Landing should serve default to the front end: %+v", doc.Sections)
 	}
 	if got["breaker"] {
-		t.Errorf("没声明的那一栏不该带 default: %+v", doc.Sections)
+		t.Errorf("the column that did not declare it must not carry default: %+v", doc.Sections)
 	}
 }
 
-// TestFilteredSnapshotStillCarriesEverySection：按来源过滤的那次快照（界面每几秒
-// 刷一次）必须**照旧带上完整的栏目表**。
+// TestFilteredSnapshotStillCarriesEverySection: the source-filtered snapshot (the UI's
+// few-second refresh) must **still carry the full column table**.
 //
-// 反过来的做法（只回被点名那几位的栏目）看起来更"一致"，实际是把侧栏变成一块
-// 会缩水的板子：刷一次少一栏、再刷回来，而那几秒一次、人未必盯着。栏目表不调用
-// 任何产出函数，带上它一分钱不花。
+// The opposite (only the named sources' columns) looks more "consistent" but makes the
+// sidebar a board that shrinks: one refresh drops a column, the next brings it back, every
+// few seconds, when nobody may be looking. The table calls no producer; it costs nothing.
 func TestFilteredSnapshotStillCarriesEverySection(t *testing.T) {
 	h := newHandler()
 	var cheap, expensive atomic.Int64
@@ -172,28 +172,28 @@ func TestFilteredSnapshotStillCarriesEverySection(t *testing.T) {
 
 	rec := get(t, h, "/api/snapshot?source=gateway")
 	if rec.Code != http.StatusOK {
-		t.Fatalf("按来源过滤该 200，实际 %d", rec.Code)
+		t.Fatalf("filtering by source should be 200, actual %d", rec.Code)
 	}
 	var doc snapshotDoc
 	if err := json.Unmarshal(rec.Body.Bytes(), &doc); err != nil {
 		t.Fatal(err)
 	}
 	if len(doc.Concepts) != 1 {
-		t.Fatalf("概念该只剩被点名那位，实际 %d", len(doc.Concepts))
+		t.Fatalf("only the named concept should remain, actual %d", len(doc.Concepts))
 	}
 	if len(doc.Sections) != 2 {
-		t.Errorf("栏目表该是完整的（侧栏不该跟着刷新缩水），实际 %+v", doc.Sections)
+		t.Errorf("the column table should be complete (the sidebar must not shrink on refresh), actual %+v", doc.Sections)
 	}
 }
 
-// loopback 是测试里默认的 Host。
+// loopback is the default Host in tests.
 //
-// 必须显式设：httptest.NewRequest 默认填 `example.com`，而 BFF 现在只认本机的
-// Host（见 loopbackHost）——不设的话每条用例都会撞在 403 上，看起来像功能坏了。
+// It must be set explicitly: httptest.NewRequest defaults to `example.com`, and the BFF now
+// only accepts the local Host (see loopbackHost) - unset, every case hits 403 and looks broken.
 const loopback = "127.0.0.1:8899"
 
-// raw 是「按我给的 Host / Content-Type 发一次」——专门给那两道门的用例用
-// （别的用例走 get/post，它们的 Host 与 Content-Type 都是常规值）。
+// raw is "send once with the Host / Content-Type I give" - for the two gates' cases
+// (others use get/post, with conventional Host and Content-Type).
 func raw(t *testing.T, h http.Handler, method, path, body, host, contentType string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
@@ -227,7 +227,7 @@ func post(t *testing.T, h http.Handler, path, body string) *httptest.ResponseRec
 	return rec
 }
 
-// TestSnapshotCarriesWhateverTheLedgerHolds：BFF 不认识任何模块，它只搬账本。
+// TestSnapshotCarriesWhateverTheLedgerHolds: the BFF knows no module, it only moves the ledger.
 func TestSnapshotCarriesWhateverTheLedgerHolds(t *testing.T) {
 	h := newHandler()
 	contribute(t, h, "somewhere",
@@ -239,32 +239,32 @@ func TestSnapshotCarriesWhateverTheLedgerHolds(t *testing.T) {
 
 	rec := get(t, h, "/api/snapshot")
 	if rec.Code != http.StatusOK {
-		t.Fatalf("snapshot 该 200，实际 %d", rec.Code)
+		t.Fatalf("snapshot should be 200, actual %d", rec.Code)
 	}
 	var doc snapshotDoc
 	if err := json.Unmarshal(rec.Body.Bytes(), &doc); err != nil {
 		t.Fatal(err)
 	}
 	if doc.Contract != Contract {
-		t.Errorf("契约版本要对得上: %d", doc.Contract)
+		t.Errorf("the contract version must match: %d", doc.Contract)
 	}
 	if len(doc.Concepts) != 2 {
-		t.Fatalf("该端出 2 个概念，实际 %d", len(doc.Concepts))
+		t.Fatalf("it should serve 2 concepts, actual %d", len(doc.Concepts))
 	}
-	// 只读的那条必须标明只读——前端据此决定要不要给保存按钮。
+	// The read-only one must be marked read-only - the front end decides whether to show save.
 	byID := map[string]conceptDoc{}
 	for _, c := range doc.Concepts {
 		byID[c.ID] = c
 	}
 	if byID["read.only"].Writable {
-		t.Error("没有 Apply 的概念该标成只读")
+		t.Error("a concept without Apply should be marked read-only")
 	}
 	if byID["something.x"].Kind != view.KindSeries || byID["something.x"].Source != "somewhere" {
-		t.Errorf("概念的身份与来源该原样端出去: %+v", byID["something.x"])
+		t.Errorf("the concept's identity and source should be served as is: %+v", byID["something.x"])
 	}
 }
 
-// TestApplyRoutesToTheConceptThatOwnsTheData：修改**转交**，不自己处理。
+// TestApplyRoutesToTheConceptThatOwnsTheData: edits are **forwarded**, not handled here.
 func TestApplyRoutesToTheConceptThatOwnsTheData(t *testing.T) {
 	h := newHandler()
 	var gotEdit string
@@ -278,22 +278,22 @@ func TestApplyRoutesToTheConceptThatOwnsTheData(t *testing.T) {
 	})
 	rec := post(t, h, "/api/apply", `{"id":"a.b","base":"sha256:before","edit":{"text":"hi"}}`)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("该 200，实际 %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf("should be 200, actual %d: %s", rec.Code, rec.Body.String())
 	}
 	var resp applyResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatal(err)
 	}
 	if !resp.OK || resp.Base != "sha256:after" {
-		t.Errorf("该把新基线回给前端（续着改不用刷新页面）: %+v", resp)
+		t.Errorf("the new baseline should be handed back to the front end (so editing can continue without reloading): %+v", resp)
 	}
 	if gotEdit != `{"text":"hi"}` || gotBase != "sha256:before" {
-		t.Errorf("编辑内容与基线该**原样**转交: edit=%s base=%s", gotEdit, gotBase)
+		t.Errorf("the edit content and baseline should be passed through **verbatim**: edit=%s base=%s", gotEdit, gotBase)
 	}
 }
 
-// TestApplyReportsConflictWithBothSides：冲突必须带上两边的原文。只回一句
-// 「过期了」等于把「我丢了什么」交给用户去猜。
+// TestApplyReportsConflictWithBothSides: a conflict must carry both sides' text. Returning
+// just "expired" makes the user guess what they lost.
 func TestApplyReportsConflictWithBothSides(t *testing.T) {
 	h := newHandler()
 	contribute(t, h, "x", view.Concept{
@@ -308,60 +308,60 @@ func TestApplyReportsConflictWithBothSides(t *testing.T) {
 	})
 	rec := post(t, h, "/api/apply", `{"id":"a.b","base":"sha256:mine","edit":{}}`)
 	if rec.Code != http.StatusConflict {
-		t.Fatalf("冲突该是 409，实际 %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf("a conflict should be 409, actual %d: %s", rec.Code, rec.Body.String())
 	}
 	var resp applyResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatal(err)
 	}
 	if resp.Conflict == nil {
-		t.Fatal("409 必须带冲突内容")
+		t.Fatal("409 must carry the conflicting content")
 	}
 	if resp.Conflict.Yours == "" || resp.Conflict.Theirs == "" || resp.Conflict.Path == "" {
-		t.Errorf("冲突该把两边原文与路径都给出来: %+v", resp.Conflict)
+		t.Errorf("the conflict should give both texts and the path: %+v", resp.Conflict)
 	}
 }
 
-// TestApplyRejectsUnknownAndReadOnly：两种「不该写」的情况都要说清楚。
+// TestApplyRejectsUnknownAndReadOnly: both "should not write" cases must be stated clearly.
 func TestApplyRejectsUnknownAndReadOnly(t *testing.T) {
 	h := newHandler()
 	contribute(t, h, "x", view.Concept{ID: "ro", Kind: view.KindCode, Title: "Read only"})
-	// 未知 ID：前端手里的快照过期了（比如模块刚被关掉）。
+	// Unknown ID: the front end's snapshot is stale (e.g. the module was just turned off).
 	if rec := post(t, h, "/api/apply", `{"id":"ghost","edit":{}}`); rec.Code != http.StatusNotFound {
-		t.Errorf("未知概念该 404（前端该刷新页面），实际 %d", rec.Code)
+		t.Errorf("an unknown concept should be 404 (the front end should refresh the page), actual %d", rec.Code)
 	}
-	// 只读概念：说清楚是只读，而不是回一个含糊的失败。
+	// Read-only concept: say it is read-only, not a vague failure.
 	rec := post(t, h, "/api/apply", `{"id":"ro","edit":{}}`)
 	if rec.Code != http.StatusConflict {
-		t.Errorf("只读概念该被拒，实际 %d", rec.Code)
+		t.Errorf("a read-only concept should be rejected, actual %d", rec.Code)
 	}
 	if !strings.Contains(rec.Body.String(), "read-only") {
-		t.Errorf("报错该说清是只读: %s", rec.Body.String())
+		t.Errorf("the error should say clearly that it is read-only: %s", rec.Body.String())
 	}
 	if rec := post(t, h, "/api/apply", `{not json`); rec.Code != http.StatusBadRequest {
-		t.Errorf("坏 JSON 该 400，实际 %d", rec.Code)
+		t.Errorf("bad JSON should be 400, actual %d", rec.Code)
 	}
 }
 
-// TestApplyIsPostOnly：写操作不该能用一个 <img src> 触发。
+// TestApplyIsPostOnly: a write must not be triggerable with an <img src>.
 func TestApplyIsPostOnly(t *testing.T) {
 	h := newHandler()
 	if rec := get(t, h, "/api/apply"); rec.Code != http.StatusMethodNotAllowed {
-		t.Errorf("GET /api/apply 该 405，实际 %d", rec.Code)
+		t.Errorf("GET /api/apply should be 405, actual %d", rec.Code)
 	}
 }
 
-// TestOnlyAddressesNotNamesAreAnswered：DNS rebinding。
+// TestOnlyAddressesNotNamesAreAnswered: DNS rebinding.
 //
-// 只监听 loopback 挡得住外面的连接，挡不住**别人网页上的一段脚本**——攻击者把
-// 自己的域名解析到 127.0.0.1，浏览器就认为同源。浏览器唯一不骗人的东西是它自己
-// 填的 Host，所以判据是「这次请求是冲着哪个名字来的」。
+// Listening on loopback stops outside connections, not **a script on someone else's page** -
+// the attacker resolves their domain to 127.0.0.1 and the browser deems it same origin.
+// The browser never lies about the Host it fills in, so the criterion is "which name".
 //
-// 2026-09-20 放宽了一次，**按的仍是同一条判据**：名字（域名）一律拒，IP 一律收。
-// 原来只收回环，是因为那时只打算给本机用；用户要从 Windows / 局域网 / Tailscale
-// 打开界面时，那些地址全是 IP 字面量，而攻击者要伪造 Host 必须让用户的浏览器
-// 访问那个 IP——那已经不是 rebinding 了。写操作另有第二道门（必须是 JSON，浏览器
-// 会先发预检），所以「收 IP」不等于「任意网页都能改配置」。
+// Loosened once on 2026-09-20, **by the same criterion**: names always refused, IPs always
+// accepted. Originally only loopback, because it was for this machine; from Windows / LAN /
+// Tailscale the addresses are all IP literals, and forging the Host means making the browser
+// visit that IP - no longer rebinding. Writes have a second gate (JSON, pre-flight), so
+// "IP accepted" is not "any page can change config".
 func TestOnlyAddressesNotNamesAreAnswered(t *testing.T) {
 	h := newHandler()
 	contribute(t, h, "config", view.Concept{
@@ -377,25 +377,25 @@ func TestOnlyAddressesNotNamesAreAnswered(t *testing.T) {
 	}
 	for _, host := range accepted {
 		if rec := raw(t, h, http.MethodGet, "/api/snapshot", "", host, ""); rec.Code != http.StatusOK {
-			t.Errorf("Host %q 该被接受（它是地址，不是名字），实际 %d", host, rec.Code)
+			t.Errorf("Host %q should be accepted (it is an address, not a name), actual %d", host, rec.Code)
 		}
 	}
-	// **名字**一律拒——这才这道门真正挡的东西。
+	// **Names** are always refused - that is what this gate really blocks.
 	for _, host := range []string{"evil.com:8899", "localhost.evil.com:8899", "newgate.local:8899"} {
 		rec := raw(t, h, http.MethodGet, "/api/snapshot", "", host, "")
 		if rec.Code != http.StatusForbidden {
-			t.Errorf("Host %q 该被拒（实际 %d）——域名正是 rebinding 的载体", host, rec.Code)
+			t.Errorf("Host %q should be rejected (actual %d) -- the domain name is exactly the carrier of rebinding", host, rec.Code)
 		}
-		// 拒绝了就不许漏内容：这条响应里带着配置原文（脱敏过的那些）。
+		// Refused means no content leaks: this response carries config text (redacted parts).
 		if strings.Contains(rec.Body.String(), "worth stealing") {
-			t.Errorf("Host %q 被拒了，却还是把内容发出去了", host)
+			t.Errorf("Host %q was rejected, yet the content was served anyway", host)
 		}
 	}
 }
 
-// TestSavingNeedsAJSONContentType：跨站表单与 no-cors 的 fetch 都发不出
-// application/json，但它们**能**发一个 body 长得像 JSON 的 text/plain——而解码器
-// 并不看 Content-Type。所以这一条是那条路唯一的墙。
+// TestSavingNeedsAJSONContentType: cross-site forms and no-cors fetches cannot send
+// application/json, but they **can** send a text/plain body that looks like JSON - and the
+// decoder does not look at Content-Type. So this is the only wall on that path.
 func TestSavingNeedsAJSONContentType(t *testing.T) {
 	h := newHandler()
 	var applied bool
@@ -410,23 +410,23 @@ func TestSavingNeedsAJSONContentType(t *testing.T) {
 	body := `{"id":"a.b","base":"","edit":{"text":"x"}}`
 	rec := raw(t, h, http.MethodPost, "/api/apply", body, loopback, "text/plain;charset=UTF-8")
 	if rec.Code != http.StatusUnsupportedMediaType {
-		t.Errorf("text/plain 的写请求该被拒（415），实际 %d", rec.Code)
+		t.Errorf("a text/plain write request should be rejected (415), actual %d", rec.Code)
 	}
 	if applied {
-		t.Error("被拒的请求不该碰到底下的 Apply")
+		t.Error("a rejected request must not reach the Apply underneath")
 	}
-	// 正规的前端走这条路，必须照常能用。
+	// The real front end takes this path and must keep working.
 	if rec := raw(t, h, http.MethodPost, "/api/apply", body, loopback, "application/json"); rec.Code != http.StatusOK {
-		t.Fatalf("application/json 该照常放行，实际 %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf("application/json should pass as usual, actual %d: %s", rec.Code, rec.Body.String())
 	}
 	if !applied {
-		t.Error("正规请求没有走到 Apply")
+		t.Error("a legitimate request did not reach Apply")
 	}
 }
 
-// TestSnapshotKeepsBrokenConceptsVisible：一个读不出来的概念（文件被删了、JSON
-// 坏了）要**留在列表里并写上原因**，而不是消失。消失了用户会以为它不存在，然后
-// 去别处找；而整页失败则是让一个坏文件弄白整个界面。
+// TestSnapshotKeepsBrokenConceptsVisible: an unreadable concept (file deleted, JSON broken)
+// must **stay listed with the reason**, not vanish. Vanishing says it does not exist, and
+// the user goes looking elsewhere; failing the whole page lets one bad file blank the UI.
 func TestSnapshotKeepsBrokenConceptsVisible(t *testing.T) {
 	h := newHandler()
 	contribute(t, h, "config",
@@ -437,33 +437,33 @@ func TestSnapshotKeepsBrokenConceptsVisible(t *testing.T) {
 	)
 	rec := get(t, h, "/api/snapshot")
 	if rec.Code != http.StatusOK {
-		t.Fatalf("一个坏概念不该让整次快照失败，实际 %d", rec.Code)
+		t.Fatalf("one bad concept must not fail the whole snapshot, actual %d", rec.Code)
 	}
 	var doc snapshotDoc
 	if err := json.Unmarshal(rec.Body.Bytes(), &doc); err != nil {
 		t.Fatal(err)
 	}
 	if len(doc.Concepts) != 2 {
-		t.Fatalf("坏掉的那张卡片该照常出现，实际 %d 个概念", len(doc.Concepts))
+		t.Fatalf("the broken card should still appear, actual %d concepts", len(doc.Concepts))
 	}
 	byID := map[string]conceptDoc{}
 	for _, c := range doc.Concepts {
 		byID[c.ID] = c
 	}
 	if byID["config.profile.ds"].Error == "" {
-		t.Error("坏卡片要写上原因")
+		t.Error("the broken card must say why")
 	}
 	if byID["config.profile.ds"].Writable {
-		t.Error("读不出来的概念不该可写")
+		t.Error("an undecodable concept should not be writable")
 	}
 	if byID["config.state"].Error != "" {
-		t.Error("好的那张卡片不该被连累")
+		t.Error("the good card must not be dragged down with it")
 	}
 }
 
-// TestSnapshotCanBeAskedForOneSource：自动刷新只问计数器与日志那几位（便宜），
-// 别顺带把配置那一位也叫醒——它要重读并重新解析每一份 profile 与每一个源文件。
-// 这条锁的是「刷新真的省下了那笔开销」，不只是少回几个字段。
+// TestSnapshotCanBeAskedForOneSource: auto refresh asks only counters and logs (cheap), not
+// the config source - it re-reads and re-parses every profile and source file. This locks
+// that the refresh really saves that cost, not just returns fewer fields.
 func TestSnapshotCanBeAskedForOneSource(t *testing.T) {
 	h := newHandler()
 	var cheap, expensive atomic.Int64
@@ -471,28 +471,28 @@ func TestSnapshotCanBeAskedForOneSource(t *testing.T) {
 	contributeCount(t, h, "config", &expensive)
 
 	if rec := get(t, h, "/api/snapshot"); rec.Code != http.StatusOK {
-		t.Fatalf("不带 source 该问全部，实际 %d", rec.Code)
+		t.Fatalf("without source it should ask everyone, actual %d", rec.Code)
 	}
 	if cheap.Load() != 1 || expensive.Load() != 1 {
-		t.Fatalf("首次加载该问全部: gateway=%d config=%d", cheap.Load(), expensive.Load())
+		t.Fatalf("the first load should ask everyone: gateway=%d config=%d", cheap.Load(), expensive.Load())
 	}
 
 	rec := get(t, h, "/api/snapshot?source=gateway")
 	if rec.Code != http.StatusOK {
-		t.Fatalf("按来源过滤该 200，实际 %d", rec.Code)
+		t.Fatalf("filtering by source should be 200, actual %d", rec.Code)
 	}
 	if cheap.Load() != 2 {
-		t.Errorf("点名的那位该被再问一次: %d", cheap.Load())
+		t.Errorf("the named source should be asked again: %d", cheap.Load())
 	}
 	if expensive.Load() != 1 {
-		t.Errorf("没点名的那位不该被吵醒: %d 次", expensive.Load())
+		t.Errorf("the unnamed one must not be woken up: %d times", expensive.Load())
 	}
 	var doc snapshotDoc
 	if err := json.Unmarshal(rec.Body.Bytes(), &doc); err != nil {
 		t.Fatal(err)
 	}
 	if len(doc.Concepts) != 1 || doc.Concepts[0].Source != "gateway" {
-		t.Errorf("只该回被点名那位的概念: %+v", doc.Concepts)
+		t.Errorf("only the named source's concepts should come back: %+v", doc.Concepts)
 	}
 }
 
@@ -507,8 +507,8 @@ func contributeCount(t *testing.T, h *Handler, source string, n *atomic.Int64) {
 	}
 }
 
-// TestSnapshotFailureIsLoud：整组产不出来（配置根整个读不了）时要说清楚是哪一步
-// 坏的，而不是回一份空快照——空快照在界面上表现成「一个模块都没有」。
+// TestSnapshotFailureIsLoud: when a group cannot be produced (config root unreadable), say
+// which step broke instead of an empty snapshot - which reads as "no modules".
 func TestSnapshotFailureIsLoud(t *testing.T) {
 	h := newHandler()
 	if _, err := h.views.Register("config", view.Title(func() string { return "Configuration" }),
@@ -519,66 +519,66 @@ func TestSnapshotFailureIsLoud(t *testing.T) {
 	}
 	rec := get(t, h, "/api/snapshot")
 	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("该 500，实际 %d", rec.Code)
+		t.Fatalf("should be 500, actual %d", rec.Code)
 	}
 	if !strings.Contains(rec.Body.String(), "permission denied") {
-		t.Errorf("报错该带上真正的原因: %s", rec.Body.String())
+		t.Errorf("the error should carry the real cause: %s", rec.Body.String())
 	}
 }
 
-// TestStaticServesTheAppAndFallsBackForRoutes：静态资源 + SPA 兜底；但**拼错的
-// 资源不许**兜成 index.html——那会让浏览器报的错指向别处。
+// TestStaticServesTheAppAndFallsBackForRoutes: static assets + SPA fallback; but a **typo'd
+// asset must not** fall back to index.html - that would point browser errors elsewhere.
 func TestStaticServesTheAppAndFallsBackForRoutes(t *testing.T) {
 	h := newHandler()
 	if rec := get(t, h, "/"); !strings.Contains(rec.Body.String(), "app") {
-		t.Errorf("根路径该发 index.html，实际 %q", rec.Body.String())
+		t.Errorf("the root path should serve index.html, actual %q", rec.Body.String())
 	}
 	if ct := get(t, h, "/app.js").Header().Get("Content-Type"); !strings.Contains(ct, "javascript") {
-		t.Errorf("js 的 Content-Type 不对: %q", ct)
+		t.Errorf("the Content-Type for js is wrong: %q", ct)
 	}
 	if rec := get(t, h, "/some/route"); !strings.Contains(rec.Body.String(), "app") {
-		t.Errorf("前端路由该兜回 index.html，实际 %q", rec.Body.String())
+		t.Errorf("a front-end route should fall back to index.html, actual %q", rec.Body.String())
 	}
 	if rec := get(t, h, "/typo.js"); rec.Code != http.StatusNotFound {
-		t.Errorf("拼错的资源该 404，实际 %d（兜成 HTML 会让报错指向别处）", rec.Code)
+		t.Errorf("a misspelled asset should be 404, actual %d (falling back to HTML would point the error somewhere else)", rec.Code)
 	}
 }
 
-// TestTheEntryDocumentIsNeverCached：入口文件必须每次问服务器。
+// TestTheEntryDocumentIsNeverCached: the entry document must ask the server every time.
 //
-// 这一条防的是**最贵的一种「你没做」**：发版之后用户看到的还是上一版界面，而
-// 服务端完全正常（curl 拿到的是新产物）。哈希文件名让这个问题有两层——旧
-// index.html 指着旧 JS 的名字，而那份旧 JS 也还在用户的缓存里，于是页面照常
-// 渲染、只是渲染的是旧的。没有报错、没有白屏，用户只会觉得「你说的功能没做」。
+// This guards the **most expensive kind of "you did not do it"**: after a release the user
+// still sees the previous UI while the server is fine (curl gets the new output). Hashed
+// names give it two layers - the old index.html points at the old JS name, and that JS is
+// still cached, so the page renders, just as the old version. No error; the user believes
+// "the feature was not done".
 //
-// 所以三条各自的理由都钉住：入口 no-store（它是唯一知道哈希变了的那份文件）、
-// 哈希产物 immutable（同一个名字永远同一份字节）、其余不带哈希的走 no-cache
-// （宁可多一个往返，也不把改过内容的同名文件钉死在用户机器上）。
+// So all three are pinned: entry no-store (only it knows the hash changed), hashed outputs
+// immutable (one name, one set of bytes), the rest no-cache (better a round trip than a stale pin).
 func TestTheEntryDocumentIsNeverCached(t *testing.T) {
 	h := newHandler()
 
 	cc := func(path string) string { return get(t, h, path).Header().Get("Cache-Control") }
 	if got := cc("/"); got != "no-store" {
-		t.Errorf("入口该 no-store（发版后用户必须立刻看到新版），实际 %q", got)
+		t.Errorf("the entry should be no-store (after a release users must see the new version at once), actual %q", got)
 	}
 	if got := cc("/some/route"); got != "no-store" {
-		t.Errorf("SPA 兜底回的也是入口，同样 no-store，实际 %q", got)
+		t.Errorf("the SPA fallback also serves the entry, also no-store, actual %q", got)
 	}
 	if got := cc("/assets/index-deadbee.js"); !strings.Contains(got, "immutable") {
-		t.Errorf("带内容哈希的产物该可长期缓存，实际 %q", got)
+		t.Errorf("output with a content hash should be cacheable long-term, actual %q", got)
 	}
 	if got := cc("/app.js"); got != "no-cache" {
-		t.Errorf("没哈希的文件该每次校验，实际 %q", got)
+		t.Errorf("a file without a hash should be revalidated every time, actual %q", got)
 	}
 }
 
-// TestPreviewHandsTheDraftToWhoeverOwnsTheFile：预览这条路的全部职责就是**转交**。
+// TestPreviewHandsTheDraftToWhoeverOwnsTheFile: the preview path only **hands over**.
 //
-// 它自己不认识任何文件格式——那正是「BFF 不认识任何模块」那条规矩在这里的落点：
-// 草稿进来、贡献者算、结果出去。所以这条测试用一个假贡献者，锁住三件事：草稿
-// 原样交到贡献者手里、它算出来的形状原样端给前端、以及**解析不出来时是 200 而不
-// 是 4xx**——正敲着的那一行本来就解析不了，那是打字途中的常态，不是这次请求坏了。
-// 界面两处想做的事一模一样（保持上一次的样子），把它拆成两种状态只会多一套分支。
+// It knows no file format - that is where "BFF knows no module" lands: draft in, contributor
+// computes, result out. The test uses a fake contributor, pinning three things: the draft
+// arrives untouched, the computed shape is served untouched, and **a parse failure is a
+// 200, not a 4xx** - the line being typed cannot parse; normal mid-typing, not a broken
+// request. Both UI places want one thing (keep the last shape); two states add a branch.
 func TestPreviewHandsTheDraftToWhoeverOwnsTheFile(t *testing.T) {
 	h := newHandler()
 	var got string
@@ -596,38 +596,38 @@ func TestPreviewHandsTheDraftToWhoeverOwnsTheFile(t *testing.T) {
 
 	rec := post(t, h, "/api/preview", `{"id":"ctl","text":"a=b\n"}`)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("该 200，实际 %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf("should be 200, actual %d: %s", rec.Code, rec.Body.String())
 	}
 	if got != "a=b\n" {
-		t.Errorf("草稿没原样交到贡献者手里: %q", got)
+		t.Errorf("the draft was not handed to the contributor as is: %q", got)
 	}
 	var resp previewResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatal(err)
 	}
 	if m, ok := resp.Data.(map[string]any); !ok || m["seen"] != "a=b\n" {
-		t.Errorf("贡献者算出来的东西没端给前端: %+v", resp)
+		t.Errorf("what the contributor computed was not served to the front end: %+v", resp)
 	}
 
-	// 打字途中：200 + error。用 4xx 的话浏览器会在控制台记一条 error，而那是**正常
-	// 输入**——一条没人会去查的假警报，正好盖住真的那种。
+	// Mid-typing: 200 + error. A 4xx would make the browser log a console error, but that is
+	// **normal input** - a false alarm nobody investigates, right over the real one.
 	rec = post(t, h, "/api/preview", `{"id":"raw","text":"a="}`)
 	if rec.Code != http.StatusOK {
-		t.Errorf("解析不出来该是 200（打字途中的常态），实际 %d", rec.Code)
+		t.Errorf("failing to parse should be 200 (the normal state while typing), actual %d", rec.Code)
 	}
 	resp = previewResponse{}
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatal(err)
 	}
 	if resp.Error == "" || resp.Data != nil {
-		t.Errorf("该带回那句 error 且不带 data: %+v", resp)
+		t.Errorf("it should carry that error and no data: %+v", resp)
 	}
 
-	// 没有 Preview 的概念（它自己就是原文）：回空，**不是错误**。界面那边这只是一次
-	// 顺手更新，为它弹一条报错等于让一次打字在屏幕上变成一次故障。
+	// A concept with no Preview (it is the raw text itself): return empty, **not an error**.
+	// To the UI this is only a casual refresh; an error popup turns one keystroke into a fault.
 	contribute(t, h, "y", view.Concept{ID: "plain", Kind: view.KindToggles, Title: "Plain"})
 	rec = post(t, h, "/api/preview", `{"id":"plain","text":"{}"}`)
 	if rec.Code != http.StatusOK {
-		t.Errorf("没有第二半的概念不该报错，实际 %d", rec.Code)
+		t.Errorf("a concept without the second half should not error, actual %d", rec.Code)
 	}
 }

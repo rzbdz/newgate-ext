@@ -1,40 +1,44 @@
-// Package extension 是模块向界面注入东西时实现的那组接口，以及界面自己的端口身份。
+// Package extension is the set of interfaces modules implement
+// to inject things into the UI, plus the UI's own port identity.
 //
-// # 为什么契约要下沉成叶子包
+// # Why the contract is sunk into a leaf package
 //
-// 界面（modules/cli）是个重包：它 import runtime（daemon/takeover/injection）、
-// gateway（forward/special/probe/…）和 breaker，因为它负责进程生命周期、数据面
-// 装配和一堆渲染。模块若为了拿到 `Command` 接口去 import 它，就等于把这些全拖进
-// 自己的依赖里，于是：
+// The UI (modules/cli) is a heavy package: it imports runtime (daemon/takeover/injection),
+// gateway (forward/special/probe/…) and breaker, because it handles the process
+// lifecycle, data-plane assembly, and a pile of rendering. If a module imported it just
+// to get the `Command` interface, it would drag all of that into its dependencies, so:
 //
-//   - 谁 import 了那个模块，就再也无法被 runtime / gateway 的**测试**引用
-//     —— 那两处的测试要造客户端描述符，一 import 就成环（实测：
-//     `runtime/launch` 与 `runtime/takeover` 的测试当场编译不过）；
-//   - gateway 注册不了自己的命令（`newgate st` 只能被迫写在界面里）。
+//   - whoever imports that module can no longer be referenced by runtime's / gateway's
+//     **tests** -- those tests build client descriptors, and one import forms a cycle (measured:
+//     the tests in `runtime/launch` and `runtime/takeover` failed to compile on the spot);
+//   - gateway cannot register its own commands (`newgate st` was forced into the UI).
 //
-// 契约下沉之后，模块只 import 这个叶子包 + component + config，箭头是
-// `modules/* → cli/extension → config`，环就没有了。这与 gateway/api.go 把插件
-// 契约下沉到 gateway/special 是**同一条规矩**（docs/03-architecture.md §3）。
+// After the contract was sunk, a module imports only this leaf plus component + config, the arrow
+// is `modules/* → cli/extension → config`, and the cycle is gone. This is the **same rule** as
+// gateway/api.go sinking the plugin contract into gateway/special (docs/03-architecture.md §3).
 //
-// # 账本在哪
+// # Where the ledger is
 //
-// **账本（三本 Registry）在 modules/cli 自己的 service 上**，由它 Provide 出
-// Capability。模块拿到的是一组注册回调，界面在分派命令、渲染 status / doctor 时
-// 循环调用它们拿数据——界面**不 import 任何模块**，也不认识任何人。
+// **The ledger (the three Registries) is on modules/cli's own service**,
+// which Provides the Capability. What a module gets is a set of registration
+// callbacks; the UI loops over them to fetch data when dispatching commands and
+// rendering status / doctor -- the UI **imports no module** and knows no one.
 //
-// （2026-09-18 曾把账本挪进一个独立的 modules/surface 模块，那是多余的：它唯一
-// 买到的是「界面可以去依赖模块」的自由，而界面的目标恰恰是**不依赖任何人**。
-// 折回之后少一个模块、少一层概念，与「界面只提供注入点」的模型一致。）
+// (On 2026-09-18 the ledger was once moved into a standalone modules/surface module, which
+// was superfluous: all it bought was the freedom for the UI to depend on modules, while the
+// UI's goal is precisely **not to depend on anyone**. Folded back, it is one module fewer
+// and one concept fewer, consistent with the model "the UI only offers injection points".)
 //
-// # 边界
+// # Boundary
 //
-// 本包**不 import 任何 config 包**，只剩 component 一件：契约类型（命令、状态行、
-// 诊断、术语、诊断素材）全是纯数据，没有一个字段是企业配置语义。
+// This package **imports no config package**, only component: the contract
+// types (command, status line, diagnostic, glossary, diagnostic material)
+// are all pure data, with not one field carrying enterprise config semantics.
 //
-// 2026-09-18 之前这里 import 过 config/resolve（`Host.PrintChain` 收 []Step），
-// 而 config 根包要 import 本包（模块注入时用这里的类型），两者互引就是环——那次是
-// 靠「引 resolve 这个叶子」绕开的。后来 PrintChain 从 Host 上摘掉（模块直接调
-// config 的渲染器），这条 import 也就不需要了。
+// Before 2026-09-18 it imported config/resolve here (`Host.PrintChain` took []Step), while the
+// config root package needs to import this package (module injection uses these types), which is
+// a mutual import -- that time it was dodged by "importing the resolve leaf". Later PrintChain was
+// removed from Host (modules call config's renderer directly), and the import was no longer needed.
 package extension
 
 import (
@@ -45,11 +49,11 @@ import (
 	"github.com/rzbdz/newgate/lib/i18n"
 )
 
-// Diagnostic 是模块交给 CLI 展示的一组结构化状态，
-// 让模块保留诊断知识，而 CLI 只负责统一编排和输出。
+// Diagnostic is a group of structured state a module hands the CLI to display, so
+// the module keeps the diagnostic knowledge and the CLI only orchestrates and prints.
 type Diagnostic struct {
-	// Rank 决定行序（小的在前）。与 StatusLine.Rank 同理：体检项的先后是版面
-	// 判断，由贡献者声明，界面不写死任何一项。
+	// Rank decides row order (smaller first). Same as StatusLine.Rank: the order of health-check
+	// items is a layout judgment, declared by the contributor, and the UI hardcodes none of them.
 	Rank    int
 	Label   string
 	State   string
@@ -57,153 +61,178 @@ type Diagnostic struct {
 	Details []string
 }
 
-// DiagnosticProvider 允许任意模块追加 doctor 信息，不需要 CLI 反向导入该模块。
+// DiagnosticProvider lets any module append doctor
+// information without the CLI importing that module back.
 type DiagnosticProvider interface {
 	Diagnostics() []Diagnostic
 }
 
-// StatusLine 是模块贡献给 `newgate status` 的一行（字段名 + 值）。
+// StatusLine is a line a module contributes to `newgate status` (field name + value).
 //
-// 与 Diagnostic 分开是因为两者的**时机**不同：doctor 是人主动敲的体检，可以
-// 展开细节；status 是每次都会看一眼的概览，只该占一行。
+// It is separate from Diagnostic because their **timings** differ: doctor
+// is a health check a human runs deliberately and can expand details;
+// status is an overview glanced at every time and should take one line.
 type StatusLine struct {
-	// Rank 决定**行序**（小的在前）。同 Rank 保持注册顺序，稳定。
+	// Rank decides **row order** (smaller first). Equal Rank keeps registration order, stable.
 	//
-	// 「代理排第一行」这类判断是**版面**判断，所以由贡献者声明而不是界面写死
-	// ——界面一旦写死「哪一行排第一」，那一行就成了界面认识某个模块的证据。
+	// "Proxy goes on the first line" and the like are **layout** judgments, so they are
+	// declared by the contributor rather than hardcoded by the UI -- once the UI hardcodes
+	// "which row goes first", that row becomes evidence that the UI knows some module.
 	Rank  int
 	Label string
 	Value string
 }
 
-// StatusBlock 是一段**已经排好版**的状态输出：可选节标题 + 若干行。
+// StatusBlock is a **pre-laid-out** piece of status
+// output: an optional section heading + several lines.
 //
-// 为什么允许预渲染（而不是只报 label/value）：`status` 里有两块是表格（档位绑定、
-// fallback 链），它们的排版与数据是一体的 know-how——让界面重排就得把 resolve
-// 的知识搬回界面，那正是这一轮要拆掉的东西。所以块的**内容与排版**都由 owner 给，
-// 界面只决定**位置**（Rank）。
+// Why pre-rendering is allowed (rather than only reporting label/value): two blocks
+// in `status` are tables (tier bindings, the fallback chain), and their layout and data
+// are one know-how -- making the UI re-lay them out would move resolve's knowledge back
+// into the UI, which is exactly what this round tears down. So the block's **content
+// and layout** come from the owner, and the UI only decides **position** (Rank).
 //
-// 它是可选端口：多数模块只需要 StatusLine。
+// It is an optional port: most modules only need StatusLine.
 type StatusBlock struct {
 	Rank int
-	// Title 空 = 不打印节标题（用于接在上一段后面的续行）。
+	// Title empty = do not print a section heading (for continuation lines after the previous block).
 	Title string
-	// Lines 已排好版，逐行原样输出。
+	// Lines are already laid out; printed verbatim, line by line.
 	Lines []string
 }
 
-// BlockProvider 允许模块给 `newgate status` 贡献成块的内容，理由见 StatusBlock。
+// BlockProvider lets a module contribute block content
+// to `newgate status`; see StatusBlock for why.
 type BlockProvider interface {
 	StatusBlocks() []StatusBlock
 }
 
-// StatusProvider 允许模块给 `newgate status` 贡献一行，理由同 DiagnosticProvider：
-// 模块保留自己的知识，CLI 只负责排版。
+// StatusProvider lets a module contribute one line to `newgate status`, same reason
+// as DiagnosticProvider: the module keeps its own knowledge, the CLI only lays it out.
 //
-// 为什么需要它（而不是让 CLI 直接去读某个模块）：`status` 要显示「哪些开关点是
-// 非出厂态」，而那份账本归 plugin-manager。CLI 若为了这一行去读它，那一行就会
-// 把两个模块焊在一起——「谁的状态谁自己报」是解开这种耦合的唯一办法。
+// Why it is needed (rather than having the CLI read some module directly):
+// `status` must show "which switch points are non-factory", and that ledger belongs
+// to plugin-manager. If the CLI read it for that line, that line would weld two modules
+// together -- "whoever owns the state reports it" is the only way to undo that coupling.
 type StatusProvider interface {
-	// Status 由**贡献者自己**装所需的配置快照（store.LoadState），界面不传。
+	// Status: the **contributor itself** loads the config snapshot
+	// it needs (store.LoadState); the UI does not pass it.
 	//
-	// 为什么不把 state 传进来（2026-09-18）：那会让界面为了转手一份 state 而
-	// import config/domain + config/store——「界面认识配置的内部结构」正是这一轮
-	// 要拆掉的东西。谁的知识谁自己取，界面只负责循环与排版。
+	// Why state is not passed in (2026-09-18): that would make the UI import
+	// config/domain + config/store just to forward a state -- "the UI knows
+	// config's internal structure" is exactly what this round tears down.
+	// Whoever owns the knowledge fetches it; the UI only loops and lays out.
 	Status() []StatusLine
 }
 
-// Host 是扩展命令可使用的最小 CLI 能力集合。
-// 它避免 Command 获得整个 CLI 内部，并明确哪些交互仍由主 CLI 统一控制。
+// Host is the minimal set of CLI capabilities an extension command may use. It keeps Command from
+// getting the whole CLI internals, and makes clear which interactions the main CLI still controls.
 //
-// 加一个方法要慎重：它是**所有**模块命令都能看到的面积。判断标准是「这件事
-// 只有 CLI 做得成」——而不是「这样我就不用把逻辑搬过去了」。
+// Adding a method deserves care: it is the surface **every** module command can see. The test is
+// "is this something only the CLI can do" -- not "this way I do not have to move the logic over".
 type Host interface {
 	Die(code int, message string) int
 
-	// Verb 是**分派器这次按哪个名字找到我**。
+	// Verb is **by which name the dispatcher found me this time**.
 	//
-	// 为什么需要它（2026-09-18 实测补上）：`Command.Run` 收到的 args 里没有动词
-	// （见 Command 的契约），于是「一条命令服务多个动词」就丢了一个信息。上一版
-	// 的绕法是给每个动词注册一个实例、各自记着自己的名字——那条路要求**注册期
-	// 就知道全部动词**，而动词是运行期长出来的（客户端模块在自己的 Start 里注册
-	// agent），于是它要么赌装配顺序、要么在 Start 里读别人的注册表。两样都不该
-	// 出现在 Start 里（见 docs/02-component-framework.md 的三段法则）。
+	// Why it is needed (added from measurement, 2026-09-18): the args `Command.Run` receives
+	// carry no verb (see Command's contract), so "one command serving several verbs" loses
+	// a piece of information. The previous workaround was to register one instance per verb,
+	// each remembering its own name -- that path requires knowing **all verbs at registration
+	// time**, and verbs grow at runtime (client modules register agents in their own Start),
+	// so it has to either bet on assembly order or read someone else's registry in Start.
+	// Neither belongs in Start (see the three-phase rule in docs/02-component-framework.md).
 	//
-	// 把「你这次是按哪个名字被找到的」交回来，命令就可以**现查**它的动词表，
-	// 注册期只交一条命令。宿主没有分派概念时（测试桩、直接调用）返回空串。
+	// Handing back "by which name you were found this time" lets the command **look
+	// up** its verb table on the spot, registering just one command. When the host
+	// has no dispatch concept (test stubs, direct calls) it returns the empty string.
 	Verb() string
-	// LiveRouting 也**不在 Host 上**（2026-09-18 移走）：它给的是守护进程自报的
-	// 熔断表快照，那是数据面/控制面的数据（modules/gateway/controlplane.Doc 的
-	// Available / Rank），不是「只有界面做得成」的事。谁要谁直接读那个叶子。
+	// LiveRouting is also **not on Host** (moved out 2026-09-18): what it gives is the
+	// breaker-table snapshot the daemon self-reports, which is data-plane/control-plane
+	// data (Available / Rank in modules/gateway/controlplane.Doc), not
+	// something "only the UI can do". Whoever wants it reads that leaf directly.
 	NotifyProxy()
 
-	// DaemonRunning 守护进程现在在跑吗（读 pidfile）。
+	// DaemonRunning: is the daemon running now (read the pidfile).
 	//
-	// 只有 CLI 做得成这件事：它拥有进程生命周期（起停、优雅交接、pidfile
-	// 的读写时机）。命令想问的其实是「我这一改有人立刻读吗」——不在跑就只是
-	// 落了个盘，下次起来才生效，跟用户说清楚比让他以为已经生效强。
+	// Only the CLI can do this: it owns the process lifecycle (start/stop, graceful handover, when
+	// the pidfile is read and written). What the command really wants to ask is "will anyone read
+	// my change immediately" -- not running means it only landed on disk and takes effect next
+	// start, and telling the user that plainly beats letting them think it already took effect.
 	DaemonRunning() bool
 
-	// 链与跳过的排版**不在 Host 上**（2026-09-18 移走）：那是配置的知识，谁要
-	// 谁去调 modules/config 的 PrintChain / PrintSkips。借界面转发一圈只会让界面
-	// import 配置——而界面不该认识任何模块。
+	// The layout of chains and skips is **not on Host** (moved out 2026-09-18): that is config's
+	// knowledge; whoever wants it calls modules/config's PrintChain / PrintSkips. Forwarding it
+	// through the UI would only make the UI import config -- and the UI should know no module.
 
-	// PrintThinkCache **不在 Host 上**（2026-09-18 移走，与 LiveRouting 同一条
-	// 理由）：它是 gateway 的 thinkcache 计数与排版，谁要谁自己去
-	// modules/gateway/thinkcache_status.go 渲染。它曾经在 Host 上，于是这个接口
-	// 里出现了一条**以某个模块命名**的方法——界面因此「认识」了那个模块。
+	// PrintThinkCache is **not on Host** (moved out 2026-09-18, same reason as LiveRouting):
+	// it is gateway's thinkcache counters and layout, and whoever wants it renders it
+	// from modules/gateway/thinkcache_status.go. It used to be on Host, so this interface
+	// carried a method **named after a module** -- and the UI thus "knew" that module.
 }
 
-// Command 是模块向 CLI 贡献的命令端口；Names 声明路由名，Run 执行命令语义。
+// Command is the command port a module contributes to the CLI; Names
+// declares the routing names, Run executes the command's semantics.
 //
-// **args 里没有命令名**：`newgate plugin deepseek off` 分派到 `plugin` 这条命令时，
-// Run 收到的是 `["deepseek", "off"]`——动词已被分派器剥掉。这条是 2026-09-18 用
-// 真实二进制跑出来的：契约没写它，于是照 `os.Args` 的直觉按 1 起下标写，整条命令
-// 错位一格（`plugin <模块>` 打成了列表、`plugin <路径> off 90s` 报「不认识的动词
-// 90s」）。下标基准这种事必须写在契约上，不能靠猜。
+// **args carries no command name**: when `newgate plugin deepseek off` dispatches to
+// the `plugin` command, Run receives `["deepseek", "off"]` -- the verb has been stripped by
+// the dispatcher. This was found by running the real binary on 2026-09-18: the contract did
+// not state it, so people wrote indices starting at 1 by os.Args intuition, and the whole
+// command was off by one (`plugin <module>` printed a list, `plugin <path> off 90s` reported
+// "unknown verb 90s"). Things like the index base must be in the contract, not guessed.
 //
-// Names 里的多个名字是**同一个命令**的别名，分派到哪一个都收到同样形状的 args。
+// Multiple names in Names are aliases of **the same command**;
+// dispatching to any of them gets args of the same shape.
 type Command interface {
 	Names() []string
 	Run(Host, []string) int
 }
 
-// Command 是模块注册进来的命令。args 是**去掉命令名之后**的原始参数（含选项），
-// 位置参数用 Positional 取、开关用 Flag / FlagValue 取——别自己数下标。
+// Command is a command a module registered. args are the raw arguments **after
+// removing the command name** (options included); positional arguments are taken
+// with Positional, switches with Flag / FlagValue -- do not count indices yourself.
 
-// Section 是帮助屏上的一个**槽位名**。
+// Section is one **slot name** on the help screen.
 //
-// 它就是一个字符串，靠**约定**生效，不是闭集（2026-09-18 定）：
+// It is just a string, taking effect by **convention**, not a closed set (settled 2026-09-18):
 //
-//   - 界面自己发布一批**通用槽位键**（下面那组常量）：它们是「逻辑上想得通」的
-//     大类（接管 / 路由 / 观测 / 维护 …），谁都可以选用；
-//   - 通用槽位之外，模块可以**自己起一个名字**——先到先得，最多
-//     MaxCustomSections 个，按首次声明的顺序排在通用槽位之后；
-//   - 抢不到名额（或者根本没起名字）的一律进 SectionOthers。
+//   - the UI publishes a set of **generic slot keys** (the constants
+//     below): they are categories that "make sense logically" (takeover /
+//     routing / observation / maintenance …), and anyone may choose them;
+//   - beyond the generic slots, a module may **make up a name** -- first come first served,
+//     up to MaxCustomSections, ordered by first declaration after the generic slots;
+//   - those that cannot get a quota (or never made up a name) all go into SectionOthers.
 //
-// 为什么不做成闭集枚举：分类是约定，会随装机长出新成员，硬拒绝的代价是「一个新
-// 模块因为用了个新节名，整个 --help 就崩了」——而它只是想被列出来。为什么又要设
-// 上限：槽位多了 help 就退化成一堆一行的节，等于没分组。这两条与 pluginmanager
-// 的 Type 词汇表是同一个设计（顺序表 + others 兜底）。
+// Why not a closed enum: categorization is a convention and grows new members with installs,
+// and the cost of hard rejection is "a new module using a new section name crashes the whole
+// --help" -- and all it wanted was to be listed. Why a cap then: with too many slots help
+// degenerates into a pile of one-line sections, which is no grouping at all. These two are
+// the same design as pluginmanager's Type vocabulary (an ordered list + others fallback).
 //
-// 上一版界面反过来维护一张「哪几节是我自己的」的名字清单（coreSection 里那个
-// switch）——**界面因为别人的节名而需要被修改**，那正是这一轮要拆掉的东西。
+// The previous version had the UI maintain a list of "which sections are
+// mine" (the switch in coreSection) -- **the UI needing edits because
+// of someone else's section names**, exactly what this round tears down.
 //
-// # 键是身份，不是文案（2026-09-20 本地化）
+// # The key is identity, not copy (localization, 2026-09-20)
 //
-// 槽位名过去直接写中文（`SectionTakeover = "接管"`），于是它同时充当了两个角色：
-// 分组的**键**（plan.slot 的判据）与屏幕上的**标题**。加了 i18n 之后这两个角色
-// 必须分开——键是身份，不该随语言变（变了之后「同一节的中文名与英文名」就是两个
-// 不同的槽位，自定义名额、排序、others 兜底全会错位），标题才是文案。
+// Slot names used to be written directly as Chinese literals (`SectionTakeover` held the
+// Chinese word for takeover), so one name played two roles: the grouping **key** (the
+// test for plan.slot) and the on-screen **heading**. With i18n the two roles must split
+// -- the key is identity and must not vary by language (if it did, "the Chinese name
+// and English name of the same section" would be two different slots, and custom quotas,
+// ordering, and the others fallback would all misalign), while the heading is copy.
 //
-// 所以键一律是 ASCII 稳定标识（`"takeover"`），给人看的名字走 Display() 查目录。
-// 自定义槽位是模块自己起的键，没有目录条目，Display() 原样返回它本身。
+// So keys are always stable ASCII markers (`"takeover"`), and the human-facing
+// name goes through Display() to look up the catalog. Custom slots are keys
+// modules made up, with no catalog entry, and Display() returns them as is.
 type Section string
 
-// 通用槽位键。界面发布它们，模块选用；顺序即显示顺序（见 PlanSections）。
+// Generic slot keys. The UI publishes them, modules choose
+// them; the order is the display order (see PlanSections).
 //
-// 取值是**稳定标识**，不是文案：改这里的字面量等于改协议（自定义名额与排序都按
-// 键比对），所以它们不随语言变、也不该被翻译。
+// The values are **stable markers**, not copy: changing a literal here
+// is changing the protocol (custom quotas and ordering all compare by
+// key), so they do not vary by language and should not be translated.
 const (
 	SectionTakeover    Section = "takeover"
 	SectionRunOnce     Section = "once"
@@ -213,16 +242,19 @@ const (
 	SectionModules     Section = "modules"
 	SectionUI          Section = "ui"
 
-	// SectionOthers 是**兜底槽位**：抢不到名额的、没起名字的都落这里。
+	// SectionOthers is the **fallback slot**: those that cannot get
+	// a quota, and those that never made up a name, all land here.
 	SectionOthers Section = "others"
 )
 
-// Display 是这个槽位**给人看**的名字（键是身份，显示名随语言变）。
+// Display is this slot's **human-facing** name (the key
+// is identity; the display name varies by language).
 //
-// 查不到目录（源语言、或这门语言还没翻）时 i18n.T 返回的就是这里写的那句英文，
-// 所以默认路径不依赖任何数据文件。自定义槽位落进 default：它的键是模块自己起的，
-// 界面不认识它，也就没有对应的显示名——原样显示那个键是**正确的降级**，不是错误
-// （它与 PlanSections 把陌生节名收进 others 是同一条 fail-open）。
+// When the catalog has no entry (the source language, or this language not yet translated),
+// i18n.T returns the English sentence written here, so the default path depends on no data
+// file. A custom slot falls into default: its key was made up by a module, the UI does not know
+// it, and it has no display name -- showing that key as is is the **correct degradation**, not
+// an error (the same fail-open as PlanSections putting unfamiliar section names into others).
 func (s Section) Display() string {
 	switch s {
 	case SectionTakeover:
@@ -245,31 +277,36 @@ func (s Section) Display() string {
 	return string(s) // 自定义槽位：模块自己起的键，显示它本身
 }
 
-// generalSections 是界面发布的通用槽位，顺序即显示顺序。SectionOthers 永远最后。
+// generalSections are the generic slots the UI publishes; the
+// order is the display order. SectionOthers is always last.
 var generalSections = []Section{
 	SectionTakeover, SectionRunOnce, SectionRouting,
 	SectionObserve, SectionMaintenance, SectionModules, SectionUI,
 }
 
-// MaxCustomSections 是通用槽位之外还能容纳的**自定义节**个数。
+// MaxCustomSections is how many **custom sections** can fit beyond the generic slots.
 //
-// 有上限是因为节多了 help 就等于没分组；先到先得是因为「谁先声明谁占坑」是唯一
-// 不需要界面做价值判断的规则。装到一个新模块抢不到名额时，它落进「其它」照样
-// 列得出来，只是不再独占一节。
+// The cap exists because with many sections help amounts to no grouping;
+// first-come-first-served because "whoever declares first takes the slot" is the only rule
+// that needs no value judgment from the UI. When a newly installed module cannot get a quota,
+// it falls into "other" and is still listed, it just no longer has a section of its own.
 const MaxCustomSections = 4
 
-// SectionPlan 是一批声明过的节名到**实际显示的节**的映射，以及显示顺序。
+// SectionPlan is the mapping from a batch of declared section names
+// to **the sections actually displayed**, plus the display order.
 //
-// 它是一次装配的产物（声明顺序 = 命令注册顺序），所以由界面在渲染时现算。
+// It is a product of one assembly (declaration order = command
+// registration order), so the UI computes it fresh at render time.
 type SectionPlan struct {
 	order []Section
 	slot  map[Section]Section
 }
 
-// PlanSections 按上面的规则给每个声明过的节名定一个落点。
+// PlanSections assigns each declared section name a landing place by the rules above.
 //
-// declared 必须是**稳定的顺序**（命令注册顺序），因为自定义节是先到先得——顺序
-// 不定的话同一套装机会渲染出不同的 help，那种不确定性最难查。
+// declared must be a **stable order** (command registration order), because custom
+// sections are first come first served -- with an unstable order, the same install
+// would render different help, and that kind of nondeterminism is the hardest to trace.
 func PlanSections(declared []Section) SectionPlan {
 	plan := SectionPlan{slot: map[Section]Section{}}
 	var customs []Section
@@ -279,7 +316,7 @@ func PlanSections(declared []Section) SectionPlan {
 		}
 		switch {
 		case name == "":
-			// 没声明 = 没有位置主张，直接进兜底。
+			// Not declared = no positional claim; straight to the fallback.
 			plan.slot[name] = SectionOthers
 		case isGeneralSection(name):
 			plan.slot[name] = name
@@ -296,7 +333,7 @@ func PlanSections(declared []Section) SectionPlan {
 	return plan
 }
 
-// Slot 这个声明实际显示在哪一节。
+// Slot is which section this declaration actually shows up in.
 func (p SectionPlan) Slot(declared Section) Section {
 	if s, ok := p.slot[declared]; ok {
 		return s
@@ -304,7 +341,7 @@ func (p SectionPlan) Slot(declared Section) Section {
 	return SectionOthers
 }
 
-// Order 按显示顺序返回所有会出现（或可能为空）的节。
+// Order returns all sections that will appear (or may be empty), in display order.
 func (p SectionPlan) Order() []Section { return append([]Section(nil), p.order...) }
 
 func isGeneralSection(name Section) bool {
@@ -316,8 +353,9 @@ func isGeneralSection(name Section) bool {
 	return false
 }
 
-// FlagValue 取 `--名字 值` 或 `--名字=值` 里的值；names 是同一选项的别名，都没有
-// 就给空串。与 Arg 同属 argv 解析的公共部分：每个模块各写一遍必然有一遍写错。
+// FlagValue takes the value from `--name value` or `--name=value`; names are aliases of the
+// same option, and with none of them the empty string is given. Along with Arg it is the
+// shared part of argv parsing: written once per module, one copy will certainly be wrong.
 func FlagValue(args []string, names ...string) string {
 	for i, a := range args {
 		for _, name := range names {
@@ -332,17 +370,20 @@ func FlagValue(args []string, names ...string) string {
 	return ""
 }
 
-// Positional 取第 i 个**位置参数**（跳过 `-` 开头的），越界给空串。
+// Positional takes the i-th **positional argument** (skipping those
+// starting with `-`), and gives the empty string when out of range.
 //
-// **必须是这个函数、不能数下标**（2026-09-18 实测）：契约包里曾经还有一个纯下标
-// 访问器 `Arg`，`newgate start --force` 于是把 `--force` 当成了 agent 名，报
-// 「不认识的 agent "--force"」——**而 doctor 自己就在推荐这条命令**；同一类现场
-// 还有 `newgate probe --json`（`--json` 被当成 profile 名）。两个名字、两种语义
-// 摆在一起，下一个人必然踩中错的那个，所以 `Arg` 已经删掉，只剩这一个。
+// **Must be this function; do not count indices** (measured 2026-09-18): the contract package
+// once had a raw index accessor `Arg`, and `newgate start --force` then took `--force` as
+// the agent name, reporting "unknown agent "--force"" -- **and doctor itself recommends
+// that command**; the same class of scene also included `newgate probe --json` (`--json`
+// taken as a profile name). Two names, two semantics side by side, and the next person
+// will certainly step on the wrong one, so `Arg` has been deleted and only this remains.
 //
-// 位置参数不可能是 `-` 开头的：agent 名、profile 名、子命令全在这个集合里。
-// `--` 之后一律算位置参数（要给客户端透传以 `-` 开头的参数时用它），`--` 自己
-// 不算一个位置；单独一个 `-` 仍算位置参数（按惯例表示 stdin）。
+// A positional argument cannot start with `-`: agent names, profile names, and
+// subcommands are all in this set. Everything after `--` counts as a positional
+// (use it to pass arguments starting with `-` through to a client), `--` itself
+// is not one; a lone `-` still counts as a positional (conventionally stdin).
 func Positional(args []string, i int) string {
 	var seen int
 	literal := false
@@ -364,11 +405,12 @@ func Positional(args []string, i int) string {
 	return ""
 }
 
-// Flag 报告命令行里有没有这个选项（`--` 之后不再有选项）。
+// Flag reports whether this option is on the command line (after `--` there are no more options).
 //
-// 只做**精确**匹配：`--profile=ds` 不算 `--profile`，那种带值的用 FlagValue。
-// 它替掉的是散在 config / gateway / runtime 里三份一模一样的 `hasFlag`——同一段
-// 三行代码抄三遍，改动时漏掉一份就是「这条命令的开关在这一层不生效」。
+// It matches **exactly**: `--profile=ds` does not count as `--profile`; that
+// value-bearing form uses FlagValue. What it replaces is three identical `hasFlag` copies
+// scattered across config / gateway / runtime -- the same three lines copied three times,
+// and missing one on a change means "this command's switch does not work at this layer".
 func Flag(args []string, name string) bool {
 	for _, a := range args {
 		if a == "--" {
@@ -381,173 +423,193 @@ func Flag(args []string, name string) bool {
 	return false
 }
 
-// HelpLine 是命令在 `newgate --help` 里占的那一行。
+// HelpLine is the one line a command occupies in `newgate --help`.
 //
-// **节与位置都由命令自己声明，界面不认识任何一条命令**。上一版是反过来的：界面
-// 里写死一张 cmd(...) 清单，于是每加一个模块就要回来改界面——命令搬回模块之后
-// 界面还在硬编码它们，"搬了"就等于白搬。
+// **Both section and position are declared by the command; the UI knows
+// no command.** The previous version was the reverse: the UI hardcoded a cmd(...)
+// list, so every new module meant coming back to edit the UI -- after commands moved
+// back into modules the UI was still hardcoding them, and "moving" meant nothing.
 type HelpLine struct {
-	// Section 归到哪个槽位（见上面的槽位表）。挑不出来就留空，会落进
-	// SectionOthers——那是**正确的降级**，不是错误。
+	// Section: which slot it belongs to (see the slot table above). When none fits, leave it
+	// empty; it falls into SectionOthers -- that is **correct degradation**, not an error.
 	Section Section
-	// Rank 决定**节内**位置：小的在前，同 Rank 按 Usage 稳定排序。节的先后由
-	// SectionOrder 决定，不受 Rank 影响——否则一个模块调大自己的 Rank 就能把
-	// 整节搬走，槽位的意义就没了。
+	// Rank decides **within-section** position: smaller first, equal Rank sorted stably by Usage.
+	// The order of sections is decided by SectionOrder and is unaffected by Rank -- otherwise a
+	// module could raise its own Rank and move a whole section, and slots would be meaningless.
 	//
-	// 为什么用整数而不是枚举：节的集合随装机变化，枚举必然要改框架。留出空档
-	// （10/20/30…）就是留给别人插队的余量。
+	// Why integers rather than an enum: the set of sections varies with the install, and an enum
+	// would force framework changes. Leaving gaps (10/20/30…) is the room left for others to jump in.
 	Rank int
-	// Usage 左列，命令写法。
+	// Usage: the left column, the command syntax.
 	Usage string
-	// Summary 右列，一句话结论。
+	// Summary: the right column, one sentence of conclusion.
 	Summary string
 }
 
-// Documented 是 Command 的可选搭档：命令自己声明它在 --help 里长什么样。
+// Documented is Command's optional partner: the command declares for itself how it looks in --help.
 //
-// 为什么必须有它：命令从 CLI 的 switch 搬回各模块之后，`newgate --help` 不能再
-// 硬编码那些行——**硬编码就等于「命令搬了、CLI 还认识它」，白搬**。help 是
-// 「CLI 认识哪些模块」的另一个面，两个面得一起搬。
+// Why it must exist: after commands moved back from the CLI's switch into modules,
+// `newgate --help` can no longer hardcode those lines -- **hardcoding equals "the
+// command moved, the CLI still knows it", which is moving for nothing**. Help is the
+// other face of "which modules the CLI knows", and the two faces must move together.
 //
-// 没实现它的命令仍然可用，只是不在 help 里占一行。那不是一个好状态（用户看不见
-// 的命令约等于不存在），所以新命令都该实现它——但它是可选接口，因为它是**呈现**
-// 关注点，不该挡住一条命令先能跑起来。
+// A command without it still works, it just takes no line in help. That is not a good
+// state (a command the user cannot see is roughly a command that does not exist),
+// so new commands should implement it -- but it is an optional interface, because it
+// is a **presentation** concern and should not block a command from running first.
 type Documented interface {
 	Help() HelpLine
 }
 
-// CLI 既是进程入口最终调用的分派器，也是模块注入自己那一份东西的端口。
+// CLI is both the dispatcher the process entry ultimately calls
+// and the port through which modules inject their own piece.
 //
-// 两件事共用一个接口是有意的：它们都是「界面这件事」的两面——入口把一次命令行
-// 调用交给它（Run），模块把自己的一部分挂到它上面（RegisterXxx）。分成两个端口
-// 只会让每个模块都要 Need 两次、而它们永远是同一个组件提供的。
+// Sharing one interface for two things is deliberate: both are faces of "the UI"
+// -- the entry hands it one command-line invocation (Run), and modules hang part
+// of themselves on it (RegisterXxx). Splitting into two ports would only make
+// every module Need twice, while they are always provided by the same component.
 //
-// **它不再由组合根点名调用**（2026-09-20）：界面在自己的 Start 里往 root 的
-// 入口账本申报一个 Handler（rank = entry.DefaultRank，即「谁都没认领就是我」），
-// 组合根只问账本「这次调用归谁」。于是换界面（甚至换成一个 web-daemon）在组合根
-// 上是零改动，`app` 里也再没有一行 import 本包。
+// **The composition root no longer calls it by name** (2026-09-20): the UI declares
+// a Handler to root's entry ledger in its own Start (rank = entry.DefaultRank, i.e.
+// "if nobody claims it, it is me"), and the composition root only asks the ledger "who does
+// this invocation belong to". So swapping the UI (even for a web-daemon) takes zero changes
+// in the composition root, and `app` no longer imports this package in a single line.
 //
-// 为什么注入必须是 Register 而不是让模块 Provide 一个「命令端口」：后者没有生命
-// 周期。模块认领一个命令名之后没人能撤销它，也没人查重——两个模块认领同一个名字
-// 是静默先到先得（2026-09-17 实测）。走 Register 则每次注入都拿到一个 Release，
-// 由注入方自己在 Stop 时释放。
+// Why injection must be Register rather than having modules Provide a "command
+// port": the latter has no lifecycle. Once a module claims a command name
+// nobody can undo it, and nobody checks duplicates -- two modules claiming the
+// same name silently goes to the first (measured 2026-09-17). With Register,
+// every injection gets a Release, released by the injector itself on Stop.
 //
-// **读侧不在这里**：命令账本、诊断、状态行都归界面自己，它直接读自己的 service，
-// 不需要经过接口。
+// **The read side is not here**: the command ledger, diagnostics, and status lines all belong
+// to the UI itself, and it reads its own service directly, without going through the interface.
 type CLI interface {
-	// Run 执行一次命令行调用。p 是**这次进程调用**的全部事实（argv0 / args /
-	// env / 版本），由组合根装好递进来——界面自己去读 os.Args 就又把「进程是
-	// 怎么被调起来的」抄了一遍，而那正是 entry 包存在的理由。
+	// Run executes one command-line invocation. p is all the facts of **this
+	// process invocation** (argv0 / args / env / version), set up and handed in by
+	// the composition root -- having the UI read os.Args itself would copy "how the
+	// process was invoked" once more, which is exactly why the entry package exists.
 	//
-	// argv0 分发（`newgate-<preset>` ≡ `newgate --preset <preset>`）在界面内部完成，
-	// 因为那是**命令行语法**，属于界面；「这次调用归不归界面管」才是 entry 的事。
+	// argv0 dispatch (`newgate-<preset>` ≡ `newgate --preset <preset>`) happens
+	// inside the UI, because it is **command-line syntax**, which belongs to the
+	// UI; "does this invocation belong to the UI at all" is entry's business.
 	Run(p entry.Process) int
 
-	// RegisterCommand 注入一条命令。命令名（Names）是查重的逻辑键，撞名当场
-	// 报错而不是先到先得。
+	// RegisterCommand injects one command. The command names (Names) are the logical key for
+	// duplicate checking; a clash errors on the spot rather than first come first served.
 	RegisterCommand(Command) (modules.Release, error)
-	// RegisterDiagnostics 注入一组 doctor 输出。诊断可叠加，没有键命名空间，
-	// 因此不查重，只记 token。
+	// RegisterDiagnostics injects a group of doctor output. Diagnostics can stack,
+	// with no key namespace, so no duplicate check -- only the token is recorded.
 	RegisterDiagnostics(DiagnosticProvider) (modules.Release, error)
-	// RegisterStatus 注入 `newgate status` 里的若干行，理由同 RegisterDiagnostics。
+	// RegisterStatus injects several lines into `newgate status`, same reason as RegisterDiagnostics.
 	RegisterStatus(StatusProvider) (modules.Release, error)
-	// RegisterStatusBlocks 注入 `newgate status` 里的成块内容（表格等），
-	// 理由见 StatusBlock。
+	// RegisterStatusBlocks injects block content (tables
+	// and the like) into `newgate status`, see StatusBlock.
 	RegisterStatusBlocks(BlockProvider) (modules.Release, error)
-	// RegisterDump 注入诊断包（`newgate alllogs`）里的原始素材，理由见 Dumper。
+	// RegisterDump injects raw material into the diagnostic bundle (`newgate alllogs`), see Dumper.
 	RegisterDump(Dumper) (modules.Release, error)
-	// RegisterGlossary 注入帮助屏术语表里属于自己的一行，理由见 Glossarist。
+	// RegisterGlossary injects its own row into the help screen's glossary, see Glossarist.
 	RegisterGlossary(Glossarist) (modules.Release, error)
-	// RegisterVerbose 上报「我的详细模式开着」，理由见 Verbose。
+	// RegisterVerbose reports "my verbose mode is on", see Verbose.
 	RegisterVerbose(Verbose) (modules.Release, error)
 }
 
-// Verbose 报告「现在处于需要看细节的模式」——某个模块开了自己的详细开关。
+// Verbose reports "we are in a mode where details need
+// watching" -- some module turned on its own verbose switch.
 //
-// 界面拿它做一个判断：要不要对自己的输出做版式自检（见 modules/cli/layout_audit）。
-// 谁的模式谁自己报——界面原来直接读 gateway 的 state 段问「debug 开了吗」，
-// 那是界面认识别人的配置结构。
+// The UI uses it for one decision: whether to run a layout self-check on its own output (see
+// modules/cli/layout_audit). Whoever owns a mode reports it -- the UI used to read gateway's state
+// section directly to ask "is debug on", which was the UI knowing someone else's config structure.
 type Verbose interface {
 	Verbose() bool
 }
 
-// GlossaryLine 是帮助屏末尾术语表里的一行（词 + 一句话解释）。
+// GlossaryLine is one row in the glossary at the end of the help screen (term + one sentence).
 type GlossaryLine struct {
 	Rank int
 	Term string
-	// Definition 一句话解释；里面带的数据（agent 名、槽位键）由贡献者自己取。
+	// Definition is one sentence; the data it carries (agent
+	// names, slot keys) is fetched by the contributor itself.
 	Definition string
 }
 
-// Glossarist 让模块贡献术语表里属于自己的一行。
+// Glossarist lets a module contribute its own row to the glossary.
 //
-// **为什么需要它**（2026-09-18）：术语表里有两行是别人的词——「agent」是
-// config-hook 的（哪些客户端被接管），「槽位键」是 config 的（模块贡献的动态角色）。
-// 界面为了它们得认识 AgentCatalog 与 domain.ExtraRoles，那正是「界面认识模块」
-// 的又一个面。现在各交各的，界面只排版。
+// **Why it is needed** (2026-09-18): two rows in the glossary are someone
+// else's words -- "agent" belongs to config-hook (which clients are taken over),
+// and "slot key" belongs to config (the dynamic roles modules contribute). The UI
+// had to know AgentCatalog and domain.ExtraRoles for them, which is one more face
+// of "the UI knows modules". Now each submits its own, and the UI only lays out.
 //
-// 界面自己那几行（profile 这类**纯界面词汇**）仍然写在界面里：它们不归任何模块。
+// The UI's own rows (pure UI vocabulary like profile)
+// are still written in the UI: they belong to no module.
 type Glossarist interface {
 	Glossary() []GlossaryLine
 }
 
-// DumpSection 是诊断包里的一段**原始素材**：标题 + 原文行。
+// DumpSection is one piece of **raw material** in the diagnostic bundle: heading + raw lines.
 //
-// 它和 Diagnostic / StatusLine 的分工：那两者是**给人扫的一句话结论**，这一段是
-// 「出了事要拿出去的原文」（配置、日志、被改写的文件）。诊断包（`newgate alllogs`）
-// 就是把这些原文按顺序拼起来。
+// How it splits from Diagnostic / StatusLine: those two are **one-sentence
+// conclusions for human scanning**, while this is "the raw text you take out
+// when something goes wrong" (config, logs, rewritten files). The diagnostic
+// bundle (`newgate alllogs`) is those raw texts spliced together in order.
 type DumpSection struct {
 	Rank  int
 	Title string
-	// Lines 原文，逐行原样输出（不做版式处理——它可能要贴进 issue）。
+	// Lines: raw text, printed verbatim line by line (no layout
+	// processing -- it may need to be pasted into an issue).
 	Lines []string
 }
 
-// Dumper 让模块把自己的原始素材交进诊断包。
+// Dumper lets a module hand its own raw material into the diagnostic bundle.
 //
-// **为什么需要它**（2026-09-18）：诊断包原来整个长在界面里，于是界面为了拼出
-// 它得知道 providers.json 的结构、profile 的档位表、接管改了哪些文件、日志在哪、
-// 证据文件叫什么。全是各模块自己的知识。现在各交各的原文，界面只负责排序与拼接
-// ——与 status / doctor 是同一条规矩的第三次应用。
+// **Why it is needed** (2026-09-18): the diagnostic bundle used to live entirely in the UI,
+// so assembling it meant the UI had to know providers.json's structure, the profile's tier
+// table, which files takeover changed, where the logs are, and what the evidence files are
+// called. All of that is each module's own knowledge. Now each submits its own raw text, and
+// the UI only sorts and splices -- the third application of the same rule as status / doctor.
 //
-// 它是可选端口：没有原始素材要交的模块不实现。
+// It is an optional port: modules with no raw material to submit do not implement it.
 type Dumper interface {
 	Dump() []DumpSection
 }
 
-// Handoff 标记这条命令会把控制权交给**别的进程**（包装启动一个客户端）。
+// Handoff marks that this command hands control to **another process** (wrapping a client launch).
 //
-// 界面拿它做一个判断：这类命令的输出来自那个进程，不该按 newgate 的版式去审计
-// 对齐。以前那个判断是界面自己 `detectLaunch` 猜出来的（「第一个 token 是不是
-// 已知 agent」）——那需要界面认识 agent 表；现在由命令自己声明，界面只看标记。
+// The UI uses it for one decision: these commands' output comes from that process and should
+// not be audited for alignment against newgate's layout. That decision used to be guessed
+// by the UI's own `detectLaunch` ("is the first token a known agent") -- which required the
+// UI to know the agent table; now the command declares it, and the UI just reads the flag.
 type Handoff interface {
-	// HandsOff 这条命令是不是把控制权交给别的进程。
+	// HandsOff: does this command hand control to another process.
 	HandsOff()
 }
 
-// Unstyled 报告这条命令**这一次调用**的输出不是 newgate 的版式：原始配置文本
-// （`profile kv`）、逐字节日志（`logs`）、全屏界面（`tui`）、JSON（`probe --json`）。
-// 版式审计跳过它。
+// Unstyled reports that **this one invocation** of the command has output that is
+// not newgate's layout: raw config text (`profile kv`), byte-by-byte logs (`logs`),
+// a full-screen UI (`tui`), JSON (`probe --json`). The layout audit skips it.
 //
-// **为什么由命令声明而不是界面列名单**（2026-09-18）：界面原来硬编码一张
-// `switch args[0]` 的名字表（"__serve", "logs", "alllogs", "tui", "run", "probe",
-// "profile"）——那正是「界面认识别人的命令」的又一个面，每加一个命令都要回来改
-// 界面。现在命令自己说「我这次不是版式」，界面只问一句。
+// **Why the command declares it rather than the UI listing names** (2026-09-18):
+// the UI used to hardcode a `switch args[0]` name table ("__serve", "logs",
+// "alllogs", "tui", "run", "probe", "profile") -- one more face of "the UI knows
+// other people's commands", and every new command meant coming back to edit the
+// UI. Now the command says "this time I am not layout", and the UI just asks.
 //
-// 它是**动态**的（收 args）：同一条命令可能只有某种用法不排版（`probe --json`，
-// 或 `profile kv` 这个子命令）。
+// It is **dynamic** (takes args): the same command may be un-laid-out
+// only in some uses (`probe --json`, or the `profile kv` subcommand).
 type Unstyled interface {
 	Unstyled(args []string) bool
 }
 
-// **BuildInfo 已删（2026-09-20）**：链接期版本信息现在是**进程事实**的一部分
-// （entry.Process 的 Version/BuildTime/CommitTime），由组合根装一次、经
-// `entry.MakeProcess` 落进 buildinfo 叶子，界面与别的模块一样**读**它。
+// **BuildInfo was deleted (2026-09-20)**: link-time version information is now
+// part of **process facts** (Version/BuildTime/CommitTime on entry.Process),
+// set up once by the composition root and landed into the buildinfo leaf
+// via `entry.MakeProcess`, and the UI **reads** it like any other module.
 //
-// 为什么不再从 Run 的参数hand 递：那个参数是「这次命令行调用」的形状，而版本号
-// 是「这个二进制」的事实——两者混在一个类型里，等于让「换一个界面实现」也要重新
-// 定义版本怎么传。删掉之后 Run 收的就是纯粹的调用现场（见 CLI.Run）。
+// Why it is no longer handed through Run's parameter: that parameter is the shape of "this
+// one command-line invocation", while the version is a fact about "this binary" -- mixing
+// the two in one type means "swap in another UI implementation" also has to redefine how the
+// version is passed. Once deleted, Run receives only the pure invocation facts (see CLI.Run).
 
-// Capability 是界面的端口身份。模块用它注入自己的命令与状态行；进程组合根用它
-// 把这次调用交给界面。
+// Capability is the UI's port identity. Modules use it to inject their own commands and
+// status lines; the process composition root uses it to hand this invocation to the UI.
 var Capability = modules.NewCapability[CLI]("cli")

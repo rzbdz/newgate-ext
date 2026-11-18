@@ -18,32 +18,32 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// 本文件是 GitHub Release 那条路：查 Release、挑本平台的产物、下载、对 SHA256SUMS。
+// This file is the GitHub Release route: find the Release, pick this platform's artifact,
+// download it, check it against SHA256SUMS.
 //
-// 只用公开 API，不需要 token；环境里有 GITHUB_TOKEN / GH_TOKEN 就带上。
+// Public API only, no token needed; GITHUB_TOKEN / GH_TOKEN in the env are used if set.
 //
-// # API 被限流时退回网页那几条地址
+// # When the API is rate-limited, fall back to the web pages
 //
-// 未认证的 API 每小时 60 次、**按出口 IP 计**。公司网络、跳板机后面几十台机器共用
-// 一个出口时，这个额度是别人花掉的——2026-10-29 第一次在开发机上试 `upgrade@v0.8.0`
-// 就撞上了 `API rate limit exceeded for <出口 IP>`，而这台机器自己一次都没调过。
-// 要求每台机器配 token 不现实（snode1 那类机器上没有任何 GitHub 凭据）。
+// The unauthenticated API allows 60 requests an hour, **counted per egress IP**. Behind
+// one shared egress that quota is spent by others - 2026-10-29 saw `API rate limit
+// exceeded for <egress IP>` on a dev machine that never called; a token per machine is
+// unrealistic (snode1 and the like hold no GitHub credentials).
 //
-// github.com 上的三条地址不走 API 额度，而且够用：
+// Three github.com addresses do not draw on the quota, and are enough:
 //
-//   - `/<repo>/releases/latest` 302 到 `/<repo>/releases/tag/<tag>`（最新 tag）；
-//   - `/<repo>/releases/tag/<tag>` 200/404（这个 tag 有没有 Release）；
-//   - `/<repo>/releases/download/<tag>/<名字>`（产物本身——API 给的 browser_download_url
-//     也就是它）。
+//   - `/<repo>/releases/latest` 302s to `/<repo>/releases/tag/<tag>` (the latest tag);
+//   - `/<repo>/releases/tag/<tag>` 200/404 (does this tag have a Release);
+//   - `/<repo>/releases/download/<tag>/<name>` (the artifact - what API's
+//     browser_download_url points at anyway).
 //
-// 产物清单从 SHA256SUMS 里读：它本来就列着这一版的每个产物，而没有它的 Release
-// 反正也不装。所以这条退路不是「凑合」，它拿到的东西与 API 那条一样多（只少了
-// 文件大小，那一项本来就只是个额外的核对）。
+// The artifact list comes from SHA256SUMS: it lists every artifact of the version, so
+// the fallback gets as much as the API path (only file size). It is no makeshift.
 
 const sumsAsset = "SHA256SUMS"
 
-// maxBinary 是一个产物的上限。今天的产物在 20 MB 上下；上限只拦「下成了别的
-// 东西」（重定向到一个巨大的页面、断点续传拼错），不是在估算体积。
+// maxBinary caps one artifact. Today's artifacts run about 20 MB; the cap only catches
+// "downloaded something else" (a redirect to a huge page, a broken resume), not sizing.
 const maxBinary = 512 << 20
 
 type ghAsset struct {
@@ -68,14 +68,14 @@ func (r *ghRelease) asset(name string) (ghAsset, bool) {
 	return ghAsset{}, false
 }
 
-// errNoRelease 是「这个 tag 没有 Release」（404）。它不是故障：`upgrade@<tag>` 遇到
-// 它就改走源码构建。
+// errNoRelease is "this tag has no Release" (404). Not a fault: `upgrade@<tag>` builds
+// from source when it sees this.
 var errNoRelease = errors.New("no such release")
 
-// errRateLimited 是 API 拒绝了（403/429）：换网页那几条地址再试。
+// errRateLimited is the API refusing (403/429): retry with the web addresses.
 var errRateLimited = errors.New("rate limited")
 
-// rateLimitErr 带着给人看的那句话，同时 `errors.Is(err, errRateLimited)`。
+// rateLimitErr carries the human sentence, plus `errors.Is(err, errRateLimited)`.
 type rateLimitErr struct{ msg error }
 
 func (e rateLimitErr) Error() string        { return e.msg.Error() }
@@ -93,7 +93,7 @@ func newReleaseClient(repo string) *releaseClient {
 		api:  "https://api.github.com",
 		web:  "https://github.com",
 		repo: repo,
-		// 不设整体超时：下载的长短取决于带宽，由调用方的 ctx 管。
+		// No overall timeout: download time depends on bandwidth, the caller's ctx governs it.
 		http: &http.Client{},
 	}
 }
@@ -107,7 +107,7 @@ func (c *releaseClient) token() string {
 	return ""
 }
 
-// latest 是最新的正式 Release（GitHub 的 /releases/latest 本来就跳过草稿与预发布）。
+// latest is the newest stable Release (GitHub's /releases/latest skips drafts and pre-releases).
 func (c *releaseClient) latest(ctx context.Context) (*ghRelease, error) {
 	r, err := c.get(ctx, fmt.Sprintf("%s/repos/%s/releases/latest", c.api, c.repo))
 	if !errors.Is(err, errRateLimited) {
@@ -120,7 +120,7 @@ func (c *releaseClient) latest(ctx context.Context) (*ghRelease, error) {
 	return c.webRelease(ctx, tag)
 }
 
-// byTag 是某个 tag 的 Release；没有就是 errNoRelease。
+// byTag is the Release for a tag; none = errNoRelease.
 func (c *releaseClient) byTag(ctx context.Context, tag string) (*ghRelease, error) {
 	r, err := c.get(ctx, fmt.Sprintf("%s/repos/%s/releases/tags/%s", c.api, c.repo, url.PathEscape(tag)))
 	if !errors.Is(err, errRateLimited) {
@@ -138,7 +138,7 @@ func (c *releaseClient) byTag(ctx context.Context, tag string) (*ghRelease, erro
 	return c.webRelease(ctx, tag)
 }
 
-// webLatestTag 读 `/releases/latest` 那一跳重定向的目标。
+// webLatestTag reads the redirect target of `/releases/latest`.
 func (c *releaseClient) webLatestTag(ctx context.Context) (string, error) {
 	var loc string
 	code, err := c.webStatus(ctx, fmt.Sprintf("%s/%s/releases/latest", c.web, c.repo), &loc)
@@ -148,7 +148,7 @@ func (c *releaseClient) webLatestTag(ctx context.Context) (string, error) {
 	const marker = "/releases/tag/"
 	i := strings.LastIndex(loc, marker)
 	if code/100 != 3 || i < 0 {
-		// 没有任何 Release 时它重定向到 /releases（不带 tag）。
+		// With no Release at all it redirects to /releases (no tag).
 		return "", errNoRelease
 	}
 	tag, err := url.PathUnescape(loc[i+len(marker):])
@@ -158,7 +158,7 @@ func (c *releaseClient) webLatestTag(ctx context.Context) (string, error) {
 	return tag, nil
 }
 
-// webStatus 发一个不跟随重定向的 GET，只要状态码（与 Location）。
+// webStatus sends a GET without following redirects, returning only the status (and Location).
 func (c *releaseClient) webStatus(ctx context.Context, endpoint string, location *string) (int, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -181,8 +181,8 @@ func (c *releaseClient) webStatus(ctx context.Context, endpoint string, location
 	return resp.StatusCode, nil
 }
 
-// webRelease 用 SHA256SUMS 拼出一份 Release：它列着的每个名字就是一个产物。
-// 没有 SHA256SUMS 时只带回 tag——后面的「没有校验和就不装」照常拦住它。
+// webRelease builds a Release from SHA256SUMS: every name it lists is an artifact.
+// Without SHA256SUMS it carries only the tag - "no checksum, no install" still blocks it.
 func (c *releaseClient) webRelease(ctx context.Context, tag string) (*ghRelease, error) {
 	r := &ghRelease{Tag: tag}
 	base := fmt.Sprintf("%s/%s/releases/download/%s/", c.web, c.repo, url.PathEscape(tag))
@@ -224,8 +224,8 @@ func (c *releaseClient) get(ctx context.Context, endpoint string) (*ghRelease, e
 	case resp.StatusCode == http.StatusNotFound:
 		return nil, errNoRelease
 	case resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests:
-		// 限流是最常见的 403：调用方换网页地址再试（见文件头）；那条也失败时这句
-		// 话会出现在报错里，所以说清楚怎么绕开，而不是只报一个状态码。
+		// Rate limiting is the most common 403: the caller retries the web addresses (file
+		// header); if that fails too this lands in the error, so say how to get around it.
 		return nil, rateLimitErr{i18n.E("GitHub API refused the request (HTTP {code}; rate limited? set GITHUB_TOKEN): {body}",
 			i18n.A{"code": resp.StatusCode, "body": apiMessage(body)})}
 	case resp.StatusCode != http.StatusOK:
@@ -242,7 +242,7 @@ func (c *releaseClient) get(ctx context.Context, endpoint string) (*ghRelease, e
 	return &r, nil
 }
 
-// download 把一个产物写进 dst（调用方建好的文件），边写边算 sha256，返回十六进制。
+// download writes an artifact into dst (created by the caller), hashing as it goes, returning hex.
 func (c *releaseClient) download(ctx context.Context, a ghAsset, dst io.Writer) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, a.URL, nil)
 	if err != nil {
@@ -275,11 +275,11 @@ func (c *releaseClient) download(ctx context.Context, a ghAsset, dst io.Writer) 
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-// sums 下 SHA256SUMS 并解析成 文件名 → 摘要。
+// sums downloads SHA256SUMS and parses it into a name -> digest map.
 func (c *releaseClient) sums(ctx context.Context, r *ghRelease) (map[string]string, error) {
 	a, ok := r.asset(sumsAsset)
 	if !ok {
-		// 没有校验和就不换：一个对不上号的二进制被换上去之后，坏的是每一条命令。
+		// No checksum, no swap: a binary that does not match breaks every command once swapped.
 		return nil, i18n.E("release {tag} has no {file}; refusing to install an unverified binary",
 			i18n.A{"tag": r.Tag, "file": sumsAsset})
 	}
@@ -290,7 +290,7 @@ func (c *releaseClient) sums(ctx context.Context, r *ghRelease) (map[string]stri
 	return parseSums(b.String()), nil
 }
 
-// parseSums 读 sha256sum 的输出（`<hex>  <name>`，二进制模式是 `<hex> *<name>`）。
+// parseSums reads sha256sum's output (`<hex>  <name>`, or `<hex> *<name>` in binary mode).
 func parseSums(text string) map[string]string {
 	out := map[string]string{}
 	sc := bufio.NewScanner(strings.NewReader(text))
@@ -304,9 +304,9 @@ func parseSums(text string) map[string]string {
 	return out
 }
 
-// unreachable 是「连不上 GitHub」的那句话。内网机器多半要走代理（snode1 就是：代理
-// 只写在登录 shell 里，`ssh host cmd` 这种非交互调用拿不到），没设代理时把这一点
-// 说出来——光一句 context deadline exceeded 让人以为是 GitHub 挂了。
+// unreachable is the "cannot reach GitHub" sentence. Intranet machines mostly need a proxy
+// (snode1: the proxy is set only in the login shell, so `ssh host cmd` misses it); when
+// none is set, say so - a bare context deadline exceeded makes one think GitHub is down.
 func unreachable(err error) error {
 	for _, k := range []string{"HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy"} {
 		if os.Getenv(k) != "" {
@@ -316,7 +316,7 @@ func unreachable(err error) error {
 	return i18n.Ef(err, "cannot reach GitHub (no https_proxy is set; does this machine need one?): {err}", nil)
 }
 
-// apiMessage 从 API 的错误体里取 `message`（整段 JSON 塞进一行报错里没法读）。
+// apiMessage pulls `message` out of the API error body (raw JSON in one error line unreadable).
 func apiMessage(body []byte) string {
 	var m struct {
 		Message string `json:"message"`

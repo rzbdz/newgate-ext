@@ -5,10 +5,10 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// verifyGlossary 是帮助屏术语表里「指纹」那一行。
+// verifyGlossary is the "fingerprint" row in the help screen's glossary.
 //
-// 为什么由本模块报：指纹这个说法是 verify 引入的，定义只有这里知道；界面
-// （cli）不认识它，也不该为了这一行去 import 本模块（见 cliapi.Glossarist）。
+// Why this module reports it: fingerprinding is a term verify introduced, defined only here;
+// the UI (cli) does not know it and should not import this module for one row (cliapi.Glossarist).
 type verifyGlossary struct{}
 
 var _ cliapi.Glossarist = verifyGlossary{}

@@ -4,11 +4,13 @@ package term
 
 import "syscall"
 
-// 非 Unix 平台（今天只有 Windows）没有 termios：交互界面在那里应当干净地拒绝，
-// 让调用方打印「这台机器上走参数版」那句话，而不是编译不过。
+// Non-Unix platforms (today only Windows) have no termios: interactive
+// UIs should refuse cleanly there, letting the caller print "this
+// machine uses the flag version", rather than fail to compile.
 //
-// 构建矩阵里没有 Windows（release.yml 只编 linux/darwin），但本仓库是 Go module，
-// 谁 fork 之后 `GOOS=windows go vet ./...` 不该炸在一个终端工具上。
+// The build matrix has no Windows (release.yml only builds linux/darwin),
+// but this repo is a Go module, and whoever forks it should not
+// have `GOOS=windows go vet ./...` blow up on a terminal utility.
 
 func enterRaw(uintptr) (func(), error) { return nil, syscall.ENOSYS }
 

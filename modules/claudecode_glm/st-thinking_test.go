@@ -32,12 +32,12 @@ func TestGlmMatch(t *testing.T) {
 		r    *special.Request
 		want bool
 	}{
-		{"模型名 glm-5.3", req("glm-5.3", "smt-glm", "https://gw.example.com/v1"), true},
-		{"模型名 glm-4.5-air", req("glm-4.5-air", "gw", "https://gw.example.com/v1"), true},
-		{"provider 名", req("v5", "smt-glm", "https://gw.example.com/v1"), true},
+		{"model name glm-5.3", req("glm-5.3", "smt-glm", "https://gw.example.com/v1"), true},
+		{"model name glm-4.5-air", req("glm-4.5-air", "gw", "https://gw.example.com/v1"), true},
+		{"provider name", req("v5", "smt-glm", "https://gw.example.com/v1"), true},
 		{"endpoint", req("v5", "gw", "https://open.bigmodel.cn/v1"), false}, // 无 "glm" 串
-		{"deepseek 不归我管", req("deepseek-chat", "smt-deepseek", "https://gw.example.com/v1"), false},
-		{"官方端点不碰", req("glm-5.3", "anth", "https://api.anthropic.com/v1"), false},
+		{"deepseek is not mine", req("deepseek-chat", "smt-deepseek", "https://gw.example.com/v1"), false},
+		{"leave the official endpoint alone", req("glm-5.3", "anth", "https://api.anthropic.com/v1"), false},
 		{"nil", nil, false},
 	}
 	for _, c := range cases {
@@ -47,13 +47,14 @@ func TestGlmMatch(t *testing.T) {
 	}
 }
 
-// TestGlmApply 现场机制：glm 把「没写 thinking」当默认开。Claude Code 没写
-// 就补显式 disabled；写了（真要思考）一个字节不动。
+// TestGlmApply, the on-site mechanism: glm treats "thinking unwritten"
+// as on by default. If Claude Code did not write it, add an explicit
+// disabled; if written (really wanting to think), not one byte is touched.
 func TestGlmApply(t *testing.T) {
 	r := req("glm-5.3", "smt-glm", "https://gw.example.com/v1")
 	r.Agent = "claude"
 
-	t.Run("没写 thinking 就补 disabled", func(t *testing.T) {
+	t.Run("with no thinking field, fill in disabled", func(t *testing.T) {
 		body := []byte(`{"model":"glm-5.3","max_tokens":64,"messages":[{"role":"user","content":"go"}]}`)
 		out, notes, err := testPlugin().Apply(body, r)
 		if err != nil {
@@ -61,42 +62,43 @@ func TestGlmApply(t *testing.T) {
 		}
 		var m map[string]interface{}
 		if err := json.Unmarshal(out, &m); err != nil {
-			t.Fatalf("改完不是合法 JSON: %v", err)
+			t.Fatalf("after the change it is not valid JSON: %v", err)
 		}
 		if th, _ := m["thinking"].(map[string]interface{}); th["type"] != "disabled" {
-			t.Fatalf("thinking 应为 disabled，实际 %v", m["thinking"])
+			t.Fatalf("thinking should be disabled, actual %v", m["thinking"])
 		}
 		if len(notes) == 0 || !strings.Contains(notes[0], `thinking:{"type":"disabled"}`) {
-			t.Fatalf("改了就得有 note 且要说清注入了什么，实际 %v", notes)
+			t.Fatalf("if it changed there must be a note saying what was injected, actual %v", notes)
 		}
 	})
 
-	t.Run("客户端写了 thinking 就不动（真要思考）", func(t *testing.T) {
+	t.Run("if the client wrote thinking, leave it alone (it really wants to think)", func(t *testing.T) {
 		body := []byte(`{"model":"glm-5.3","thinking":{"type":"adaptive"},"messages":[]}`)
 		out, notes, err := testPlugin().Apply(body, r)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if string(out) != string(body) || len(notes) != 0 {
-			t.Fatalf("显式 thinking 不该被动: out=%s notes=%v", out, notes)
+			t.Fatalf("an explicit thinking must not be touched: out=%s notes=%v", out, notes)
 		}
 	})
 
-	t.Run("没有 messages 不动", func(t *testing.T) {
+	t.Run("with no messages, leave it alone", func(t *testing.T) {
 		body := []byte(`{"model":"glm-5.3"}`)
 		out, notes, err := testPlugin().Apply(body, r)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if string(out) != string(body) || len(notes) != 0 {
-			t.Fatalf("没 messages 没东西可补: out=%s notes=%v", out, notes)
+			t.Fatalf("no messages means nothing to fill in: out=%s notes=%v", out, notes)
 		}
 	})
 }
 
-// TestGlmApply_OpencodeUntouched 现场回归（2026-09-15，与 st-deepseek 同款）：
-// opencode 走 OpenAI 方言，没有 thinking 这个字段可写，它不发 thinking 不是
-// 「不想思考」。替它补 disabled 就是把用户给模型配的行为改掉。
+// TestGlmApply_OpencodeUntouched, the on-site regression (2026-09-15, same as
+// st-deepseek): opencode speaks the OpenAI dialect and has no thinking field
+// to write; not sending thinking is not "does not want to think". Filling in
+// disabled for it would change the behavior the user configured for the model.
 func TestGlmApply_OpencodeUntouched(t *testing.T) {
 	r := &special.Request{Model: "glm-5.3", Provider: "smt-glm",
 		BaseURL: "https://gw.example.com/v1", Protocol: "openai",
@@ -108,15 +110,16 @@ func TestGlmApply_OpencodeUntouched(t *testing.T) {
 		t.Fatal(err)
 	}
 	if string(out) != string(body) || len(notes) != 0 {
-		t.Fatalf("opencode 的请求被补了 thinking（现场 bug）: out=%s notes=%v", out, notes)
+		t.Fatalf("the opencode request had thinking filled in (the live bug): out=%s notes=%v", out, notes)
 	}
 	if testPlugin().Match(r) {
-		t.Fatal("组合模块不该认领 opencode × GLM")
+		t.Fatal("the composite module must not claim opencode x GLM")
 	}
 }
 
-// TestClaudeBgThenGlmCompose 组合语义：claude-bg 先把后台请求的 thinking
-// 定为 disabled，glm/deepseek 看到已写就不动——两层各司其职，不重复注入。
+// TestClaudeBgThenGlmCompose, composition semantics: claude-bg first sets
+// a background request's thinking to disabled, and glm/deepseek see it is written
+// and leave it alone -- each layer does its own job, with no duplicate injection.
 func TestClaudeBgThenGlmCompose(t *testing.T) {
 	r := req("glm-5.3", "smt-glm", "https://gw.example.com/v1")
 	r.Agent, r.Stream, r.Tier = "claude", false, "mid"
@@ -131,9 +134,9 @@ func TestClaudeBgThenGlmCompose(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(notes) != 0 {
-		t.Fatalf("claude-bg 已写 disabled，glm 不该再动: %v", notes)
+		t.Fatalf("claude-bg already writes disabled, glm must not touch it: %v", notes)
 	}
 	if string(out1) != string(out2) {
-		t.Fatalf("组合后 body 不该变化:\n%s\n%s", out1, out2)
+		t.Fatalf("after combining, the body must not change:\n%s\n%s", out1, out2)
 	}
 }

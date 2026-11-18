@@ -14,20 +14,20 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// command 是 `newgate plugin`。
+// command is `newgate plugin`.
 //
-// **它住在这里而不是 modules/cli**：这是「everything is module」的直接推论——
-// 命令是这个模块的用户界面，模块自己提供它，通过 cli.RegisterCommand 注入。
-// 2026-09-18 修过一次真实的违规：那一版把它写在 modules/cli 里，理由是「注册
-// 命令要拿到 cli 的端口，而 cli 要渲染列表又得依赖 plugin-manager，成环」——
-// 那个环是**自己造的**，因为它同时让 cli 去依赖本模块。正确的拆法是反过来：
-// 让 cli 不必认识本模块（状态行走 cli.RegisterStatus 由本模块自报）。
+// **It lives here rather than in modules/cli**: a direct corollary of "everything
+// is module" - the command is this module's UI, provided by it and injected via
+// cli.RegisterCommand. A real violation was fixed 2026-09-18: that version put it
+// in modules/cli, arguing that "registering a command needs the cli port, and cli
+// needs plugin-manager to render the list, a cycle" - but the cycle was
+// **self-inflicted**, since it also made cli depend on this module. Split the other
+// way: cli must not know this module (status via cli.RegisterStatus, self-reported).
 //
-// **注入用 modules.Optional，不是 Need**（照抄「注册命令就 Need(cli)」会被
-// app/graph_test.go 的 TestUIStaysOutOfTheDependencyGraph 当场拦下）：弱依赖的
-// 意思是「界面在就注册进去，不在就跳过」——本模块的功能一个都不少，只是没有入口。
-// 它仍然是一条**排序边**，所以本模块的 Start 一定在界面之后就绪（见
-// component.Optional；那边记着这条边从 Optional → Inject → Optional 的来回）。
+// **Injection uses modules.Optional, not Need** (copying "register a command, so
+// Need(cli)" is stopped by app/graph_test.go's TestUIStaysOutOfTheDependencyGraph):
+// weak means "register if the UI is there, skip if not": no function lost, only the entry.
+// Still an **ordering edge**, so Start follows the UI (see component.Optional's round-trip note).
 type command struct{ manager Manager }
 
 var (
@@ -46,17 +46,17 @@ func (c *command) Help() cliapi.HelpLine {
 	}
 }
 
-// Run 的用法（**args 里没有 "plugin" 这个动词**，分派器已经剥掉了，见
-// cliapi.Command 的契约说明）：
+// Run's usage (**args has no "plugin" verb** - the dispatcher strips it, see
+// the contract note on cliapi.Command):
 //
-//	newgate plugin                          按分类列出全部模块
-//	newgate plugin <模块>                    展开一个模块：它的开关点与当前状态
-//	newgate plugin <模块> on|off [时长]       开/关这个模块的**全部**开关点
-//	newgate plugin <模块>.<路径> on|off [时长] 只开/关一个开关点
+//	newgate plugin                           list all modules by classification
+//	newgate plugin <module>                  expand one: its switches and state
+//	newgate plugin <module> on|off [dur]     turn **all** its switches on/off
+//	newgate plugin <module>.<path> on|off [dur] turn a single switch on/off
 //
-// 列表的枚举源是**组件图**（经本模块合并），不是「谁上报过」。这样没参与开关
-// 体系的模块也列得出来，标成「无法 runtime 开关（v1）」——「这个模块没有开关」
-// 和「这个模块忘了注册」绝不能长得一样。
+// The list enumerates from the **component graph** (merged here), not from "who
+// reported". So modules outside the switch system still show, marked "no runtime
+// switch (v1)" - "no switch" and "forgot to register" must never look alike.
 func (c *command) Run(host cliapi.Host, args []string) int {
 	sub := cliapi.Positional(args, 0)
 	switch sub {
@@ -75,7 +75,7 @@ func (c *command) Run(host cliapi.Host, args []string) int {
 	return c.toggle(host, sub, action == "on", cliapi.Positional(args, 2))
 }
 
-// list 按分类分组列出全部模块。
+// list prints all modules grouped by classification.
 func (c *command) list() int {
 	modules := c.manager.Modules()
 	st := store.LoadState()
@@ -85,8 +85,8 @@ func (c *command) list() int {
 	for _, m := range modules {
 		total++
 		switchPoints += len(m.Switches)
-		// 列宽跟着最长的名字走：模块名里有 19 字符的（claudecode-deepseek），
-		// 写死宽度会让它把右边的字挤在一起。
+		// Width follows the longest name: some are 19 chars (claudecode-deepseek), and
+		// a fixed width would squeeze what follows.
 		if w := style.VisibleWidth(m.Name); w > nameW {
 			nameW = w
 		}
@@ -105,11 +105,11 @@ func (c *command) list() int {
 		if len(group) == 0 {
 			continue
 		}
-		// 组内按名字排序：分组顺序（DisplayOrder）是有意义的，组内顺序不是——
-		// 拿拓扑启动顺序排会让人每次都要重新找一遍。
+		// Sorted by name inside a group: the group order (DisplayOrder) matters, the
+		// order within does not - topo order makes people re-hunt every time.
 		sort.Slice(group, func(i, j int) bool { return group[i].Name < group[j].Name })
-		// Section 自带前导换行、没有结尾换行：Println 正好补上后者，
-		// 于是每组之前恰好一个空行（用 Print 会让标题和第一行粘在一起）。
+		// Section carries a leading newline and none at the end: Println adds exactly
+		// that, so one blank line per group (Print would glue the heading to row one).
 		fmt.Println(style.Section(string(typ)))
 		for _, m := range group {
 			printModuleLine(st, m, nameW)
@@ -122,14 +122,14 @@ func (c *command) list() int {
 	return 0
 }
 
-// printModuleLine 渲染列表里的一行：模块名 + 它的开关点概览。
+// printModuleLine renders one list row: module name + its switch overview.
 func printModuleLine(st *domain.State, m Module, nameW int) {
 	name := style.Pad(m.Name, nameW) + " "
-	// 描述单独一行，跟在模块名后面。
+	// The description gets its own line, right after the module name.
 	//
-	// 为什么不接在模块名那一行的尾巴上：那一行还要放第一个开关点，而描述是**成句
-	// 的话**（十几到几十个字），挤在一起两边都读不成——折行边界会随终端宽度跳，
-	// 开关点那半截会跑到描述后面去。描述独占一行之后，两个宽度各自独立。
+	// Why not append it to the name line: that line also holds the first switch,
+	// and the description is a **full sentence** - squeezing both makes neither
+	// readable: wrapping jumps with terminal width, and on its own line each width is free.
 	if m.Desc != "" {
 		fmt.Println("  " + name + style.Dim(m.Desc))
 		name = style.Pad("", nameW) + " "
@@ -142,14 +142,14 @@ func printModuleLine(st *domain.State, m Module, nameW int) {
 	for _, sw := range m.Switches {
 		parts = append(parts, style.Dim(shortPath(sw.Path))+" "+switchState(st, sw))
 	}
-	// 第一段跟在模块名后面，其余折到下一行的缩进里——避免一行超过 MaxColumns。
+	// The first segment follows the module name; the rest wraps into the indent below (MaxColumns).
 	fmt.Println("  " + name + parts[0])
 	for _, p := range parts[1:] {
 		fmt.Println("  " + style.Pad("", nameW) + " " + p)
 	}
 }
 
-// explain 展开一个模块或一个开关点。
+// explain expands one module or one switch point.
 func (c *command) explain(host cliapi.Host, target string) int {
 	st := store.LoadState()
 
@@ -209,7 +209,7 @@ func explainSwitch(host cliapi.Host, st *domain.State, sw Switch) int {
 	return 0
 }
 
-// toggle 改一个或一组开关点。
+// toggle changes one switch point or a group.
 func (c *command) toggle(host cliapi.Host, target string, on bool, dur string) int {
 	switches, err := c.targetsOf(target)
 	if err != nil {
@@ -225,12 +225,12 @@ func (c *command) toggle(host cliapi.Host, target string, on bool, dur string) i
 
 	var changed []string
 	for _, sw := range switches {
-		// **写语义只有一份**（SetSwitch）：出厂态决定走哪张表、动作等于出厂态就是
-		// 撤销这条设定、footgun 不接受永久——这几条错了，命令行与浏览器就会对同一
-		// 份配置给出不同答案。所以这里不重写一遍，只负责落盘与通知。
+		// **There is only one write semantics** (SetSwitch): the factory state picks
+		// the table, an action equal to the factory state undoes the setting, and a
+		// footgun never takes "forever" - get these wrong and CLI and browser give
+		// different answers for one config. So no rewrite: persist and notify only.
 		//
-		// 它返回的 error 目前只有两种：footgun 说了「永久」（用法错误，64），以及
-		// 配置序列化失败（理论上到不了——里面只有字符串与时间）。
+		// It returns two errors: footgun "forever" (usage error, 64) and config serialize failure.
 		if err := SetSwitch(st, sw, on, ttl, forever); err != nil {
 			return host.Die(64, err.Error())
 		}
@@ -242,8 +242,8 @@ func (c *command) toggle(host cliapi.Host, target string, on bool, dur string) i
 	}
 	host.NotifyProxy()
 
-	// 这里的「已打开/已关闭」与 switchState 那组（已开/开/已关/关）是**两句话**：
-	// 键 = 原文，两个位置的中文不同就必须写两句英文，否则译文只能二选一。
+	// "turned on/off" here and switchState's set (on/on/off/off) are **two different
+	// sentences**: key = source text, so two places with different Chinese need two English strings.
 	mark, word := style.OK, i18n.T("switched on", nil)
 	if !on {
 		mark, word = style.Warn, i18n.T("switched off", nil)
@@ -264,8 +264,8 @@ func (c *command) toggle(host cliapi.Host, target string, on bool, dur string) i
 	return 0
 }
 
-// targetsOf 把用户给的目标解析成一组开关点。带点的是单个路径，不带点的是模块名
-// （模块名里没有点——组件名用连字符，所以这条判据不会歧义）。
+// targetsOf resolves user targets into switch points. Dotted = one path, undotted =
+// a module name (names have no dot - components use hyphens, so no ambiguity).
 func (c *command) targetsOf(target string) ([]Switch, error) {
 	if strings.Contains(target, ".") {
 		sw, ok := c.manager.Lookup(target)
@@ -299,7 +299,7 @@ func findModule(manager Manager, name string) (Module, bool) {
 	return Module{}, false
 }
 
-// switchTTL 解析时长参数。空串 = 用开关点自己的默认 TTL；"forever" = 不限时。
+// switchTTL parses the duration. Empty = the switch's own default TTL; "forever" = no limit.
 func switchTTL(s string) (time.Duration, bool, error) {
 	switch s {
 	case "":
@@ -329,7 +329,7 @@ func dropEntry(table map[string]Entry, path string) map[string]Entry {
 	return table
 }
 
-// rawConfig 取 state.json 里 plugin_manager 那一段原始字节。
+// rawConfig fetches the raw bytes of the plugin_manager section in state.json.
 func rawConfig(st *domain.State) []byte {
 	if st == nil {
 		return nil
@@ -337,9 +337,9 @@ func rawConfig(st *domain.State) []byte {
 	return st.ModuleConfig[StateKey]
 }
 
-// groupOf 把未知分类归到 others。**不报错**：分类是产品概念，会随版本长出新成员，
-// 硬拒绝会让一个新模块因为用了个新分类词就把整个列表打崩，而它其实只是想被分到
-// 「其它」里。约定俗成 + 留余量。
+// groupOf puts unknown classifications under others. **No error**: classification
+// is a product concept that grows with releases; hard refusal would let a new word
+// crash the list when the module only wanted "others". Convention plus slack.
 func groupOf(t Type) Type {
 	for _, known := range DisplayOrder() {
 		if t == known {
@@ -349,7 +349,7 @@ func groupOf(t Type) Type {
 	return TypeOthers
 }
 
-// shortPath 列表里只显示模块名之后的那一段（模块名已经在左边一列了）。
+// shortPath shows only the part after the module name (already in the left column).
 func shortPath(path string) string {
 	if i := strings.Index(path, "."); i >= 0 {
 		return path[i+1:]
@@ -357,7 +357,7 @@ func shortPath(path string) string {
 	return path
 }
 
-// switchState 渲染一条开关点现在的状态。
+// switchState renders the current state of one switch point.
 func switchState(st *domain.State, sw Switch) string {
 	until := Remaining(st, sw.Path)
 	suffix := ""
@@ -365,8 +365,8 @@ func switchState(st *domain.State, sw Switch) string {
 		suffix = style.Dim(i18n.T("({left} left)",
 			i18n.A{"left": durarg.Format(int(time.Until(until).Seconds()))}))
 	}
-	// 「已关/开」与「已开/关」：出厂开着的是 kill switch（写 Off 表），出厂关着
-	// 的是 mode（写 On 表）。英文用 turned off/on 与 on/off 保住这层区别。
+	// "turned off/on" vs "on/off": factory-on ones are kill switches (Off table),
+	// factory-off ones are modes (On table). English keeps that apart with "turned".
 	if sw.Default {
 		if Off(st, sw.Path) {
 			return dangerColor(sw.Danger)(i18n.T("turned off", nil)) + suffix

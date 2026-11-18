@@ -7,210 +7,226 @@ import (
 	"testing"
 )
 
-// 这一族测的是**渲染器**，不是内容。内容会天天改，而渲染器的两条判据不该跟着动：
+// This family tests the **renderer**, not the content. Content changes daily; two rules
+// must not move:
 //
-//	一、该认的构造认得出来（认不出来 = 页面上多几个 `**` 或者少一张表）；
-//	二、**不认识的构造报错**（这条才是棘轮，见 md.go 的文件头）。
+//	1. recognized constructs are recognized (else stray `**` or a missing table);
+//	2. **unrecognized constructs error** (the ratchet, see md.go's header).
 //
-// 第二条尤其重要：它正是不写 `-check` 的前提（站点产物不进版本控制，没有落盘的
-// 基线可比）。把这条测住，「作者写了一种我们没实现的语法」这件事才会在**改文档
-// 的那一刻**红，而不是等到有人打开页面才发现排版烂了。
+// The second matters most: it is the premise for skipping `-check` (no baseline).
+// Tested, "syntax we never implemented" goes red **at edit time**, not at page view.
 
 func render(t *testing.T, src string) (string, string) {
 	t.Helper()
 	body, title, err := renderMarkdown(src)
 	if err != nil {
-		t.Fatalf("该渲染成功却报错：%v", err)
+		t.Fatalf("should render but errored: %v", err)
 	}
 	return body, title
 }
 
 func TestHeadingsAndTitle(t *testing.T) {
-	body, title := render(t, "# 页面标题\n\n## 一节\n\n### 一小节\n")
-	if title != "页面标题" {
-		t.Errorf("标题取错了：%q", title)
+	body, title := render(t, "# Page title\n\n## Section\n\n### Subsection\n")
+	if title != "Page title" {
+		t.Errorf("title taken wrong: %q", title)
 	}
-	// 一级标题**不画进正文**：模板自己画 <h1>，画两次就会出现两个 h1。
+	// The h1 is **not drawn into the body**: the template draws <h1>, so two would appear.
 	if strings.Contains(body, "<h1>") {
-		t.Errorf("正文里又画了一次 h1：%s", body)
+		t.Errorf("the body drew an h1 again: %s", body)
 	}
-	for _, want := range []string{"<h2>一节</h2>", "<h3>一小节</h3>"} {
+	for _, want := range []string{"<h2>Section</h2>", "<h3>Subsection</h3>"} {
 		if !strings.Contains(body, want) {
-			t.Errorf("少了 %s：%s", want, body)
+			t.Errorf("missing %s: %s", want, body)
 		}
 	}
 }
 
 func TestParagraphsAndInline(t *testing.T) {
-	body, _ := render(t, "# T\n\n一句 **粗** 的话，带 `代码` 与 [链](https://x/)。\n")
+	body, _ := render(t, "# T\n\na sentence with **bold**, `code` and a [link](https://x/).\n")
 	for _, want := range []string{
-		"<p>一句 <strong>粗</strong> 的话，带 <code>代码</code> 与 <a href=\"https://x/\">链</a>。</p>",
+		"<p>a sentence with <strong>bold</strong>, <code>code</code> and a " +
+			"<a href=\"https://x/\">link</a>.</p>",
 	} {
 		if !strings.Contains(body, want) {
-			t.Errorf("少了 %s\n实际：%s", want, body)
+			t.Errorf("missing %s\nactual: %s", want, body)
 		}
 	}
 }
 
-// TestSiteInternalLinksGetTheMountPrefix：正文里的站内链接要带上站点挂载前缀。
+// TestSiteInternalLinksGetTheMountPrefix: in-site body links must carry the mount prefix.
 //
-// # 这条判据是**实测漏出来的**（2026-09-21）
+// # Found from **live data** (2026-09-21)
 //
-// 源文件里写的是网站根下的路径（`/docs/tiers/`），而发出去的地址必须带
-// `/newgate-ext/` 那一层。原样发是 404，而这个错**每一处都是静默的**：页面出得来、
-// 导航（走模板、拼的是带前缀的地址）全绿、`--local` 预览（从根服务）也是对的——
-// 只有线上点一下才发现。实测 16 条、分布在 7 页上。
+// Source writes site-root paths (`/docs/tiers/`), but the emitted address needs the
+// `/newgate-ext/` segment. Emitted raw it 404s, and **silently everywhere**: the page
+// renders, nav (template, prefixed) is fine, `--local` preview (root) is fine - only
+// clicking online finds it. 16 links across 7 pages.
 //
-// 所以这里不只测「补前缀」这一个动作，还测**三种写法各归各的**：外部地址原样、
-// 页内锚点原样、站内路径补前缀。搞混任何两种，症状都是页面上某一条链接指向别处。
+// So this tests more than "add the prefix": **each of three forms keeps its own rule**:
+// external as is, anchors as is, in-site paths prefixed. Mixing two mispoints a link.
 func TestSiteInternalLinksGetTheMountPrefix(t *testing.T) {
-	body, _ := render(t, "# T\n\n看 [档位](/docs/tiers/)、[外链](https://x/y)、[本页](#h)。\n")
+	body, _ := render(t, "# T\n\nsee [tiers](/docs/tiers/), [external](https://x/y), "+
+		"[this page](#h).\n")
 	for _, want := range []string{
-		`<a href="/newgate-ext/docs/tiers/">档位</a>`,
-		`<a href="https://x/y">外链</a>`,
-		`<a href="#h">本页</a>`,
+		`<a href="/newgate-ext/docs/tiers/">tiers</a>`,
+		`<a href="https://x/y">external</a>`,
+		`<a href="#h">this page</a>`,
 	} {
 		if !strings.Contains(body, want) {
-			t.Errorf("少了 %s\n实际：%s", want, body)
+			t.Errorf("missing %s\nactual: %s", want, body)
 		}
 	}
 
-	// 认不出来的写法**报错**，不发一个 404 出去。相对路径尤其要拦：源文件树与
-	// 发布出去的树不是一回事（`docs/tiers.md` 对应 `/docs/tiers/`，靠拼拼不出来），
-	// 而写的人多半以为它跟 GitHub 上看到的一样。
+	// Unrecognized forms **error**, not ship a 404. Relative paths especially: the source
+	// tree is not the published tree (`docs/tiers.md` maps to `/docs/tiers/`), and the
+	// writer likely assumed it works as on GitHub.
 	for _, bad := range []string{"docs/tiers/", "./x/", "//host/x", "x.md"} {
-		if _, _, err := renderMarkdown("# T\n\n看 [这个](" + bad + ")。\n"); err == nil {
-			t.Errorf("链接写成 %q 时该报错（它在线上是 404，而作者以为对）", bad)
+		if _, _, err := renderMarkdown("# T\n\nsee [this](" + bad + ").\n"); err == nil {
+			t.Errorf("should error when the link is written as %q (it is a 404 online, "+
+				"but the author thinks it is right)", bad)
 		}
 	}
 }
 
-// TestASoftWrappedBoldInsideAListIsOneItem 这条是**中文正文的真实形状**。
+// TestASoftWrappedBoldInsideAListIsOneItem is **the real shape of Chinese prose**.
 //
-// 一句话写满一行就换行，于是 `**加粗**` 会被劈成两行——第一版把每一行当一个列表项
-// 渲染，于是它报「没配上对」。报错是对的（它确实没配上），但**判据错了**：软换行
-// 该接起来。这条测试锁住接起来这个行为。
+// One sentence per line, so `**bold**` splits across two lines - the first version
+// rendered each line as a list item and errored "unpaired". The error was right (it
+// was unpaired) but **the criterion was wrong**: soft wraps should join. This locks joining.
 func TestASoftWrappedBoldInsideAListIsOneItem(t *testing.T) {
+	// Fixture stays Chinese: the subject is a bold span across a soft wrap in Chinese
+	// prose written one sentence per line; the needle must match the fixture verbatim.
 	body, _ := render(t, "# T\n\n- 前半句**加粗的\n  后半句**，结束了\n- 第二项\n")
 	if strings.Count(body, "<li>") != 2 {
-		t.Errorf("两个列表项被拆成了 %d 个（软换行没接起来）:\n%s", strings.Count(body, "<li>"), body)
+		t.Errorf("the two list items were split into %d (the soft wrap did not join):\n%s",
+			strings.Count(body, "<li>"), body)
 	}
 	if !strings.Contains(body, "<strong>加粗的后半句</strong>") {
-		t.Errorf("加粗没有跨行合上：%s", body)
+		t.Errorf("the bold was not joined across the wrap: %s", body)
 	}
 }
 
-// TestCJKJoinHasNoSpace：中文换行接起来时**不许**补空格。
+// TestCJKJoinHasNoSpace: joining Chinese lines must **not** add a space.
 //
-// 补了的症状是多一个看得见的缝：「站在 Claude Code 和你选定的模型之间」中间那句
-// 会变成「… 和你… 」——单看一句像手误，整页看就是排版坏了，而没有人会为它报 bug。
+// With one, a visible seam appears: "between Claude Code and the model you chose"
+// becomes "... and the ..." - a typo alone, broken type as a page, and nobody reports it.
 func TestCJKJoinHasNoSpace(t *testing.T) {
+	// Fixture stays Chinese: this test's subject is CJK joining, so the characters on both
+	// sides of the wrap must be Chinese, and the needle matches them verbatim.
 	body, _ := render(t, "# T\n\n这是一个很长很长的句子，写到一半\n换行了然后继续。\n")
 	if !strings.Contains(body, "写到一半换行了") {
-		t.Errorf("中文换行被塞了空格：%s", body)
+		t.Errorf("a space was inserted at the Chinese line wrap: %s", body)
 	}
-	// 英文那半边反过来：**要**有空格，否则两个词会粘成一个。
+	// The English half is the reverse: it **needs** a space, or two words fuse into one.
 	body, _ = render(t, "# T\n\nthis sentence wraps\ninto two lines\n")
 	if !strings.Contains(body, "wraps into two") {
-		t.Errorf("英文换行没补空格：%s", body)
+		t.Errorf("the English line wrap did not get a space: %s", body)
 	}
 }
 
 func TestCodeFenceKeepsEverything(t *testing.T) {
-	body, _ := render(t, "# T\n\n```jsonc\n{ \"a\": 1 }   // 注释里的 ** 与 ` 都不该被解析\n```\n")
+	body, _ := render(t, "# T\n\n```jsonc\n{ \"a\": 1 }   "+
+		"// ** and ` inside a comment must not be parsed\n```\n")
 	if !strings.Contains(body, `<code class="lang-jsonc">`) {
-		t.Errorf("围栏的语言标记没进 class：%s", body)
+		t.Errorf("the fence language marker did not make it into the class: %s", body)
 	}
-	if !strings.Contains(body, "// 注释里的 ** 与 ` 都不该被解析") {
-		t.Errorf("围栏里的内容被解析了：%s", body)
+	if !strings.Contains(body, "// ** and ` inside a comment must not be parsed") {
+		t.Errorf("the content inside the fence was parsed: %s", body)
 	}
 }
 
 func TestTableNeedsASeparator(t *testing.T) {
 	body, _ := render(t, "# T\n\n| A | B |\n| --- | ---: |\n| 1 | 2 |\n")
-	for _, want := range []string{"<th>A</th>", "<th style=\"text-align:right\">B</th>", "<td>1</td>", "<td style=\"text-align:right\">2</td>"} {
+	for _, want := range []string{
+		"<th>A</th>", "<th style=\"text-align:right\">B</th>",
+		"<td>1</td>", "<td style=\"text-align:right\">2</td>",
+	} {
 		if !strings.Contains(body, want) {
-			t.Errorf("少了 %s：%s", want, body)
+			t.Errorf("missing %s: %s", want, body)
 		}
 	}
 	if _, _, err := renderMarkdown("# T\n\n| A | B |\n| 1 | 2 |\n"); err == nil {
-		t.Error("表没有分隔行时该报错（它会渲染成一行竖线，作者不会收到任何信号）")
+		t.Error("a table without a separator row should error (it renders as a row of " +
+			"pipes and the author gets no signal)")
 	}
 }
 
 func TestQuoteAndRule(t *testing.T) {
-	body, _ := render(t, "# T\n\n> 一句引用\n> 接着说\n\n---\n")
-	if !strings.Contains(body, "<blockquote><p>一句引用接着说</p></blockquote>") {
-		t.Errorf("引用没接起来：%s", body)
+	body, _ := render(t, "# T\n\n> one quote\n> and then this\n\n---\n")
+	if !strings.Contains(body, "<blockquote><p>one quote and then this</p></blockquote>") {
+		t.Errorf("the quote was not joined: %s", body)
 	}
 	if !strings.Contains(body, "<hr>") {
-		t.Errorf("水平线没画出来：%s", body)
+		t.Errorf("the horizontal rule was not drawn: %s", body)
 	}
 }
 
-// TestEscapesHTML 是一条**安全**判据：正文里写的 < 必须变成 &lt;。
+// TestEscapesHTML is a **safety** criterion: a < written in the body must become &lt;.
 //
-// 站点是静态的、源文件是我们自己写的，所以这不是一条「防攻击」的测试；它是防
-// 「写坏」的：`<your-name>` 这种占位符原样进 HTML 会被浏览器当成一个不认识的标签
-// 吃掉，页面上那一段就凭空少了一块。
+// The site is static and the source is ours, so this is not "anti-attack"; it is
+// anti-"write it wrong": a placeholder like `<your-name>` reaching HTML raw is eaten by
+// the browser as an unknown tag, and that paragraph loses a chunk out of nowhere.
 func TestEscapesHTML(t *testing.T) {
-	body, _ := render(t, "# T\n\n把 <your-name> 换成你的名字，& 也要转。\n")
+	body, _ := render(t, "# T\n\nreplace <your-name> with your name, and & must be escaped too.\n")
 	if !strings.Contains(body, "&lt;your-name&gt;") || !strings.Contains(body, "&amp;") {
-		t.Errorf("没转义：%s", body)
+		t.Errorf("not escaped: %s", body)
 	}
 }
 
-// TestUnrecognizedSyntaxIsAnError：**这就是那条棘轮**。每条都是「静默地画错」的
-// 形状——页面出得来，只是排版不对，而作者以为渲染器认了。
+// TestUnrecognizedSyntaxIsAnError: **this is the ratchet**. Each case is "silently drawn
+// wrong" - the page renders, just misformatted, while the author thinks it was accepted.
 func TestUnrecognizedSyntaxIsAnError(t *testing.T) {
 	cases := []struct {
 		name string
 		src  string
 	}{
-		{"四级标题", "# T\n\n#### 太深了\n"},
-		{"缩进代码块", "# T\n\n    缩进四个空格\n"},
-		{"嵌套列表", "# T\n\n- 一层\n  - 二层\n"},
-		// 图片语法**不再一律报错**：本站放行自己的 svg（架构图那一张，见 md.go 的
-		// parseImage）。仍然拒的是**外链与位图**——那两种会让站点依赖别人的可用性、
-		// 或者破坏「站点就两三个文件、处处能离线看」。两条都在下面钉住。
-		{"外链图片", "# T\n\n![图](https://example.com/a.svg)\n"},
-		{"位图", "# T\n\n![图](a.png)\n"},
-		{"裸 HTML", "# T\n\n<div>手写标签</div>\n"},
-		{"下划线式标题", "标题\n===\n"},
-		{"未闭合的围栏", "# T\n\n```bash\nnewgate status\n"},
-		{"未闭合的加粗", "# T\n\n这里有 **一个加粗\n"},
-		{"未闭合的行内码", "# T\n\n这里有 `一段代码\n"},
-		{"未闭合的链接", "# T\n\n看 [这一页](/docs/ 吧\n"},
-		{"没有一级标题", "## 只有二级\n"},
-		{"两个一级标题", "# 一\n\n# 二\n"},
-		{"有序无序混着", "# T\n\n- 一\n1. 二\n"},
+		{"level-4 heading", "# T\n\n#### too deep\n"},
+		{"indented code block", "# T\n\n    four spaces of indent\n"},
+		{"nested list", "# T\n\n- one level\n  - two levels\n"},
+		// Image syntax **no longer errors unconditionally**: our own svg passes (see
+		// md.go's parseImage). Still rejected: **external images and bitmaps** - they
+		// depend on someone else's uptime or break "readable offline anywhere".
+		{"external image", "# T\n\n![diagram](https://example.com/a.svg)\n"},
+		{"bitmap", "# T\n\n![image](a.png)\n"},
+		{"raw HTML", "# T\n\n<div>hand-written tag</div>\n"},
+		{"underlined heading", "Title\n===\n"},
+		{"unclosed fence", "# T\n\n```bash\nnewgate status\n"},
+		{"unclosed bold", "# T\n\nhere is **an unclosed bold\n"},
+		{"unclosed inline code", "# T\n\nhere is `some code\n"},
+		{"unclosed link", "# T\n\nsee [this page](/docs/ right\n"},
+		{"no level-1 heading", "## only level two\n"},
+		{"two level-1 headings", "# one\n\n# two\n"},
+		{"ordered and unordered mixed", "# T\n\n- one\n1. two\n"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			if _, _, err := renderMarkdown(c.src); err == nil {
-				t.Error("这种写法该报错（它会静默地画错，而作者以为渲染器认了），却渲染成功了")
+				t.Error("this form should error (it renders wrong silently while the author " +
+					"thinks the renderer accepted it), but it rendered successfully")
 			}
 		})
 	}
 }
 
-// TestLocalSvgFigureIsAllowed：本站自己的 svg 放行，而且渲染成 <img class="figure">。
+// TestLocalSvgFigureIsAllowed: our own svg passes, rendered as <img class="figure">.
 //
-// 这条与上面那条「外链/位图仍然报错」是一对：架构图是这一站唯一放行的一类图
-// （2026-09-30 用户要的），而放行的范围**必须写死**，不然这条口子会越开越大。
+// It pairs with "external/bitmap still errors" above: the architecture diagram is the
+// one allowed image kind (2026-09-30, user request), and the scope **must be fixed**.
 func TestLocalSvgFigureIsAllowed(t *testing.T) {
-	body, _, err := renderMarkdown("# T\n\n![说明](../../architecture.svg)\n")
+	body, _, err := renderMarkdown("# T\n\n![description](../../architecture.svg)\n")
 	if err != nil {
-		t.Fatalf("本站的 svg 该放行，却报错: %v", err)
+		t.Fatalf("the site's own svg should be allowed, but it errored: %v", err)
 	}
-	for _, want := range []string{`src="../../architecture.svg"`, `alt="说明"`, `class="figure"`} {
+	for _, want := range []string{
+		`src="../../architecture.svg"`, `alt="description"`, `class="figure"`,
+	} {
 		if !strings.Contains(body, want) {
-			t.Errorf("渲染结果里该有 %s，实际：%s", want, body)
+			t.Errorf("the render result should contain %s, actual: %s", want, body)
 		}
 	}
 }
 
-// TestRouteOf：文件名即路由，两种 index 都要落到目录上。
+// TestRouteOf: file name is the route; both kinds of index land on a directory.
 func TestRouteOf(t *testing.T) {
 	cases := map[string]string{
 		"index.md":           "/",
@@ -220,125 +236,134 @@ func TestRouteOf(t *testing.T) {
 	}
 	for in, want := range cases {
 		if got := routeOf(in); got != want {
-			t.Errorf("routeOf(%q) = %q，该是 %q", in, got, want)
+			t.Errorf("routeOf(%q) = %q, should be %q", in, got, want)
 		}
 	}
 }
 
-// TestDefaultLangIsAtTheRoot 锁住「加语言时旧地址不作废」这条。
+// TestDefaultLangIsAtTheRoot pins "adding a language does not kill old addresses".
 //
-// 中文是排在根上的那一种（见 defaultLang）：`/docs/` 就是中文的。英文将来进
-// `/en/`，中文的地址一个都不用变——反过来做（今天中文进 `/zh-Hans/`）的话，
-// 加语言那天所有书签与外部链接一起作废。
+// Chinese is the language at the root (see defaultLang): `/docs/` is Chinese. English
+// would go to `/en/` with no Chinese URL changing - the reverse (Chinese to `/zh-Hans/`)
+// would kill every bookmark and external link the day a language is added.
 func TestDefaultLangIsAtTheRoot(t *testing.T) {
 	if got := langPrefix(defaultLang); got != "" {
-		t.Errorf("默认语言的 URL 前缀该是空串，实际 %q", got)
+		t.Errorf("the default language URL prefix should be empty, actual %q", got)
 	}
 	if got := langPrefix("en"); got != "en" {
-		t.Errorf("别的语言该落在自己的段下，实际 %q", got)
+		t.Errorf("other languages should fall under their own segment, actual %q", got)
 	}
 	if got := hrefOf(defaultLang, "/docs/quickstart/"); got != "docs/quickstart/" {
-		t.Errorf("默认语言的站内地址拼错了：%q", got)
+		t.Errorf("in-site address for the default language built wrong: %q", got)
 	}
 	if got := hrefOf("en", "/docs/quickstart/"); got != "en/docs/quickstart/" {
-		t.Errorf("非默认语言的站内地址拼错了：%q", got)
+		t.Errorf("in-site address for a non-default language built wrong: %q", got)
 	}
 }
 
-// TestCheckNavCatchesBothDirections：导航与页面必须双向对上。
+// TestCheckNavCatchesBothDirections: nav and pages must match both ways.
 //
-// 两个方向各是一种真实会犯的错，而两种都**不会**让渲染失败：写了页面忘了挂导航
-// （那一页谁也找不到）、导航里留着删掉的页面（点进去 404）。所以只能在这里说。
+// Each direction is a real mistake, and neither **fails** rendering: a page written but
+// not in the nav (nobody finds it), or a nav entry for a deleted page (clicking 404s).
 func TestCheckNavCatchesBothDirections(t *testing.T) {
-	pages := []page{{Route: "/", Title: "首页"}, {Route: "/docs/", Title: "文档"}}
+	pages := []page{{Route: "/", Title: "home"}, {Route: "/docs/", Title: "docs"}}
+	nav := []navItem{{Route: "/", Title: "home"}, {Route: "/docs/", Title: "docs"}}
 
-	if err := checkNav([]navItem{{Route: "/", Title: "首页"}}, pages); err == nil {
-		t.Error("有一页不在导航里时该报错")
+	if err := checkNav([]navItem{{Route: "/", Title: "home"}}, pages); err == nil {
+		t.Error("should error when a page is not in the navigation")
 	}
-	if err := checkNav([]navItem{{Route: "/", Title: "首页"}, {Route: "/docs/", Title: "文档"}, {Route: "/gone/", Title: "没了"}}, pages); err == nil {
-		t.Error("导航里有不存在的页面时该报错")
+	gone := append(append([]navItem{}, nav...), navItem{Route: "/gone/", Title: "gone"})
+	if err := checkNav(gone, pages); err == nil {
+		t.Error("should error when the navigation has a page that does not exist")
 	}
-	if err := checkNav([]navItem{{Route: "/", Title: "首页"}, {Route: "/docs/", Title: "文档"}}, pages); err != nil {
-		t.Errorf("对上了却报错：%v", err)
+	if err := checkNav(nav, pages); err != nil {
+		t.Errorf("it matched but errored: %v", err)
 	}
 }
 
-// TestEyebrowHeadings 测首页那一排带编号的特性标题（`## <small>01</small> …`）。
+// TestEyebrowHeadings tests the home page's numbered feature headings with an eyebrow.
 //
-// 它不只是「认不认」：眉题开的那一节要在**下一个标题**处关上。忘了关的话页尾会
-// 多一个 </section> 或者上一节一路吃到页尾——两种在浏览器里都只是「看起来有点怪」，
-// 谁也不会报 bug，所以只能在这里锁住。
+// It is not only "recognized": an eyebrow's section must close at **the next heading**.
+// Otherwise the page end gets a stray </section> or the last section runs to the end -
+// both just "look odd" in a browser, nobody files a bug, so pin them here.
 func TestEyebrowHeadings(t *testing.T) {
-	body, _ := render(t, "# T\n\n## <small>01</small> 第一节\n\n正文一。\n\n## Fork 下来\n\n正文二。\n")
-	if !strings.Contains(body, `<section class="feat"><h2><small>01</small> 第一节</h2>`) {
-		t.Errorf("眉题没开成一节：%s", body)
+	body, _ := render(t, "# T\n\n## <small>01</small> Section one\n\nBody one.\n\n"+
+		"## Fork it\n\nBody two.\n")
+	if !strings.Contains(body, `<section class="feat"><h2><small>01</small> Section one</h2>`) {
+		t.Errorf("the eyebrow did not open a section: %s", body)
 	}
-	// 第二节（没有眉题的普通标题）**不该**被吃进第一节里。
+	// The second section (a plain heading, no eyebrow) **must not** be swallowed by the first.
 	i := strings.Index(body, "</section>")
-	j := strings.Index(body, "<h2>Fork 下来</h2>")
+	j := strings.Index(body, "<h2>Fork it</h2>")
 	if i < 0 || j < i {
-		t.Errorf("第一节没有在下一个标题处关上：\n%s", body)
+		t.Errorf("section one did not close at the next heading:\n%s", body)
 	}
 	if strings.Count(body, "</section>") != 1 {
-		t.Errorf("section 的配对不止一处：%s", body)
+		t.Errorf("the section pair appears more than once: %s", body)
 	}
 }
 
-// TestEyebrowOnlyWhereWeSaid：眉题是**一个闭合的小构造**，写歪了要报错。
+// TestEyebrowOnlyWhereWeSaid: the eyebrow is **a closed little construct**; a typo errors.
 //
-// 每一条都是「作者以为写对了、页面上只是怪一点」的形状——尤其第一条：他写的是
-// 我们支持的写法，只是写错一半，报「正文里不写 HTML」会让他完全摸不着头脑。
+// Each case is "the author thinks it is right, the page is just odd" - especially the
+// first: they wrote our supported syntax, half wrong, and "no HTML" would leave them lost.
 func TestEyebrowOnlyWhereWeSaid(t *testing.T) {
 	cases := map[string]string{
-		"没有闭合":   "# T\n\n## <small>01 标题\n",
-		"后面没标题":  "# T\n\n## <small>01</small>\n",
-		"眉题里带标记": "# T\n\n## <small><b>01</b></small> 标题\n",
-		"别的小标签":  "# T\n\n## <span>01</span> 标题\n",
+		"not closed":                "# T\n\n## <small>01 Title\n",
+		"no title after it":         "# T\n\n## <small>01</small>\n",
+		"markup inside the eyebrow": "# T\n\n## <small><b>01</b></small> Title\n",
+		"some other small tag":      "# T\n\n## <span>01</span> Title\n",
 	}
 	for name, src := range cases {
 		t.Run(name, func(t *testing.T) {
 			if _, _, err := renderMarkdown(src); err == nil {
-				t.Error("这种写法该报错（它会静默地画错，而作者以为渲染器认了）")
+				t.Error("this form should error (it renders wrong silently while the " +
+					"author thinks the renderer accepted it)")
 			}
 		})
 	}
 }
 
-// TestPageDescComesFromThePage：文档页那句说明取的是**这一页自己的第一段**。
+// TestPageDescComesFromThePage: a doc page's description is **that page's own first paragraph**.
 //
-// 取错了不会红，只会让十来张分享卡片写着同一句整站 tagline——而那种事只有在有人
-// 真把链接贴出去之后才看得出来。
+// A wrong pick does not go red; it just makes a dozen share cards say the site tagline,
+// and that shows only after someone really pastes the link.
 func TestPageDescComesFromThePage(t *testing.T) {
-	body, _, err := renderMarkdown("# 排障\n\n先跑 `newgate doctor`。\n\n## 一\n\n后话\n")
+	body, _, err := renderMarkdown("# Troubleshooting\n\nRun `newgate doctor` first.\n\n" +
+		"## One\n\nAfterword\n")
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := pageDesc(page{Route: "/docs/troubleshooting/", Body: body}, "整站那句")
-	if got != "先跑 newgate doctor。" {
-		t.Errorf("描述没取第一段：%q", got)
+	got := pageDesc(page{Route: "/docs/troubleshooting/", Body: body}, "the site-wide sentence")
+	if got != "Run newgate doctor first." {
+		t.Errorf("description did not take the first paragraph: %q", got)
 	}
-	// 一页开篇就是一张表（没有段落）时退回整站那句：有话说比说得最准重要。
-	if got := pageDesc(page{Route: "/x/", Body: "<table><tr><td>x</td></tr></table>"}, "整站那句"); got != "整站那句" {
-		t.Errorf("没有段落时该退回整站那句：%q", got)
+	// Opening table, no paragraph: fall back to the site line - saying something beats
+	// saying it best.
+	if got := pageDesc(page{Route: "/x/", Body: "<table><tr><td>x</td></tr></table>"},
+		"the site-wide sentence"); got != "the site-wide sentence" {
+		t.Errorf("with no paragraph it should fall back to the site-wide sentence: %q", got)
 	}
 }
 
-// TestPageTitleDiffersByPage：<title> 与 og:title 是**同一个**值，且两种页两种写法。
+// TestPageTitleDiffersByPage: <title> and og:title are **the same** value, two page kinds.
 //
-// 首页用整站那句（别人转的是「newgate-ext 是什么」），文档页把页面自己的标题摆在
-// 前面（标签页一多，能分辨出哪一张是排障就靠它）。
+// The home page uses the site sentence (others share "what is newgate-ext"), doc pages put
+// their own title first (with many tabs open, that is how you spot the troubleshooting one).
 func TestPageTitleDiffersByPage(t *testing.T) {
-	cfg := site{Name: "newgate-ext", Tagline: "为 vibecoding 而生的最佳网关"}
-	if got := pageTitle(cfg, page{Route: "/"}); got != "newgate-ext — 为 vibecoding 而生的最佳网关" {
-		t.Errorf("首页标题：%q", got)
+	cfg := site{Name: "newgate-ext", Tagline: "the best gateway built for vibecoding"}
+	if got := pageTitle(cfg, page{Route: "/"}); got != "newgate-ext — "+
+		"the best gateway built for vibecoding" {
+		t.Errorf("home title: %q", got)
 	}
-	if got := pageTitle(cfg, page{Route: "/docs/troubleshooting/", Title: "排障"}); got != "排障 · newgate-ext" {
-		t.Errorf("文档页标题：%q", got)
+	docPage := page{Route: "/docs/troubleshooting/", Title: "Troubleshooting"}
+	if got := pageTitle(cfg, docPage); got != "Troubleshooting · newgate-ext" {
+		t.Errorf("doc page title: %q", got)
 	}
 }
 
-// TestSiteConfigMustCarryDescAndURL：这两格缺了站点照样出得来，只有分享出去的那张
-// 卡片是空的——所以只能在生成时报错（同 checkNav 那条判据）。
+// TestSiteConfigMustCarryDescAndURL: without these the site still renders, only the share
+// card is empty - so it can only error at generation time (same criterion as checkNav).
 func TestSiteConfigMustCarryDescAndURL(t *testing.T) {
 	dir := t.TempDir()
 	write := func(body string) string {
@@ -348,104 +373,106 @@ func TestSiteConfigMustCarryDescAndURL(t *testing.T) {
 		return dir
 	}
 	if _, err := readSite(write(`{"name":"x","desc":"d","url":"https://e/"}`)); err != nil {
-		t.Errorf("该通过却报错：%v", err)
+		t.Errorf("should pass but errored: %v", err)
 	}
 	if _, err := readSite(write(`{"name":"x","url":"https://e/"}`)); err == nil {
-		t.Error("没有 desc 时该报错")
+		t.Error("should error when desc is missing")
 	}
 	if _, err := readSite(write(`{"name":"x","desc":"d"}`)); err == nil {
-		t.Error("没有 url 时该报错")
+		t.Error("should error when url is missing")
 	}
-	// url 缺尾斜杠是**补上**而不是报错：绝对地址是拼出来的，补在这里就只有一处要管。
+	// Missing trailing slash = **completed**, not an error: addresses are built in one place.
 	cfg, err := readSite(write(`{"name":"x","desc":"d","url":"https://e/abc"}`))
 	if err != nil || cfg.URL != "https://e/abc/" {
-		t.Errorf("尾斜杠没补上：%q %v", cfg.URL, err)
+		t.Errorf("the trailing slash was not completed: %q %v", cfg.URL, err)
 	}
 }
 
-// TestEmitWipesTheOutput 锁住「整份重来」。
+// TestEmitWipesTheOutput pins "start over whole".
 //
-// 覆盖写的症状很隐蔽：删掉一篇文档之后，它渲染出来的 index.html 还留在盘上，
-// 而导航里已经没有它了——那种页面**只有搜索引擎和旧链接找得到**，作者永远不会
-// 发现自己删漏了。
+// Overwriting hides well: after deleting a doc, its rendered index.html stays on disk
+// with no nav entry - a page **only search engines and old links reach**, and the author
+// never learns they missed the delete.
 func TestEmitWipesTheOutput(t *testing.T) {
 	out := t.TempDir()
 	stale := filepath.Join(out, "old", "index.html")
 	if err := os.MkdirAll(filepath.Dir(stale), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(stale, []byte("上一版留下的"), 0o644); err != nil {
+	if err := os.WriteFile(stale, []byte("left over from the last run"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := emit(out, []outFile{{rel: "index.html", bytes: []byte("新的")}}); err != nil {
+	if err := emit(out, []outFile{{rel: "index.html", bytes: []byte("the new one")}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(stale); err == nil {
-		t.Error("上一版留下的那篇还在盘上——整份重来没生效")
+		t.Error("the page left over from the last run is still on disk - " +
+			"the whole rebuild did not happen")
 	}
 	b, err := os.ReadFile(filepath.Join(out, "index.html"))
-	if err != nil || string(b) != "新的" {
-		t.Errorf("新那份没写对：%q %v", b, err)
+	if err != nil || string(b) != "the new one" {
+		t.Errorf("the new copy was written wrong: %q %v", b, err)
 	}
 }
 
-// TestThemeColorComesFromTheCSS：`theme-color` 取的是样式里那两条 `--bg`。
+// TestThemeColorComesFromTheCSS: `theme-color` takes the two `--bg` values from the CSS.
 //
-// 这一对判据护的是同一件事的两面：
+// This pair guards two sides of one thing:
 //
-//	一、取出来的是**样式里的值**（不是配置里另写一份——那份会漂移，而症状只在手机上
-//	    看得见一条颜色不对的地址栏）；
-//	二、取不出来时**报错**（错值比没有值更糟：它看起来是对的）。
+//  1. the value comes from **the stylesheet** (not a second copy in config - that
+//     drifts, visible only as a wrong-colored address bar on a phone);
+//  2. when it cannot be read it **errors** (a wrong value is worse than none: it looks right).
 func TestThemeColorComesFromTheCSS(t *testing.T) {
-	th, err := themeColors(":root { --bg: #0f1115; }\n@media (prefers-color-scheme: light) { :root { --bg: #f6f7f9; } }\n")
+	th, err := themeColors(":root { --bg: #0f1115; }\n" +
+		"@media (prefers-color-scheme: light) { :root { --bg: #f6f7f9; } }\n")
 	if err != nil {
-		t.Fatalf("该取出来却报错：%v", err)
+		t.Fatalf("should have extracted the colors but errored: %v", err)
 	}
 	if th.Dark != "#0f1115" || th.Light != "#f6f7f9" {
-		t.Errorf("取错了：%+v", th)
+		t.Errorf("extracted wrong: %+v", th)
 	}
-	// 顺序即含义：第一条（默认那条）是暗色。反过来的话亮色主题的用户会看到地址栏
-	// 先被染成暗色再跳亮——而两行摆在一起没人看得出哪一行该在前面。
+	// Order is meaning: the first (default) is dark. Reversed, a light-theme user sees the
+	// bar tinted dark then jump to light - side by side, nobody sees which should come first.
 	if got := string(themeMeta(th)); !strings.Contains(got, `content="#0f1115"`) ||
 		strings.Index(got, "#0f1115") > strings.Index(got, "#f6f7f9") {
-		t.Errorf("暗色那条没排在前面：%s", got)
+		t.Errorf("the dark one is not first: %s", got)
 	}
 
 	for _, c := range []struct{ name, css string }{
-		{"一条 --bg 都没有", ":root { --ink: #fff; }"},
-		{"只有一条", ":root { --bg: #0f1115; }"},
-		{"三条", ":root{--bg:#a;} :root{--bg:#b;} :root{--bg:#c;}"},
-		{"不是纯色", ":root { --bg: linear-gradient(#a, #b); } :root { --bg: #fff; }"},
-		{"是 var()", ":root { --bg: var(--other); } :root { --bg: #fff; }"},
+		{"no --bg at all", ":root { --ink: #fff; }"},
+		{"only one", ":root { --bg: #0f1115; }"},
+		{"three", ":root{--bg:#a;} :root{--bg:#b;} :root{--bg:#c;}"},
+		{"not a solid color", ":root { --bg: linear-gradient(#a, #b); } :root { --bg: #fff; }"},
+		{"is var()", ":root { --bg: var(--other); } :root { --bg: #fff; }"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			if _, err := themeColors(c.css); err == nil {
-				t.Error("这种 CSS 该报错（猜一个颜色比不写 theme-color 更糟）")
+				t.Error("this CSS should error (guessing a color is worse than no theme-color)")
 			}
 		})
 	}
 
-	// 名字的一部分不算：`--bg-soft` / `--bgfoo` 都不是 `--bg`。
-	// 写歪这一处的话，样式里多加一条 `--bg-soft` 就会让 theme-color 报「三条」。
+	// A name fragment does not count: `--bg-soft` / `--bgfoo` are not `--bg`.
+	// Get this wrong and one extra `--bg-soft` in the stylesheet makes theme-color report "three".
 	th, err = themeColors(":root { --bg: #0f1115; --bg-soft: #161a21; }\n" +
 		"@media (prefers-color-scheme: light) { :root { --bg: #f6f7f9; } }\n")
 	if err != nil || th.Dark != "#0f1115" {
-		t.Errorf("`--bg-soft` 被当成了 `--bg`：%+v %v", th, err)
+		t.Errorf("`--bg-soft` was counted as `--bg`: %+v %v", th, err)
 	}
 
-	// 注释里提到的 `--bg` 不算一条（这份样式的注释写得多，里面顺口提一句很正常）。
-	th, err = themeColors(":root { /* --bg: #000; 上面那条才是真的 */ --bg: #0f1115; }\n" +
+	// A `--bg` mentioned in a comment does not count (this stylesheet comments a lot).
+	th, err = themeColors(":root { /* --bg: #000; the line above is real */ --bg: #0f1115; }\n" +
 		"@media (prefers-color-scheme: light) { :root { --bg: #f6f7f9; } }\n")
 	if err != nil || th.Dark != "#0f1115" {
-		t.Errorf("注释里的 --bg 被算进去了：%+v %v", th, err)
+		t.Errorf("the --bg inside a comment was counted: %+v %v", th, err)
 	}
 }
 
-// TestTheRealStylesheetHasATableTheme 是这条判据的**活体**那一半：真的 site.css
-// 里那两条 `--bg` 必须取得到、取出来必须是纯色。
+// TestTheRealStylesheetHasATableTheme is the **live** half of this criterion: the two
+// `--bg` values in the real site.css must be readable and must be solid colors.
 //
-// 上面那条测的是函数，喂的是我自己写的 CSS——那种测试在「函数对、而仓库里那份样式
-// 换了写法」时是绿的。这一条读的是**要发布的那一份**。
+// The test above tests the function with my own CSS - green even when the repo's
+// stylesheet changed shape. This one reads **the copy being published**.
 func TestTheRealStylesheetHasATableTheme(t *testing.T) {
 	root, err := repoRoot()
 	if err != nil {
@@ -457,9 +484,9 @@ func TestTheRealStylesheetHasATableTheme(t *testing.T) {
 	}
 	th, err := themeColors(string(b))
 	if err != nil {
-		t.Fatalf("站点样式里取不出 theme-color：%v", err)
+		t.Fatalf("cannot extract theme-color from the site stylesheet: %v", err)
 	}
 	if !strings.HasPrefix(th.Dark, "#") || !strings.HasPrefix(th.Light, "#") {
-		t.Errorf("取出来的不是纯色：%+v", th)
+		t.Errorf("what was extracted is not a solid color: %+v", th)
 	}
 }

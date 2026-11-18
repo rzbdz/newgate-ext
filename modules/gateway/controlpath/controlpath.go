@@ -1,40 +1,44 @@
-// Package controlpath 是网关控制面端点的路径常量。
+// Package controlpath holds path constants for the gateway control-plane endpoints.
 //
-// 为什么单开一个叶子包（2026-09-18）：这些端点是 **gateway 的 HTTP 服务器注册的**
-// （modules/gateway/forward 的 mux），而调用它们的是 CLI——`newgate status/metrics`
-// 要隔着 HTTP 去问跑着的守护进程。两边各写一遍字符串字面量，「改路径时只改了一边」
-// 就是个静默失效：服务器换了路径，客户端还在打老的那个，症状是「功能突然没了」，
-// 而不是编译错误。
+// Why a separate leaf package (2026-09-18): these endpoints are **registered by gateway's HTTP
+// server** (the mux in modules/gateway/forward), while their callers are in the CLI - `newgate
+// status/metrics` ask the running daemon over HTTP. Both sides writing the string literals
+// means "only one side changed the path" is a silent failure: the server moved, the client
+// still hits the old one, and the symptom is "the feature vanished", not a compile error.
 //
-// 它必须是**叶子**：不能放在 gateway 根包里。理由是 **import 重量**——cli、
-// config、breaker、runtime 以及 gateway 自己的 controlplane 都要引这几个路径
-// 常量，放在根包里等于每个引用者都拖进整个网关实现。
+// It must be a **leaf**: it cannot live in gateway's root package. The
+// reason is **import weight** - cli, config, breaker, runtime and gateway's
+// own controlplane all need these path constants, and putting them in the
+// root package drags the whole gateway implementation into every referrer.
 //
-// （2026-09-18 修正这条理由两次：先是「gateway Need(cli)，所以 cli 反过来
-// import gateway 会成环」——那个环在 cli 的出边砍空之后就不存在了；后来 gateway
-// 对 ui 用的是 Inject 这条不排序的边。现在那条边改回了 Optional(cli)（弱依赖，
-// 见 component.Optional），仍不成环：方向是 gateway → ui 一条，cli 没有任何出边，
-// 而 Go 层面 gateway 引的是 cli/extension 叶子、不是 modules/cli。结论始终没变，
-// 变的只是理由。）
+// (2026-09-18, this reason corrected twice: first "gateway Need(cli), so cli importing
+// gateway back would make a cycle" - that cycle vanished once cli's out-edges were
+// cut; later gateway used the unordered Inject edge to ui. Now that edge is back to
+// Optional(cli) (a weak dependency, see component.Optional), still no cycle: the one
+// direction is gateway → ui, cli has no out-edges, and at the Go level gateway imports
+// the cli/extension leaf, not modules/cli. The conclusion never changed, only the reason.)
 //
-// 同一条规矩已经有一个先例：**配置共享**（发行版的功能，见 §1 的注）把
-// `/__newgate/config` `/__newgate/secrets` 定义在它自己的叶子里。
+// One rule already has a precedent: **config sharing** (a distribution feature, see
+// the note in §1) defines `/__newgate/config` `/__newgate/secrets` in its own leaf.
 //
-// 与那两个的关系：同一段 `/__newgate/` 命名空间，但**不是同一台服务器**
-// ——配置共享的端点由它自己起，这里的五个由数据面起。所以常量各归各家，不合并。
+// Relation to those two: the same `/__newgate/` namespace, but **not the same
+// server** - config sharing starts its own endpoints, these five are started by
+// the data plane. So the constants stay with their owners and are not merged.
 package controlpath
 
 const (
-	// Status 守护进程状态文档：pid、端口、请求数、熔断表、推理缓存计数。
-	// `newgate status` 与所有「读 daemon 内存」的命令走它。
+	// Status is the daemon state document: pid, port, request counts, breaker table, reasoning
+	// cache counters. `newgate status` and every "read daemon memory" command use it.
 	Status = "/__newgate/status"
-	// Metrics 计数器快照（内存，随重启归零）。
+	// Metrics is the counter snapshot (in memory, reset on restart).
 	Metrics = "/__newgate/metrics"
-	// Health 主动探活结果回传口：CLI 在本进程跑完 probe，把结论交给 daemon 记账。
+	// Health is the port where probe results come back: the CLI runs a probe
+	// in its own process and hands the conclusion to the daemon to record.
 	Health = "/__newgate/health"
-	// Stop 跨用户停机口。带 Bearer 令牌，是「进程没在跑」时唯一还能停下来的路。
+	// Stop is the cross-user stop port. It carries a Bearer token, and
+	// is the only way left to stop a process that is "not running".
 	Stop = "/__newgate/stop"
-	// Upgrade 优雅交接（socket fd 移交）。旧版 daemon 没注册它，所以调用方
-	// 必须先探能力再动手——盲发会被当成未知路径。
+	// Upgrade is graceful handoff (socket fd transfer). Old daemons did not register it, so the
+	// caller must probe the capability before acting - a blind send is taken as an unknown path.
 	Upgrade = "/__newgate/upgrade"
 )

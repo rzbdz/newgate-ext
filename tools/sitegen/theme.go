@@ -6,21 +6,21 @@ import (
 	"strings"
 )
 
-// themeMeta 是页头那两行（`<meta name="theme-color">`）。
+// themeMeta is the two header lines (`<meta name="theme-color">`).
 //
-// # 为什么是两行
+// # Why two lines
 //
-// `theme-color` 的 content **不接受** `(prefers-color-scheme)`——那两行是同一个
-// 属性的两次声明，浏览器按自己当前的主题取后一条匹配上的（media 属性今天只有
-// Chromium 系认，其余浏览器取第一条，也就是暗色那条，正好是默认主题）。
+// `theme-color`'s content **does not accept** `(prefers-color-scheme)` - the two lines
+// are two declarations of one attribute, and the browser picks the last matching one
+// (today only Chromium reads the media attribute; others take the first, dark, the default).
 //
-// # 顺序（media 之前那一条）
+// # Order (the line before media)
 //
-// 先发**暗色**那条、再发亮色那条。载入时 URL 栏先被染成第一条那个颜色，随后才轮到
-// 带 media 的那条生效——反过来写的话，亮色主题的用户会看到地址栏先闪一下亮色、
-// 再变暗（或反之）。默认那条排前面是把那一闪压到最短的排法。
+// Emit **dark** first, then light. On load the URL bar is tinted the first color, then
+// the media one applies - reversed, a light-theme user sees a light flash then dark (or
+// the reverse). Putting the default first keeps that flash shortest.
 //
-// 两行都没有时返回空串：模板里那一格就成了空行，没有副作用（与 socialMeta 同一条）。
+// Neither line present returns an empty string: the slot becomes an empty line, no effect.
 func themeMeta(th theme) template.HTML {
 	if th.Dark == "" || th.Light == "" {
 		return ""
@@ -31,28 +31,28 @@ func themeMeta(th theme) template.HTML {
 	return template.HTML(b.String())
 }
 
-// theme 是浏览器**自己那块界面**（手机上的地址栏、系统的状态栏）该染成什么色。
+// theme is what the browser's **own UI** (phone address bar, status bar) is tinted.
 //
-// 它只有一个来源：站点样式里那两条 `--bg`。
+// It has exactly one source: the two `--bg` values in the site stylesheet.
 type theme struct {
 	Dark  string
 	Light string
 }
 
-// themeColors 从站点样式里读出两种主题下的底色。
+// themeColors reads the base color for both themes out of the site stylesheet.
 //
-// # 为什么是**读**样式，而不是在 site.json 里再写一遍
+// # Why **read** the CSS instead of writing it again in site.json
 //
-// `theme-color` 的全部作用就是「让浏览器自己那块界面与页面底色看起来是同一块」。
-// 所以它必须**等于** `--bg`。在配置里再写一遍的话，改版换底色那天它会悄悄留在旧
-// 值上，而症状是**只有手机上**能看见的一条颜色不对的地址栏——桌面浏览器根本不读
-// 它，所以在开发机上永远看不出来。
+// All `theme-color` does is "make the browser's own UI look like the page" - so it must
+// **equal** `--bg`. A second copy in config would silently keep the old value on the day
+// a redesign changes the base, visible **only on phones** as a wrong-colored address bar
+// - desktop browsers never read it, so a dev machine never shows it.
 //
-// # 读不出来就报错，不猜
+// # Unreadable means error, not guess
 //
-// 找不到、只有一条、多于两条，三种都报错。一个猜出来的颜色比没有 theme-color
-// 更糟（它看起来是对的）。这与 md.go 对不认识的 markdown 构造的态度是同一条：
-// 静默地画错是唯一不能接受的结果。
+// None, exactly one, more than two: all three error. A guessed color is worse than no
+// theme-color (it looks right). Same attitude as md.go toward unknown markdown: a
+// silent wrong drawing is the only unacceptable outcome.
 func themeColors(css string) (theme, error) {
 	var th theme
 	vals, err := cssVar(stripComments(css), "--bg")
@@ -61,32 +61,32 @@ func themeColors(css string) (theme, error) {
 	}
 	switch len(vals) {
 	case 2:
-		// 顺序即含义：第一条是默认（暗色），第二条在
-		// `@media (prefers-color-scheme: light)` 里（亮色）。这与 site.css 的
-		// 结构对应——那里就是这么写的，而这条判据逼着它保持那个形状。
+		// Order is meaning: the first is the default (dark), the second is inside
+		// `@media (prefers-color-scheme: light)` (light). This mirrors site.css's
+		// structure - that is how it is written there, and this check forces that shape.
 	default:
-		return th, fmt.Errorf("site.css 里有 %d 条 `--bg`——只该有两条（默认那条是暗色，"+
-			"`@media (prefers-color-scheme: light)` 里那条是亮色）。theme-color 取不出"+
-			"唯一的值就会失准，所以这里不猜", len(vals))
+		return th, fmt.Errorf("site.css has %d `--bg` declarations -- there should be exactly two (the default one is dark,"+
+			"and the one inside `@media (prefers-color-scheme: light)` is light). theme-color cannot be taken"+
+			"from a single value without getting it wrong, so nothing is guessed here", len(vals))
 	}
 	for i, v := range vals {
 		if !strings.HasPrefix(v, "#") {
-			// theme-color 收任何 CSS 颜色，但**手机上的地址栏**只认得出纯色。
-			// 值不是 `#` 开头（渐变、var(...)、关键字）时说出来，而不是发一个
-			// 浏览器会忽略掉的字符串。
-			return th, fmt.Errorf("site.css 里第 %d 条 `--bg` 的值是 %q——theme-color 要"+
-				"一个 `#` 开头的纯色（地址栏染不了渐变）", i+1, v)
+			// theme-color takes any CSS color, but **a phone's address bar** only handles
+			// solid ones. If the value does not start with `#` (gradients, var(...),
+			// keywords), say so rather than ship a string the browser discards.
+			return th, fmt.Errorf("`--bg` number %d in site.css has the value %q -- theme-color needs"+
+				"a solid color starting with `#` (the address bar cannot take a gradient)", i+1, v)
 		}
 	}
 	th.Dark, th.Light = vals[0], vals[1]
 	return th, nil
 }
 
-// cssVar 取出一份 CSS 里某个自定义属性的全部值（按出现次序）。
+// cssVar extracts all values of a custom property from a CSS file (in order).
 //
-// 它**不是** CSS 解析器，只认「`--名字` 到下一个 `;`」这一种形状。够用，而且认错
-// 的代价是**零条**——`themeColors` 立刻报错，不会静默取到一个别的属性。名字比对的
-// 是 `--bg` 后面紧跟的那个字符，所以 `--bg-soft` 不会被误认为 `--bg`。
+// It is **not** a CSS parser; it only knows "`--name` up to the next `;`". Enough, and a
+// misread costs **nothing** - `themeColors` errors at once. Names are compared by the
+// char right after `--bg`, so `--bg-soft` is not mistaken for `--bg`.
 func cssVar(css, name string) ([]string, error) {
 	var out []string
 	for {
@@ -96,15 +96,15 @@ func cssVar(css, name string) ([]string, error) {
 		}
 		rest := css[i+len(name):]
 		if rest == "" || (rest[0] != ':' && rest[0] != ' ') {
-			// `--bg-soft:` / `--bgfoo:` 这类名字的一部分，不是它。
+			// `--bg-soft:` / `--bgfoo:` are name fragments, not it.
 			css = rest
 			continue
 		}
 		colon := strings.IndexByte(rest, ':')
 		if colon < 0 {
-			return nil, fmt.Errorf("`%s` 后面没有冒号", name)
+			return nil, fmt.Errorf("`%s` is not followed by a colon", name)
 		}
-		// 名字与冒号之间只允许空白（`--bg : red` 也是合法的 CSS）。
+		// Only whitespace may sit between name and colon (`--bg : red` is valid CSS).
 		if strings.TrimSpace(rest[:colon]) != "" {
 			css = rest
 			continue
@@ -112,8 +112,8 @@ func cssVar(css, name string) ([]string, error) {
 		rest = rest[colon+1:]
 		semi := strings.IndexByte(rest, ';')
 		if semi < 0 {
-			// 没闭合的声明：**当它不存在**而不是报错——一段被截断的 CSS 是编辑中途
-			// 的样子，而这里要判的是「有几条 --bg」，不是「这份 CSS 合不合法」。
+			// Unclosed declaration: **treat it as absent** rather than error - a truncated
+			// CSS is mid-edit, and this judges "how many --bg there are", not validity.
 			return out, nil
 		}
 		if v := strings.TrimSpace(rest[:semi]); v != "" {
@@ -126,10 +126,10 @@ func cssVar(css, name string) ([]string, error) {
 	}
 }
 
-// stripComments 抹掉 CSS 注释。
+// stripComments removes CSS comments.
 //
-// 不做这一步的话，注释里出现的 `--bg` 会被 cssVar 当成一条声明——而这份样式的
-// 注释写得很多（每一条判据都带一段「为什么」），里面提一句 `--bg` 是很正常的事。
+// Without it, a `--bg` inside a comment is read by cssVar as a declaration - and this
+// stylesheet comments heavily (every criterion carries a "why"), so mentioning `--bg` is normal.
 func stripComments(css string) string {
 	var b strings.Builder
 	for {
@@ -141,7 +141,7 @@ func stripComments(css string) string {
 		b.WriteString(css[:i])
 		j := strings.Index(css[i:], "*/")
 		if j < 0 {
-			// 没闭合的注释：剩下的都当注释（浏览器也是这么读的）。
+			// Unclosed comment: the rest is a comment (browsers read it that way too).
 			return b.String()
 		}
 		css = css[i+j+2:]

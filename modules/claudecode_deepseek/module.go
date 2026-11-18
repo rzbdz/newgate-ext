@@ -1,11 +1,13 @@
-// Package claudecode_deepseek 只处理 Claude Code 与 DeepSeek 的交叉语义。
+// Package claudecode_deepseek handles only the cross-cutting semantics of Claude Code and DeepSeek.
 //
-// Claude Code 可能不会把非官方 thinking block 原样带回下一轮，而 DeepSeek
-// 的 tool loop 又要求真实 reasoning_content 连续回传。任何一方单独都无法
-// 正确解决这个问题：客户端模块不该认识模型，上游模块也不该猜客户端。
+// Claude Code may not pass non-official thinking blocks back as is into the next
+// round, while DeepSeek's tool loop requires real reasoning_content to be replayed
+// continuously. Neither side can solve this correctly alone: the client module
+// should not know models, and the upstream module should not guess the client.
 //
-// 因此本组件同时 Need 两个家族 capability，在两者都存在时才向 gateway
-// 注册桥接 treatments；Stop 使用注册句柄精确撤销这些组合行为。
+// So this component Needs both family capabilities and registers
+// bridge treatments with gateway only when both exist; Stop uses the
+// registration handles to precisely undo these composed behaviors.
 package claudecode_deepseek
 
 import (
@@ -19,8 +21,9 @@ import (
 	modules "github.com/rzbdz/newgate/component"
 )
 
-// New 声明 Claude Code × DeepSeek 交叉组件。
-// 只有同时解析到客户端、模型和网关端口时，它才注册双方组合后才需要的修补。
+// New declares the Claude Code x DeepSeek cross-cutting component.
+// Only when the client, the model, and the gateway port all resolve
+// does it register the patches needed only after the two are combined.
 func New() modules.Component {
 	var releases []modules.Release
 	return modules.Component{

@@ -5,11 +5,11 @@ import (
 	"testing"
 )
 
-// TestGateTruthTable 锁住两级门的**性质差异**——它不是同一件事的两个严重度，
-// 所以两者的行为必须不一样：
+// TestGateTruthTable pins the two levels' **different natures** - this is not one thing
+// at two severities, so their behavior must differ:
 //
-//   - 构建串不匹配 ⇒ 放行 + 警告（这份配置今天解析得了，只是按更新的构建写的）
-//   - schema 更高   ⇒ 拒绝 + 保留上一份（字段含义可能已经变了，误读**不会报错**）
+//   - build string mismatch => allow + warn (parseable today, just written by a newer build)
+//   - higher schema         => refuse + keep previous (meanings may have changed, silent)
 func TestGateTruthTable(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -19,19 +19,19 @@ func TestGateTruthTable(t *testing.T) {
 		wantWarn   bool
 		wantRefuse bool
 	}{
-		{"没有 meta：按当前 schema 解释", nil, "build-1", true, true, false},
-		{"schema 相同：无话", &Meta{SchemaVersion: 1}, "build-1", true, false, false},
-		{"schema 更高：拒绝", &Meta{SchemaVersion: 2}, "build-1", false, false, true},
-		{"schema 是 0（没写）：放行 + 提醒", &Meta{}, "build-1", true, true, false},
-		{"构建串相同：无话", &Meta{SchemaVersion: 1, MinNewgateVersion: "build-1"}, "build-1", true, false, false},
-		{"构建串不同：放行 + 警告", &Meta{SchemaVersion: 1, MinNewgateVersion: "build-2"}, "build-1", true, true, false},
-		{"dev 构建不警告（否则每个开发机上一句噪音）", &Meta{SchemaVersion: 1, MinNewgateVersion: "build-2"}, "dev", true, false, false},
-		{"本机没有版本串：不警告", &Meta{SchemaVersion: 1, MinNewgateVersion: "build-2"}, "", true, false, false},
+		{"no meta: interpret by the current schema", nil, "build-1", true, true, false},
+		{"same schema: nothing to say", &Meta{SchemaVersion: 1}, "build-1", true, false, false},
+		{"higher schema: refuse", &Meta{SchemaVersion: 2}, "build-1", false, false, true},
+		{"schema is 0 (not written): allow + remind", &Meta{}, "build-1", true, true, false},
+		{"same build string: nothing to say", &Meta{SchemaVersion: 1, MinNewgateVersion: "build-1"}, "build-1", true, false, false},
+		{"different build string: allow + warn", &Meta{SchemaVersion: 1, MinNewgateVersion: "build-2"}, "build-1", true, true, false},
+		{"a dev build does not warn (otherwise every dev machine gets noise)", &Meta{SchemaVersion: 1, MinNewgateVersion: "build-2"}, "dev", true, false, false},
+		{"no local version string: do not warn", &Meta{SchemaVersion: 1, MinNewgateVersion: "build-2"}, "", true, false, false},
 		{
-			// `git describe` 串**不可排序**：build-17-… 与 build-18-… 之间没有
-			// 数值大小关系，--dirty 更糟。所以判据只能是"相等"，于是它只配
-			// 驱动警告——不能让它有牙。
-			"dirty 后缀只是一个不同的串：仍放行",
+			// `git describe` strings are **not sortable**: build-17-... and build-18-...
+			// have no numeric ordering (`--dirty` is worse). So the test can only be
+			// equality, which does not earn teeth - it drives a warning only.
+			"a dirty suffix is just a different string: still allow",
 			&Meta{SchemaVersion: 1, MinNewgateVersion: "build-1-gabc-dirty"},
 			"build-1-gabc", true, true, false,
 		},
@@ -40,22 +40,22 @@ func TestGateTruthTable(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ok, warn, refuse := Gate(tc.meta, GateInput{CurrentVersion: tc.cur})
 			if ok != tc.wantOK {
-				t.Fatalf("ok=%v，想要 %v（warn=%q refuse=%q）", ok, tc.wantOK, warn, refuse)
+				t.Fatalf("ok=%v, want %v (warn=%q refuse=%q)", ok, tc.wantOK, warn, refuse)
 			}
 			if (warn != "") != tc.wantWarn {
-				t.Fatalf("warn=%q，想要有=%v", warn, tc.wantWarn)
+				t.Fatalf("warn=%q, want present=%v", warn, tc.wantWarn)
 			}
 			if (refuse != "") != tc.wantRefuse {
-				t.Fatalf("refuse=%q，想要有=%v", refuse, tc.wantRefuse)
+				t.Fatalf("refuse=%q, want present=%v", refuse, tc.wantRefuse)
 			}
 			if tc.wantRefuse {
-				// 拒绝的文案必须说清"为什么拒绝"，因为用户会照着它决定升级还是
-				// 去改宿主。只写"版本不支持"会让人以为是个装饰性的检查。
+				// The refusal text must say why, since users decide whether to upgrade or
+				// fix the host from it. "Version unsupported" alone reads as decorative.
 				if !strings.Contains(refuse, "schema_version") {
-					t.Fatalf("拒绝文案该点名 schema_version: %q", refuse)
+					t.Fatalf("the refusal message should name schema_version: %q", refuse)
 				}
 				if !strings.Contains(refuse, "previous configuration is kept") {
-					t.Fatalf("拒绝文案该说明保留了上一份配置: %q", refuse)
+					t.Fatalf("the refusal message should say the previous config was kept: %q", refuse)
 				}
 			}
 		})
@@ -63,22 +63,22 @@ func TestGateTruthTable(t *testing.T) {
 }
 
 func TestParseMeta(t *testing.T) {
-	// 文件缺席 = 宿主没声明 → (nil, nil)，由 Gate 走"按当前 schema 解释"。
+	// Missing file = the host declared nothing -> (nil, nil); Gate then uses the current schema.
 	meta, err := ParseMeta(map[string][]byte{"providers.json": []byte("{}")})
 	if err != nil || meta != nil {
-		t.Fatalf("缺席该给 (nil, nil)，实际 %v / %v", meta, err)
+		t.Fatalf("absence should give (nil, nil), got %v / %v", meta, err)
 	}
-	// 有文件但不是 JSON：这是宿主写坏了，**不是**"没声明"。必须报错，否则
-	// 会被当成"没声明"而按当前 schema 解释——把一个明确的坏文件洗成正常。
-	if _, err := ParseMeta(map[string][]byte{MetaFileName: []byte("这不是 JSON")}); err == nil {
-		t.Fatal("坏掉的 meta 文件必须报错，不能被当成\"没声明\"")
+	// A file that is not JSON: the host wrote something broken, **not** "undeclared". It
+	// must error, or it would be read as undeclared under the current schema.
+	if _, err := ParseMeta(map[string][]byte{MetaFileName: []byte("this is not JSON")}); err == nil {
+		t.Fatal("a corrupt meta file must raise an error, not be treated as \"undeclared\"")
 	}
 	good := map[string][]byte{MetaFileName: metaFile(3, "build-9")}
 	meta, err = ParseMeta(good)
 	if err != nil {
-		t.Fatalf("解析失败: %v", err)
+		t.Fatalf("parse failed: %v", err)
 	}
 	if meta.SchemaVersion != 3 || meta.MinNewgateVersion != "build-9" {
-		t.Fatalf("解析结果不对: %+v", meta)
+		t.Fatalf("wrong parse result: %+v", meta)
 	}
 }

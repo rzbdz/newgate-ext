@@ -6,7 +6,7 @@ import (
 )
 
 func TestWrapWordsKeepsTokensWhole(t *testing.T) {
-	lines := wrapWords("界面读的是哪份消息目录；lang <tag> 切换它", 32)
+	lines := wrapWords("which message catalog the UI reads; lang <tag> switches it", 32)
 	joined := strings.Join(lines, "\n")
 	if !strings.Contains(joined, "<tag>") {
 		t.Fatalf("token was split:\n%s", joined)

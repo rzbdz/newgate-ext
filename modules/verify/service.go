@@ -12,10 +12,10 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// service 是本模块的实现：把配置、指纹库与缓存缝在一起。
+// service is this module's implementation: it stitches config, the fingerprint bank and the cache.
 //
-// 它同时服务三条入口——CLI、web 扩展端点、概念账本。三条入口都只认这里的方法，
-// 所以「一条 binding 怎么验」只有一份实现（与 modellist 的 Service 同一条）。
+// It serves three entries - CLI, web extension endpoint, concept ledger. All three know only
+// its methods, so "how a binding is verified" has one implementation (like modellist).
 type service struct {
 	det   detector
 	cache *cacheStore
@@ -26,9 +26,9 @@ func newService() *service {
 	return &service{det: newFingerprintDetector(c), cache: c}
 }
 
-// State 产出这一屏的全部素材。它**不返回 error**：配置读不出来时也把页面画
-// 出来（自由验证那半不依赖任何 profile），原因写在 State.Error 里。这是
-// 「不静默」与「一屏不能因为另一屏坏了而白屏」的折中。
+// State produces all the material for this screen. It **returns no error**: unreadable config
+// still draws the page (free verification needs no profile), with the reason in State.Error.
+// The compromise between "not silent" and "one screen must not blank because another broke".
 func (s *service) State() State {
 	st := State{}
 	var problems []string
@@ -76,15 +76,15 @@ func (s *service) State() State {
 	return st
 }
 
-// groupProfiles 把 targets 的扁平行折成「一份 profile 一组」。
+// groupProfiles folds targets' flat rows into "one group per profile".
 //
-// 输入已经按（profile, 档位顺序）排好；这里保持那个顺序，不再排序——档位顺序
-// 是能力阶梯，不是字母序。
+// The input is already sorted by (profile, tier order); this keeps that order and does not
+// sort again - tier order is a capability ladder, not alphabetical.
 //
-// 跳过「这一档没绑」的行：稀疏 profile 只写自己关心的档位是**正常形态**，而这一
-// 屏回答的是「已绑定的那些模型实际是谁」。把五行 not bound 摊在每份 profile 下面
-// 只会让真正要看的 binding 沉下去。（provider 没声明的那种错**保留**：它说明
-// 配置坏了，需要人看见。）
+// Rows for "this tier is unbound" are skipped: a sparse profile writing only its own tiers
+// is **normal**, and this screen answers "who are the bound models actually". Spilling five
+// not-bound rows under each profile would bury the bindings that matter. (A missing provider
+// is **kept**: it says the config is broken and needs to be seen.)
 func groupProfiles(rows []targets.Row) []ProfileState {
 	var out []ProfileState
 	index := map[string]int{}
@@ -105,12 +105,12 @@ func groupProfiles(rows []targets.Row) []ProfileState {
 	return out
 }
 
-// Run 验一条 binding，返回结论并落盘。
+// Run verifies one binding, returns the conclusion and saves it.
 //
-// 返回 error 只表示**这次请求根本没打成**（没这个 provider、没有 key、参考库
-// 加载不了）。上游把 300 个整数吐回来但样本不合格，是**一条结论**（Entry 里
-// 的 Error），不是 handler 的失败——界面要把它显示在那一行上，而不是弹一个
-// 全局错误。
+// An error means only **the request never went out** (no such provider, no key, bank cannot
+// load). An upstream that returns 300 integers but bad samples is **a conclusion** (Entry's
+// Error), not a handler failure - the UI shows it on that row, in that row's own place,
+// not as a global error.
 func (s *service) Run(ctx context.Context, req RunRequest) (*Entry, error) {
 	provider := strings.TrimSpace(req.Provider)
 	model := strings.TrimSpace(req.Model)
@@ -165,7 +165,7 @@ func (s *service) Run(ctx context.Context, req RunRequest) (*Entry, error) {
 			e.Probability = a.Probability
 			e.UsedOutputs = a.UsedOutputs
 			e.Match = Classify(model, a.Prediction, a.FamilyPrediction)
-			// 参考库通常给几十个候选；界面只需要前几名，报文不必背整张表。
+			// The bank gives dozens of candidates; the UI needs the top few, not the whole table.
 			for i, c := range a.Results {
 				if i >= 5 {
 					break
@@ -181,7 +181,7 @@ func (s *service) Run(ctx context.Context, req RunRequest) (*Entry, error) {
 	if e.Error == "" && e.Predicted == "" {
 		e.Error = i18n.T("the fingerprint round produced no ranking", nil)
 	}
-	// 落盘失败不影响这次结论，但决定下次界面还看不看得到它。
+	// A failed save does not affect this conclusion, but decides whether the next UI visit sees it.
 	if err := s.cache.put(*e); err != nil {
 		e.CacheError = err.Error()
 	}
@@ -200,21 +200,21 @@ func resolveAPI(api string) (string, error) {
 	}
 }
 
-// Upgrade 是挂到 `newgate upgrade` 上的动作：强制刷新参考库。
+// Upgrade is the action mounted on `newgate upgrade`: force-refresh the reference bank.
 //
-// 它只碰**动态数据**（缓存里的参考库），不碰二进制——第一版 upgrade 的边界见
-// modules/upgrade 的包注释。
+// It touches only **dynamic data** (the bank in the cache), never the binary - see the first
+// version's boundary in modules/upgrade's package comment.
 func (s *service) Upgrade(ctx context.Context) (string, error) {
 	return s.det.Refresh(ctx)
 }
 
-// UpgradeStatus 是 `newgate upgrade --check` 里这一项的回答：只报手上那份，不出网。
+// UpgradeStatus is this item's answer in `newgate upgrade --check`: what is in hand, no network.
 //
-// 「远端有没有新的」要下一份 bundle 才知道（参考库没有便宜的版本探针），而
-// --check 的约定是不动任何东西——所以这里老实说「手上是哪一版、上次查是什么时候」。
+// "Is there a new one remotely" takes downloading a bundle (the bank has no cheap version
+// probe), and --check touches nothing - so this honestly says "which version is in
+// hand, when it was last checked".
 //
-// 第二个返回值是「根本没什么可刷新」：参考库钉在本地目录上（DataEnv）时，upgrade
-// 不该为它再问一次 y/N。
+// The second return is "nothing to refresh": with the bank on a local dir (DataEnv), no y/N.
 func (s *service) UpgradeStatus() (string, bool) {
 	if src := strings.TrimSpace(os.Getenv(DataEnv)); src != "" {
 		return i18n.T("reference data is read from the local directory {dir}; nothing to refresh",
@@ -231,7 +231,7 @@ func (s *service) UpgradeStatus() (string, bool) {
 	return i18n.T("cached {version}; upgrade would check for a newer bank", i18n.A{"version": shortHash(v)}), false
 }
 
-// shortHash 把参考库的版本（一串 sha256）截成能读的长度，与 git 的短哈希同一个惯例。
+// shortHash trims the bank version (a sha256) to a readable length, the same convention as git.
 func shortHash(v string) string {
 	if len(v) == 64 {
 		return v[:12]
@@ -239,7 +239,7 @@ func shortHash(v string) string {
 	return v
 }
 
-// cacheDoc 是「只看缓存」那条查询的回答（模型下拉用）。
+// cacheDoc is the answer of the "cache only" query (used by the model dropdown).
 type cacheDoc struct {
 	Entries []Entry `json:"entries"`
 }

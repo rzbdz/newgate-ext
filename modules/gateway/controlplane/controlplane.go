@@ -1,28 +1,31 @@
-// Package controlplane 是与**跑着的守护进程**控制面打交道的客户端，以及那份
-// 状态文档的形状。
+// Package controlplane is the client that talks to the **running
+// daemon's** control plane, plus the shape of that state document.
 //
-// # 为什么它是一个共享叶子（2026-09-18）
+// # Why it is a shared leaf (2026-09-18)
 //
-// 这套东西原来长在 modules/cli 里（proxy.go + lifecycle.go 的一小块）。后果是
-// 只有界面读得到守护进程的自报状态，于是**每个想读它的模块都被钉住了**：
-// `newgate metrics`（计数器的语义归 gateway）、`newgate breaker`（健康表归
-// breaker）、`newgate probe`（探活结果要回传给守护进程记账）——它们的知识明明
-// 各自归自己，命令却只能写在界面里，因为界面是唯一持有那个 HTTP 客户端的地方。
+// This used to live in modules/cli (proxy.go plus a bit of lifecycle.go). The consequence
+// was that only the UI could read the daemon's self-reported state, so **every module wanting
+// to read it was pinned**: `newgate metrics` (counter semantics belong to gateway), `newgate
+// breaker` (the health table belongs to breaker), `newgate probe` (probe results must go
+// back to the daemon to be recorded) - each knows its own domain, but the commands could
+// only be written in the UI, because the UI was the only place holding that HTTP client.
 //
-// 抽成共享叶子之后，谁都能读守护进程了，那些命令也就搬得回自己的模块。
+// Extracted into a shared leaf, anyone can read the daemon,
+// and those commands could move back to their own modules.
 //
-// # 它为什么不是一个模块
+// # Why it is not a module
 //
-// 它没有状态、没有生命周期、不需要被启动或停止——就是一组对 loopback 控制面的
-// 读写函数（外加一个发 SIGHUP 的便捷口）。这跟 lib/ 里那些纯工具同类，只是它
-// 认识 newgate 的控制面协议，所以留在 gateway 这一侧（控制面的路径与文档都由
-// 数据面定义，见 controlpath）。
+// It has no state, no lifecycle, no need to be started or stopped - just a set of
+// read/write functions for the loopback control plane (plus a convenience call that
+// sends SIGHUP). Same class as the pure tools in lib/, except it knows newgate's
+// control-plane protocol, so it stays on the gateway side (the control-plane
+// paths and documents are defined by the data plane, see controlpath).
 //
-// # 依赖方向
+// # Dependency direction
 //
-// controlplane → controlpath（路径）、breaker/status（文档里的 wire 类型）、
-// runtime/daemon（pidfile）、lib/httpx。四个都是叶子或工具，没有回边，所以
-// breaker 自己、gateway 自己、界面都能引它。
+// controlplane → controlpath (paths), breaker/status (the wire types in the
+// document), runtime/daemon (pidfile), lib/httpx. All four are leaves or tools with
+// no back edge, so breaker itself, gateway itself and the UI can all import it.
 package controlplane
 
 import (
@@ -40,7 +43,7 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// Think 是推理内容缓存的计数。**只报计数，永远不报内容。**
+// Think holds the reasoning cache counters. **Counters only, never the content.**
 type Think struct {
 	Entries   int   `json:"entries"`
 	Bytes     int64 `json:"bytes"`
@@ -48,15 +51,16 @@ type Think struct {
 	Hits      int64 `json:"hits"`
 	Misses    int64 `json:"misses"`
 	Evictions int64 `json:"evictions"`
-	// Unparsable 请求里解析不出来的 assistant 消息条数。它和 Misses 的结果一样
-	// （都补空串），但处置不同：miss 去查缓存与上游，这个去查客户端发来的 JSON。
+	// Unparsable is the number of assistant messages in the request that could not be
+	// parsed. It ends like Misses (both fill an empty string), but is handled differently:
+	// a miss consults the cache and upstream, this looks at the JSON the client sent.
 	Unparsable int64 `json:"unparsable"`
 }
 
-// Doc 是守护进程自报的运行时状态（`/__newgate/status` 的文档）。
+// Doc is the runtime state the daemon reports (`/__newgate/status`'s document).
 //
-// 整页状态（status / metrics / st）都只发**一次**这个请求就拿全——以前每个命令
-// 各打各的探活，数字还可能对不上。
+// Every status page (status / metrics / st) fetches it with **one** request
+// - before, each command did its own probing, and the numbers could disagree.
 type Doc struct {
 	OK       bool              `json:"ok"`
 	Port     int               `json:"port"`
@@ -70,14 +74,14 @@ type Doc struct {
 	Think    Think             `json:"thinkcache"`
 }
 
-// Info 是守护进程的进程信息（来自 pidfile）。
+// Info is the daemon's process information (from the pidfile).
 type Info = daemon.Info
 
-// State 取守护进程的进程信息 + 自报状态。
+// State gets the daemon's process information + self-reported state.
 //
-// pid 来自 pidfile（进程还在不在），doc 来自 HTTP（它自己怎么想的）。两者都可能
-// 单独失败：进程活着但端口不响应，正是「出站代理劫持 loopback」那个经典故障，
-// 必须能分开表达（见 newgate doctor）。
+// pid comes from the pidfile (is the process alive), doc from HTTP (what it thinks). Each
+// can fail on its own: process alive but port not answering is the classic "outbound proxy
+// hijacks loopback" fault, and the two must be expressible separately (see newgate doctor).
 func State() (info *Info, doc *Doc) {
 	info = daemon.Running()
 	if info == nil || info.Port <= 0 {
@@ -90,8 +94,9 @@ func State() (info *Info, doc *Doc) {
 	return info, &d
 }
 
-// Metrics 网关计数器与 uptime。和 status 是两个端点（计数器是守护进程内存里的
-// 一张 map，status 只挑几个数报），所以单独取一次。
+// Metrics gives gateway counters and uptime. It is a separate
+// endpoint from status (the counters are a map in daemon memory,
+// status reports only a few numbers), so it is fetched separately.
 func Metrics(port int) (map[string]uint64, int, bool) {
 	var out struct {
 		Metrics map[string]uint64 `json:"metrics"`
@@ -103,7 +108,8 @@ func Metrics(port int) (map[string]uint64, int, bool) {
 	return out.Metrics, out.UptimeS, true
 }
 
-// Ping 端口上的控制面活着吗（HTTP 优先，退化成 TCP 探活）。
+// Ping asks whether the control plane on the port is
+// alive (HTTP first, falling back to a TCP probe).
 func Ping(port int) bool {
 	resp, err := httpx.LocalClient(1500 * time.Millisecond).
 		Get(fmt.Sprintf("http://127.0.0.1:%d%s", port, controlpath.Status))
@@ -116,7 +122,7 @@ func Ping(port int) bool {
 	return httpx.TCPAlive("127.0.0.1", port, 500*time.Millisecond)
 }
 
-// Post 往控制面发一个带令牌的 POST。
+// Post sends a token-bearing POST to the control plane.
 func Post(port int, path, token string, body, out interface{}) error {
 	raw, err := json.Marshal(body)
 	if err != nil {
@@ -143,10 +149,11 @@ func Post(port int, path, token string, body, out interface{}) error {
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
-// Notify 让运行中的守护进程立刻重读配置。
+// Notify makes the running daemon re-read its config at once.
 //
-// 平时配置改动靠 watcher 的 1 秒轮询，对**手工编辑文件**足够快；但命令改配置是
-// 用户刚敲下的，必须立刻生效，所以显式发 SIGHUP 强制重载。
+// Normally config changes rely on the watcher's 1 second poll, fast enough for
+// **hand-edited files**; but a command changing config was just typed by the user
+// and must take effect at once, so it sends SIGHUP explicitly to force a reload.
 func Notify() {
 	if i := daemon.Running(); i != nil {
 		_ = syscall.Kill(i.PID, syscall.SIGHUP)
@@ -166,15 +173,17 @@ func get(port int, path string, v interface{}) bool {
 	return json.NewDecoder(resp.Body).Decode(v) == nil
 }
 
-// Available 把 daemon 的全局熔断表冻结成一次命令内的一致快照：某条 binding 现在
-// 能不能用（第二个返回值是给用户看的理由）。daemon 不在线时不凭空判坏
-// （d == nil ⇒ 全部可用）——诊断退化为只看静态配置。
+// Available freezes the daemon's global breaker table into a snapshot consistent
+// within one command: whether a binding can be used now (the second return value
+// is the reason shown to the user). When the daemon is offline it does not judge
+// blindly (d == nil ⇒ all available) - diagnosis degrades to static config alone.
 //
-// **它是只读的近似，不是 daemon 里那个准入。** daemon 的 Admitter 有副作用
-// （冷却期满时发放「半开试探名额」，一个名额只放行一次真实请求），这里只按快照里
-// 的 Open 重建结论，既不发名额也不推进状态机。这个不一致是**刻意的**：
-// CLI 每敲一次 `newgate tier` 就跑一遍，绝不能烧掉正在飞的试探名额。见
-// docs/05-gateway.md。
+// **It is a read-only approximation, not the admission in the daemon.** The
+// daemon's Admitter has side effects (on cooldown expiry it hands out "half-open
+// trial slots", one slot admitting exactly one real request); here we rebuild the
+// conclusion from the snapshot's Open state, neither issuing slots nor advancing the
+// state machine. The mismatch is **deliberate**: the CLI runs this on every `newgate
+// tier` and must never burn a trial slot that is in flight. See docs/05-gateway.md.
 func (d *Doc) Available() func(provider, model string) (bool, string) {
 	blocked := map[string]string{}
 	if d != nil {
@@ -196,14 +205,16 @@ func (d *Doc) Available() func(provider, model string) (bool, string) {
 	}
 }
 
-// Rank 把 daemon 算好的排序键原样递给调用方。
+// Rank hands the sort key the daemon computed to the caller unchanged.
 //
-// **不在这里重算阈值**：3000ms / 12000ms 那套分桶只存在于 modules/breaker，抄一份
-// 的话 daemon 改阈值这边不会跟着变（2026-09-17 之前就是两边各有一份）。
+// **No recomputing thresholds here**: the 3000ms / 12000ms bucketing
+// exists only in modules/breaker, and a copy would not follow when the
+// daemon changes thresholds (before 2026-09-17 both sides had their own).
 //
-// 老 daemon 不发 `rank`（优雅交接期间 CLI 与 daemon 可以来自不同版本），读不到就
-// 退化成中性值——排序退化为「按配置顺序」，不会因为版本不齐互相打架。被摘牌的
-// binding 不在这里沉底：建链期先问 Available，被摘的根本进不了候选。
+// Old daemons do not send `rank` (during graceful handoff the CLI and daemon can be
+// different versions); when it is missing we fall back to a neutral value - sorting
+// degrades to "config order" and versions never fight. Stripped bindings do not sink
+// here: admission asks Available first, and a stripped one never becomes a candidate.
 func (d *Doc) Rank() func(provider, model string) int {
 	const neutral = 1_000_000
 	scores := map[string]int{}

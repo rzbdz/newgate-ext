@@ -9,8 +9,8 @@ import (
 	"github.com/rzbdz/newgate-ext/modules/config/store"
 )
 
-// 锁住「status 里每个客户端都列出来」：默认跟随的也要出现，单独定过的要标明。
-// 上一版只有 config 的一行、且只在覆盖值与缺省不同时才展开一个 agent。
+// Pin "every client is listed in status": followers appear too, set-apart ones marked.
+// The previous version had only config's line and expanded an agent only on difference.
 func TestStatusBlockListsEveryAgentAndSource(t *testing.T) {
 	t.Setenv("NEWGATE_HOME", t.TempDir())
 	if err := paths.EnsureDirs(); err != nil {

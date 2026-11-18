@@ -14,21 +14,21 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// 指纹的落盘缓存。
+// The fingerprint on-disk cache.
 //
-// # 为什么存在
+// # Why it exists
 //
-// 不是省 token（verify 是显式动作，每次都要真打），而是**界面上的那一格**：
-// 用户打开模型下拉时要立刻看到「上一次验到的是谁」。把结论放在内存里，进程一
-// 重启就没了——而 daemon 是长命的、CLI 是短命的，写一次命令再打开网页是最常见
-// 的顺序。
+// Not to save tokens (verify is explicit, every run really calls), but **the cell in the
+// UI**: when the model dropdown opens the user must see "who was verified last time" right
+// away. Keep the conclusion in memory and a restart loses it - and the daemon is long-lived
+// while the CLI is short-lived, so "run a command, then open the web page" is the usual order.
 //
-// # 为什么每次读写都回盘
+// # Why every read and write goes back to disk
 //
-// 同一个文件有两个写者：网页所在的 daemon，和用户可能在终端里敲的 `newgate
-// verify`（每条命令都是一个新进程）。若把文件读进内存就不再回看，终端里刚验过
-// 的那一条在网页上永远不出现——而两份都是我们对同一件事的说法。文件只有几十
-// KB，每次读一遍是这里最便宜的正确性。
+// One file, two writers: the daemon behind the web page, and a `newgate verify` the user may
+// type in a terminal (every command is a new process). Read the file into memory once and
+// never re-check, and what the terminal just verified never shows on the page - yet both are
+// our statements about the same thing. The file is tens of KB; re-reading is cheap correctness.
 
 const cacheVersion = 1
 
@@ -46,25 +46,25 @@ func newCacheStore() *cacheStore {
 	return &cacheStore{path: filepath.Join(paths.Root(), "fingerprints", "cache.json")}
 }
 
-// dataPath 是 lm-detector 参考库的缓存位置。放在 newgate 的配置根下而不是
-// 用户自己的 `~/.cache/lmfpd`：这一份数据是**这个产品**的运行时文件，与
-// providers.json 一样该在一处能找到；换 NEWGATE_HOME 时整套东西跟着走。
+// dataPath is where the lm-detector reference bank is cached. Under newgate's config root
+// rather than the user's `~/.cache/lmfpd`: this data is **this product's** runtime file and
+// should be found in one place like providers.json; change NEWGATE_HOME and it moves along.
 func (c *cacheStore) dataPath() string {
 	return filepath.Join(filepath.Dir(c.path), "data.bin")
 }
 
-// dataReady 报告参考库缓存文件在不在。它只解释「第一次验证要不要下载」；
-// 能不能真的读进来由 detector 那一步回答。
+// dataReady reports whether the bank cache file exists. It only explains "does the first
+// verify download"; whether it can really be read is the detector step's answer.
 func (c *cacheStore) dataReady() bool {
 	_, err := os.Stat(c.dataPath())
 	return err == nil
 }
 
-// dataCheckedAt 是参考库缓存最后一次被下载/检查的时间。
+// dataCheckedAt is when the bank cache was last downloaded/checked.
 //
-// 它是**缓存文件的 mtime**：bundle 没变时只 touch 这个文件（表示「我看过了」），
-// 变了才重写。所以它同时回答「尺子有多旧」与「上次联网检查是什么时候」，正是
-// 界面要显示的那句话。
+// It is **the cache file's mtime**: when the bundle is unchanged only the file is touched
+// ("I looked"), and it is rewritten only when it changed. So it answers both "how old is the
+// ruler" and "when was the last online check" - exactly the sentence the UI shows.
 func (c *cacheStore) dataCheckedAt() (time.Time, bool) {
 	info, err := os.Stat(c.dataPath())
 	if err != nil {
@@ -73,10 +73,10 @@ func (c *cacheStore) dataCheckedAt() (time.Time, bool) {
 	return info.ModTime(), true
 }
 
-// dataVersion 是缓存里 detector 的 sha256（bundle 自己声明的版本号）。
+// dataVersion is the detector's sha256 in the cache (the version the bundle declares).
 //
-// 只读缓存开头那一段 bundle.json，不把 4.5 MB 的 detector 整个读进来：
-// 检查「有没有新版」时，这个值要和远端 bundle 的 sha 比。
+// It reads only the bundle.json at the head of the cache, not the whole 4.5 MB detector:
+// when checking "is there a new version" this is compared with the remote bundle's sha.
 func (c *cacheStore) dataVersion() string {
 	f, err := os.Open(c.dataPath())
 	if err != nil {
@@ -102,7 +102,7 @@ func (c *cacheStore) dataVersion() string {
 	return b.Files[referenceDetectorFile].SHA256
 }
 
-// touchData 把「刚检查过」记在缓存文件的 mtime 上，内容不动。
+// touchData records "just checked" on the cache file's mtime without touching the content.
 func (c *cacheStore) touchData() {
 	now := time.Now()
 	_ = os.Chtimes(c.dataPath(), now, now)
@@ -129,7 +129,7 @@ func (c *cacheStore) read() (map[string]Entry, error) {
 	return out, nil
 }
 
-// list 按 provider/model 排序返回全部结论。
+// list returns all conclusions sorted by provider/model.
 func (c *cacheStore) list() ([]Entry, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -160,12 +160,12 @@ func (c *cacheStore) get(provider, model string) (Entry, bool, error) {
 	return e, ok, nil
 }
 
-// put 合并一条结论并落盘。
+// put merges one conclusion and saves it.
 //
-// 合并而不是覆盖整张表：验证是并发的（CLI 一次验好几个、网页上每行一个按钮），
-// 后完成的那个不该把先完成的抹掉。锁只在进程内有效；跨进程的合并靠「写之前
-// 重新读一遍」——两个进程同时写仍有一次丢失的窗口，而这条缓存丢一格的代价是
-// 「下次再看它时再验一次」，不是数据损坏。
+// Merge, do not replace the table: verification is concurrent (the CLI verifies several at
+// once, the page has a button per row), so a later finish must not erase an earlier one.
+// The lock only covers this process; cross-process merging re-reads before writing - two
+// processes at once still have a loss window, and losing a cell just means verifying again.
 func (c *cacheStore) put(e Entry) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -185,8 +185,8 @@ func (c *cacheStore) put(e Entry) error {
 	if err := os.MkdirAll(dir, 0o2770); err != nil {
 		return i18n.Ef(err, "create {dir}: {err}", i18n.A{"dir": dir, "err": err})
 	}
-	// 临时文件名带随机段：两个进程同时写时不能撞在同一个 inode 上（与内核
-	// store.writeFileAtomic 同一条理由）。
+	// The temp file name carries a random part: two processes writing at once must not share
+	// one inode (same reason as the kernel's store.writeFileAtomic).
 	tmp, err := os.CreateTemp(dir, ".cache-*.tmp")
 	if err != nil {
 		return i18n.Ef(err, "create a temporary file in {dir}: {err}", i18n.A{"dir": dir, "err": err})

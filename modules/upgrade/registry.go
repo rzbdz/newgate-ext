@@ -9,8 +9,8 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// actionID 限定 ID 的字符集：它既是命令的定位参数，也会出现在输出里；放空格
-// 和斜杠进去等于让「登记的名字」与「能敲的名字」可以不一致。
+// actionID restricts the ID charset: it is both the command's positional arg and appears in
+// output; allowing spaces and slashes would let "the registered name" and "the typed name" differ.
 var actionID = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 
 type entry struct {
@@ -49,7 +49,7 @@ func (r *registry) Register(a Action) (modules.Release, error) {
 	return func() error {
 		r.mu.Lock()
 		defer r.mu.Unlock()
-		// 按序号认人，不按 ID：撤销晚到的那一条时，不能把后来者顶上去的那一条删掉。
+		// Identify by ordinal, not by ID: when the late undo arrives, do not delete the later one.
 		if cur, ok := r.entries[a.ID]; ok && cur.seq == e.seq {
 			delete(r.entries, a.ID)
 		}
@@ -57,7 +57,7 @@ func (r *registry) Register(a Action) (modules.Release, error) {
 	}, nil
 }
 
-// Actions 返回登记过的动作，按 ID 排序（输出稳定，两次运行同一份装配不会换序）。
+// Actions returns the registered actions sorted by ID (stable output; two runs do not reorder).
 func (r *registry) Actions() []Action {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

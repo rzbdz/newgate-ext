@@ -9,31 +9,34 @@ import (
 	modules "github.com/rzbdz/newgate/component"
 )
 
-// ShapeDetector 判断「这次 4xx 是不是**请求形状**问题」。
+// ShapeDetector decides "is this 4xx a **request shape** problem".
 //
-// 为什么把判据交出去（2026-09-17）：形状错误的定义完全属于**上游自己**。
-// 「同一份 body 换哪个 provider 都一样错」这个性质，只有那个上游知道它的
-// 校验规则才能判定——`must be passed back` 那两句文案是 DeepSeek 的方言，
-// 硬编码在健康表里等于让 core 替上游背一条它不该知道的字符串。而且这条判据
-// 是个**行权点**：认出来就不摘牌，认错了要么误摘（伤用户）要么放过（伤观测）。
-// 它必须和知道真相的那个模块放在一起、由那个模块自己测试。
+// Why the test is handed out (2026-09-17): the definition of a shape error belongs
+// entirely to **the upstream itself**. The property "the same body is equally wrong
+// whichever provider gets it" can only be judged by that upstream knowing its validation
+// rules -- the two `must be passed back` sentences are DeepSeek's dialect, and hardcoding
+// them in the health table would make core carry a string it should not know. And this
+// test is a **decision point**: recognizing it means not delisting, and getting it wrong
+// either delists by mistake (hurting users) or lets it through (hurting observability).
+// It must live with the module that knows the truth and be tested by that module.
 //
-// core 只提供端口和策略（BucketShape：永不摘牌、只计数）。
+// core only offers the port and the policy (BucketShape: never delist, count only).
 //
-// Match 必须是**纯函数**且不 panic：它在每次 4xx 上都会被调用，fail-open 的
-// 兜底在 registry 那层做（见 shapeRegistry.match）。
+// Match must be a **pure function** and must not panic: it is called on every 4xx,
+// and the fail-open backstop is done at the registry layer (see shapeRegistry.match).
 type ShapeDetector interface {
-	// Name 进日志与指标，用来回答「是哪条规则认出来的」。
+	// Name goes into logs and metrics, to answer "which rule recognized it".
 	Name() string
-	// Match 判断这个响应是不是该上游的请求形状错误。
+	// Match decides whether this response is that upstream's request-shape error.
 	Match(status int, body []byte) bool
 }
 
-// shapeRegistry 持有注册进来的形状检测器。
+// shapeRegistry holds the registered shape detectors.
 //
-// 为什么放在 table 里而不是包级变量：健康表在测试里可以起很多份，包级注册表
-// 会让它们互相污染（谁先注册谁生效，测试顺序影响结果）。这里跟着实例走，
-// 注册和注销都只影响自己那一份。
+// Why it lives in table rather than a package-level variable: the health table can
+// be created many times in tests, and a package-level registry would let them pollute
+// each other (whoever registers first wins, and test order affects results). This one
+// follows the instance, so registering and unregistering affect only its own copy.
 type shapeRegistry struct {
 	mu        sync.RWMutex
 	detectors []ShapeDetector
@@ -41,7 +44,8 @@ type shapeRegistry struct {
 	next      uint64
 }
 
-// errShapeDetector 是注册期的两类拒绝。做成变量是为了让测试能 errors.Is。
+// errShapeDetector covers the two kinds of registration-time
+// rejection. Made variables so tests can use errors.Is.
 var (
 	errShapeDetectorName   = errors.New("breaker: shape detector needs a Name()")
 	errShapeDetectorDupFmt = "breaker: duplicate shape detector %s"
@@ -51,10 +55,10 @@ func errShapeDetectorDuplicate(name string) error {
 	return fmt.Errorf(errShapeDetectorDupFmt, name)
 }
 
-// Register 加入一个检测器，返回只属于本次注册的撤销句柄。
+// Register adds a detector and returns a release handle belonging to this registration only.
 //
-// 同名重复注册直接报错：两个都叫 deepseek 的检测器同时生效，日志和指标就
-// 分不清是谁认出来的了。
+// Registering a duplicate name errors outright: with two detectors both called
+// deepseek active, logs and metrics could no longer tell who recognized it.
 func (r *shapeRegistry) Register(d ShapeDetector) (modules.Release, error) {
 	if d == nil || d.Name() == "" {
 		return nil, errShapeDetectorName
@@ -71,10 +75,11 @@ func (r *shapeRegistry) Register(d ShapeDetector) (modules.Release, error) {
 	}
 	r.next++
 	token := r.next
-	// tokens 这张表**不是**为了容忍重复注册（那已经在上面被拒了），而是为了让
-	// **陈旧 Release 无害**：注销之后再注册同一个键会拿到新 token，那个旧
-	// Release 一旦晚到就会把新注册删掉。比对 token 拦的正是这一种。
-	// （看代码时容易以为这条分支不可达——那是漏掉了「注销 → 再注册」。）
+	// The tokens table is **not** for tolerating duplicate registration (that is already
+	// rejected above), but to make a **stale Release harmless**: registering the same
+	// key again after an unregister gets a new token, and that old Release arriving late
+	// would delete the new registration. Comparing tokens blocks exactly that. (It is easy
+	// to read this branch as unreachable -- that misses "unregister -> register again".)
 	r.tokens[d.Name()] = token
 	r.detectors = append(append([]ShapeDetector(nil), r.detectors...), d)
 	return func() error {
@@ -94,15 +99,16 @@ func (r *shapeRegistry) Register(d ShapeDetector) (modules.Release, error) {
 	}, nil
 }
 
-// match 问一遍所有检测器：任一个认领就是形状错误，返回认领者的名字。
+// match asks all detectors: if any claims it, it is
+// a shape error, and the claimer's name is returned.
 //
-// 返回名字是为了让日志说得清「是哪条规则认出来的」——形状检测器是多家上游
-// 各自的判据，一条只说「命中了形状错误」的日志在有两家上游同时报 400 时毫
-// 无用处。
+// The name is returned so the log can say "which rule recognized it" -- shape
+// detectors are each upstream's own test, and a log line that only says "a shape
+// error was hit" is useless when two upstreams report 400 at the same time.
 //
-// 每个检测器单独 recover：注册进来的是别人的代码，一个坏检测器不该让整条
-// 记账路径跟着崩（fail-open 的同一原则——宁可少认一次形状错误，也不能因为
-// 一个补丁把代理弄挂）。
+// Each detector is recovered separately: what is registered is someone else's code, and
+// one bad detector must not crash the whole recording path (the same fail-open principle
+// -- better to miss one shape error than to take the proxy down over one patch).
 func (r *shapeRegistry) match(status int, body []byte) (string, bool) {
 	r.mu.RLock()
 	detectors := r.detectors
@@ -115,7 +121,7 @@ func (r *shapeRegistry) match(status int, body []byte) (string, bool) {
 	return "", false
 }
 
-// names 返回当前生效的检测器名（已排序，便于日志与测试断言）。
+// names returns the names of the currently active detectors (sorted, for logs and test assertions).
 func (r *shapeRegistry) names() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -127,8 +133,8 @@ func (r *shapeRegistry) names() []string {
 	return out
 }
 
-// shapeMatch 是 recover 包一层。单独的顶层函数是为了让 defer 的恢复范围
-// 精确到「这一次调用」，而不是把 match 的整个循环包进去。
+// shapeMatch wraps a recover layer. It is a separate top-level function so the defer's
+// recovery range is exactly "this one call", rather than wrapping match's whole loop.
 func shapeMatch(d ShapeDetector, status int, body []byte) (matched bool) {
 	defer func() {
 		if recover() != nil {
@@ -138,23 +144,25 @@ func shapeMatch(d ShapeDetector, status int, body []byte) (matched bool) {
 	return d.Match(status, body)
 }
 
-// shapeOf 问一句「这次失败是不是请求形状问题」，并说是哪条判据认的。
+// shapeOf asks "is this failure a request-shape problem", and which test recognized it.
 //
-// **没有注册任何检测器时恒为 („", false)**：那意味着 400 一律不记在任何人
-// 头上（见 Classify：非形状 400 的 Bucket 是 BucketNone）。这是安全的方向
-// ——少认一次形状错误只是少一个计数，误认一次会让真正的可用性故障被放过。
+// **With no detector registered it is always ("", false)**: that means
+// 400 is never charged to anyone (see Classify: the Bucket of a non-shape 400
+// is BucketNone). That is the safe direction -- missing one shape error is one
+// count less, while a false positive lets a real availability failure through.
 func (b *table) shapeOf(status int, body []byte) (string, bool) {
 	return b.shapes.match(status, body)
 }
 
-// ShapeDetectors 列出当前生效的形状检测器名，供诊断与日志。
+// ShapeDetectors lists the currently active shape detector names, for diagnostics and logs.
 func (b *table) ShapeDetectors() []string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.shapes.names()
 }
 
-// RegisterShapeDetector 是端口实现：把判据交给知道那家校验规则的模块。
+// RegisterShapeDetector is the port implementation: hand the
+// test to the module that knows that provider's validation rules.
 func (b *table) RegisterShapeDetector(d ShapeDetector) (modules.Release, error) {
 	return b.shapes.Register(d)
 }

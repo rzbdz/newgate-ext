@@ -1,12 +1,14 @@
-// Package style 是三个前端壳共用的**排版原语**：颜色、对齐、分区、表格。
+// Package style is the **layout primitives** shared by the
+// three frontend shells: color, alignment, sections, tables.
 //
-// 为什么值得单独一层：CLI 的输出是「详略得当」这件事的唯一载体——用户看
-// 一眼要能拿到结论，出问题时才展开细节。以前每个命令各写各的
-// fmt.Printf("%-22s ...")，宽窄不一、中英混排错位（Go 的 %-22s 按**字节**
-// 补空格，中文一个字 3 字节、显示却占 2 列，整张表都会歪）、颜色写死在
-// 字符串里。统一到这里之后，「长什么样」只有一处定义。
+// Why it deserves its own layer: CLI output is the only vehicle for "detail
+// in proportion" -- the user must get the conclusion at a glance and see details only
+// when something goes wrong. Each command used to write its own `fmt.Printf("%-22s ...")`,
+// with uneven widths and mixed Chinese/English misaligned (Go's %-22s pads by **bytes**,
+// a Chinese character is 3 bytes but 2 display columns, and the whole table skews), and
+// colors hardcoded in strings. Once unified here, "what it looks like" has one definition.
 //
-// 只管排版，不含任何业务判断——三个壳（CLI / TUI / Web）都可以依赖它。
+// Layout only, no business judgment -- all three shells (CLI / TUI / Web) can depend on it.
 package style
 
 import (
@@ -16,9 +18,9 @@ import (
 	"unicode/utf8"
 )
 
-// ---------- 颜色 ----------
+// ---------- Color ----------
 
-// 语义色，别在调用点写裸 ANSI。
+// Semantic colors; do not write raw ANSI at call sites.
 const (
 	cReset  = "\033[0m"
 	cBold   = "\033[1m"
@@ -30,16 +32,16 @@ const (
 	cCyan   = "\033[36m"
 )
 
-// colorEnabled 输出到终端时才上色。
+// colorEnabled colors only when output goes to a terminal.
 //
-// 判据三条，优先级从高到低：
+// Three tests, highest priority first:
 //
-//	NEWGATE_COLOR=always|never   显式说了算（写测试、录屏用）
-//	NO_COLOR 非空                用户/生态的通用约定
-//	stdout 是字符设备            重定向到文件或管道时自动褪色
+//	NEWGATE_COLOR=always|never   explicit decision (for tests, screen recordings)
+//	NO_COLOR non-empty            the user/ecosystem common convention
+//	stdout is a character device  strip color automatically when redirected to a file or pipe
 //
-// 第三条是最要紧的：`newgate status > 报告.txt` 以前会把一堆 \033[1m 写进
-// 文件里，用户复制出来的东西是坏的。
+// The third is the most important: `newgate status > report.txt` used to write
+// a pile of \033[1m into the file, and what the user copied out was broken.
 var colorEnabled = func() bool {
 	switch os.Getenv("NEWGATE_COLOR") {
 	case "always", "1":
@@ -64,8 +66,9 @@ func paint(code, s string) string {
 	return code + s + cReset
 }
 
-// TTY stdout 是不是终端。分页、进度条这类「只有交互时才该发生」的行为
-// 都拿它当判据——重定向到文件时必须退化成老实打印。
+// TTY reports whether stdout is a terminal. Behaviors that "should only
+// happen when interactive", like paging and progress bars, use it as the
+// test -- they must degrade to plain printing when redirected to a file.
 func TTY() bool {
 	fi, err := os.Stdout.Stat()
 	return err == nil && fi.Mode()&os.ModeCharDevice != 0
@@ -78,14 +81,14 @@ func Green(s string) string  { return paint(cGreen, s) }
 func Yellow(s string) string { return paint(cYellow, s) }
 func Cyan(s string) string   { return paint(cCyan, s) }
 
-// ---------- 符号 ----------
+// ---------- Symbols ----------
 
-// 四种状态标记。整份 CLI 只认这四个，别再造第五个。
+// Four status marks. The whole CLI recognizes only these four; do not invent a fifth.
 //
-//	OK   做到了 / 查过没问题
-//	Bad  出错了 / 不可用
-//	Skip 有意跳过（不是错，也不是成功）
-//	Warn 能用但不对劲
+//	OK   done / checked and fine
+//	Bad  failed / unavailable
+//	Skip deliberately skipped (not an error, not a success)
+//	Warn works but not right
 const (
 	OK   = "✓"
 	Bad  = "✗"
@@ -93,7 +96,7 @@ const (
 	Warn = "⚠"
 )
 
-// Mark 给标记上色，调用点只管传常量。
+// Mark colors a mark; call sites only pass constants.
 func Mark(m string) string {
 	switch m {
 	case OK:
@@ -106,12 +109,12 @@ func Mark(m string) string {
 	return Dim(m)
 }
 
-// ---------- 显示宽度 ----------
+// ---------- Display width ----------
 
-// Width 字符串在终端里占几列。
+// Width is how many columns a string occupies in the terminal.
 //
-// 不能用 len() 也不能用 utf8.RuneCountInString：中文/日文/emoji 是**双宽**
-// 字符。表格对齐全靠它。
+// Neither len() nor utf8.RuneCountInString will do: Chinese/Japanese/emoji
+// are **double width** characters. Table alignment relies entirely on this.
 func Width(s string) int {
 	w := 0
 	for _, r := range s {
@@ -120,8 +123,8 @@ func Width(s string) int {
 	return w
 }
 
-// runeWidth 单字符宽度。基于 Unicode East Asian Width 的实用子集——
-// 覆盖我们真的会打出来的东西（CJK、全角标点、常用 emoji），不做全表。
+// runeWidth is the width of one character. A practical subset of Unicode East Asian / Width --
+// covering what we really print (CJK, full-width punctuation, common emoji), not the whole table.
 func runeWidth(r rune) int {
 	switch {
 	case r == 0:
@@ -150,7 +153,8 @@ func runeWidth(r rune) int {
 	return 1
 }
 
-// stripANSI 去掉 SGR 序列——量宽度前必须先剥，否则颜色码会被算成字符。
+// stripANSI removes SGR sequences -- they must be stripped before
+// measuring width, otherwise color codes count as characters.
 func stripANSI(s string) string {
 	if !strings.Contains(s, "\033") {
 		return s
@@ -171,17 +175,18 @@ func stripANSI(s string) string {
 	return b.String()
 }
 
-// VisibleWidth 剥掉颜色后的显示宽度。
+// VisibleWidth is the display width after stripping color.
 func VisibleWidth(s string) int { return Width(stripANSI(s)) }
 
-// widestRun 取一段文本里最长的**不可断片段**的显示宽度。
+// widestRun is the display width of the longest **unbreakable run** in a piece of text.
 //
-// 断点判据：空白与宽字符（CJK）都天然可断——中文按字折行是对的；而一段连续的
-// 窄字符（`special.claude-bg.route_light`、`ANTHROPIC_BASE_URL`）是一个**整体**，
-// 从中间折断得到的是**两个不存在的名字**：既 grep 不到，也拷不走。
+// Break tests: whitespace and wide characters (CJK) are naturally
+// breakable -- breaking Chinese per character is right; but a run of narrow characters
+// (`special.claude-bg.route_light`, `ANTHROPIC_BASE_URL`) is **one whole**, and breaking
+// it in the middle yields **two names that do not exist**: neither greppable nor copyable.
 //
-// 表格收窄时拿它当列的下限（见 Table.String）：散文按词折行没问题（词短），
-// 标识符不能被折。
+// When narrowing a table it is the column's lower bound (see Table.String):
+// prose wraps by word fine (words are short), identifiers must not be broken.
 func widestRun(s string) int {
 	best, cur := 0, 0
 	flush := func() {
@@ -205,7 +210,7 @@ func widestRun(s string) int {
 	return best
 }
 
-// Pad 把 s 补齐到 w 列（超出则原样返回，绝不截断内容）。
+// Pad pads s to w columns (returns it unchanged if wider; never truncates content).
 func Pad(s string, w int) string {
 	if n := w - VisibleWidth(s); n > 0 {
 		return s + strings.Repeat(" ", n)
@@ -213,7 +218,7 @@ func Pad(s string, w int) string {
 	return s
 }
 
-// PadLeft 右对齐补齐。
+// PadLeft pads right-aligned.
 func PadLeft(s string, w int) string {
 	if n := w - VisibleWidth(s); n > 0 {
 		return strings.Repeat(" ", n) + s
@@ -221,7 +226,8 @@ func PadLeft(s string, w int) string {
 	return s
 }
 
-// Truncate 按显示宽度截断并加省略号。表格里给"可能很长"的列用。
+// Truncate truncates by display width and adds an
+// ellipsis. For columns in a table that "may be very long".
 func Truncate(s string, w int) string {
 	if VisibleWidth(s) <= w {
 		return s
@@ -260,8 +266,9 @@ func Truncate(s string, w int) string {
 	return out.String()
 }
 
-// Wrap 按终端显示宽度硬换行，不丢字符。ANSI SGR 序列不计宽度；跨行时
-// 临时 reset，再在下一行恢复颜色，避免颜色污染缩进或后续输出。
+// Wrap hard-wraps by terminal display width without losing characters. ANSI SGR sequences
+// do not count toward width; across a line break it resets temporarily and restores
+// the color on the next line, so color does not pollute the indent or later output.
 func Wrap(s string, w int) []string {
 	if w <= 0 {
 		return []string{s}
@@ -321,7 +328,7 @@ func Wrap(s string, w int) []string {
 	return lines
 }
 
-// WrapLine 把一条自由文本限制到 75 列，续行使用指定缩进。
+// WrapLine limits free text to 75 columns, with continuation lines using the given indent.
 func WrapLine(s, continuation string) string {
 	lines := Wrap(s, MaxColumns)
 	if len(lines) <= 1 {
@@ -338,29 +345,30 @@ func WrapLine(s, continuation string) string {
 	return strings.Join(out, "\n")
 }
 
-// ---------- 结构 ----------
+// ---------- Structure ----------
 
-// MaxColumns 是 CLI 版面的硬上限。75 列能在常见的窄终端、分屏和 WSL
-// 窗口里留一列余量，避免第 76 列触发自动折行把表格撕开。
+// MaxColumns is the hard limit of the CLI layout. 75 columns leaves one
+// column of slack in common narrow terminals, split panes, and WSL windows,
+// so column 76 does not trigger automatic wrapping that tears the table apart.
 const MaxColumns = 75
 
-// 版式约定（全 CLI 统一，别在调用点发明新写法）：
+// Layout conventions (uniform across the CLI; do not invent new forms at call sites):
 //
-//	Title      一行页头，后面跟一条 Rule 收口
-//	Section    段标题，段内用 Table / Field / Item
-//	Field      定义式一行：固定宽度标签 + 值（左对齐，值里可带颜色与次要信息）
-//	Item       一条结论，前面一个状态标记
-//	Bullet     从属于上一条的明细
-//	Hint       次要说明，默认暗色 —— 扫读时自动跳过
+//	Title      one-line page header, closed by a Rule after it
+//	Section    section heading; use Table / Field / Item inside
+//	Field      definition line: fixed-width label + value (left-aligned, value may carry color)
+//	Item       one conclusion, preceded by a status mark
+//	Bullet     detail belonging to the item above
+//	Hint       secondary note, dim by default -- skipped automatically when scanning
 //
-// 语气也是版式的一部分：一律**陈述句、无主语、带单位、不加语气词**。
-// 「别担心」「其实」「我们」这类词不出现；解释性的长句一律进 Hint 或
-// 只在出错时展开的 details 里。
+// Tone is part of the layout too: always **declarative, subjectless, with units,
+// no filler words**. Words like "don't worry", "actually", "we" do not appear; long
+// explanatory sentences all go into Hint or into details that only expand on error.
 
 const labelW = 8
 
-// Title 页面头：左标题 + 右侧次要信息。右侧为空/未知时不占版面——
-// `unknown` 这种字对用户没有任何用。
+// Title is the page header: title on the left + secondary info on the right. When the right
+// side is empty/unknown it takes no room -- a word like `unknown` is of no use to the user.
 func Title(left, right string) string {
 	if right == "" || right == "unknown" {
 		return WrapLine(Bold(left), "  ")
@@ -368,7 +376,8 @@ func Title(left, right string) string {
 	return WrapLine(Bold(left)+"  "+Dim(right), "  ")
 }
 
-// Rule 页头下的暗色分隔线。只用在这里——正文里再画线会和表格打架。
+// Rule is the dim separator under the page header. Only used
+// here -- drawing lines in the body would fight the tables.
 func Rule(w int) string {
 	if w > MaxColumns {
 		w = MaxColumns
@@ -376,34 +385,36 @@ func Rule(w int) string {
 	return Dim(strings.Repeat("─", w))
 }
 
-// Section 段标题（含前导空行），调用点直接 Println。
+// Section is a section heading (with a leading blank line); call sites Println it directly.
 func Section(name string) string {
 	return "\n" + WrapLine(Bold(name), "  ")
 }
 
-// Field 一行「标签 + 值」：标签固定列宽，值可以带颜色。
+// Field is a line of "label + value": the label has
+// a fixed column width, the value may carry color.
 //
-//	Field("代理", "● 运行中   pid 364367")  →
-//	  代理  ● 运行中   pid 364367
+//	Field("proxy", "● running   pid 364367")  ->
+//	  proxy  ● running   pid 364367
 //
-// 标签补到 labelW 之后**总是**再跟一个空格：标签本身就占满 labelW 时
-// （中文双宽很容易占满），没有这格空格值会紧贴着标签。
+// After padding the label to labelW a space **always** follows: when the label already fills labelW
+// (easy with double-width Chinese), without this space the value would sit flush against the label.
 func Field(label, value string) string {
 	return wrapPrefixed("  "+Dim(Pad(label, labelW))+" ", value)
 }
 
-// Item 缩进一层的一条明细，标记单独上色。
+// Item is one indented level of detail, with the mark colored separately.
 func Item(mark, text string) string {
 	return wrapPrefixed("  "+Mark(mark)+" ", text)
 }
 
-// Bullet 无标记的明细行。
+// Bullet is a detail line without a mark.
 func Bullet(text string) string {
 	return wrapPrefixed("    ", text)
 }
 
-// Hint 次要说明。整份 CLI 里所有「不是结论的话」都应该走这里——
-// 它们默认是暗的，扫读时自动跳过。一句话为限，不要写成段落。
+// Hint is a secondary note. Every "not a conclusion" sentence in the CLI
+// should go here -- they are dim by default and skipped automatically
+// when scanning. One sentence at most; do not write paragraphs.
 func Hint(text string) string {
 	return wrapPrefixed("    ", Dim(text))
 }
@@ -422,7 +433,7 @@ func wrapPrefixed(prefix, text string) string {
 	return strings.Join(lines, "\n")
 }
 
-// ---------- 表格 ----------
+// ---------- Tables ----------
 
 type align int
 
@@ -431,11 +442,12 @@ const (
 	Right
 )
 
-// Table 定宽列。列宽按**显示宽度**算（中文双宽），调用点不写格式串。
+// Table is fixed-width columns. Column widths are computed by **display
+// width** (double width for Chinese), and call sites write no format strings.
 //
-// 用法：
+// Usage:
 //
-//	t := style.NewTable("档位", "模型")
+//	t := style.NewTable("tier", "model")
 //	t.AlignRight(0)
 //	t.Row("heavy", "smt-deepseek/deepseek-flash")
 //	fmt.Print(t.String())
@@ -452,7 +464,7 @@ func NewTable(headers ...string) *Table {
 	return t
 }
 
-// AlignRight 第 i 列右对齐（数字列用）。
+// AlignRight right-aligns column i (for numeric columns).
 func (t *Table) AlignRight(i int) *Table {
 	if i >= 0 && i < len(t.aligns) {
 		t.aligns[i] = Right
@@ -460,7 +472,7 @@ func (t *Table) AlignRight(i int) *Table {
 	return t
 }
 
-// Indent 整表左缩进（默认两格）。
+// Indent indents the whole table (two spaces by default).
 func (t *Table) Indent(s string) *Table { t.indent = s; return t }
 
 func (t *Table) Row(cells ...string) *Table {
@@ -470,8 +482,9 @@ func (t *Table) Row(cells ...string) *Table {
 
 func (t *Table) Len() int { return len(t.rows) }
 
-// String 渲染。列宽 = 该列最宽的一格（表头也参与），列间两空格，
-// 行尾不留空格——重定向到文件时不会有恼人的 trailing space。
+// String renders it. Column width = the widest cell in that column (the
+// header counts too), two spaces between columns, and no trailing space at
+// line end -- so redirecting to a file does not leave annoying trailing space.
 func (t *Table) String() string {
 	n := len(t.headers)
 	for _, r := range t.rows {
@@ -498,14 +511,16 @@ func (t *Table) String() string {
 	for _, r := range t.rows {
 		measure(r)
 	}
-	// 表格总宽不得超过 75 列。优先收缩最宽的列，但**不缩到这一列最长的
-	// 不可断片段以下**（每列至少 4 列）：散文按词折行没问题，机器标识符折断
-	// 出来的是**两个不存在的名字**——既 grep 不到，也拷不走。
+	// The table's total width must not exceed 75 columns. Narrow the widest column
+	// first, but **never below this column's longest unbreakable run** (at least 4
+	// columns per column): prose wraps by word fine, but breaking a machine identifier
+	// yields **two names that do not exist** -- neither greppable nor copyable.
 	//
-	// 2026-09-20 加这条下限：英文表头（`description` 比「说明」宽一倍）把中文
-	// 时代那点余量吃掉之后，`newgate metrics` 里的
-	// `special.claude-bg.route_light` 真的被折成了两行（发行版的 e2e 抓到的）。
-	// 那之前"优先收最宽的列"看着很公平，只是它不认识「这一列折不得」。
+	// This floor was added on 2026-09-20: after English headers (`description`
+	// is twice as wide as the Chinese label) ate up the slack from the Chinese era,
+	// `special.claude-bg.route_light` in `newgate metrics` really was wrapped onto two
+	// lines (caught by the distribution's e2e). Before that, "narrow the widest column
+	// first" looked fair, except it did not know "this column cannot be wrapped".
 	available := MaxColumns - VisibleWidth(t.indent) - 2*(n-1)
 	if available < n {
 		available = n
@@ -517,10 +532,11 @@ func (t *Table) String() string {
 		}
 	}
 	//
-	// 两轮：先只收**有余量**的列（收不到不可断片段以下）——正常的表格里散文那一列
-	// 有的是余量，一轮就够；实在收不动了（整行都是长标识符）才回到老规则，宁可
-	// 折断一个名字也不能超宽：超过 75 列之后终端自己的自动折行会把表格撕开，
-	// 那比折断一个名字更难读。
+	// Two passes: first narrow only columns with **slack** (not below their unbreakable run)
+	// -- in a normal table the prose column has plenty of slack and one pass is enough; only
+	// when nothing can be narrowed (the whole row is long identifiers) fall back to the old
+	// rule, preferring to break one name over overflowing: past 75 columns the terminal's
+	// own wrapping tears the table apart, which is harder to read than one broken name.
 	for sum(widths) > available {
 		widest, room := -1, 0
 		for i, w := range widths {
@@ -595,10 +611,11 @@ func sum(ns []int) int {
 	return total
 }
 
-// Die 把一条错误按统一版式写到 stderr，并返回退出码。
+// Die writes an error to stderr in the uniform layout and returns the exit code.
 //
-// 放在这里（而不是每个模块自己写三行）的理由：每个模块都可能要从命令里报错，
-// 而「newgate: 前缀 + 换行缩进」是**界面版式**的一部分——各写一份必然漂移。
+// Why here (instead of three lines in every module): every module may
+// need to report an error from a command, and "newgate: prefix + newline
+// indent" is part of the **UI layout** -- written separately it will drift.
 func Die(code int, msg string) int {
 	fmt.Fprintln(os.Stderr, WrapLine("newgate: "+msg, "  "))
 	return code

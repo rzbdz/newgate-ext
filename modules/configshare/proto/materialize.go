@@ -12,18 +12,18 @@ import (
 	"github.com/rzbdz/newgate/lib/i18n"
 )
 
-// ValidateSnapshot 校验一份快照的形状。**任何一个文件不过就整体拒绝**。
+// ValidateSnapshot checks a snapshot's shape. **Any bad file rejects the whole thing**.
 //
-// # 为什么是"全有或全无"而不是"跳过坏的那个"
+// # Why all-or-nothing rather than skipping the bad one
 //
-// 因为 cfg.Load 对坏掉的 profile 文件是**跳过**（LoadProfile 逐个读，
-// 一个坏了不影响别的），不是整体失败。所以半套 materialize **不会报错**：
-// 它会安静地跑在新旧混合的配置上——一半档位是新宿主的、一半是旧的，而
-// 两边都"看起来正常"。这正是最难查的一类故障（路由到错的上游而不报错）。
+// Because cfg.Load **skips** broken profile files (LoadProfile reads each one; a broken
+// one does not affect the others). So a partial materialize **never errors**: it runs
+// silently on a mix of old and new - half the tiers from the new host, half from the
+// old, and both of them "look normal". That is the hardest fault class to trace.
 //
-// 返回的 warnings 是"能应用、但你应该知道"的事（悬空引用、没有密钥来源）。
-// 它们与拒绝的区别是：这些文件的**语法**没问题，daemon 加载得动，只是在
-// 语义上有疑点——语义问题不该让整队机器收不到配置更新（fail-open）。
+// The returned warnings are "applicable, but you should know" items (dangling refs, no
+// key source): syntax is fine and the daemon can load them, only semantics are doubtful.
+// Semantics must not starve the fleet of config updates (fail-open).
 func ValidateSnapshot(dir string, files map[string][]byte) (warnings []string, err error) {
 	providers := map[string]cfg.Provider{}
 	profiles := map[string]cfg.Profile{} // 档位名 → 解析后的 profile
@@ -44,14 +44,14 @@ func ValidateSnapshot(dir string, files map[string][]byte) (warnings []string, e
 				p.Providers = map[string]cfg.Provider{}
 			}
 			providers = p.Providers
-			// 内联密钥：**拒绝**。
+			// Inline key: **reject**.
 			//
-			// 判据是"字面量非空"，不是"有 api_key 字段"——`api_key_env` 和留空
-			// （密钥走密钥通道）都是正当的。为什么这件事值得拒绝整个快照：密钥
-			// 只能走密钥通道是这个设计的地基，而 providers.json 在宿主侧是 git
-			// 管的——内联一次就永久留在历史里。宿主上出现这种情况只有两种可能：
-			// 版本太旧、或者有人手改了。两种都该被拦下来，而不是让每台副本安静地
-			// 把明文密钥写进自己的 providers.json。
+			// The criterion is "non-empty literal", not "has an api_key field" - `api_key_env`
+			// and leaving it blank (keys come via the secrets channel) are both legitimate.
+			// Why reject the whole snapshot: keys only via the secrets channel is the basis
+			// of this design, and providers.json is git-managed on the host - inline once
+			// and it stays in history forever. On a host that means an old version or a
+			// hand edit; both must be stopped, not written in cleartext to every replica.
 			var inline []string
 			for name, prov := range p.Providers {
 				if strings.TrimSpace(prov.APIKey) != "" {
@@ -70,8 +70,8 @@ func ValidateSnapshot(dir string, files map[string][]byte) (warnings []string, e
 				return nil, i18n.Ef(err, "cannot parse {path}: {err}", i18n.A{"path": rel})
 			}
 		case strings.HasSuffix(rel, ".kv"):
-			// 用 daemon 自己那个解析器（cfg.ParseProfileKV），不是另写一个：
-			// 另写一个就成了第二份会漂的真相，"校验通过"也就没有意义了。
+			// Use the daemon's own parser (cfg.ParseProfileKV), not another: a second one
+			// would drift, and "validated" would then mean nothing.
 			if _, err := cfg.ParseProfileKV(string(data)); err != nil {
 				return nil, i18n.Ef(err, "cannot parse profile {path}: {err}", i18n.A{"path": rel})
 			}
@@ -92,16 +92,16 @@ func ValidateSnapshot(dir string, files map[string][]byte) (warnings []string, e
 	return warnings, nil
 }
 
-// semanticWarnings 是"语法没问题、但语义有疑点"的检查。
+// semanticWarnings checks "syntax fine, semantics doubtful".
 //
-// 全部是警告不是拒绝：一个 provider 名字打错不该让整个车队收不到配置更新。
-// 宿主侧的 publish 会**拒绝**这些（那时是发布者当场改，代价为零）；副本侧只报。
+// All warnings, never rejects: a mistyped provider name must not starve the fleet.
+// Host-side publish **rejects** these (fixed on the spot, free); replicas only report.
 func semanticWarnings(dir string, providers map[string]cfg.Provider, profiles map[string]cfg.Profile) []string {
 	var warns []string
 
-	// 档位名集合 = 快照里的 + 本机已有的（本地层）。
-	// 后者必须算进来：一个 profile `extends` 本机私有的一层是完全正当的用法，
-	// 不算进来的话每轮都会报一条假警告——假警告多了，真警告就没人看了。
+	// Tier names = snapshot's + locally present ones (the local layer).
+	// The latter count: a profile extending a machine-private tier is legitimate, and
+	// omitting them would emit a false warning every round - then nobody reads warnings.
 	known := map[string]bool{}
 	for name := range profiles {
 		known[name] = true
@@ -146,8 +146,8 @@ func semanticWarnings(dir string, providers map[string]cfg.Provider, profiles ma
 			i18n.A{"profiles": strings.Join(missingProvider[prov], ", "), "provider": prov}))
 	}
 
-	// 没有密钥来源的 provider：只提醒，不拒绝——密钥可能就在密钥通道里，
-	// 而这里看不到那一份（两通道独立）。
+	// Providers with no key source: remind only, never reject - the key may be in the
+	// secrets channel, which is not visible here (the two channels are independent).
 	for _, name := range sortedProviderNames(providers) {
 		prov := providers[name]
 		if strings.TrimSpace(prov.APIKey) == "" && strings.TrimSpace(prov.APIKeyEnv) == "" {
@@ -158,7 +158,7 @@ func semanticWarnings(dir string, providers map[string]cfg.Provider, profiles ma
 	return warns
 }
 
-// Result 是一次落盘的结果。
+// Result is the outcome of one write-to-disk.
 type Result struct {
 	Written   []string          // 真的改变了内容的文件
 	Unchanged []string          // 内容一致、刻意没碰的文件
@@ -166,28 +166,28 @@ type Result struct {
 	Manifest  map[string]string // 新的 applied 清单（相对路径 → sha256）
 }
 
-// Materialize 把一份**已校验**的快照落到配置目录。全有或全无。
+// Materialize writes a **validated** snapshot to the config dir. All or nothing.
 //
-// # 为什么是"写 + 删"而不是只写
+// # Why "write + delete", not only write
 //
-// 只写的话，宿主把 `prod` 改名成 `production` 之后，副本上那个 `prod` 会
-// **永远留着**：`@prod` 之类的引用继续解析得到东西，用户以为旧的已经下线了。
-// 托管集合的意义就是"这组文件由宿主说了算"，所以清单里我们写过、而新快照不再
-// 包含的文件要删掉。
+// Write-only leaves `prod` on replicas **forever** after the host renames it to
+// `production`: refs like `@prod` keep resolving, and users think it is retired.
+// The managed set means "the host decides this group of files", so files we wrote
+// that the new snapshot no longer contains must go.
 //
-// 界限也是明确的：**只删我们写过的**（applied 清单里的）。本地层的文件
-// （mappings/local.json 那种）永远不会被这个函数碰。
+// The boundary is explicit: **delete only what we wrote** (the applied list). Local
+// layer files (like mappings/local.json) are never touched by this function.
 //
-// # 两阶段提交
+// # Two-phase commit
 //
-// 先把所有要变的文件写成 `.tmp`，再逐个 rename。每个 rename 是原子的，而
-// 两个 rename 之间的窗口是微秒级——watcher 一秒轮询一次，撞上的概率可以忽略。
-// 一步写一个文件的话，中途失败就会留下半套（而那正是 ValidateSnapshot 的注释
-// 里说的、cfg.Load 会安静接受的那种状态）。
+// Write every changing file as `.tmp` first, then rename one by one. Each rename is
+// atomic and the window between two is microseconds - the watcher polls once a second,
+// so collisions are negligible. One file at a time would leave a half set on failure -
+// exactly the state ValidateSnapshot's comment says cfg.Load accepts quietly.
 //
-// 落盘全程走 os.Root：payload 来自网络，文件名不该有能力把写入引到配置目录
-// 之外（`../` 已经在 ManagedPath 里拦过一次，这里是第二道，而且它挡的还包括
-// 符号链接——os.Root 的解析不会跟随路径中间指向外部的链接）。
+// Writes go through os.Root throughout: the payload is from the network and names
+// must not escape the config dir (`../` was stopped in ManagedPath; this is the
+// second gate, and it also covers symlinks, which os.Root does not follow outward).
 func Materialize(dir string, files map[string][]byte, applied map[string]string) (Result, error) {
 	res := Result{Manifest: map[string]string{}}
 
@@ -197,13 +197,13 @@ func Materialize(dir string, files map[string][]byte, applied map[string]string)
 	}
 	defer root.Close()
 
-	// mappings/ 可能还不存在（全新机器、或从没写过档位的机器）。
+	// mappings/ may not exist yet (a fresh machine, or one that never wrote a tier).
 	//
-	// 传 0o770 而不是仓库别处那样写 0o2770：**os.Root.MkdirAll 会校验 mode 并
-	// 拒绝 0o2770**（"unsupported file mode"）。原因是它按 FileMode 的位定义
-	// 检查，而 setgid 在 Go 里是 os.ModeSetgid（1<<25），不是 0o2000——别处
-	// 的 os.MkdirAll(d, 0o2770) 实际上只是靠 syscallMode() 取了低 9 位，setgid
-	// 被静默丢掉。这里显式地只写权限位，免得读的人以为 setgid 生效了。
+	// Pass 0o770, not 0o2770 as elsewhere in the repo: **os.Root.MkdirAll validates
+	// mode and rejects 0o2770** ("unsupported file mode"). It checks FileMode bits,
+	// and setgid is os.ModeSetgid (1<<25) in Go, not 0o2000 - elsewhere
+	// os.MkdirAll(d, 0o2770) only takes the low 9 bits and drops setgid silently.
+	// Permission bits only here, so no reader thinks setgid took effect.
 	if err := root.MkdirAll(MappingsDir, 0o770); err != nil {
 		return res, err
 	}
@@ -211,15 +211,15 @@ func Materialize(dir string, files map[string][]byte, applied map[string]string)
 	type pending struct{ rel, tmp string }
 	var pend []pending
 
-	// ---- 阶段 1：准备。算出哪些真的变了，把它们的 .tmp 都写下来 ----
+	// ---- phase 1: prepare. Work out what really changed, write their .tmp files ----
 	for _, rel := range sortedKeys(files) {
 		data := files[rel]
 		sum := hashBytes(data)
 		res.Manifest[rel] = sum
 
 		if cur, err := root.ReadFile(rel); err == nil && hashBytes(cur) == sum {
-			// 内容一致就不写。这不是优化而是**语义**：不碰 mtime = watcher
-			// 的指纹不变 = 不会为一次空转触发全量 reload 和一行日志。
+			// Identical content is not written. Not an optimization but **semantics**:
+			// untouched mtime = same watcher fingerprint = no reload or log line for nothing.
 			res.Unchanged = append(res.Unchanged, rel)
 			continue
 		}
@@ -230,23 +230,23 @@ func Materialize(dir string, files map[string][]byte, applied map[string]string)
 		pend = append(pend, pending{rel: rel, tmp: tmp})
 	}
 
-	// ---- 阶段 2：提交。逐个 rename ----
+	// ---- phase 2: commit. Rename one by one ----
 	for _, p := range pend {
 		if err := root.Rename(p.tmp, p.rel); err != nil {
-			// 已经把 rename 过的留在新版本、没轮到的留在旧版本。说出来，别让
-			// 调用方以为这是一次干净的成功。
+			// Renamed ones are on the new version, the rest on the old. Say so, so the
+			// caller does not think this was a clean success.
 			return res, i18n.Ef(err, "cannot replace {path} (the configuration may be half old and half new; the next sync will retry): {err}",
 				i18n.A{"path": p.rel})
 		}
-		// rename 之后补 chmod：umask 会削掉组写位，而 cfg.writeJSON 的注释
-		// 与 CLAUDE.md §3.1 都记着这个坑（root 写出的文件 daemon 写不了）。
+		// chmod after rename: umask strips the group write bit, a trap recorded in
+		// cfg.writeJSON's comment and CLAUDE.md §3.1 (root-written files daemons can't edit).
 		if err := root.Chmod(p.rel, 0o660); err != nil {
 			return res, i18n.Ef(err, "cannot fix the permissions of {path}: {err}", i18n.A{"path": p.rel})
 		}
 		res.Written = append(res.Written, p.rel)
 	}
 
-	// ---- 阶段 3：删除。清单里我们写过、但这份快照不再包含的 ----
+	// ---- phase 3: delete. Files we wrote that this snapshot no longer contains ----
 	for _, rel := range sortedApplied(applied) {
 		if _, keep := files[rel]; keep {
 			continue
@@ -263,16 +263,16 @@ func Materialize(dir string, files map[string][]byte, applied map[string]string)
 	return res, nil
 }
 
-// ---------- 小工具 ----------
+// ---------- small helpers ----------
 
-// profileNameOf 从 `mappings/x.json` / `mappings/x.kv` 取出档位名 x。
+// profileNameOf extracts the tier name x from `mappings/x.json` / `mappings/x.kv`.
 func profileNameOf(rel string) string {
 	base := path.Base(rel)
 	return strings.TrimSuffix(strings.TrimSuffix(base, ".json"), ".kv")
 }
 
-// tmpNameOf 是同目录临时文件名。必须同目录：跨文件系统的 rename 会退化成
-// 一次非原子的 copy（cfg.writeJSON 的 .tmp 也是这个理由）。
+// tmpNameOf is the temp name in the same dir. It must be the same dir: a rename across
+// filesystems degrades to a non-atomic copy (the same reason for cfg.writeJSON's .tmp).
 func tmpNameOf(rel string) string {
 	dir := path.Dir(rel)
 	base := path.Base(rel)

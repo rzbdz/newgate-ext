@@ -12,62 +12,62 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// DataEnv 指向一份**本地**参考数据目录（`unified_bank.json` + `shared_detector.bin`），
-// 用于没有外网、也不想在运行时下载的机器。
+// DataEnv points at a **local** reference dir (`unified_bank.json` + `shared_detector.bin`),
+// for machines with no internet that also do not want a runtime download.
 //
-// 它同时是「怎么升级参考库」的逃生口：SDK 默认从 lm.ikale.io 拉取并缓存，而离线
-// 部署只能人工带一份数据过来。名字是机器标记，不翻译；SDK 自己的离线模式就是
-// 「Sources 里放一个本地目录」（见它的 README）。
+// It is also the escape hatch for "how to upgrade the bank": the SDK pulls from lm.ikale.io
+// and caches, and an offline deployment can only carry data in by hand. The name is a machine
+// tag, not translated; the SDK's offline mode is "put a local dir in Sources" (see its README).
 const DataEnv = "NEWGATE_FINGERPRINT_DATA"
 
-// DataTTLEnv 是参考库的**网络检查**间隔（`time.ParseDuration` 的写法，如 `2h`）。
+// DataTTLEnv is the bank's **network check** interval (`time.ParseDuration` form, e.g. `2h`).
 //
-// 参考库不是推送式的：没有人在你机器上开一条长连接等新模型。策略是
-// stale-while-revalidate——有缓存就先用缓存，超过 TTL 才在后台问一次
-// `bundle.json`，只有 detector 的 sha 变了才下 3.6 MB。默认 2 小时；想要更新得
-// 更勤（或更省），改这个环境变量。
+// The bank is not push-based: nobody holds a long connection to your machine waiting for a new
+// model. The policy is stale-while-revalidate - use the cache, and only past the TTL ask for
+// `bundle.json` in the background, downloading 3.6 MB only if the detector sha changed.
+// Default 2 hours; change this env var to check more (or less) often.
 const DataTTLEnv = "NEWGATE_FINGERPRINT_TTL"
 
 const (
 	defaultDataTTL = 2 * time.Hour
-	// 自动刷新失败后的冷却：断网时不该每分钟都去撞一次墙。手动 `newgate
-	// upgrade` 不受它约束。
+	// Cooldown after a failed auto refresh: offline machines should not hit the wall every minute.
+	// A manual `newgate upgrade` is not subject to it.
 	refreshBackoff = time.Hour
-	// 进程内重新走一遍 Load 的间隔。它必须比网络 TTL 小一个量级：长命 daemon
-	// 如果只在启动时 Load 一次，参考库会永远停在启动时那一版。每分钟重走一次
-	// Load 的代价是读一次缓存文件，换来「TTL 到了之后，下一次验证就能拿到新
-	// 数据」。
+	// How often to re-run Load within the process. It must be an order of magnitude below the
+	// network TTL: a long-lived daemon that only Loads at startup would pin the bank to that
+	// version forever. Re-running Load costs one cache file read, buying "once TTL expires,
+	// the next verify sees new data".
 	memoryTTL = time.Minute
-	// SDK 自己的后台刷新交给本模块做：它的 bundle 超时只有 10 秒（见
-	// reference.go），而我们有更合适的超时。给一个足够大的值，让 Load 只读
-	// 缓存，不另起一个会失败的 goroutine。
+	// The SDK's own background refresh is left to this module: its bundle timeout is only 10s
+	// (see reference.go), and we have a better one. Give it a big value so Load only reads the
+	// cache and does not spawn a goroutine that will fail.
 	sdkRefreshDisabled = 10 * 365 * 24 * time.Hour
 )
 
-// detector 是本模块与指纹库之间唯一的缝。
+// detector is the only seam between this module and the fingerprint library.
 //
-// 为什么是一个接口而不是直接调 SDK：web/CLI 的行为（匹配、缓存、报错）要能
-// 在没有网络、没有参考库的测试里跑一遍。真实实现只有下面这一个，测试给一个
-// 固定回答的假货——这不是「为了扩展」，是为了**测得到**（与内核探针拿
-// testing/upstream 起假上游同一条）。
+// Why an interface rather than calling the SDK: web/CLI behavior (matching, caching, errors)
+// must run in tests with no network and no bank. The real implementation is the one below;
+// tests give a fake with fixed answers - not "for extensibility" but to be **testable**
+// (same as the kernel probe running testing/upstream as a fake upstream).
 type detector interface {
-	// Detect 跑一轮指纹。返回结果、参考库版本、实际使用的 API。
+	// Detect runs one fingerprint round. Returns the result, the bank version, the API used.
 	Detect(ctx context.Context, p domain.Provider, model, api string, count int) (*lmfpd.DetectResult, string, string, error)
-	// Loaded 报告参考库有没有在这个进程里读进来，以及它的 built_at。
+	// Loaded reports whether the bank is loaded in this process, and its built_at.
 	Loaded() (build string, ok bool)
-	// Refresh 强制重新下载参考库（`newgate upgrade` 的动作）。返回一句给人看的结果。
+	// Refresh forces a bank re-download (the `newgate upgrade` action). Returns a human result.
 	Refresh(ctx context.Context) (string, error)
 }
 
-// fingerprintDetector 是真实实现：按需加载参考库，之后复用。
+// fingerprintDetector is the real implementation: load the bank on demand, then reuse it.
 //
-// # 为什么内存里还要再管一层 TTL
+// # Why manage another TTL layer in memory
 //
-// SDK 的 Load 在**被调用时**才检查缓存文件的 mtime：超过 TTL 就起一个后台
-// goroutine 拉新数据，本次仍然返回旧的那份。但那个后台 goroutine 用的是 SDK
-// 自己的 10 秒 bundle 超时，在慢链路上必然失败；而且如果进程只 Load 一次
-// （第一版就是），它根本没机会跑。所以这里自己管：内存里只缓存 memoryTTL，
-// 之后重新 Load；缓存过期时由本模块用**更合适的超时**在后台刷新。
+// The SDK's Load checks the cache mtime **when called**: past the TTL it spawns a background
+// goroutine to pull new data and still returns the old copy. But that goroutine uses the
+// SDK's own 10s bundle timeout, which always fails on a slow link; and if the process only
+// Loads once (as the first version did), it never gets to run. So this manages it: memory
+// caches only for memoryTTL, then re-Loads; when expired, it refreshes with a **better timeout**.
 type fingerprintDetector struct {
 	cache *cacheStore
 
@@ -75,12 +75,12 @@ type fingerprintDetector struct {
 	det      *lmfpd.Detector
 	build    string
 	loadedAt time.Time
-	// loading 非 nil = 有人在下载/解析参考库。**锁不在加载期间持有**：界面的
-	// State() 每几秒会问一次 Loaded()，若那也排在下载后面，整张快照会跟着卡住
-	// （而这一屏的其余部分与服务没有任何关系）。
+	// loading non-nil = someone is downloading/parsing the bank. **The lock is not held during
+	// loading**: the UI's State() asks Loaded() every few seconds, and if that queued behind a
+	// download the whole snapshot would stall (the rest of the screen has nothing to do with it).
 	loading chan struct{}
-	// refreshing 是「后台自动刷新」的单飞标记，与 loading 分开：手动 upgrade
-	// 和一次 verify 触发的加载不该被它挡住。
+	// refreshing is the single-flight marker for "background auto refresh", kept apart from
+	// loading: a manual upgrade and a verify-triggered load must not be blocked by it.
 	refreshing  bool
 	lastAttempt time.Time
 	lastErr     error
@@ -96,8 +96,8 @@ func (d *fingerprintDetector) Loaded() (string, bool) {
 	return d.build, d.det != nil
 }
 
-// dataTTL 是配置的网络检查间隔。非法值回落默认值——这个环境变量是运维旋钮，
-// 写错了不该把验证功能整个关掉。
+// dataTTL is the configured network check interval. Invalid values fall back to the default -
+// this env var is an ops knob, and a typo should not disable verification entirely.
 func dataTTL() time.Duration {
 	if raw := strings.TrimSpace(os.Getenv(DataTTLEnv)); raw != "" {
 		if d, err := time.ParseDuration(raw); err == nil && d > 0 {
@@ -107,11 +107,11 @@ func dataTTL() time.Duration {
 	return defaultDataTTL
 }
 
-// loadOptions 是每次 Load 共用的选项。
+// loadOptions are the options shared by every Load.
 func (d *fingerprintDetector) loadOptions() lmfpd.LoadOptions {
 	opts := lmfpd.LoadOptions{Cache: d.cache.dataPath(), TTL: sdkRefreshDisabled}
-	// 离线部署：有人把参考数据目录带上来了，就只读它，不碰网络也不写缓存
-	//（SDK 对「单个非 http 源」的定义就是本地目录）。
+	// Offline deployment: someone brought the reference data directory, so read only it - no
+	// network, no cache write (the SDK defines "a single non-http source" as a local dir).
 	if src := strings.TrimSpace(os.Getenv(DataEnv)); src != "" {
 		opts.Sources = []string{src}
 	}
@@ -126,7 +126,7 @@ func (d *fingerprintDetector) get(ctx context.Context) (*lmfpd.Detector, string,
 		return det, build, nil
 	}
 	if ch := d.loading; ch != nil {
-		// 已经有人在加载：等它，而不是再下 3.6 MB。等待也尊重调用方的 deadline。
+		// Someone is already loading: wait for it, not another 3.6 MB. Waits honor the deadline.
 		d.mu.Unlock()
 		select {
 		case <-ch:
@@ -149,8 +149,8 @@ func (d *fingerprintDetector) get(ctx context.Context) (*lmfpd.Detector, string,
 	d.loading, d.lastErr = ch, nil
 	d.mu.Unlock()
 
-	// 首次加载要下载数据。给它一个上限，但尊重调用方更早的 deadline：用户关掉
-	// 页面时这次下载就该停。
+	// The first load downloads. Give it a ceiling, but honor an earlier caller deadline: when
+	// the user closes the page this download should stop.
 	lctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()
 	var det *lmfpd.Detector
@@ -158,21 +158,21 @@ func (d *fingerprintDetector) get(ctx context.Context) (*lmfpd.Detector, string,
 	var err error
 	switch {
 	case strings.TrimSpace(os.Getenv(DataEnv)) != "":
-		// 本地目录：不碰网络。
+		// Local directory: no network.
 		det, err = lmfpd.Load(lctx, d.loadOptions())
 		if err == nil {
 			build = det.BuiltAt()
 		}
 	case !d.cache.dataReady():
-		// 没有缓存 = 第一次运行：用本模块的下载器（超时按文件大小给）。
+		// No cache = first run: use this module's downloader (timeout by file size).
 		det, build, _, err = d.loadFresh(lctx, "")
 	default:
 		det, err = lmfpd.Load(lctx, d.loadOptions())
 		if err == nil {
 			build = det.BuiltAt()
 		} else if ctx.Err() == nil {
-			// 缓存读不进来（损坏、格式变了）：整份重下一次，而不是让验证功能
-			// 永远卡在一个坏文件上。knownVersion 传空 = 即使远端同版也重写。
+			// Unreadable cache (corrupt, format changed): re-download it all rather than leave
+			// verification stuck on a bad file. Empty knownVersion = rewrite even if same.
 			det, build, _, err = d.loadFresh(lctx, "")
 		}
 	}
@@ -180,10 +180,10 @@ func (d *fingerprintDetector) get(ctx context.Context) (*lmfpd.Detector, string,
 	d.mu.Lock()
 	d.loading = nil
 	if err != nil {
-		// 失败不记成永久状态：断网的人把网接上之后，下一次 verify 应该能成功。
-		// 但这一轮**等着同一份加载**的调用者要一起拿到这个错误，不然它们会
-		// 一个接一个再下一遍。手里已经有旧参考库时继续用它（fail-open）
-		// ——「尺子过期」比「验证功能整个不可用」好。
+		// A failure is not recorded as permanent state: with the network back, the next verify
+		// should succeed. But callers **waiting on this same load** must get the error too,
+		// or they download one after another. With an old bank in hand, keep using it
+		// (fail-open) - "the ruler is stale" beats "verification is unavailable".
 		err = i18n.Ef(err, "cannot load the fingerprint reference data: {err}",
 			i18n.A{"err": err})
 		d.lastErr = err
@@ -204,10 +204,10 @@ func (d *fingerprintDetector) get(ctx context.Context) (*lmfpd.Detector, string,
 	return det, build, nil
 }
 
-// loadFresh 自己下载、校验、原子落盘，再由 SDK 读一遍确认格式没变。
-//
-// knownVersion 是当前缓存里的 detector sha；远端同版时只 touch 缓存，不重复
-// 下 3.6 MB。传空则强制重下。
+// loadFresh downloads, verifies and atomically writes by itself, then has the SDK read it
+// once to confirm the format did not change. knownVersion is the detector sha in the
+// current cache; if the remote matches, only the cache is touched and 3.6 MB is not
+// downloaded again. Empty forces a re-download.
 func (d *fingerprintDetector) loadFresh(ctx context.Context, knownVersion string) (*lmfpd.Detector, string, bool, error) {
 	bundleBytes, detectorBytes, _, changed, err := fetchReference(ctx, knownVersion)
 	if err != nil {
@@ -229,11 +229,11 @@ func (d *fingerprintDetector) loadFresh(ctx context.Context, knownVersion string
 	return det, det.BuiltAt(), changed, nil
 }
 
-// Refresh 是 `newgate upgrade` 调的那一下：**强制**检查并下载，而不是等 TTL。
+// Refresh is what `newgate upgrade` calls: **force** a check and download, not wait for TTL.
 //
-// 下载先落在临时文件里，只有 SDK 能读进来才 rename 覆盖旧缓存；失败时旧文件
-// 一个字节都没动——升级失败不该顺手把一台离线机器仅有的尺子也弄没。本地数据
-// 目录（DataEnv）没有「下载」这件事，返回一句说明即可。
+// It lands in a temp file and replaces the old cache only if the SDK can read it; on failure
+// the old file is untouched - a failed upgrade must not kill an offline machine's only ruler.
+// A local data dir (DataEnv) has no download; just say so.
 func (d *fingerprintDetector) Refresh(ctx context.Context) (string, error) {
 	if src := strings.TrimSpace(os.Getenv(DataEnv)); src != "" {
 		return i18n.T("reference data is read from the local directory {dir}; nothing to refresh",
@@ -241,7 +241,7 @@ func (d *fingerprintDetector) Refresh(ctx context.Context) (string, error) {
 	}
 
 	d.mu.Lock()
-	// 等正在进行的加载结束，再独占「加载中」这个位子。
+	// Wait for any in-progress load to finish, then take the "loading" slot exclusively.
 	for d.loading != nil {
 		ch := d.loading
 		d.mu.Unlock()
@@ -258,7 +258,7 @@ func (d *fingerprintDetector) Refresh(ctx context.Context) (string, error) {
 	oldDet, oldBuild := d.det, d.build
 	d.mu.Unlock()
 
-	// 下载比日常 Load 慢：3.6 MB 压缩数据。给 5 分钟，仍然尊重调用方更早的 deadline。
+	// Downloads are slower than a routine Load: 3.6 MB compressed. 5 minutes, caller deadline wins.
 	lctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 	det, build, changed, err := d.loadFresh(lctx, d.cache.dataVersion())
@@ -283,11 +283,11 @@ func (d *fingerprintDetector) Refresh(ctx context.Context) (string, error) {
 	return i18n.T("fingerprint reference data is now {build}", i18n.A{"build": build}), nil
 }
 
-// maybeRefresh 在缓存过期时起一次后台刷新（stale-while-revalidate）。
+// maybeRefresh starts one background refresh when the cache is stale (stale-while-revalidate).
 //
-// 它是自动更新与手动 upgrade 之间的分工：手动 upgrade 是阻塞的、会报错；这里
-// 只负责「别让 daemon 里的尺子停在两天前」，失败就退回旧数据，下一次 verify
-// 照常工作。
+// It splits automatic updates from manual upgrade: manual upgrade blocks and reports errors;
+// this only ensures "the daemon's ruler does not sit two days old", falls back to old data
+// on failure, and the next verify works as usual.
 func (d *fingerprintDetector) maybeRefresh() {
 	if strings.TrimSpace(os.Getenv(DataEnv)) != "" {
 		return
@@ -313,7 +313,7 @@ func (d *fingerprintDetector) maybeRefresh() {
 		}()
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
-		// 失败是可接受的：旧数据继续用，冷却期之后再试。
+		// Failure is acceptable: keep using old data and retry after the cooldown.
 		_, _ = d.Refresh(ctx)
 	}()
 }
@@ -338,11 +338,11 @@ func (d *fingerprintDetector) Detect(ctx context.Context, p domain.Provider, mod
 		APIKey:  p.Key(),
 		Model:   model,
 		API:     sdkAPI,
-		// Count/Parallel 都是 1–3；一次指纹不需要把上游打到并发 3 以上。
+		// Count/Parallel are 1-3; one fingerprint never needs upstream parallelism above 3.
 		Count:    count,
 		Parallel: count,
-		// 指纹靠的是完整输出（默认要 292–332 个整数）。给足时间；这个上限只
-		// 约束「首字节/整份 JSON」，不是整轮。
+		// A fingerprint needs the full output (292-332 integers by default). Give it time;
+		// this limit only bounds "first byte / the whole JSON", not the round.
 		Timeout: 120 * time.Second,
 	})
 	if err != nil {
@@ -352,17 +352,17 @@ func (d *fingerprintDetector) Detect(ctx context.Context, p domain.Provider, mod
 	return res, build, apiName, nil
 }
 
-// endpointFor 把 newgate 的 provider 定义翻译成 SDK 的 base_url + api。
+// endpointFor translates newgate's provider definition into the SDK's base_url + api.
 //
-// # 两种方言的 base 不是同一个
+// # The two dialects do not share one base
 //
-// provider.URL 已经把「anthropic 方言走 anthropic_url、并按 ANTHROPIC_BASE_URL
-// 的惯例补 /v1」这件事说清楚了（方舟的现场，见 domain.Provider.Base 的注释）。
-// SDK 收到带路径的 base 时只会在**路径后面**追加 /messages，不会再补 /v1。
-// 所以这里去掉结尾的 /messages，把已经补好 /v1 的那一段交给它。
+// provider.URL already spells out "the anthropic dialect uses anthropic_url, with /v1 added
+// per the ANTHROPIC_BASE_URL convention" (the ark case, see domain.Provider.Base). When the
+// SDK gets a base with a path it only appends /messages **after the path**; it does not add /v1.
+// So this drops the trailing /messages and hands it the part that already has /v1.
 //
-// auto 的判据是 provider 声明的 protocol，不是「猜哪家支持什么」：协议是配置里
-// 写下来的事实；猜错只会得到一个和真实流量无关的结论。
+// auto's criterion is the provider's declared protocol, not "guess who supports what":
+// the protocol is a fact in the config; a wrong guess yields a conclusion unrelated to traffic.
 func endpointFor(p domain.Provider, api string) (string, lmfpd.API, string, error) {
 	if strings.TrimSpace(p.Key()) == "" {
 		return "", "", "", i18n.E("this provider has no api key (set api_key or api_key_env): {base}",

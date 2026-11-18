@@ -1,14 +1,15 @@
 package gateway
 
-// 本文件把**数据面自己的**两条体检交出去：出站代理会不会劫走 loopback（环境），
-// 以及进程与端口那一对失败要分开说（代理）。
+// This file hands out **the data plane's own** two diagnostics: whether an outbound proxy
+// hijacks loopback (environment), and whether the process and port failures are told apart (proxy).
 //
-// **为什么它们住在这里**（2026-09-18）：这两条问的都是「请求到得了网关吗」，答案
-// 的一半在网关自己的控制面客户端里（controlplane），另一半在网关自己的转发语义
-// 里；而它们以前写在 modules/cli/diag.go，界面于是替数据面做着 HTTP 探活与端口
-// 判断。谁的事谁自己说——界面只负责排版（见 cli/extension.Diagnostic）。
+// **Why they live here** (2026-09-18): both ask "do requests reach the gateway", half the
+// answer is in the gateway's own control-plane client (controlplane) and the other half
+// in the gateway's own forwarding semantics; they used to live in modules/cli/diag.go,
+// so the UI did HTTP probing and port judging for the data plane. Let each owner
+// speak for itself - the UI only lays it out (see cli/extension.Diagnostic).
 //
-// 依赖方向：gateway → cli/extension（叶子契约），不是 → modules/cli。
+// Dependency direction: gateway → cli/extension (a leaf contract), not → modules/cli.
 
 import (
 	"fmt"
@@ -25,15 +26,15 @@ import (
 	"github.com/rzbdz/newgate/lib/i18n"
 )
 
-// 体检与 status 行的位置（Rank 小的在前）。代理排在接管与配置之前：它挂了所有
-// 走 newgate 的工具一起挂。
+// The positions of the diagnostics and the status line (smaller Rank first). Proxy comes
+// before takeover and config: if it is down, every tool going through newgate is down.
 const (
 	rankStatusProxy = 10
 	rankCheckEnv    = 20
 	rankCheckProxy  = 30
 
-	// 诊断包里的位置（见 cliapi.DumpSection）。证据与日志排在配置之后：
-	// 前面是「配置长什么样」，后面是「真发出去过什么」。
+	// Position inside the diagnostics bundle (see cliapi.DumpSection). Evidence and log
+	// come after config: first "what the config looks like", then "what really went out".
 	rankDumpEvidence = 50
 	rankDumpLog      = 60
 )
@@ -50,10 +51,11 @@ func (gatewayReporter) Diagnostics() []cliapi.Diagnostic {
 	return []cliapi.Diagnostic{checkEnv(), checkProxy()}
 }
 
-// Status 一行说清代理在不在跑。
+// Status says in one line whether the proxy is running.
 //
-// 三种状态分开表达：进程死了可以重启；**端口在听却探不通**是环境问题，重启一百
-// 次也没用（常见于出站代理劫持 loopback）。这一行只给结论，展开在 doctor 里。
+// Three states, expressed separately: a dead process can be restarted; **a port listening but
+// unreachable** is an environment problem where a hundred restarts do not help (common with an
+// outbound proxy hijacking loopback). This line gives only the conclusion; details are in doctor.
 func (gatewayReporter) Status() []cliapi.StatusLine {
 	info, doc := controlplane.State()
 	var value string
@@ -69,10 +71,11 @@ func (gatewayReporter) Status() []cliapi.StatusLine {
 	return []cliapi.StatusLine{{Rank: rankStatusProxy, Label: i18n.T("Proxy", nil), Value: value}}
 }
 
-// checkEnv 出站代理会不会把 loopback 请求劫走。
+// checkEnv: whether an outbound proxy would hijack loopback requests.
 //
-// 这是最隐蔽的一类故障：newgate 日志里一条请求都没有，因为请求根本没到我们
-// 这——客户端发给了 http_proxy，代理连不上 127.0.0.1 就回 502。
+// This is the most insidious class of fault: the newgate log shows no
+// request at all, because the request never reached us - the client sent it
+// to http_proxy, and the proxy could not reach 127.0.0.1 and answered 502.
 func checkEnv() cliapi.Diagnostic {
 	d := cliapi.Diagnostic{Rank: rankCheckEnv, Label: i18n.T("Environment", nil)}
 	set := proxyEnvSet()
@@ -117,8 +120,9 @@ func proxyEnvSet() []string {
 	return out
 }
 
-// checkProxy 代理进程与端口的两种失败要分开说：进程死了可以重启，
-// 端口在听却探不通是环境问题，重启一百次也没用。
+// checkProxy: the two failures, process and port, are told apart:
+// a dead process can be restarted; a port listening but unreachable is
+// an environment problem, and restarting a hundred times does not help.
 func checkProxy() cliapi.Diagnostic {
 	d := cliapi.Diagnostic{Rank: rankCheckProxy, Label: i18n.T("Proxy", nil)}
 	st := store.LoadState()
@@ -141,16 +145,17 @@ func checkProxy() cliapi.Diagnostic {
 	return d
 }
 
-// ---------- 诊断包的原始素材 ----------
+// ---------- raw material for the diagnostics bundle ----------
 
 func (gatewayReporter) Dump() []cliapi.DumpSection {
 	return []cliapi.DumpSection{dumpEvidence(), dumpLogTail()}
 }
 
-// dumpEvidence 列出上游报错时无条件落盘的证据文件。
+// dumpEvidence lists the evidence files written unconditionally when upstream errors.
 //
-// 它是排查「是不是代理改坏了请求」唯一能拿出手的东西（docs/11），所以连用法
-// 一起写进诊断包——拿到包的人不必再去翻文档。
+// It is the only thing to show when diagnosing "did the proxy break
+// the request" (docs/11), so its usage is written into the bundle
+// too - whoever gets the bundle need not dig through the docs again.
 func dumpEvidence() cliapi.DumpSection {
 	s := cliapi.DumpSection{Rank: rankDumpEvidence, Title: i18n.T("Error evidence files", nil)}
 	dir := filepath.Join(paths.Config(), "dump")
@@ -176,7 +181,8 @@ func dumpEvidence() cliapi.DumpSection {
 	return s
 }
 
-// dumpLogTail 日志全文。诊断包就是要原文，所以不做截断——它由用户自己决定怎么用。
+// dumpLogTail is the full log. A diagnostics bundle is meant to
+// be raw, so no truncation - the user decides what to do with it.
 func dumpLogTail() cliapi.DumpSection {
 	s := cliapi.DumpSection{Rank: rankDumpLog, Title: i18n.T("Full log", nil)}
 	b, err := os.ReadFile(paths.LogFile())

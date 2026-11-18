@@ -14,29 +14,29 @@ import (
 	"testing"
 )
 
-// sandbox 把 NEWGATE_HOME 指到一个临时目录并建好子目录。
+// sandbox points NEWGATE_HOME at a temp dir and creates the subdirs.
 //
-// paths.Root() 每次调用都读环境变量，所以 t.Setenv 之后所有路径函数立刻
-// 指向沙箱——这也是仓库里其它测试的同一套做法（testkit.Sandbox）。
+// paths.Root() reads the env on every call, so after t.Setenv all path functions point
+// at the sandbox at once - the same approach other tests use (testkit.Sandbox).
 func sandbox(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("NEWGATE_HOME", home)
 	if err := paths.EnsureDirs(); err != nil {
-		t.Fatalf("建目录失败: %v", err)
+		t.Fatalf("creating the directory failed: %v", err)
 	}
 	return home
 }
 
-// writeLive 往配置目录写一个文件（造"本机现状"）。
+// writeLive writes a file into the config dir (to fake "local state").
 func writeLive(t *testing.T, rel string, data []byte) {
 	t.Helper()
 	p := filepath.Join(paths.Config(), filepath.FromSlash(rel))
 	if err := os.MkdirAll(filepath.Dir(p), 0o2770); err != nil {
-		t.Fatalf("建目录失败: %v", err)
+		t.Fatalf("creating the directory failed: %v", err)
 	}
 	if err := os.WriteFile(p, data, 0o660); err != nil {
-		t.Fatalf("写 %s 失败: %v", rel, err)
+		t.Fatalf("writing %s failed: %v", rel, err)
 	}
 }
 
@@ -44,7 +44,7 @@ func readLive(t *testing.T, rel string) []byte {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join(paths.Config(), filepath.FromSlash(rel)))
 	if err != nil {
-		t.Fatalf("读 %s 失败: %v", rel, err)
+		t.Fatalf("reading %s failed: %v", rel, err)
 	}
 	return b
 }
@@ -56,13 +56,13 @@ func existsLive(rel string) bool {
 
 func discardLogger() *log.Logger { return log.New(io.Discard, "", 0) }
 
-// ---------- 假宿主 ----------
+// ---------- fake host ----------
 
-// fakeHost 是一个最小的宿主端点。
+// fakeHost is a minimal host endpoint.
 //
-// 它只做"把一份快照封成信封"这一件事——真正的宿主侧逻辑（从配置目录生成快照、
-// 维护 generation、非 host 返回 404）在 commit 2 的 host.go 里，本测试不该
-// 依赖它，否则副本侧的测试会因为宿主侧改动而红。
+// It only does "seal a snapshot into an envelope" - real host logic (building a snapshot
+// from the config dir, maintaining generation, 404 for non-hosts) lives in commit 2's
+// host.go, and these tests must not depend on it, or replica tests go red on host changes.
 type fakeHost struct {
 	srv    *httptest.Server
 	encKey []byte
@@ -76,11 +76,11 @@ type fakeHost struct {
 	keys     map[string]string
 	cfgMiss  bool // /__newgate/config 回 404（模拟"对端不是宿主"）
 	authFail bool // 回 401（模拟根密钥不同）
-	// 直接回这些字节，不走 Seal。用来造"被篡改的信封"和"根本解不开的垃圾"——
-	// 这两种都要能验，而假宿主自己封印的话造不出来。
+	// Serve these bytes directly without Seal. Used to build "tampered envelope" and
+	// "garbage that will not open" - neither can be made by a sealing fake host.
 	rawConfig  []byte
 	rawSecrets []byte
-	// 慢响应：给"Stop 打断在飞的请求"用
+	// Slow response: for "Stop interrupts an in-flight request"
 	block chan struct{}
 }
 
@@ -88,7 +88,7 @@ func newFakeHost(t *testing.T, root []byte) *fakeHost {
 	t.Helper()
 	encKey, token, err := DeriveKeys(root)
 	if err != nil {
-		t.Fatalf("派生密钥失败: %v", err)
+		t.Fatalf("deriving the key failed: %v", err)
 	}
 	h := &fakeHost{
 		encKey: encKey,
@@ -114,8 +114,8 @@ func (h *fakeHost) setSecrets(gen int, keys map[string]string) {
 	h.secGen, h.keys = gen, keys
 }
 
-// 下面几个 setter 都带锁：httptest 的 handler 跑在**另一个** goroutine 上，
-// 测试里裸读 h.host 会被 -race 抓出来（CI 那条就是带 -race 的）。
+// These setters take the lock: httptest's handler runs on **another** goroutine, so a
+// bare read of h.host in a test is caught by -race (CI runs with -race).
 func (h *fakeHost) setRawConfig(raw []byte) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -206,12 +206,12 @@ func writeEnvelope(w http.ResponseWriter, env *Envelope) {
 	_, _ = w.Write(raw)
 }
 
-// newTestClient 造一个指向假宿主的客户端。
+// newTestClient builds a client aimed at the fake host.
 //
-// **必须用 srv.Client()**：它的 Transport 的 Proxy 是 nil，而 http.DefaultClient
-// 认 HTTP_PROXY/HTTPS_PROXY——跑这个仓库测试的会话本身往往就穿行在 newgate 的
-// 代理里，环境里挂着代理时发给假宿主的请求会先被真网关转一手，断言就全乱了
-// （testing/upstream 的注释记的是同一个坑）。
+// **Use srv.Client()**: its Transport has a nil Proxy, while http.DefaultClient honors
+// HTTP_PROXY/HTTPS_PROXY - sessions running this repo's tests often ride newgate's
+// proxy, so requests to the fake host would go through the real gateway and wreck the
+// assertions (testing/upstream's comment records the same trap).
 func newTestClient(t *testing.T, h *fakeHost, root []byte) *Client {
 	t.Helper()
 	c, err := New(Config{
@@ -222,12 +222,12 @@ func newTestClient(t *testing.T, h *fakeHost, root []byte) *Client {
 		HTTP:     h.srv.Client(),
 	})
 	if err != nil {
-		t.Fatalf("建客户端失败: %v", err)
+		t.Fatalf("creating the client failed: %v", err)
 	}
 	return c
 }
 
-// validProviders 是一份能通过校验的 providers.json（两个上游，密钥都走密钥通道）。
+// validProviders is a providers.json that passes validation (two upstreams, keys via the channel).
 func validProviders() []byte {
 	return []byte(`{"providers":{
 	  "smt-deepseek":{"base_url":"https://api.deepseek.com","api_key_env":"DS_KEY"},
@@ -239,13 +239,13 @@ func validProfile() []byte {
 	return []byte(`{"name":"prod","roles":{"normal":[{"provider":"smt-deepseek","model":"deepseek-chat"}]}}`)
 }
 
-// metaFile 造一份 newgate-config.json。
+// metaFile builds a newgate-config.json.
 func metaFile(schema int, minVersion string) []byte {
 	raw, _ := json.Marshal(Meta{SchemaVersion: schema, MinNewgateVersion: minVersion})
 	return raw
 }
 
-// snapshotFiles 是一份常见的快照内容（providers + 一个档位 + meta）。
+// snapshotFiles is a typical snapshot (providers + one tier + meta).
 func snapshotFiles() map[string][]byte {
 	return map[string][]byte{
 		ProvidersName:        validProviders(),

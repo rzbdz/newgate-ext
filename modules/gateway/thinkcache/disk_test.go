@@ -17,7 +17,7 @@ func TestDiskStoreSurvivesReopen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d1.appendKeys([]string{"tool:t1", "text:abc"}, []byte("这轮真实的推理"), time.Now())
+	d1.appendKeys([]string{"tool:t1", "text:abc"}, []byte("the real reasoning from this turn"), time.Now())
 	if err := d1.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -28,8 +28,8 @@ func TestDiskStoreSurvivesReopen(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer d2.Close()
-	if blob, ok := d2.get("tool:t1"); !ok || string(blob) != "这轮真实的推理" {
-		t.Fatalf("重启后没找回：ok=%v blob=%q", ok, blob)
+	if blob, ok := d2.get("tool:t1"); !ok || string(blob) != "the real reasoning from this turn" {
+		t.Fatalf("not recovered after restart: ok=%v blob=%q", ok, blob)
 	}
 }
 
@@ -57,7 +57,7 @@ func TestOriginSurvivesReopen(t *testing.T) {
 	defer d2.Close()
 	c2.disk = d2
 	if got, ok := c2.GetOrigin("call_restart"); !ok || got != want {
-		t.Fatalf("重启后 tool origin 丢了: ok=%v got=%+v", ok, got)
+		t.Fatalf("tool origin lost after restart: ok=%v got=%+v", ok, got)
 	}
 }
 
@@ -70,8 +70,8 @@ func TestDiskStoreDropsExpiredOnReopen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d1.appendKeys([]string{"tool:old"}, []byte("过期内容"), time.Now().Add(-2*time.Hour))
-	d1.appendKeys([]string{"tool:new"}, []byte("新内容"), time.Now())
+	d1.appendKeys([]string{"tool:old"}, []byte("expired content"), time.Now().Add(-2*time.Hour))
+	d1.appendKeys([]string{"tool:new"}, []byte("new content"), time.Now())
 	_ = d1.Close()
 
 	d2, err := openDisk(path, 1<<20, time.Hour)
@@ -80,10 +80,10 @@ func TestDiskStoreDropsExpiredOnReopen(t *testing.T) {
 	}
 	defer d2.Close()
 	if _, ok := d2.get("tool:old"); ok {
-		t.Fatal("过期项 replay 后不该还在")
+		t.Fatal("an expired entry must not be there after replay")
 	}
-	if blob, ok := d2.get("tool:new"); !ok || string(blob) != "新内容" {
-		t.Fatalf("没到期的项丢了：ok=%v blob=%q", ok, blob)
+	if blob, ok := d2.get("tool:new"); !ok || string(blob) != "new content" {
+		t.Fatalf("an unexpired entry was lost: ok=%v blob=%q", ok, blob)
 	}
 }
 
@@ -98,7 +98,7 @@ func TestDiskStoreRollsOver(t *testing.T) {
 	}
 	defer d.Close()
 	now := time.Now()
-	blob := []byte("一段说长不长说短不短的推理内容，用来把文件顶过 2048 字节上限触发重写")
+	blob := []byte("a reasoning text neither long nor short, used to push the file past the 2048-byte limit and trigger a rewrite")
 	for i := 0; i < 20; i++ {
 		at := now
 		if i < 10 {
@@ -107,12 +107,12 @@ func TestDiskStoreRollsOver(t *testing.T) {
 		d.appendKeys([]string{fmt.Sprintf("tool:k%d", i)}, blob, at)
 	}
 	if d.size > d.max*2 {
-		t.Fatalf("compact 后文件还是太大: size=%d max*2=%d", d.size, d.max*2)
+		t.Fatalf("the file is still too big after compact: size=%d max*2=%d", d.size, d.max*2)
 	}
 	if _, ok := d.get("tool:k0"); ok {
-		t.Fatal("过期项 compact 后还在")
+		t.Fatal("an expired entry is still there after compact")
 	}
 	if _, ok := d.get("tool:k19"); !ok {
-		t.Fatal("活项被 compact 丢了")
+		t.Fatal("a live entry was lost by compact")
 	}
 }

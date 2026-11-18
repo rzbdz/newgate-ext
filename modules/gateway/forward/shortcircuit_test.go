@@ -21,7 +21,7 @@ import (
 type nakedFixture struct{}
 
 func (nakedFixture) Name() string                { return "naked-fixture" }
-func (nakedFixture) Why() string                 { return "短路的测试夹具" }
+func (nakedFixture) Why() string                 { return "short-circuit test fixture" }
 func (nakedFixture) Before() []string            { return nil }
 func (nakedFixture) After() []string             { return nil }
 func (nakedFixture) Match(*special.Request) bool { return false }
@@ -80,15 +80,15 @@ func TestShortCircuitEchoesTheProfile(t *testing.T) {
 	resp.Body.Close()
 
 	if resp.StatusCode != 200 || string(got) != `{"naked":true}` {
-		t.Fatalf("短路应直接 200 并回插件那段 body，得到 %d %q", resp.StatusCode, got)
+		t.Fatalf("the short circuit should return 200 right away with the plugin body, got %d %q", resp.StatusCode, got)
 	}
 	if hits := resp.Header.Get("X-Newgate-Profile"); hits != "naked-profile" {
-		t.Errorf("短路口回显的 profile = %q, want naked-profile（写死 n/a 会让「这一发走了哪份」无从判断）", hits)
+		t.Errorf("the profile echoed by the short circuit = %q, want naked-profile (hard-coding n/a makes it impossible to tell which profile handled the request)", hits)
 	}
 	if route := resp.Header.Get("X-Newgate-Route"); route != "naked:naked-fixture" {
 		t.Errorf("X-Newgate-Route = %q, want naked:naked-fixture", route)
 	}
 	if upstreamHits != 0 {
-		t.Errorf("短路器认领了却打了上游 %d 次", upstreamHits)
+		t.Errorf("the short-circuiter claimed the request yet the upstream was hit %d times", upstreamHits)
 	}
 }

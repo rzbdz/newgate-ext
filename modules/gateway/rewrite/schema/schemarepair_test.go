@@ -27,7 +27,7 @@ func TestRepairsMissingRequired(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(changes) != 1 || !strings.HasPrefix(changes[0], "background_cancel") {
-		t.Fatalf("应只修 background_cancel，得到 %v", changes)
+		t.Fatalf("only background_cancel should be repaired, got %v", changes)
 	}
 
 	var tools []map[string]interface{}
@@ -39,25 +39,25 @@ func TestRepairsMissingRequired(t *testing.T) {
 		p := fn["parameters"].(map[string]interface{})
 		req, has := p["required"]
 		if !has {
-			t.Errorf("%v 修完还是没有 required", fn["name"])
+			t.Errorf("after repair %v still has no required", fn["name"])
 			continue
 		}
 		if _, ok := req.([]interface{}); !ok {
-			t.Errorf("%v 的 required 不是数组: %T", fn["name"], req)
+			t.Errorf("required of %v is not an array: %T", fn["name"], req)
 		}
 	}
 	// 已有的 required 不能被动
 	bash := tools[1]["function"].(map[string]interface{})["parameters"].(map[string]interface{})
 	if got := bash["required"].([]interface{}); len(got) != 1 || got[0] != "cmd" {
-		t.Errorf("bash 原有的 required 被改了: %v", got)
+		t.Errorf("the existing required of bash was changed: %v", got)
 	}
 	// 其它字段保留
 	bc := tools[0]["function"].(map[string]interface{})["parameters"].(map[string]interface{})
 	if bc["$schema"] == nil {
-		t.Error("$schema 丢了")
+		t.Error("$schema was lost")
 	}
 	if len(bc["properties"].(map[string]interface{})) != 2 {
-		t.Error("properties 丢了")
+		t.Error("properties were lost")
 	}
 }
 
@@ -69,7 +69,7 @@ func TestNoChangeMeansNoRewrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	if out != nil || len(changes) != 0 {
-		t.Errorf("干净的 tools 不该被重写，得到 changes=%v", changes)
+		t.Errorf("clean tools must not be rewritten, got changes=%v", changes)
 	}
 }
 
@@ -86,7 +86,7 @@ func TestRepairsNested(t *testing.T) {
 	}
 	// obj 和 items 里的 object 各补一处
 	if len(changes) != 1 || !strings.Contains(changes[0], "+2") {
-		t.Errorf("嵌套 object 应补 2 处，得到 %v", changes)
+		t.Errorf("nested objects should get 2 repairs, got %v", changes)
 	}
 }
 
@@ -97,15 +97,15 @@ func TestExplicitNullRequired(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(changes) == 0 {
-		t.Fatal("显式 null 的 required 应被修成 []")
+		t.Fatal("an explicit null required should be repaired to []")
 	}
 	if strings.Contains(string(out), "null") {
-		t.Errorf("修完还有 null: %s", out)
+		t.Errorf("a null is still there after repair: %s", out)
 	}
 }
 
 func TestMalformedToolsIsNotFatal(t *testing.T) {
 	if _, _, err := Repair([]byte(`{"not":"array"}`)); err == nil {
-		t.Error("非数组应报错，让调用方按原样透传")
+		t.Error("a non-array should error so the caller passes it through untouched")
 	}
 }

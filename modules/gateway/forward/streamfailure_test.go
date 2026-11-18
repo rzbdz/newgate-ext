@@ -68,7 +68,7 @@ func TestStreamFailureInsideA200IsLearned(t *testing.T) {
 	// 这一句把「判据真的在那儿」钉住：哪天 thinking 被摘掉，这里会先红，
 	// 而不是让下面的断言从「学到了」悄悄变成一条**测不到东西**的绿。
 	if got := quirk.Default.Learn("probe-check", "probe-check", 400, []byte("始终思考")); len(got) == 0 {
-		t.Fatal("modules/thinking 的签名没装进来——这条测试会空转，先修装配")
+		t.Fatal("the modules/thinking signatures were not installed - this test is a no-op, fix the assembly first")
 	}
 	quirk.Default.Reset()
 
@@ -103,29 +103,29 @@ func TestStreamFailureInsideA200IsLearned(t *testing.T) {
 
 	// 前两件是**这条故障为什么难查**的形状：状态码 200、连接正常。
 	if resp.StatusCode != 200 {
-		t.Fatalf("这条路的形状就是 200，实际 %d", resp.StatusCode)
+		t.Fatalf("the shape of this path is 200, got %d", resp.StatusCode)
 	}
 	if !strings.Contains(string(body), "response.failed") {
-		t.Fatalf("流里那条失败没原样转给客户端:\n%s", body)
+		t.Fatalf("the failure in the stream was not relayed to the client as is:\n%s", body)
 	}
 
 	// 学到手（内存表）
 	if !quirk.Default.Has("smt-glm", "glm-5.3", quirk.NoThinkingDisable) {
-		t.Fatalf("流里的失败没被学到。日志:\n%s", logs.String())
+		t.Fatalf("the failure in the stream was not learned. log:\n%s", logs.String())
 	}
 	// 说出来了（不静默）：用户得知道我们从下一发开始会往请求里加东西。
 	if log := logs.String(); !strings.Contains(log, "reported a failure inside the event stream") {
-		t.Fatalf("日志里没有「上游在流里报了一次失败」这一行:\n%s", log)
+		t.Fatalf("the log has no line saying 'the upstream reported a failure inside the stream':\n%s", log)
 	}
 	if log := logs.String(); !strings.Contains(log, "learned smt-glm/glm-5.3") {
-		t.Fatalf("日志里没有「学到了」那一行:\n%s", log)
+		t.Fatalf("the log has no 'learned' line:\n%s", log)
 	}
 
 	// 落盘（换版/重启之后还认得）
 	srv.flushPendingQuirks()
 	disk := probe.DiskQuirks()
 	if len(disk) != 1 || disk[0].Provider != "smt-glm" || disk[0].Model != "glm-5.3" {
-		t.Fatalf("盘上没有这一笔，重启后又会重撞一次: %v", disk)
+		t.Fatalf("this entry is not on disk, so a restart would hit the same error again: %v", disk)
 	}
 }
 
@@ -147,7 +147,7 @@ func TestSuccessfulStreamDoesNotLearn(t *testing.T) {
 	// 这一句把「判据真的在那儿」钉住：哪天 thinking 被摘掉，这里会先红，
 	// 而不是让下面的断言从「学到了」悄悄变成一条**测不到东西**的绿。
 	if got := quirk.Default.Learn("probe-check", "probe-check", 400, []byte("始终思考")); len(got) == 0 {
-		t.Fatal("modules/thinking 的签名没装进来——这条测试会空转，先修装配")
+		t.Fatal("the modules/thinking signatures were not installed - this test is a no-op, fix the assembly first")
 	}
 	quirk.Default.Reset()
 
@@ -190,10 +190,10 @@ func TestSuccessfulStreamDoesNotLearn(t *testing.T) {
 	resp.Body.Close()
 
 	if quirk.Default.Has("smt-glm", "glm-5.3", quirk.NoThinkingDisable) {
-		t.Fatal("正常收尾的流被当成失败学了——下一发会给一个没毛病的模型加字段")
+		t.Fatal("a normally finished stream was learned as a failure - the next request would add fields to a perfectly healthy model")
 	}
 	srv.flushPendingQuirks()
 	if disk := probe.DiskQuirks(); len(disk) != 0 {
-		t.Fatalf("正常收尾的流不该往盘上写任何东西: %v", disk)
+		t.Fatalf("a normally finished stream must write nothing to disk: %v", disk)
 	}
 }

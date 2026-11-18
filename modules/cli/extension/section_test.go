@@ -2,15 +2,17 @@ package extension
 
 import "testing"
 
-// 槽位规则的守门人。这套规则是**约定**，没有类型系统兜底，所以只能靠测试钉住
-// 「通用键优先、自定义先到先得、抢不到进 others、顺序稳定」这四条。
+// Gatekeeper of the slot rules. These rules are **conventions** with no type
+// system as a backstop, so only tests can pin the four: "generic keys first,
+// custom first come first served, the losers go to others, stable order".
 
 func TestGeneralSectionsKeepTheirPublishedOrder(t *testing.T) {
-	// 故意打乱声明顺序：通用节的显示顺序由 PlanSections 决定，与声明顺序无关
-	// ——否则一个模块调换自己的注册时机就能把整节搬走。
+	// Deliberately shuffle the declaration order: the display order of generic
+	// sections is decided by PlanSections, independent of declaration order --
+	// otherwise a module could move a whole section by changing when it registers.
 	plan := PlanSections([]Section{SectionMaintenance, SectionTakeover, SectionObserve})
 	if got := plan.Slot(SectionMaintenance); got != SectionMaintenance {
-		t.Fatalf("维护 落到了 %q", got)
+		t.Fatalf("Maintenance landed in %q", got)
 	}
 	want := []Section{SectionTakeover, SectionRunOnce, SectionRouting,
 		SectionObserve, SectionMaintenance, SectionModules, SectionUI, SectionOthers}
@@ -26,51 +28,53 @@ func TestGeneralSectionsKeepTheirPublishedOrder(t *testing.T) {
 }
 
 func TestCustomSectionsAreFirstComeAndBounded(t *testing.T) {
-	declared := []Section{"甲", "乙", "丙", "丁", "戊", "己"}
+	declared := []Section{"alpha", "beta", "gamma", "delta", "epsilon", "zeta"}
 	plan := PlanSections(declared)
-	for _, name := range []Section{"甲", "乙", "丙", "丁"} {
+	for _, name := range []Section{"alpha", "beta", "gamma", "delta"} {
 		if got := plan.Slot(name); got != name {
-			t.Fatalf("%q 本该拿到自己的节，落到了 %q", name, got)
+			t.Fatalf("%q should get its own section, landed in %q", name, got)
 		}
 	}
-	// 超出 MaxCustomSections 的两个抢不到名额。
-	for _, name := range []Section{"戊", "己"} {
+	// The one that exceeds MaxCustomSections loses its quota.
+	for _, name := range []Section{"epsilon", "zeta"} {
 		if got := plan.Slot(name); got != SectionOthers {
-			t.Fatalf("%q 本该进 others，落到了 %q", name, got)
+			t.Fatalf("%q should go into others, landed in %q", name, got)
 		}
 	}
 	order := plan.Order()
-	// 自定义节按**声明顺序**排在通用节之后、others 之前。这里只看尾巴：
-	// 最后三个是前两个自定义节 + 兜底节。
+	// Custom sections come after generic sections and before others,
+	// in **declaration order**. Only the tail is checked here: the last
+	// three are the first two custom sections + the fallback section.
 	tail := order[len(order)-3:]
-	if tail[0] != "丙" || tail[1] != "丁" || tail[2] != SectionOthers {
-		t.Fatalf("自定义节没有按先到先得排在 others 之前：%v", tail)
+	if tail[0] != "gamma" || tail[1] != "delta" || tail[2] != SectionOthers {
+		t.Fatalf("custom sections are not ordered before others by first-come order: %v", tail)
 	}
-	// 通用节一个不少地排在自定义节前面。
-	if order[len(generalSections)] != "甲" {
-		t.Fatalf("自定义节没有紧跟通用节：%v", order)
+	// Not one generic section missing, all before the custom sections.
+	if order[len(generalSections)] != "alpha" {
+		t.Fatalf("a custom section does not come right after the general one: %v", order)
 	}
 }
 
 func TestEmptyAndUnknownSectionsFallBack(t *testing.T) {
-	plan := PlanSections([]Section{"", "没人认识我"})
+	plan := PlanSections([]Section{"", "nobody knows me"})
 	if got := plan.Slot(""); got != SectionOthers {
-		t.Fatalf("空节名落到了 %q", got)
+		t.Fatalf("an empty section name landed in %q", got)
 	}
-	// 没声明过的名字也该给一个安全的答案（渲染路径上不该出现问号）。
-	if got := plan.Slot("从没出现过"); got != SectionOthers {
-		t.Fatalf("未声明节名落到了 %q", got)
+	// An undeclared name should also get a safe answer (a
+	// question mark should not appear on the render path).
+	if got := plan.Slot("never appeared"); got != SectionOthers {
+		t.Fatalf("an unclaimed section name landed in %q", got)
 	}
 	if got := PlanSections(nil).Order(); len(got) == 0 {
-		t.Fatal("没有命令时 Order() 也该是可渲染的（至少含 others）")
+		t.Fatal("with no commands Order() should still be renderable (at least containing others)")
 	}
 }
 
 func TestSlotReturnsACopyOfTheOrder(t *testing.T) {
 	plan := PlanSections(nil)
 	order := plan.Order()
-	order[0] = "被改坏了"
-	if plan.Order()[0] == "被改坏了" {
-		t.Fatal("Order() 返回了内部切片，调用方能改坏槽位表")
+	order[0] = "was corrupted"
+	if plan.Order()[0] == "was corrupted" {
+		t.Fatal("Order() returned the internal slice, the caller can corrupt the slot table")
 	}
 }

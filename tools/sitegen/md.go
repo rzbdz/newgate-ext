@@ -1,38 +1,38 @@
-// markdown 子集的渲染器。**故意的**小：只认我们自己在 site/src 里写的那几种构造。
+// The markdown subset renderer. **Deliberately** small: only what we write in site/src.
 //
-// # 为什么不做成「尽量多认」的解析器
+// # Why not a "recognize as much as possible" parser
 //
-// 因为这里的失败方式是**静默的**：一段没被认出来的 markdown 会原样出现在页面上
-// ——`#### 小标题` 就那么四个井号摆在正文里、一张少了分隔行的表变成一行竖线。
-// 作者不会收到任何信号（他以为渲染器认了），读者看到的是排版坏了。
+// Because the failure mode here is **silent**: an unrecognized construct appears as is -
+// `#### heading` sits in the prose as hashes, a table missing its separator becomes pipes.
+// The author gets no signal (thinks it was recognized), and the reader sees broken layout.
 //
-// 所以判据反过来：**认不出来的就报错退出**（编译失败，不是页面坏掉），
-// 而「报错」比「记得重跑生成器」强——它连跑都不用记得。
-// 这条与这个仓库别处的棘轮是同一条：错的产物比没有产物糟
-// （见 tools/archmap 那句「画错的图比没图更糟」）。
+// So the criterion flips: **anything unrecognized errors out** (a failed build, not a
+// broken page), and "error" beats "remember to rerun the generator" - you need not recall.
+// This is the same ratchet as elsewhere in this repo: a wrong artifact beats no artifact
+// (see tools/archmap's "a wrong map is worse than none").
 //
-// # 认哪些
+// # What is recognized
 //
-//	# 一级（取第一个作页面标题）   ## 二级   ### 三级
-//	正文段落（空行分隔）
-//	- 无序列表  1. 有序列表（都**不支持嵌套**）
-//	> 引用
-//	``` 代码块（围栏内一个字都不解析）
-//	| 表格 |（必须有分隔行）
-//	---  水平线
-//	行内：`代码`、**加粗**、[文字](链接)
+//	# level one (first is the page title)   ## level two   ### level three
+//	body paragraphs (blank-line separated)
+//	- bullet list  1. ordered list (both **no nesting**)
+//	> blockquote
+//	``` fenced code (nothing inside is parsed)
+//	| table | (needs a separator row)
+//	--- horizontal rule
+//	inline: `code`, **bold**, [text](link)
 //
-// 链接的写法见 siteHref：**站内地址写成网站根下的路径**（`/docs/tiers/`），挂载
-// 前缀由渲染器补。作者不该看得见「这个站挂在 /newgate-ext/ 下」这件事——那是部署
-// 的细节，而这个站要能从任意一层子路径服务（本地预览就是从根）。
+// Links are in siteHref: **in-site addresses are site-root paths** (`/docs/tiers/`), and
+// the mount prefix is added by the renderer. Authors should not see "this site lives
+// under /newgate-ext/" - that is deployment detail; the site must serve from any subpath.
 //
-// # 不认哪些（都报错，不静默）
+// # What is not recognized (all error, never silent)
 //
-//	#### 及更深   嵌套列表   缩进代码块   ![图](…)  源文件里的 HTML 标签
-//	未闭合的 ``` / ` / ** / [  没头的表（第一行像表但没有分隔行）
-//	=== 那种下划线式标题（setext）
+//	#### and deeper   nested lists   indented code blocks   ![img](...)   HTML tags
+//	unclosed ``` / ` / ** / [   headless tables (looks like a table, no separator)
+//	=== setext headings
 //
-// 每一句报错都带**行号**，调用方再补上文件名（见 loadLang）。
+// Every error carries a **line number**; the caller adds the file name (see loadLang).
 package main
 
 import (
@@ -41,38 +41,38 @@ import (
 	"unicode/utf8"
 )
 
-// parseImage 解析一条 `![alt](src)`，返回 alt、src 与**剩下的字符串**。
+// parseImage parses one `![alt](src)`, returning alt, src and **the rest of the string**.
 //
-// 只认最简单的这一种（没有 title、路径里没有括号）：这一站放图的场合只有架构图
-// 一处，为它写一个完整的 CommonMark 图片解析器是把力气花在没人走的那条路上。
+// Only the simplest form (no title, no parentheses in path): the site places images in
+// exactly one spot, the architecture diagram; a full CommonMark parser is not worth it.
 func parseImage(s string) (alt, src, rest string, err error) {
 	if !strings.HasPrefix(s, "![") {
 		return "", "", s, fmt.Errorf("not an image: %q", s)
 	}
 	close := strings.Index(s, "](")
 	if close < 0 {
-		return "", "", s, fmt.Errorf("图片语法没闭合：%q", s)
+		return "", "", s, fmt.Errorf("image syntax is not closed: %q", s)
 	}
 	after := s[close+2:]
 	end := strings.Index(after, ")")
 	if end < 0 {
-		return "", "", s, fmt.Errorf("图片的地址没闭合：%q", s)
+		return "", "", s, fmt.Errorf("the image address is not closed: %q", s)
 	}
 	return s[2:close], after[:end], after[end+1:], nil
 }
 
-// renderMarkdown 把一份 markdown 渲染成 HTML 片段，并取出页面标题。
+// renderMarkdown renders one markdown file to an HTML fragment and extracts the page title.
 //
-// 标题 = 第一行 `# `。它**从正文里摘掉**：模板自己画 `<h1>`（全站只有一个 h1，
-// 这是无障碍与 SEO 都想要的形状），正文里再画一次就成了两个。
+// Title = the first `# ` line. It is **removed from the body**: the template draws `<h1>`
+// itself (one h1 per site, the shape a11y and SEO want), and a second one makes two.
 func renderMarkdown(src string) (body string, title string, err error) {
 	src = strings.ReplaceAll(src, "\r\n", "\n")
 	lines := strings.Split(src, "\n")
 
 	var out strings.Builder
-	var para []string // 攒着的段落行
-	// featOpen：眉题（`## <small>01</small> …`）开了一个 `<section class="feat">`，
-	// 还没关。见下面 closeFeat。
+	var para []string // paragraph lines accumulated so far
+	// featOpen: an eyebrow (`## <small>01</small> ...`) opened a `<section class="feat">`
+	// that is not closed yet. See closeFeat below.
 	featOpen := false
 	closeFeat := func() {
 		if featOpen {
@@ -95,7 +95,7 @@ func renderMarkdown(src string) (body string, title string, err error) {
 
 	for i := 0; i < len(lines); i++ {
 		line := lines[i]
-		ln := i + 1 // 给人看的行号
+		ln := i + 1 // the line number a human sees
 
 		trimmed := strings.TrimRight(line, " \t")
 		if strings.TrimSpace(trimmed) == "" {
@@ -105,13 +105,13 @@ func renderMarkdown(src string) (body string, title string, err error) {
 			continue
 		}
 
-		// 缩进的东西：markdown 里是「代码块」或「嵌套列表」，我们两个都不认。
-		// 静默的后果是那几行会被当成普通段落、缩进丢掉、排版塌成一行。
+		// Indented content: markdown calls it a code block or nested list; we accept neither.
+		// Silent, those lines become a paragraph, indentation lost, layout collapses.
 		if strings.HasPrefix(trimmed, "    ") || strings.HasPrefix(trimmed, "\t") {
 			if err := flushPara(); err != nil {
 				return "", "", err
 			}
-			return "", "", fmt.Errorf("第 %d 行缩进了：本站不认缩进代码块与嵌套列表，把它写成独立的段落（或者放进 ``` 围栏里）", ln)
+			return "", "", fmt.Errorf("line %d is indented: this site does not accept indented code blocks or nested lists, write it as its own paragraph (or inside a ``` fence)", ln)
 		}
 
 		switch {
@@ -130,7 +130,7 @@ func renderMarkdown(src string) (body string, title string, err error) {
 				code = append(code, lines[j])
 			}
 			if !closed {
-				return "", "", fmt.Errorf("第 %d 行的 ``` 没有闭合", ln)
+				return "", "", fmt.Errorf("the ``` on line %d is not closed", ln)
 			}
 			out.WriteString(codeBlock(fence, code) + "\n")
 
@@ -143,11 +143,11 @@ func renderMarkdown(src string) (body string, title string, err error) {
 				n++
 			}
 			if n > 3 {
-				return "", "", fmt.Errorf("第 %d 行用了 %d 级标题：本站只画到 ###（再深一层通常说明这一页该拆成两页）", ln, n)
+				return "", "", fmt.Errorf("line %d uses a level-%d heading: this site only renders down to ### (one level deeper usually means this page should be split in two)", ln, n)
 			}
 			text := strings.TrimSpace(trimmed[n:])
 			if text == "" {
-				return "", "", fmt.Errorf("第 %d 行是个空标题", ln)
+				return "", "", fmt.Errorf("line %d is an empty heading", ln)
 			}
 			h, err := inline(text)
 			if err != nil {
@@ -155,16 +155,16 @@ func renderMarkdown(src string) (body string, title string, err error) {
 			}
 			if n == 1 {
 				if title != "" {
-					return "", "", fmt.Errorf("第 %d 行又是一个一级标题（页面标题只能是第一行那一个）", ln)
+					return "", "", fmt.Errorf("line %d is another level-1 heading (the page title can only be the one on the first line)", ln)
 				}
 				title = strings.TrimSpace(text)
 				continue
 			}
 			if n == 2 {
-				// 眉题：`## <small>01</small> 接管你的 CLI`。它是**一节的开头**，
-				// 所以先把上一节关上（连着两个眉题 = 两节）。
+				// Eyebrow: `## <small>01</small> Take over your CLI`. It **starts a section**, so
+				// close the previous one first (two eyebrows in a row = two sections).
 				if eb, rest, ok, err := eyebrow(text); err != nil {
-					return "", "", fmt.Errorf("第 %d 行: %w", ln, err)
+					return "", "", fmt.Errorf("line %d: %w", ln, err)
 				} else if ok {
 					closeFeat()
 					out.WriteString(`<section class="feat"><h2><small>` + esc(eb) + "</small> " + rest + "</h2>\n")
@@ -172,8 +172,8 @@ func renderMarkdown(src string) (body string, title string, err error) {
 					continue
 				}
 			}
-			// 别的标题（`## Fork 下来…`、`### …`）都**不属于上一节**：眉题开的那一节
-			// 到下一个标题为止。没有这一句的话，那一节会一路吃到页尾。
+			// Other headings (`## Fork it...`, `### ...`) **do not belong to the previous section**:
+			// an eyebrow's section ends at the next heading. Without this it would run to the page end.
 			closeFeat()
 			out.WriteString(fmt.Sprintf("<h%d>%s</h%d>\n", n, h, n))
 
@@ -235,20 +235,20 @@ func renderMarkdown(src string) (body string, title string, err error) {
 				}
 				mark := listMarker(t)
 				if mark == "" {
-					// **续行**：这一行不是新的列表项，但它接着上一项——中文一句话
-					// 常常写满两行，`**加粗**` 也就不该被硬要求挤在一行里。
-					// 块级构造（表格/引用/围栏/标题/缩进）不接，那是下一块东西。
+					// **Continuation**: this line is not a new list item but continues the previous
+					// one - a Chinese sentence often wraps, so `**bold**` must not be forced onto one line.
+					// Block constructs (table/quote/fence/heading/indent) do not continue; they are next.
 					if strings.TrimSpace(t) != t {
-						// 缩进了却不是新的一项 = **嵌套列表**（`  - 二层`）。
-						// 主循环那道「缩进就报错」的检查在**列表内部**够不着这里
-						// （这几行是被这个 for 吃掉的），所以补一条一模一样的判断
-						// ——两处漏一处，嵌套列表就会被当成续行接进上一项，
-						// 页面上那一项多出几个字，而作者以为它是子列表。
+						// Indented but not a new item = **nested list** (`  - level two`).
+						// The main loop's "indent errors" check cannot reach **inside a list**
+						// (this for consumes those lines), so repeat the exact same check
+						// - miss it in one place and a nested list joins the previous item.
+						// The item gains a few words on the page, and the author thinks it is a sublist.
 						if listMarker(strings.TrimSpace(t)) != "" {
-							return "", "", fmt.Errorf("第 %d 行是嵌套列表：本站只画一层（拆成两段，或者把它写成独立的一句话）", i+1)
+							return "", "", fmt.Errorf("line %d is a nested list: this site only renders one level (split it into two paragraphs, or write it as its own sentence)", i+1)
 						}
 						if len(t)-len(strings.TrimLeft(t, " \t")) >= 4 || strings.HasPrefix(t, "\t") {
-							return "", "", fmt.Errorf("第 %d 行缩进了：本站不认缩进代码块与嵌套列表，把它放进 ``` 围栏里", i+1)
+							return "", "", fmt.Errorf("line %d is indented: this site does not accept indented code blocks or nested lists, put it inside a ``` fence", i+1)
 						}
 					}
 					if len(raw) == 0 || !isContinuation(t) {
@@ -259,7 +259,7 @@ func renderMarkdown(src string) (body string, title string, err error) {
 					continue
 				}
 				if (mark == "ol") != ordered {
-					return "", "", fmt.Errorf("第 %d 行把有序与无序列表混在一起了：分开写成两段", i+1)
+					return "", "", fmt.Errorf("line %d mixes ordered and unordered lists: write them as two separate paragraphs", i+1)
 				}
 				raw = append(raw, inlineItem(t, mark))
 			}
@@ -274,10 +274,10 @@ func renderMarkdown(src string) (body string, title string, err error) {
 			out.WriteString(list(ordered, items) + "\n")
 
 		case strings.HasPrefix(trimmed, "<"):
-			return "", "", fmt.Errorf("第 %d 行以 < 开头：本站的正文里不写 HTML（它会被原样转义显示出来）", ln)
+			return "", "", fmt.Errorf("line %d starts with <: the body of this site does not contain HTML (it would be escaped and shown literally)", ln)
 
 		case isSetext(trimmed, lines, i):
-			return "", "", fmt.Errorf("第 %d 行那种下划线式标题（=== / ---）不认，写成 ## ", ln)
+			return "", "", fmt.Errorf("underlined headings (=== / ---) on line %d are not supported, write ## ", ln)
 
 		default:
 			para = append(para, trimmed)
@@ -288,47 +288,47 @@ func renderMarkdown(src string) (body string, title string, err error) {
 	}
 	closeFeat()
 	if title == "" {
-		return "", "", fmt.Errorf("这份文件没有一级标题（第一行该是 `# 标题`）")
+		return "", "", fmt.Errorf("this file has no level-1 heading (the first line should be `# Title`)")
 	}
 	return out.String(), title, nil
 }
 
-// eyebrow 认「眉题」这种二级标题：`## <small>01</small> 接管你的 CLI`。
+// eyebrow recognizes an eyebrow heading: `## <small>01</small> Take over your CLI`.
 //
-// # 为什么为它开一个语法口子
+// # Why a syntax opening for it
 //
-// 首页那一排特性是**有编号的**（01…08），而编号该画成一个小眉题、不该和标题一样重。
-// 不开口子的话只有两条路，两条都比它糟：把编号直接写进标题文字（`## 01 接管…`，
-// 于是编号和正文一样黑一样大，看起来像标题的一部分而不是一个刻度），或者让正文
-// 手写 `<span>`——而正文里的 HTML 是被**明文禁止**的（下面那条 < 开头的检查）。
+// The home page's features are **numbered** (01...08), and the number should be a small
+// eyebrow, not as heavy as the heading. Without an opening there are two roads, both
+// worse: put the number in the heading text (`## 01 Take over...`, as black and big as
+// the body, looking like part of the heading rather than a tick), or hand-write
+// `<span>` - and HTML in the body is **forbidden** (the check for lines starting with <).
 //
-// 它是一个**闭合**的小构造：只认行首那一个 `<small>…</small>`，后面的活照样走
-// 行内渲染（`**加粗**`、`code` 都还有效）。写了一整个 HTML 小片段、或者把标签
-// 写在中间，仍然落到「正文里不写 HTML」那条报错上——那样写的人八成在按 HTML
-// 想事情，而这一页的正文是 markdown。
-//
-// 返回第三个值 = 这一行是不是眉题（不是的话后面两个值无意义）。
+// It is a **closed** little construct: only a leading `<small>...</small>`; the rest
+// still goes through inline rendering (`**bold**`, `code` still work). A whole HTML
+// fragment, or a mid-line tag, still hits "no HTML in the body" - that author is
+// thinking in HTML, while this page's body is markdown.
+// Third return = whether the line is an eyebrow (otherwise the other two mean nothing).
 func eyebrow(text string) (tag, rest string, ok bool, err error) {
 	if !strings.HasPrefix(text, "<small>") {
 		if strings.HasPrefix(text, "<") {
-			// 行首以 < 开头却不是 <small>：与其回去撞「不写 HTML」那条（报错的话
-			// 是「正文里不写 HTML」，而作者明明写的是我们支持的眉题语法，只是写错
-			// 了一点），不如在这里把唯一的那个写法说清楚。
-			return "", "", false, fmt.Errorf("行首的 < 只有一种合法写法：`## <small>01</small> 标题`")
+			// Leading < but not <small>: rather than falling into "no HTML" (whose message
+			// is "no HTML in the body" though the author wrote our supported eyebrow
+			// syntax, just wrong), spell out the one valid form here.
+			return "", "", false, fmt.Errorf("a leading < has only one legal form: `## <small>01</small> Title`")
 		}
 		return "", "", false, nil
 	}
 	end := strings.Index(text, "</small>")
 	if end < 0 {
-		return "", "", false, fmt.Errorf("<small> 没有闭合（眉题的写法是 `## <small>01</small> 标题`）")
+		return "", "", false, fmt.Errorf("<small> is not closed (an eyebrow is written `## <small>01</small> Title`)")
 	}
 	tag = text[len("<small>"):end]
 	rest = strings.TrimSpace(text[end+len("</small>"):])
 	if rest == "" {
-		return "", "", false, fmt.Errorf("眉题后面没有标题（`## <small>01</small> 接管你的 CLI`）")
+		return "", "", false, fmt.Errorf("there is no heading after the eyebrow (`## <small>01</small> Take over your CLI`)")
 	}
 	if strings.ContainsAny(tag, "<>&\"") {
-		return "", "", false, fmt.Errorf("眉题里不写标记：%q", tag)
+		return "", "", false, fmt.Errorf("do not put markup inside an eyebrow: %q", tag)
 	}
 	h, err := inline(rest)
 	if err != nil {
@@ -337,10 +337,10 @@ func eyebrow(text string) (tag, rest string, ok bool, err error) {
 	return tag, h, true, nil
 }
 
-// isSetext 认「文字 + 下一行全是 = 或 -」这种老式标题。
+// isSetext recognizes old-style headings: text, then a next line of all = or -.
 //
-// 单独认它是因为它**看起来像**我们认的东西（`---` 是水平线），静默的后果是一行
-// 文字后面跟一条横线，而作者以为那是标题。
+// Recognized separately because it **looks like** what we accept (`---` is a rule):
+// silent, you get text with a rule under it, which the author thought was a heading.
 func isSetext(trimmed string, lines []string, i int) bool {
 	if i+1 >= len(lines) {
 		return false
@@ -363,7 +363,7 @@ func isHR(t string) bool {
 	return strings.Trim(t, string(c)) == ""
 }
 
-// listMarker 说这一行是不是列表项，是的话是哪种（"ul" / "ol"）。
+// listMarker says whether this line is a list item, and which kind ("ul" / "ol").
 func listMarker(t string) string {
 	if strings.HasPrefix(t, "- ") || t == "-" {
 		return "ul"
@@ -378,11 +378,11 @@ func listMarker(t string) string {
 	return ""
 }
 
-// isContinuation 说这一行是不是上一段的**续行**（软换行），而不是一块新东西。
+// isContinuation says whether this line **continues** the previous paragraph (soft wrap).
 //
-// 判据是「它会不会开启另一种块级构造」：表格、引用、围栏、标题、水平线、缩进。
-// 都不是的话，它就是上一句没写完的那半句——中文正文里这是常态（一句话写满一行
-// 就换行），而列表项里的 `**加粗**` 不该因为作者换了一次行就报「没配上对」。
+// Criterion: would it open another block construct - table, quote, fence, heading,
+// rule, indent. If not, it is the unfinished half of the previous sentence - normal in
+// Chinese prose (one sentence per line); `**bold**` in a list item must not error on a wrap.
 func isContinuation(t string) bool {
 	for _, p := range []string{"|", ">", "```", "#", "    ", "\t"} {
 		if strings.HasPrefix(t, p) {
@@ -417,7 +417,7 @@ func list(ordered bool, items []string) string {
 func codeBlock(fence string, code []string) string {
 	cls := ""
 	if fence != "" {
-		// 语言标记只用来上类名（渲染端不引高亮库：站点要能离线双击打开）。
+		// The language tag is only used for the class (no highlight lib: offline open).
 		lang := fence
 		if i := strings.IndexAny(lang, " \t"); i >= 0 {
 			lang = lang[:i]
@@ -427,14 +427,14 @@ func codeBlock(fence string, code []string) string {
 	return "<pre><code" + cls + ">" + esc(strings.Join(code, "\n")) + "</code></pre>"
 }
 
-// table 渲染一张表。rows 是**连续的、以 | 开头**的那几行。
+// table renders a table. rows are the **consecutive lines starting with |**.
 //
-// 表必须有分隔行（`| --- | --- |`）——那既是 GFM 的语法，也是唯一能让「本来想写
-// 表格、但忘了分隔行」这件事被抓住的地方：不抓的话它会渲染成一个段落，里面一行
-// 竖线，看着像坏了，而作者收到的是一个他看不懂的页面。
+// A table must have a separator row (`| --- | --- |`) - that is GFM syntax, and the
+// only place where "meant a table, forgot the separator" gets caught: otherwise it
+// renders as a paragraph with a line of pipes, looking broken with no hint to the author.
 func table(rows []string, line int) (string, error) {
 	if len(rows) < 2 {
-		return "", fmt.Errorf("第 %d 行起是一张表，但它只有一行——表格至少要有表头 + 一行分隔（| --- |）", line)
+		return "", fmt.Errorf("a table starts on line %d, but it only has one row -- a table needs at least a header plus a separator row (| --- |)", line)
 	}
 	cells := func(s string) []string {
 		s = strings.TrimSpace(strings.Trim(s, "|"))
@@ -448,11 +448,11 @@ func table(rows []string, line int) (string, error) {
 	sep := cells(rows[1])
 	for _, c := range sep {
 		if strings.Trim(c, ":-") != "" {
-			return "", fmt.Errorf("第 %d 行该是表格的分隔行（只有 - 与 :），实际是 %q", line+1, c)
+			return "", fmt.Errorf("line %d should be the table separator row (only - and :), actually %q", line+1, c)
 		}
 	}
 	if len(sep) != len(head) {
-		return "", fmt.Errorf("第 %d 行的分隔行有 %d 格，表头有 %d 格", line+1, len(sep), len(head))
+		return "", fmt.Errorf("the separator row on line %d has %d cells, the header has %d", line+1, len(sep), len(head))
 	}
 	align := make([]string, len(sep))
 	for i, c := range sep {
@@ -477,7 +477,7 @@ func table(rows []string, line int) (string, error) {
 	for _, row := range rows[2:] {
 		cs := cells(row)
 		if len(cs) != len(head) {
-			return "", fmt.Errorf("表格第 %d 行有 %d 格，表头有 %d 格", line+2, len(cs), len(head))
+			return "", fmt.Errorf("table row %d has %d cells, the header has %d", line+2, len(cs), len(head))
 		}
 		b.WriteString("<tr>")
 		for i, c := range cs {
@@ -500,11 +500,11 @@ func alignAttr(a string) string {
 	return ` style="text-align:` + a + `"`
 }
 
-// joinLines 把一段里的多行接成一行。
+// joinLines joins the lines of a paragraph into one.
 //
-// 中文与英文的接法不一样：英文行之间要一个空格（`the` + `gateway` 不能连成一个
-// 词），而中文之间**不要**（多出来的空格在 CJK 排版里是看得见的毛刺）。判据就是
-// 上一行的末字符与这一行的首字符是不是都在 CJK 区。
+// Chinese and English join differently: English lines need a space (`the` + `gateway`
+// must not fuse), Chinese **must not** (the extra space is a visible burr in CJK type).
+// The criterion is whether the previous line's last and this line's first char are CJK.
 func joinLines(lines []string) string {
 	var b strings.Builder
 	for i, l := range lines {
@@ -533,25 +533,25 @@ func lastRune(s string) rune {
 	return last
 }
 
-// isCJK 是「中日韩文字与全角标点」那一块。够用就好，不必穷举 Unicode。
+// isCJK is that block: CJK characters and full-width punctuation. Good enough; no full Unicode.
 func isCJK(r rune) bool {
 	switch {
-	case r >= 0x4E00 && r <= 0x9FFF: // 汉字
+	case r >= 0x4E00 && r <= 0x9FFF: // Han characters
 		return true
-	case r >= 0x3000 && r <= 0x303F: // 中文标点
+	case r >= 0x3000 && r <= 0x303F: // Chinese punctuation
 		return true
-	case r >= 0xFF00 && r <= 0xFFEF: // 全角
+	case r >= 0xFF00 && r <= 0xFFEF: // full width
 		return true
 	}
 	return false
 }
 
-// inline 渲染行内构造。**认不出来的原样留着**（除了下面那几条会报错的）：
-// 行内语法没有块级那么强的「看着像坏了」的后果。
+// inline renders inline constructs. **Unrecognized text stays as is** (but for the few
+// that error below): inline syntax lacks the strong "looks broken" consequences of blocks.
 func inline(s string) (string, error) {
-	// 加粗的配对先查：`**` 落单时它会原样出现，而作者以为加了粗。
+	// Check bold pairs first: a lone `**` shows up as is, and the author thinks it is bold.
 	if strings.Count(s, "**")%2 != 0 {
-		return "", fmt.Errorf("行内的 ** 没配上对：%q", s)
+		return "", fmt.Errorf("** inline is not paired: %q", s)
 	}
 	var b strings.Builder
 	for i := 0; i < len(s); {
@@ -559,7 +559,7 @@ func inline(s string) (string, error) {
 		case s[i] == '`':
 			j := strings.IndexByte(s[i+1:], '`')
 			if j < 0 {
-				return "", fmt.Errorf("行内的反引号没闭合：%q", s)
+				return "", fmt.Errorf("an inline backtick is not closed: %q", s)
 			}
 			b.WriteString("<code>" + esc(s[i+1:i+1+j]) + "</code>")
 			i += j + 2
@@ -567,7 +567,7 @@ func inline(s string) (string, error) {
 		case strings.HasPrefix(s[i:], "**"):
 			j := strings.Index(s[i+2:], "**")
 			if j < 0 {
-				return "", fmt.Errorf("行内的 ** 没闭合：%q", s)
+				return "", fmt.Errorf("** inline is not closed: %q", s)
 			}
 			inner, err := inline(s[i+2 : i+2+j])
 			if err != nil {
@@ -577,20 +577,20 @@ func inline(s string) (string, error) {
 			i += j + 4
 
 		case strings.HasPrefix(s[i:], "!["):
-			// **架构图是唯一放行的一类**（2026-09-30 用户明确要过一张）。
+			// **The architecture diagram is the one allowed kind** (2026-09-30, user asked).
 			//
-			// 原来这里一律报错，理由是 README 那条「不要截图/终端转录」。那条禁的是
-			// **录屏式的截图**（让人看了不想读），不是「用一张图把结构讲清楚」——
-			// 后者恰恰是首页最缺的东西。
+			// This used to error unconditionally, citing README's "no screenshots/terminal
+			// transcripts". That ban is on **screen-recording screenshots** (which make
+			// people not want to read), not "explain structure with one image" - the latter
+			// is exactly what the home page lacks most.
 			//
-			// 放行的范围写死在 `src` 上：**本站的 .svg**。外链图片会让站点依赖别人的
-			// 可用性，位图则与「站点就两三个文件、处处能离线看」这条不合。
+			// Fixed on `src`: **our own .svg**. External images add an uptime dependency.
 			alt, src, rest, err := parseImage(s[i:])
 			if err != nil {
 				return "", err
 			}
 			if !strings.HasSuffix(src, ".svg") || strings.Contains(src, "://") {
-				return "", fmt.Errorf("站点只放本站的 svg（外链与位图都不认，见 README 的风格约定）：%q", src)
+				return "", fmt.Errorf("the site only serves its own svg (external links and bitmaps are not accepted, see the README style rules): %q", src)
 			}
 			b.WriteString(`<img class="figure" src="` + esc(src) + `" alt="` + esc(alt) + `">`)
 			i += len(s[i:]) - len(rest)
@@ -598,11 +598,11 @@ func inline(s string) (string, error) {
 		case s[i] == '[':
 			j := strings.Index(s[i:], "](")
 			if j < 0 {
-				return "", fmt.Errorf("行内的 [ 没配上 ](链接)：%q", s)
+				return "", fmt.Errorf("an inline [ is not paired with ](link): %q", s)
 			}
 			k := strings.IndexByte(s[i+j+2:], ')')
 			if k < 0 {
-				return "", fmt.Errorf("行内的链接没闭合：%q", s)
+				return "", fmt.Errorf("an inline link is not closed: %q", s)
 			}
 			text, href := s[i+1:i+j], s[i+j+2:i+j+2+k]
 			inner, err := inline(text)
@@ -617,11 +617,11 @@ func inline(s string) (string, error) {
 			i += j + 2 + k + 1
 
 		default:
-			// **按 rune 走，不按 byte**：`string(s[i])` 里那个 s[i] 是 byte，
-			// 而整数转字符串是按 **rune** 转的——中文的每一个首字节都会变成
-			// 一个 Latin-1 字符（`为` → `ä¸º`）。这个错很凶：ASCII 部分
-			// （命令、代码、英文）全都正常，只有中文烂掉，所以第一眼会以为
-			// 是「编码问题」而去查文件的 charset，而文件一直是好的。
+			// **Iterate by rune, not byte**: in `string(s[i])` that s[i] is a byte, and int-to-
+			// string converts by **rune** - every Chinese lead byte becomes a Latin-1 char
+			// (mangled like `ä¸º`). The mistake is vicious: ASCII (commands, code, English)
+			// is fine and only Chinese is mangled, so at first glance it is "an encoding
+			// problem" and you check the file's charset, while the file was fine all along.
 			r, size := utf8.DecodeRuneInString(s[i:])
 			b.WriteString(esc(string(r)))
 			i += size
@@ -630,30 +630,30 @@ func inline(s string) (string, error) {
 	return b.String(), nil
 }
 
-// siteHref 把作者写的一个链接变成真正发出去的地址。
+// siteHref turns a link the author wrote into the address actually emitted.
 //
-// # 为什么这件事必须在这里做
+// # Why this has to happen here
 //
-// 站内地址在源文件里写成**网站根下的路径**（`/docs/tiers/`）——作者不该在每一处
-// 手写部署前缀。而 GitHub Pages 的项目站挂在 `/<repo>/` 下面，于是同一个
-// `/docs/tiers/` 在源文件里是对的、原样发出去就是 **404**。
+// In-site addresses are written as **site-root paths** (`/docs/tiers/`) - authors should
+// not hand-write the deployment prefix. GitHub Pages serves a project site under
+// `/<repo>/`, so the same `/docs/tiers/` is right in source and a **404** when emitted raw.
 //
-// 这个错实测发生过，而且是**静默**的：站点的每一页都出得来、导航（它走模板、拼的
-// 是带了前缀的地址）全绿，只有**正文里的链接**全是 404。本地的 `--local` 预览恰恰
-// 从根服务，所以本地看是对的——只有线上点一下才发现（2026-09-21 实测：16 条，
-// 分布在 7 页上）。
+// This has really happened, and **silently**: every page rendered, the nav (a template
+// with prefixed addresses) was fine, and only **links in the body** 404'd. The local
+// `--local` preview serves from the root, so locally it is right - only clicking online
+// finds it (2026-09-21: 16 links across 7 pages).
 //
-// # 认哪些、不认哪些
+// # What is accepted and what is not
 //
-// 认：外部地址（http/https/mailto，原样）、站内绝对路径（补前缀）、页内锚点
-// （原样，它指的就是本页）。不认：`a.md` 这类相对路径与 `//host` 这类协议相对
-// 地址——前者在这里没有意义（源文件树不是发布出去的树，`docs/tiers.md` 对应的是
-// `/docs/tiers/`，靠拼是拼不出来的），后者少见且极易写错。两种都报错退出，比发一个
-// 404 强。
+// Accepted: external (http/https/mailto, as is), in-site absolute paths (prefix added),
+// in-page anchors (as is, same page). Not accepted: relative paths like `a.md` and
+// protocol-relative `//host` - the former has no meaning here (the source tree is not
+// the published tree, `docs/tiers.md` maps to `/docs/tiers/`, unbuildable by concat),
+// the latter rare and easy to get wrong. Both error out, better than shipping a 404.
 func siteHref(href string) (string, error) {
 	switch {
 	case strings.HasPrefix(href, "//"):
-		return "", fmt.Errorf("链接 %q 是协议相对地址：写成完整的 https://…（本站用不到协议相对）", href)
+		return "", fmt.Errorf("link %q is protocol-relative: write it out as a full https://... (this site does not need protocol-relative)", href)
 	case strings.HasPrefix(href, "/"):
 		return basePath() + strings.TrimPrefix(href, "/"), nil
 	case strings.HasPrefix(href, "#"):
@@ -664,13 +664,14 @@ func siteHref(href string) (string, error) {
 			return href, nil
 		}
 	}
-	return "", fmt.Errorf("链接 %q 认不出来：站内地址写成网站根下的路径（`/docs/tiers/`），"+
-		"站外写成完整的 https://…——**不要写相对路径**，源文件树与发布出去的树不是一回事，"+
-		"拼出来的那个地址在线上是 404（2026-09-21 就是这么漏了 16 条）", href)
+	return "", fmt.Errorf("unrecognized link %q: in-site addresses are written as a path under the site root (`/docs/tiers/`), "+
+		"out-of-site ones as a full https://... -- **never a relative path**: the source tree and the published "+
+		"tree are not the same thing, and the address that builds is a 404 online (that is how 16 of them "+
+		"slipped through on 2026-09-21)", href)
 }
 
-// esc 转义 HTML 里那五个字符。**这里是唯一的出口**：所有会进正文的文字都过它，
-// 所以「源文件里的 < 不会变成标签」这条只有一个地方要管。
+// esc escapes the five HTML characters. **This is the only exit**: every string that
+// enters the body passes through it, so "a < in source never becomes a tag" has one gate.
 func esc(s string) string {
 	r := strings.NewReplacer(
 		"&", "&amp;",

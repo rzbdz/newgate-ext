@@ -6,63 +6,66 @@ import (
 	modules "github.com/rzbdz/newgate/component"
 )
 
-// 这条守的是**生成物 order_gen.go 可信**这件事。
+// What this guards is that **the generated order_gen.go can be trusted**.
 //
-// 它是构建期算好冻下来的（见 tools/distgen/orderprobe），运行期只做一次核对
-// （排列对不对），**不核对它是不是真的拓扑序**——那是构图期的事。所以「这份表
-// 到底对不对」必须有人在**这里**看着，否则它是一份没人验过的冻结数据。
+// It is computed and frozen at build time (see tools/distgen/orderprobe); at runtime there
+// is only one check (is the arrangement right), and **it does not check whether it really
+// is a topological order** -- that is the graph-building step's job. So "is this table
+// right at all" has to be watched by someone **here**, or it is frozen data nobody verified.
 //
-// 两件事一起验，缺一条都不够：
+// Two things are checked together; missing either is not enough:
 //
-//  1. 它**有效**：每份规格书按这个顺序装出来的图，`Resolve` 走的是快路径，
-//     而且产出的顺序与它一模一样；
-//  2. 它**不是装饰**：顺序必须真的被用上（Selection.Load 排过），否则这份表
-//     过期了也没人知道。
+//  1. It **works**: for each spec, the graph assembled in this order makes
+//     `Resolve` take the fast path, and the order it produces is exactly the same;
+//  2. It **is not decoration**: the order must really be used (Selection.Load
+//     sorts by it), or nobody would notice this table going stale.
 func TestGeneratedOrderMatchesResolve(t *testing.T) {
 	specs := Specs()
 	if len(specs) == 0 {
-		t.Fatal("一份规格书都没有")
+		t.Fatal("there are no specs at all")
 	}
 	_ = specs
 	for _, name := range SpecNames() {
 		loader := Loader{Spec: name}
 		order := loader.PrecomputedOrder()
 		if len(order) == 0 {
-			t.Errorf("%s 没有启动顺序——order_gen.go 没生成？"+
-				"（跑 `go run ./tools/distgen`）", name)
+			t.Errorf("%s has no start order -- was order_gen.go not generated?"+
+				"(run `go run ./tools/distgen`)", name)
 			continue
 		}
 
-		// ① 按图纸装：必须装得起来，而且顺序就是图纸上那个。
+		// (1) Assemble by the blueprint: it must assemble,
+		// and the order must be the one on the blueprint.
 		//
-		// 这一条同时是「运行期真的走了图纸」的证据：`Loader` 实现了
-		// component.Precomputed，所以 Resolve 不会去建边排序（见
-		// component.planFromOrder）。名字对不上、数量对不上都当场报错。
+		// This is also evidence that "runtime really took the blueprint": `Loader`
+		// implements component.Precomputed, so Resolve does not build edges and sort (see
+		// component.planFromOrder). Name mismatches and count mismatches error out on the spot.
 		plan, err := modules.Resolve(loader)
 		if err != nil {
-			t.Errorf("%s 按图纸装不起来: %v", name, err)
+			t.Errorf("%s does not assemble from the blueprint: %v", name, err)
 			continue
 		}
 		if got := plan.Names(); !sameStrings(got, order) {
-			t.Errorf("%s 的实际顺序与图纸不一致：\n  图纸: %v\n  实际: %v", name, order, got)
+			t.Errorf("%s's actual order differs from the blueprint:\n  blueprint: %v\n  actual: %v", name, order, got)
 		}
 
-		// ② 图纸必须**等于「从头算」的答案**。这一条是最要紧的：图纸是构建期
-		// 冻下来的，而运行期不再校验它是不是真的拓扑序（那是构建期的事）。
-		// 少了这一条，一张排错了的图纸没有任何人看着。
+		// (2) The blueprint must **equal the "computed from scratch" answer**. This is
+		// the most important one: the blueprint is frozen at build time, and runtime no
+		// longer verifies whether it really is a topological order (that is build time's
+		// job). Without this one, a wrongly ordered blueprint has nobody watching it.
 		components, err := Specs()[name].Load()
 		if err != nil {
-			t.Errorf("%s 从头装不起来: %v", name, err)
+			t.Errorf("%s does not assemble from scratch: %v", name, err)
 			continue
 		}
 		fresh, err := modules.Resolve(staticLoader(components))
 		if err != nil {
-			t.Errorf("%s 从头构图失败: %v", name, err)
+			t.Errorf("%s failed to build the graph from scratch: %v", name, err)
 			continue
 		}
 		if got := fresh.Names(); !sameStrings(got, order) {
-			t.Errorf("%s 的图纸与「从头算」的结果不一致（清单过期了？）：\n"+
-				"  图纸: %v\n  从头: %v", name, order, got)
+			t.Errorf("%s: the blueprint differs from the \"compute from scratch\" result (is the list stale?):\n"+
+				"  blueprint: %v\n  from scratch: %v", name, order, got)
 		}
 	}
 }

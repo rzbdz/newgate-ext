@@ -3,61 +3,71 @@ import { dirname, resolve } from "node:path";
 import { defineConfig } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 
-// 公开站上那个**可点的界面演示**：同一份前端的第二个入口。
+// The **clickable UI demo** on the public site: a second entry into the same front end.
 //
-// # 为什么是第二个入口，而不是第二个工程
+// # Why a second entry rather than a second project
 //
-// ConceptCard 静态 import 了全部七个 kind，其中 CodeEditor 静态 import 了五个
-// CodeMirror 包（见 package.json）——静态 import 摇不掉。所以「新起一个 vite 工程去
-// import 这些源码」必须**再装一遍依赖**（复制 package.json + lockfile，或者引一个
-// pnpm workspace）。为了一个演示页把整个前端工具链复制一份，是这里最大的浪费。
+// ConceptCard statically imports all seven kinds, among which CodeEditor statically
+// imports five CodeMirror packages (see package.json) -- static imports cannot be shaken
+// out. So "spin up another vite project to import these sources" would require
+// **installing the dependencies again** (copying package.json + lockfile, or pulling in a
+// pnpm workspace). Copying the whole front-end toolchain for one demo page is the biggest
+// waste here.
 //
-// 共用一份工程就没有这个问题：一次 `pnpm install`、同一套 svelte 插件、同一份
-// 依赖版本。代价是这个文件本身（二十行配置）。
+// Sharing one project avoids the problem: one `pnpm install`, the same svelte plugin, the
+// same dependency versions. The cost is this file itself (twenty lines of config).
 //
-// # 它进不了产品的产物
+// # It cannot get into the product output
 //
-// outDir 指到 `site/dist/demo`（仓库根下），而产品那条路（vite.config.ts）读的是
-// `web/dist`，`//go:embed all:web/dist` 也只读那一份。两边唯一的交集是**源码**：
-// 演示页 import 的是 `../src/...`，也就是说它跑的就是产品那几个组件。
+// outDir points at `site/dist/demo` (under the repo root), while the product path
+// (vite.config.ts) reads `web/dist`, and `//go:embed all:web/dist` reads only that one. The
+// only intersection between the two is **source**: the demo page imports `../src/...`,
+// that is, it runs the very components the product has.
 //
-// `site/dist` 在 .gitignore 里（与 dist/architecture.html 同一条：那是「这一刻」的
-// 产物），所以演示页的产物不进版本控制，也就不会让那两个 Go 侧棘轮（web_test.go /
-// i18n_test.go）看到一个凭空多出来的东西。
+// `site/dist` is in .gitignore (same rule as dist/architecture.html: it is the output "as
+// of this moment"), so the demo page's output does not go into version control, and thus
+// neither of the two Go-side ratchets (web_test.go / i18n_test.go) sees something appear
+// out of nowhere.
 const here = dirname(fileURLToPath(import.meta.url));
 
-// base 是**站点根那一层**推出来的，不是各写一份。
+// base is derived from **the site root level**, not written in two places.
 //
-// 为什么留这个口子：本地 `python3 -m http.server -d site/dist` 是从**根**服务的，
-// 而 Pages 上的站点在 `/newgate-ext/` 下。写死的话本地打开演示页就是白屏 + 一串
-// 404（资源都在一个不存在的 `/newgate-ext/` 下）——而那正是改这个页面时最常见的
-// 一条路。
+// Why leave this opening: locally, `python3 -m http.server -d site/dist` serves from the
+// **root**, while the Pages site sits under `/newgate-ext/`. Hard-coding would make the
+// local demo page a blank screen + a pile of 404s (resources all under a `/newgate-ext/`
+// that does not exist) -- and that is exactly the most common way this page gets changed.
 //
-// 为什么是**推出来的**而不是第二个环境变量：站点生成器与演示页这两个 base 必须
-// 同时指对，而它们其实是同一个数的两次抄写（演示页在站点根下的 `/demo/`）。两份
-// 环境变量就有「拧了这一个、忘了那一个」的余地，而那种错的表现在浏览器里是白屏
-// ——和「根本没建成功」长得一样。所以只留一个口子（`SITEGEN_BASE`，与
-// tools/sitegen 的 basePath 是同一个变量），`demo/` 这一节在这里拼上：
+// Why **derived** rather than a second environment variable: the site generator and the
+// demo page must both get their base right at the same time, and they are really the same
+// number written down twice (the demo page sits at `/demo/` under the site root). Two
+// environment variables leave room for "turned this one, forgot that one", and the symptom
+// of that mistake in the browser is a blank screen -- indistinguishable from "the build
+// simply did not succeed". So only one opening is kept (`SITEGEN_BASE`, the same variable
+// as tools/sitegen's basePath), and the `demo/` segment is appended here:
 //
-//	SITEGEN_BASE=/ bash site/build.sh --local   # 本地看：base 变成 /demo/
+//	SITEGEN_BASE=/ bash site/build.sh --local   # view locally: base becomes /demo/
 const SITE_BASE = process.env.SITEGEN_BASE ?? "/newgate-ext/";
 const DEMO_BASE = (SITE_BASE.endsWith("/") ? SITE_BASE : SITE_BASE + "/") + "demo/";
 
 export default defineConfig({
-  // root 是 demo/：vite 从这里找 index.html。publicDir 显式指回上一层的 public/，
-  // 那样 favicon 两个入口共用一份（默认会去 demo/public 找，那里没有）。
+  // root is demo/: vite looks for index.html from here. publicDir explicitly points back at
+  // the public/ one level up, so the favicon is shared by both entries (by default it would
+  // look in demo/public, where there is none).
   root: "demo",
   publicDir: resolve(here, "public"),
   base: DEMO_BASE,
-  // 演示页没有后端：模型下拉**不要**去问 /api/ext/modellist（那会得到一条 404，
-  // 屏幕上写着「问不到」——而这不是演示页要演的东西）。它照常列出 providers.json
-  // 里声明的那份清单，交互（打开、搜索、分组）全都能玩。
+  // The demo page has no backend: the model dropdown must **not** ask /api/ext/modellist
+  // (that yields a 404, with "could not ask" on the screen -- and that is not what the demo
+  // page is meant to demonstrate). It still lists the manifest declared in providers.json,
+  // and the interactions (open, search, grouping) are all playable.
   define: { __NEWGATE_DEMO__: "true" },
   plugins: [svelte()],
   build: {
     outDir: resolve(here, "../../../site/dist/demo"),
-    // root 之外的 outDir 默认**不清理**（vite 怕误删），而这里要的就是「整份重来」：
-    // 删掉一行之后，旧 chunk 留着会让页面加载到上一个版本。
+    // An outDir outside root is **not cleaned** by default (vite is afraid of deleting the
+    // wrong thing), and here "start the whole thing over" is exactly what is wanted: after
+    // deleting a line, stale chunks left behind would make the page load the previous
+    // version.
     emptyOutDir: true,
     target: "es2022",
     rollupOptions: { output: { manualChunks: undefined } },

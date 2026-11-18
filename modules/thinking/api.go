@@ -5,11 +5,11 @@ import (
 	modules "github.com/rzbdz/newgate/component"
 )
 
-// Service 提供与模型无关的 thinking 降级操作。
-// 具体模型插件依赖这个端口，而不是反向依赖 thinking 的内部实现。
+// Service provides model-agnostic thinking downgrade operations.
+// Model plugins depend on this port, not the other way round on thinking's internals.
 type Service interface {
 	BestEffortDisable(body []byte, request *special.Request) ([]byte, []string, error)
 }
 
-// Capability 标识唯一的 thinking 策略服务。
+// Capability identifies the single thinking policy service.
 var Capability = modules.NewCapability[Service]("thinking")

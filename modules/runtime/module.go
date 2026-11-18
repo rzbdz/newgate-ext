@@ -1,11 +1,11 @@
-// Package runtime 把一个 Agent 描述符变成真实客户端进程。
+// Package runtime turns an Agent descriptor into a real client process.
 //
-// confighook 决定“客户端是什么”，config 决定“当前走哪个 profile”，runtime
-// 只负责找到被 shim 遮住的真实二进制、构造最小环境覆盖并启动它。它不解析
-// 模型链，也不修改客户端配置。
+// confighook decides "what the client is", config decides "which profile is current",
+// runtime only finds the real binary hidden by the shim, builds the minimal env
+// override and launches it. It resolves no model chain and modifies no client config.
 //
-// 现有 launch 代码仍通过 agentstate 兼容桥读取目录。Runtime 组件在 Start
-// 安装这份只读目录，在 Stop 恢复旧值，把遗留全局状态限制在明确生命周期内。
+// Legacy launch code still reads the catalog via the agentstate bridge. The Runtime
+// component installs this read-only catalog in Start, restores it in Stop - clear lifetime.
 package runtime
 
 import (
@@ -27,8 +27,8 @@ type service struct{}
 
 var _ Runtime = (*service)(nil)
 
-// New 声明客户端运行时组件。启动时把只读 AgentCatalog 接入兼容层，
-// 停止时撤销该桥接；Launch 端口本身保持无状态。
+// New declares the client runtime component. Start wires the read-only AgentCatalog into
+// the compatibility layer, Stop undoes the bridge; the Launch port itself stays stateless.
 func New() modules.Component {
 	var restore func()
 	var releases []modules.Release
@@ -40,32 +40,32 @@ func New() modules.Component {
 		Requires: []modules.Requirement{
 			modules.Need(configapi.Capability),
 			modules.Need(confighookapi.AgentCatalogCapability),
-			// state.json 里属于本模块的那一段由 confighook 统一登记（见下面 Start
-			// 里的 RegisterStateField）。这条**以前没有声明**，而 Start 里是
-			// MustGet——2026-09-21 由 tools/archmap 那个「import 了却没有声明边」
-			// 的探针挖出来：摘掉 confighook 时构图期因为**别人**（locale /
-			// pluginmanager）先失败，所以这个 panic 一直轮不到，测试全绿。
-			// 一旦装配里没有 confighook 而本模块在，就是 Start 期直接 panic。
+			// The state.json section this module owns is registered through confighook (see
+			// RegisterStateField in Start below). This **was not declared** before, while Start
+			// used MustGet - on 2026-09-21 tools/archmap's "imported but undeclared edge" probe
+			// dug it out: with confighook removed, graph building failed first on **others**
+			// (locale / pluginmanager), so this panic never ran and tests were green. Once an
+			// assembly has this module but no confighook, it panics at Start.
 			modules.Need(confighookapi.ConfigHooksCapability),
-			// ui 是**弱依赖**（见 component.Optional）：接管的状态行与两条体检、
-			// 以及本模块那一族命令（start/stop/on/off/restart…）都归它自己贡献，
-			// 装着界面就挂上去，没装就跳过——接管照常工作，只是没有入口。
+			// ui is a **weak dependency** (see component.Optional): the takeover status line,
+			// the two checks, and this module's commands (start/stop/on/off/restart...) are all
+			// contributed by it - with a UI they mount, without one they skip; takeover works.
 			modules.Optional(cliapi.Capability),
-			// web 界面同理，而且是**另一条**：只装 dashboard 的装配里（没有终端
-			// 界面），「谁在走 newgate」照样该出现在网页上。
+			// Same for the web UI, and it is a **separate** edge: in a dashboard-only assembly
+			// (no terminal UI), "who goes through newgate" must show on the web page too.
 			modules.Optional(viewapi.Capability),
 		},
 		Provides: []modules.Provision{
 			modules.Provide(Capability, Runtime(service)),
-			// 接管那半条端口：同一个 service，另一份契约（见 api.go 的 Control）。
+			// The takeover half of the port: same service, another contract (see api.go's Control).
 			modules.Provide(ControlCapability, Control(service)),
 		},
 		Start: func(_ context.Context, ctx modules.Context) error {
 			catalog := modules.MustGet(ctx, confighookapi.AgentCatalogCapability)
 			restore = agentstate.Set(catalog)
 
-			// state.json 里的 taken_over 归本模块（on/off 收尾时写它）。登记它
-			// 才有人拦「两个模块抢同一个字段」——这张表以前只覆盖三处写入里的一半。
+			// taken_over in state.json belongs to this module (written when on/off wrap up).
+			// Registered, someone catches "two modules grabbing one field" - it covered half.
 			hooks := modules.MustGet(ctx, confighookapi.ConfigHooksCapability)
 			fieldRelease, err := hooks.RegisterStateField("runtime", "taken_over")
 			if err != nil {
@@ -73,9 +73,9 @@ func New() modules.Component {
 			}
 			releases = append(releases, fieldRelease)
 
-			// web 界面那一份（谁在走 newgate）**先**注册：它不依赖 cli，只装
-			// dashboard 的装配里也要有——下面那段一旦 return，这里就永远不会跑
-			// （与 gateway/config 同一条）。
+			// The web UI's copy (who goes through newgate) registers **first**: it does not need
+			// cli, and a dashboard-only assembly needs it - once the block below returns, this
+			// never runs (same as gateway/config).
 			if v, ok := modules.Get(ctx, viewapi.Capability); ok {
 				rel, err := v.Register("runtime",
 					viewapi.Title(func() string { return i18n.T("Takeover", nil) }).
@@ -87,10 +87,10 @@ func New() modules.Component {
 				releases = append(releases, rel)
 			}
 
-			// 接管的状态行与两条体检（接管 / 备份）由本模块自报：写这些文件的
-			// 是本模块，界面不该替它读 original/ 目录（见 diagnostics.go）。
+			// The takeover status line and the two checks (takeover / backups) are self-reported:
+			// this module writes those files; the UI should not read original/ for it.
 			//
-			// catalog 在这里现取（Start 的参数已经出了作用域，而下面两处都要用）。
+			// catalog is fetched here and now (Start's args are out of scope; both uses need it).
 			cli, ok := modules.Get(ctx, cliapi.Capability)
 			if !ok {
 				return nil
@@ -127,7 +127,7 @@ func New() modules.Component {
 	}
 }
 
-// Launch 把端口调用翻译为 launch.Options，隔离 runtime 内部启动协议。
+// Launch translates a port call into launch.Options, isolating runtime's launch protocol.
 func (*service) Launch(agent *confighookapi.Agent, facts confighookapi.AgentFacts, args []string, profile string) int {
 	return launch.Launch(agent, facts, args, launch.Options{Profile: profile})
 }

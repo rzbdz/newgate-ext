@@ -1,77 +1,77 @@
-// Package proto 是配置共享的线上协议与副本侧的应用逻辑。
+// Package proto is config sharing's wire protocol and replica-side apply logic.
 //
-// 为什么单独一个子包（而不是写在 modules/configshare 根目录）
+// Why a separate subpackage (instead of the modules/configshare root)
 //
-// 启动后台轮询只有一处时机是对的：daemon 的 cli.Serve。而 modules/cli 得
-// import 它才能启动它——代码若长在 configshare 根目录，cli → configshare 就会
-// 和 configshare → cliapi（注册 `config` 命令）撞成一个 import 环。
+// There is exactly one right place to start the background poll: the daemon's
+// cli.Serve, which requires modules/cli to import it - and if this code lived in the
+// configshare root, cli -> configshare -> cliapi (`config` command) would be a cycle.
 //
-// 放在子包里依赖方向就是单向的：cli → configshare/proto，而 proto 只认
-// paths / config、store、domain 和标准库，不认识任何端口模块（尤其不 import
-// cliapi）。附带的好处是本包**可以脱离组件图单独测**：测试全在 httptest +
-// 临时目录上跑（见 *_test.go）。
+// In a subpackage the dependency is one-way: cli -> configshare/proto, and proto knows
+// only paths/config, store, domain and the standard library, no port module (especially
+// not cliapi). A bonus: this package **tests off the component graph** - tests run on
+// httptest + temp dirs (see *_test.go).
 //
-// # 协议的形状
+// # Protocol shape
 //
-//	宿主 (role=host)                          副本 (role=client)
-//	  GET /__newgate/config   ──── 信封 ────▶  拉 → 解密 → 校验 → 漂移守卫 → 落盘
-//	  GET /__newgate/secrets  ──── 信封 ────▶  同一套，另一个通道
+//	host (role=host)                       replica (role=client)
+//	  GET /__newgate/config  --envelope-->   pull -> decrypt -> validate -> write
+//	  GET /__newgate/secrets --envelope-->   same flow, another channel
 //
-// 为什么不复用 git / ssh 当传输层（这是设计里被否掉的那条路）：宿主要放到
-// tailscale 后面并且要支持代理宿主（跳板），而受限节点不允许入站——跳板链路下
-// ssh 的信任模型不成立。所以传输只能是我们自己的一条**只出站**的拉取。
-// git 完全留在宿主上做版本管理/回滚/审计（人用的工具），副本不装 git、不 clone。
+// Why not reuse git/ssh as transport (the rejected path): the host sits behind
+// tailscale and must support a proxy host (jump), and restricted nodes forbid inbound -
+// ssh's trust model does not hold behind a jump chain. So transport is our own
+// **outbound-only** pull. git stays entirely on the host for versioning/rollback.
 //
-// # 三条贯穿全包的性质
+// # Three properties that run through the package
 //
-//  1. **副本只出站**。没有任何代码会去连副本，受限节点（不能入站）也能当副本。
-//  2. **fail-open**。任何失败（网络、解密、schema、漂移）都保留当前配置继续
-//     服务。宿主挂了各机照常转发——这是"不引入单点故障"在代码里的落地。
-//  3. **不静默**。拒绝应用要说清是哪几个文件、为什么；但也不能刷屏
-//     （见 poller.go 的日志政策）。
+//  1. **Replicas are outbound-only**. No code connects to a replica; restricted nodes
+//     (no inbound) can be replicas too.
+//  2. **fail-open**. Any failure (network, decrypt, schema, drift) keeps the current
+//     config serving. A dead host means everyone forwards as usual - no single point.
+//  3. **Never silent**. A refusal says which files and why, and never floods.
 package proto
 
-// 线上常量。
+// Wire constants.
 const (
-	// ProtocolVersion 是信封格式版本。改了信封结构就 +1，并且它被绑进 AEAD 的
-	// AAD（见 seal.go），所以两端协议不一致时表现为**解密失败**而不是解析出
-	// 半个结构体——不做兼容猜测，两端必须一起动。
+	// ProtocolVersion is the envelope format version. Bump on structural change; it is
+	// bound into the AEAD's AAD (seal.go), so mismatched versions show as **decrypt
+	// failure**, not half a struct - no compatibility guessing; both ends move together.
 	ProtocolVersion = 1
 
-	// SupportedSchema 是本二进制能正确解释的最高配置 schema。
+	// SupportedSchema is the highest config schema this binary can interpret correctly.
 	//
-	// 为什么它是**唯一有牙的版本字段**：另一个字段 min_newgate_version 装的是
-	// `git describe` 串（`build-17-…-gf90dc81`），跟将来的 `build-18-…` 之间
-	// **没有数值大小关系**（`--dirty` 更糟），拿它做判断只能是字符串相等。
-	// schema 是小整数、手工 bump，才排得出先后。详见 version.go 的两级门。
+	// Why it is the **only version field with teeth**: the other field,
+	// min_newgate_version, holds a `git describe` string (`build-17-...-gf90dc81`),
+	// which has **no numeric ordering** against a future `build-18-...`, so it can
+	// only be compared for equality. schema is a hand-bumped integer and does order.
 	SupportedSchema = 1
 
-	// 两个通道的名字。它们同时是信封里的 Kind（绑进 AAD）和端点路径的一段。
+	// The two channel names: the envelope's Kind (bound into AAD) and a path segment.
 	KindConfig  = "config"
 	KindSecrets = "secrets"
 
-	// PathConfig / PathSecrets 是宿主 daemon 上的两个端点。
+	// PathConfig / PathSecrets are the two endpoints on the host daemon.
 	//
-	// 分成两个而不是一个：配置变得勤（加个 provider 就变）、密钥变得稀（一个月
-	// 一次），缓存与频率语义不同，审计也该分开看。合并成一个的话，每次改 provider
-	// 都要重新传一遍全部密钥。
+	// Two rather than one: config changes often (adding a provider), secrets rarely
+	// (monthly); caching and frequency differ, and audits should too. Merged into one,
+	// every provider edit would resend every secret.
 	PathConfig  = "/__newgate/config"
 	PathSecrets = "/__newgate/secrets"
 )
 
-// Envelope 是端点上传输的信封：一切明文都在 CT 里，外面只剩路由和代数。
+// Envelope is what travels over the endpoint: all plaintext in CT, only routing and Gen outside.
 //
-// 为什么 Gen 是**明文**却又安全：副本要能在"代数没变"时**连解密都不做**
-// （空转完全静默，见 poller.go），所以它必须先读得到代数。而它同时被绑进
-// AAD，撒谎说一个别的代数会让认证失败——攻击者能做的只有"谎报一个旧代数让
-// 这个副本这轮不更新"，那是拒绝服务，不是密钥泄露，而链路本身已经过
-// bearer 鉴权 + AEAD 保护。这是这个取舍成立的前提。
+// Why Gen is plaintext and still safe: a replica must **not even decrypt** when the
+// generation is unchanged (idle is fully silent, see poller.go), so it must read Gen
+// first. And Gen is bound into the AAD, so lying fails authentication - an attacker
+// can only claim an old generation so this replica skips a round: denial of service,
+// not key leakage, and the link already has bearer auth plus AEAD.
 //
-// Host 同理是明文，但理由是**正确性**而不是省事：副本判断"权威换了吗"必须
-// 在解密之前就能做。权威一换，新宿主的 generation 从 0 重新开始，副本若只比
-// 代数就会认为"比我应用过的旧"而**永久拒绝更新**——一个静默的、只有重装宿主
-// 才能修的故障。把 Host 放进明文（同时绑进 AAD，所以它不能被篡改或张冠李戴）
-// 让那条快路径也能识别权威变更。
+// Host is plaintext for **correctness**, not convenience: "did the authority change"
+// must be decidable before decrypting. On such a change the new host's generation
+// restarts at 0, and a replica comparing generations alone would think "older than
+// what I applied" and **refuse updates forever**, silent, fixed only by reinstalling
+// the host. Plaintext Host (also in the AAD, not forgeable) shows that to the fast path.
 type Envelope struct {
 	V     int    `json:"v"`
 	Kind  string `json:"kind"`
@@ -81,34 +81,34 @@ type Envelope struct {
 	CT    []byte `json:"ct"`
 }
 
-// Snapshot 是宿主发布的一份配置快照（信封里的那个明文 JSON）。
+// Snapshot is one config snapshot a host publishes (the plaintext JSON in the envelope).
 //
-// Files 的值是 []byte 而不是 string：内容在 JSON 里以 base64 走，落盘时
-// **逐字节写**，不做 JSON 往返——这个仓库被"JSON 往返改字节"咬过（大整数变
-// `…92`、字段顺序与未知键丢失，见 CLAUDE.md §4），配置快照尤其经不起
-// 重排：providers.json 里可能有本二进制不认识的键，重排一次就悄悄丢了。
+// Files' values are []byte rather than string: content goes over JSON as base64 and is
+// written **byte for byte**, with no JSON round trip. This repo was bitten by "JSON
+// round trips change bytes" (big integers becoming `...92`, field order and unknown
+// keys lost, CLAUDE.md §4), and a snapshot tolerates that least.
 //
-// 键是**相对配置目录的斜杠路径**（`providers.json`、`mappings/prod.json`），
-// 受 allowlist 约束（见 managed.go），落盘前还要过 os.Root——payload 来自
-// 网络，文件名不该有能力把写入引到配置目录之外。
+// Keys are **slash paths relative to the config dir** (`providers.json`,
+// `mappings/prod.json`), constrained by the allowlist (managed.go), and also passing
+// os.Root on write - the payload is from the network, so names must not escape.
 type Snapshot struct {
-	// HostID 是权威身份，宿主首次启动时生成、此后不变。
+	// HostID is the authority identity, generated on the host's first start and stable.
 	//
-	// 为什么需要它：Generation 是单调计数，而宿主的记账文件一旦丢失（重装、
-	// 换机、误删 host.json），计数会从 0 重来。没有 HostID 的话副本会认为
-	// "所有新快照都比我已经应用的旧"，**永久拒绝更新**——一个静默的、只有
-	// 重装宿主才能修的故障。有了它，权威换了就是换了，副本重置代数基线。
+	// Why: Generation is a monotonic counter, and if the host's ledger is lost (reinstall,
+	// new machine, deleted host.json) the count restarts at 0. Without HostID a replica
+	// would think every new snapshot is older and **refuse updates forever**, silent.
+	// With it, an authority change is recognized and the replica resets its baseline.
 	HostID     string            `json:"host_id"`
 	Generation int               `json:"generation"`
 	Version    string            `json:"version,omitempty"` // 内容哈希，审计与"变了没有"用
 	Files      map[string][]byte `json:"files"`
 }
 
-// Secrets 是宿主发布的密钥集合（另一个通道的明文）。
+// Secrets is the key set a host publishes (another channel's plaintext).
 //
-// 为什么密钥单独一个通道而不是塞在配置里：`providers.json` 在宿主侧是 git
-// 管的，api_key 一旦提交就永久进历史。所以配置通道**不含密**（用 api_key_env
-// 或留空），明文只走这条加密通道，且新增一个 key 只需要宿主操作一次。
+// Why a separate channel rather than inside the config: `providers.json` is git-managed
+// on the host, so an api_key committed once stays in history forever. So the config
+// channel **carries no secrets**; adding a key takes one host action, once.
 type Secrets struct {
 	HostID     string            `json:"host_id"`
 	Generation int               `json:"generation"`

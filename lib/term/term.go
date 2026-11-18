@@ -1,14 +1,16 @@
-// Package term 是**终端交互**这一层的唯一实现：raw mode、按键解码、单行输入。
+// Package term is the single implementation of the **terminal
+// interaction** layer: raw mode, key decoding, single-line input.
 //
-// # 为什么它是一份独立的叶子，而不是各界面自己写一遍
+// # Why it is a standalone leaf instead of each UI writing its own
 //
-// 2026-11-17 之前 raw mode 与按键解码长在 modules/tui 里。`newgate config` 那个
-// 向导（modules/setup）要的多选列表、文本输入、密钥输入，用的完全是同一种按键
-// 语义；抄一份过去就意味着两套按键表，而它们迟早会分叉（补一个 Ctrl-U、多认一种
-// 方向键序列），分叉的症状是「这个界面里 Home 键是退格、那个界面里是跳第一行」。
+// Before 2026-11-17 raw mode and key decoding lived in modules/tui. The `newgate config`
+// wizard (modules/setup) needs multi-select lists, text input, and secret input, using exactly
+// the same key semantics; copying it over would mean two key tables, and they will diverge
+// sooner or later (a Ctrl-U added on one side, a new arrow-key sequence recognized on the
+// other), with the symptom "Home is backspace in this UI, jump-to-first -line in that one".
 //
-// 与内核 lib/ 里那些同一条规矩：它不 import 任何模块，也不认识 newgate 的业务概念
-// ——只有「一台终端、一个按键、一行字」。版式（颜色、表格）在 lib/style，不在这里。
+// Same rule as the kernel's lib/: it imports no module and knows no newgate business concept
+// -- only "one terminal, one key, one line". Layout (color, tables) is in lib/style, not here.
 package term
 
 import (
@@ -18,11 +20,12 @@ import (
 	"strings"
 )
 
-// ErrNotATTY 说「stdin 不是终端」。所有交互界面都该在动手之前问一次
-// （IsTTY），然后给出「这台机器上没法交互，走参数版」的那句话。
+// ErrNotATTY says "stdin is not a terminal". Every interactive
+// UI should ask once (IsTTY) before doing anything, and then give the
+// sentence "this machine cannot do interactive; use the flag version".
 var ErrNotATTY = errors.New("stdin is not a terminal")
 
-// Key 是一个**语义按键**。界面按这个分派，不该去认字节。
+// Key is a **semantic key**. UIs dispatch on this, not on bytes.
 type Key int
 
 const (
@@ -39,25 +42,28 @@ const (
 	KeyTab
 	KeySpace
 	KeyEsc
-	// KeyInterrupt 是 Ctrl-C：界面把它当成「放弃这次向导」，**不是**崩溃。
+	// KeyInterrupt is Ctrl-C: the UI treats it as "abandon this wizard", **not** a crash.
 	KeyInterrupt
-	// KeyEOF 是 stdin 被关掉（管道读完）。与 Ctrl-C 分开：那不是用户按的。
+	// KeyEOF is stdin being closed (pipe exhausted). Separate
+	// from Ctrl-C: that one was not pressed by the user.
 	KeyEOF
 	KeyRune
-	// KeyOther 是认不出来的控制键。界面通常忽略它。
+	// KeyOther is an unrecognized control key. UIs usually ignore it.
 	KeyOther
 )
 
-// Event 一次按键。Key == KeyRune 时 Rune 有效（按下的那个字符，已解开 UTF-8）。
+// Event is one key press. When Key == KeyRune, Rune is
+// valid (the character pressed, already UTF-8 decoded).
 type Event struct {
 	Key  Key
 	Rune rune
 }
 
-// Terminal 是一个进了 raw mode 的终端。
+// Terminal is a terminal that has entered raw mode.
 //
-// 值语义上它是「这一次交互会话」：Open 进去、Close 出来。所有渲染仍然由调用方
-// 负责（本包不打印任何东西），因为版式是界面的事，而按键是终端的事。
+// By value semantics it is "this one interactive session": Open into it, Close out
+// of it. All rendering is still the caller's job (this package prints nothing),
+// because layout is the UI's business and keys are the terminal's business.
 type Terminal struct {
 	in       *bufio.Reader
 	restore  func()
@@ -65,8 +71,8 @@ type Terminal struct {
 	echoless bool
 }
 
-// Open 进入 raw mode（不回显、不按行缓冲、Ctrl-C 不产生信号——由界面自己把
-// KeyInterrupt 翻成「用户放弃」）。
+// Open enters raw mode (no echo, no line buffering, Ctrl-C produces
+// no signal -- the UI itself turns KeyInterrupt into "user gave up").
 func Open() (*Terminal, error) {
 	if !IsTTY() {
 		return nil, ErrNotATTY
@@ -78,8 +84,9 @@ func Open() (*Terminal, error) {
 	return &Terminal{in: bufio.NewReader(os.Stdin), restore: restore, out: os.Stdout}, nil
 }
 
-// Close 恢复终端。幂等——调用方用 defer 关它，即使中途出错也不会把终端留在
-// 一个「敲字看不见、回车不管用」的状态里（那是用户要开新终端才能修的那种损坏）。
+// Close restores the terminal. Idempotent -- the caller defers it, so even an
+// error midway does not leave the terminal in a "typing is invisible, Enter does
+// nothing" state (the kind of damage that forces the user to open a new terminal).
 func (t *Terminal) Close() {
 	if t == nil || t.restore == nil {
 		return
@@ -88,8 +95,8 @@ func (t *Terminal) Close() {
 	t.restore = nil
 }
 
-// ReadEvent 读一个按键。它**阻塞**，直到有一个能表达的事件（认不出的控制键
-// 会返回 KeyOther，而不是无限吞下去）。
+// ReadEvent reads one key. It **blocks** until there is an expressible event (an
+// unrecognized control key returns KeyOther rather than swallowing input forever).
 func (t *Terminal) ReadEvent() Event {
 	b, err := t.in.ReadByte()
 	if err != nil {
@@ -123,7 +130,8 @@ func (t *Terminal) ReadEvent() Event {
 	if b < 0x80 {
 		return Event{Key: KeyRune, Rune: rune(b)}
 	}
-	// UTF-8 多字节：把续字节读齐，解成 rune。多读一个字节就够判断长度了。
+	// UTF-8 multibyte: read the continuation bytes all the way and
+	// decode to a rune. One extra byte read is enough to tell the length.
 	need := 0
 	switch {
 	case b&0xE0 == 0xC0:
@@ -150,12 +158,12 @@ func (t *Terminal) ReadEvent() Event {
 	return Event{Key: KeyRune, Rune: r[0]}
 }
 
-// readEscape 解开 `ESC [ …` 那一族序列。
+// readEscape decodes the `ESC [ …` family of sequences.
 //
-// 只认**已经在缓冲区里**的后续字节（与 modules/tui 原来的做法一致）：方向键、
-// Home/End 在真实终端里一次 write 进来，所以它们总是一起到。单独一个 ESC（用户
-// 按的是 Esc 键）后面没有字节可读，就返回 KeyEsc——这里不去等一个超时，那会让
-// 每一次 Esc 都卡住几十毫秒。
+// It only recognizes the following bytes **already in the buffer** (same as modules/tui did):
+// arrow keys, Home/End are written in one write in a real terminal, so they always arrive together.
+// A lone ESC (the user pressed the Esc key) has no bytes to read after it, so it returns KeyEsc
+// -- no timeout is waited for here, which would otherwise stall every Esc by tens of milliseconds.
 func (t *Terminal) readEscape() Event {
 	if t.in.Buffered() == 0 {
 		return Event{Key: KeyEsc}
@@ -190,7 +198,7 @@ func (t *Terminal) readEscape() Event {
 	case 'Z': // Shift-Tab：反向切换
 		return Event{Key: KeyOther, Rune: 'Z'}
 	case '1', '3', '4', '7', '8':
-		// `ESC [ 3 ~` 删除、`1~`/`7~` Home、`4~`/`8~` End。吃掉结尾那个 `~`。
+		// `ESC [ 3 ~` delete, `1~`/`7~` Home, `4~`/`8~` End. Consume the trailing `~`.
 		if t.in.Buffered() > 0 {
 			if tail, _ := t.in.ReadByte(); tail == '~' {
 				switch c {
@@ -207,34 +215,38 @@ func (t *Terminal) readEscape() Event {
 	return Event{Key: KeyOther}
 }
 
-// LineMode 是一次 ReadLine 的行为开关。
+// LineMode is the switch for the behavior of one ReadLine call.
 type LineMode struct {
-	// Secret=true 时只显示掩码：密钥不该在终端上、也不该留在回滚缓冲里。
+	// With Secret=true only a mask is shown: a secret should not
+	// appear on the terminal, nor stay in the scrollback buffer.
 	Secret bool
-	// Placeholder 是输入为空时显示的那句灰字提示（由调用方给）。
+	// Placeholder is the gray hint shown when the input is empty (given by the caller).
 	Placeholder string
-	// Validate 对**这一行**做一次校验；返回非空字符串就是错误原因，界面显示它、
-	// 不结束这一行。nil = 不校验。
+	// Validate validates **this line** once; a non-empty return string is the
+	// reason, the UI shows it and does not end the line. nil = no validation.
 	Validate func(string) string
 }
 
-// LineResult 是 ReadLine 的结局。
+// LineResult is the outcome of ReadLine.
 type LineResult struct {
 	Text   string
 	Cancel bool // 用户按了 Esc / Ctrl-C
 	EOF    bool
 }
 
-// ReadLine 在 raw mode 里读一整行（回车结束），带回显、退格、Home/End 与清空。
+// ReadLine reads a whole line in raw mode (Enter ends
+// it), with echo, backspace, Home/End, and clear.
 //
-// # 为什么不用「退出 raw mode + bufio.Scanner」
+// # Why not "leave raw mode + bufio.Scanner"
 //
-// 那会让整个向导在每一行输入时闪一下（终端回到行模式，滚动位置跳），而且掩码
-// 输入还得自己关回显。更实际的是：向导里**上一步/下一步**的按键语义要与列表
-// 那一屏一致（Esc = 返回上一步），混用两种读法就做不到。
+// That would make the whole wizard flash on every line of input (the terminal returns to
+// line mode, the scroll position jumps), and masked input would still need echo turned off
+// by hand. More practically: the **previous/next step** key semantics in the wizard must
+// match the list screen (Esc = go back a step), and mixing two read methods cannot do that.
 //
-// render 由调用方给：它收到「当前已输入的文本」，负责把整屏画出来（含提示语、
-// 校验错误）。本包只管按键与文本状态——版式归界面。
+// render is given by the caller: it receives "the text entered so far" and is
+// responsible for drawing the whole screen (including prompt and validation error).
+// This package only handles keys and text state -- layout belongs to the UI.
 func (t *Terminal) ReadLine(mode LineMode, render func(text, errMsg string, cursor int)) LineResult {
 	var rs []rune
 	var errMsg string
@@ -263,9 +275,10 @@ func (t *Terminal) ReadLine(mode LineMode, render func(text, errMsg string, curs
 				errMsg = ""
 			}
 		case KeyHome:
-			// 光标回到行首：本实现不做行内光标移动（一行的输入很短），
-			// 但 Home 要有一个**确定**的语义，而不是被静默吞掉。
-			// 取「清空」是用户在这个场景里真正想要的（重输一整行地址）。
+			// Cursor back to the line start: this implementation does no in-line cursor
+			// movement (one line of input is short), but Home must have a **definite**
+			// meaning rather than being silently swallowed. Choosing "clear" is
+			// what the user really wants in this scene (retyping a whole address).
 			rs = rs[:0]
 			errMsg = ""
 		case KeyOther:
@@ -281,5 +294,5 @@ func (t *Terminal) ReadLine(mode LineMode, render func(text, errMsg string, curs
 	}
 }
 
-// IsTTY 报告 stdin 是不是一台终端。交互界面在做任何事之前问它一次。
+// IsTTY reports whether stdin is a terminal. Interactive UIs ask it once before doing anything.
 func IsTTY() bool { return isTTY(os.Stdin.Fd()) }

@@ -5,84 +5,87 @@ import (
 	"time"
 )
 
-// shapeBody 是一条会被 testShape（见 state_test.go）认领的 400 原文。
+// shapeBody is a 400 text that testShape (see state_test.go) will claim.
 //
-// 真实的判据文案不再住在这个包里——2026-09-17 起它由上游模块注册
-// （modules/deepseek/shape.go），那边的测试用的是真上游响应快照。这里只需要
-// 一条**形状对得上 testShape** 的 body，用来验证状态机对「形状账本」的处理
-// （永不摘牌、只计数）。
+// The real test text no longer lives in this package -- since 2026-09-17 it is registered
+// by the upstream module (modules/deepseek/shape.go), and tests there use real upstream
+// response snapshots. What is needed here is just a body **whose shape matches testShape**,
+// to verify how the state machine handles the "shape ledger" (never delist, only count).
 const shapeBody = `{"type":"error","message":"The ` + "`reasoning_content`" +
 	` in the thinking mode must be passed back to the API."}`
 
-// TestClassify 是决策表的真值表：每一行对应 docs/05-gateway.md 里那张表的一行。
+// TestClassify is the truth table of the decision table: each
+// row corresponds to a row of the table in docs/05-gateway.md.
 //
-// 这张表是「沿不沿链走 / 记不记账 / 记进哪本账」的唯一裁判，所以它必须能被
-// 穷举读完。Shape 由 Report 事先算好塞进来（见 Report），这里直接给。
+// This table is the sole judge of "keep going along the chain / record or
+// not / which ledger", so it must be readable exhaustively. Shape is computed
+// beforehand by Report and put in (see Report); here it is given directly.
 func TestClassify(t *testing.T) {
 	tests := []struct {
 		name string
 		in   Input
 		want Verdict
 	}{
-		// —— 成功 ——
-		{"上游成功", Input{Kind: KindUpstreamSuccess}, Verdict{}},
+		// -- success --
+		{"upstream success", Input{Kind: KindUpstreamSuccess}, Verdict{}},
 
-		// —— 客户端取消：不是上游的错，也不该再往下撞 ——
-		{"客户端取消（链中间）", Input{Kind: KindClientCancel}, Verdict{}},
-		{"客户端取消（链尾）", Input{Kind: KindClientCancel, IsLast: true}, Verdict{}},
-		{"客户端取消（已写字节）",
+		// -- client cancel: not the upstream's fault, and no point crashing further --
+		{"client cancellation (mid-chain)", Input{Kind: KindClientCancel}, Verdict{}},
+		{"client cancellation (chain tail)", Input{Kind: KindClientCancel, IsLast: true}, Verdict{}},
+		{"client cancellation (bytes written)",
 			Input{Kind: KindClientCancel, Written: true}, Verdict{}},
 
-		// —— 连接类失败：换站 + 记可用性 ——
-		{"连接失败（链中间）",
+		// -- connection-class failures: switch hop + record availability --
+		{"connection failure (mid-chain)",
 			Input{Kind: KindConnError}, Verdict{Advance: true, Bucket: BucketAvailability}},
-		{"连接失败（链尾）",
+		{"connection failure (chain tail)",
 			Input{Kind: KindConnError, IsLast: true}, Verdict{Bucket: BucketAvailability}},
-		{"首字节超时（已写字节）",
+		{"first-byte timeout (bytes written)",
 			Input{Kind: KindConnError, Written: true}, Verdict{Bucket: BucketAvailability}},
 
-		// —— 流中途断：换不了站（写出去收不回），但这是实打实的可用性问题 ——
-		{"流中途断", Input{Kind: KindStreamTruncated, Written: true},
+		// -- stream broken mid-way: cannot switch hop (written bytes
+		// cannot be unsent), but a real availability problem --
+		{"stream broke mid-way", Input{Kind: KindStreamTruncated, Written: true},
 			Verdict{Bucket: BucketAvailability}},
-		{"流中途断（链尾）",
+		{"stream broke mid-way (chain tail)",
 			Input{Kind: KindStreamTruncated, Written: true, IsLast: true},
 			Verdict{Bucket: BucketAvailability}},
 
-		// —— 400 + 形状命中：往下试，但绝不记在这家头上 ——
-		{"形状 400（链中间，fallback 关）",
+		// -- 400 + shape hit: try further down, but never charge it to this one --
+		{"shape 400 (mid-chain, fallback off)",
 			Input{Kind: KindUpstreamStatus, Status: 400, Shape: true},
 			Verdict{Advance: true, Bucket: BucketShape}},
-		{"形状 400（链尾）",
+		{"shape 400 (chain tail)",
 			Input{Kind: KindUpstreamStatus, Status: 400, Shape: true, IsLast: true},
 			Verdict{Bucket: BucketShape}},
-		{"形状 400（已写字节）",
+		{"shape 400 (bytes written)",
 			Input{Kind: KindUpstreamStatus, Status: 400, Shape: true, Written: true},
 			Verdict{Bucket: BucketShape}},
 
-		// —— 400 其它：请求本身有问题，不记不换 ——
-		{"非形状 400（fallback 关）",
+		// -- other 400: the request itself is bad, record nothing, switch nothing --
+		{"non-shape 400 (fallback off)",
 			Input{Kind: KindUpstreamStatus, Status: 400}, Verdict{}},
-		{"非形状 400（fallback 开，链中间）",
+		{"non-shape 400 (fallback on, mid-chain)",
 			Input{Kind: KindUpstreamStatus, Status: 400, FallbackOn400: true}, Verdict{Advance: true}},
-		{"非形状 400（fallback 开，链尾）",
+		{"non-shape 400 (fallback on, chain tail)",
 			Input{Kind: KindUpstreamStatus, Status: 400, FallbackOn400: true, IsLast: true}, Verdict{}},
 
-		// —— 限流 ——
-		{"429（链中间）",
+		// -- rate limiting --
+		{"429 (mid-chain)",
 			Input{Kind: KindUpstreamStatus, Status: 429},
 			Verdict{Advance: true, Bucket: BucketRateLimit}},
-		{"429（链尾）",
+		{"429 (chain tail)",
 			Input{Kind: KindUpstreamStatus, Status: 429, IsLast: true},
 			Verdict{Bucket: BucketRateLimit}},
 
-		// —— 配置：key 坏了 / 这家没这个模型 / 这家没钱了 ——
+		// -- config: bad key / this one has no such model / this one is out of money --
 		{"401",
 			Input{Kind: KindUpstreamStatus, Status: 401},
 			Verdict{Advance: true, Bucket: BucketConfig}},
 		{"402",
 			Input{Kind: KindUpstreamStatus, Status: 402},
 			Verdict{Advance: true, Bucket: BucketConfig}},
-		{"402（链尾）",
+		{"402 (chain tail)",
 			Input{Kind: KindUpstreamStatus, Status: 402, IsLast: true},
 			Verdict{Bucket: BucketConfig}},
 		{"403",
@@ -91,11 +94,11 @@ func TestClassify(t *testing.T) {
 		{"404",
 			Input{Kind: KindUpstreamStatus, Status: 404},
 			Verdict{Advance: true, Bucket: BucketConfig}},
-		{"404（链尾）",
+		{"404 (chain tail)",
 			Input{Kind: KindUpstreamStatus, Status: 404, IsLast: true},
 			Verdict{Bucket: BucketConfig}},
 
-		// —— 可用性：上游挂着 / 排队 ——
+		// -- availability: upstream down / queued --
 		{"408", Input{Kind: KindUpstreamStatus, Status: 408},
 			Verdict{Advance: true, Bucket: BucketAvailability}},
 		{"409", Input{Kind: KindUpstreamStatus, Status: 409},
@@ -106,13 +109,13 @@ func TestClassify(t *testing.T) {
 			Verdict{Advance: true, Bucket: BucketAvailability}},
 		{"503", Input{Kind: KindUpstreamStatus, Status: 503},
 			Verdict{Advance: true, Bucket: BucketAvailability}},
-		{"599（>=500 一律算可用性）", Input{Kind: KindUpstreamStatus, Status: 599},
+		{"599 (>=500 always counts as availability)", Input{Kind: KindUpstreamStatus, Status: 599},
 			Verdict{Advance: true, Bucket: BucketAvailability}},
 
-		// —— 其它 4xx / 3xx：请求本身有问题，撞遍所有上游没有意义 ——
+		// -- other 4xx / 3xx: the request itself is bad, ramming every upstream is pointless --
 		{"405", Input{Kind: KindUpstreamStatus, Status: 405}, Verdict{}},
 		{"418", Input{Kind: KindUpstreamStatus, Status: 418}, Verdict{}},
-		{"3xx（不再转移）", Input{Kind: KindUpstreamStatus, Status: 302}, Verdict{}},
+		{"3xx (no failover anymore)", Input{Kind: KindUpstreamStatus, Status: 302}, Verdict{}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -123,23 +126,24 @@ func TestClassify(t *testing.T) {
 	}
 }
 
-// TestClassifyShapeIsExemptFromFallbackOn400：形状错误**不受**
-// chain.fallback_on_400 约束。那个开关拦的是「拿坏请求撞遍所有上游」，而形状
-// 错误恰恰相反——同一份 body 只有这家挑食，换一家是唯一可能成功的路。
+// TestClassifyShapeIsExemptFromFallbackOn400: a shape error is **not** subject
+// to chain.fallback_on_400. That switch stops "ramming a bad request into
+// every upstream", while a shape error is the opposite -- the same body is
+// picky about only this one, and switching is the only path that can succeed.
 func TestClassifyShapeIsExemptFromFallbackOn400(t *testing.T) {
 	for _, fallback := range []bool{false, true} {
 		got := Classify(Input{
 			Kind: KindUpstreamStatus, Status: 400, Shape: true, FallbackOn400: fallback,
 		})
 		if !got.Advance || got.Bucket != BucketShape {
-			t.Errorf("fallback_on_400=%v 时形状 400 = %+v，应继续沿链且只计数", fallback, got)
+			t.Errorf("with fallback_on_400=%v a shape 400 = %+v, should continue along the chain and only count", fallback, got)
 		}
 	}
 }
 
-// TestClassifyNeverAdvancesAfterWritingBytesOrAtChainEnd 是那两条不变式：
-// 已经写出去的字节收不回，链上没有下一站也没得换。任何 Kind、任何状态码、
-// 任何形状判定下都必须成立。
+// TestClassifyNeverAdvancesAfterWritingBytesOrAtChainEnd is those two invariants: bytes
+// already written cannot be unsent, and with no next hop on the chain there is nothing
+// to switch to. Both must hold under any Kind, any status code, any shape decision.
 func TestClassifyNeverAdvancesAfterWritingBytesOrAtChainEnd(t *testing.T) {
 	kinds := []Kind{KindUpstreamSuccess, KindConnError, KindClientCancel,
 		KindUpstreamStatus, KindStreamTruncated}
@@ -155,7 +159,7 @@ func TestClassifyNeverAdvancesAfterWritingBytesOrAtChainEnd(t *testing.T) {
 								FallbackOn400: fallback, Written: written, IsLast: last,
 							}
 							if got := Classify(in); got.Advance && (written || last) {
-								t.Fatalf("Classify(%+v) 在 written=%v isLast=%v 时仍然换站",
+								t.Fatalf("Classify(%+v) still fails over with written=%v isLast=%v",
 									in, written, last)
 							}
 						}
@@ -166,8 +170,9 @@ func TestClassifyNeverAdvancesAfterWritingBytesOrAtChainEnd(t *testing.T) {
 	}
 }
 
-// TestClassifyBucketOnlyForKnownCauses：Bucket 是「记进哪本账」，只可能来自
-// 已知的那几类原因。这条挡住以后加分类时手滑给出一个没人处理的新桶。
+// TestClassifyBucketOnlyForKnownCauses: Bucket is "which ledger to record
+// in", and can only come from the known classes of cause. This blocks
+// a future classification from slipping a new bucket nobody handles.
 func TestClassifyBucketOnlyForKnownCauses(t *testing.T) {
 	known := map[Bucket]bool{
 		BucketNone: true, BucketAvailability: true, BucketRateLimit: true,
@@ -178,26 +183,29 @@ func TestClassifyBucketOnlyForKnownCauses(t *testing.T) {
 			for _, shape := range []bool{false, true} {
 				got := Classify(Input{Kind: kind, Status: status, Shape: shape})
 				if !known[got.Bucket] {
-					t.Fatalf("Classify(%v, %d, shape=%v) 给出了未知的账本 %d",
+					t.Fatalf("Classify(%v, %d, shape=%v) gave an unknown ledger %d",
 						kind, status, shape, got.Bucket)
 				}
 				if got.Bucket == BucketShape && status != 400 {
-					t.Fatalf("非 400（%d）被判成了请求形状错误", status)
+					t.Fatalf("a non-400 (%d) was judged a request-shape error", status)
 				}
-				// 形状账本只在 KindUpstreamStatus 下出现。
+				// The shape ledger only appears under KindUpstreamStatus.
 				if got.Bucket == BucketShape && kind != KindUpstreamStatus {
-					t.Fatalf("%v 被判成了请求形状错误", kind)
+					t.Fatalf("%v was judged a request-shape error", kind)
 				}
 			}
 		}
 	}
 }
 
-// TestBucketRuleNames：账本有**两个**名字，各有各的用处，都不能随手改：
+// TestBucketRuleNames: the ledger has **two** names, each
+// with its own use, and neither may be changed casually:
 //
-//   - ruleToken 落盘（health.json 与 /__newgate/status 的 `rule`），是**机器标记**，
-//     与语言无关——known-good 二进制读同一份文件，换个语言重启也得认得回来；
-//   - ruleName 是给人看的（表格的「账本」列、摘牌原因里那一句），走 i18n。
+//   - ruleToken is persisted (health.json and the `rule` in /__newgate/status),
+//     a **machine marker**, independent of language -- the known-good binary reads
+//     the same file, and a restart under another language must still recognize it;
+//   - ruleName is human-facing (the "ledger" column of the table,
+//     the sentence in a delisting reason), and goes through i18n.
 func TestBucketRuleNames(t *testing.T) {
 	tokens := map[Bucket]string{
 		BucketNone:         "",
@@ -217,10 +225,11 @@ func TestBucketRuleNames(t *testing.T) {
 			t.Errorf("bucketFromName(%q) = %d, want %d", token, got, b)
 		}
 	}
-	if got := bucketFromName("没有这本账"); got != BucketNone {
-		t.Errorf("未知账本名应折成 BucketNone，得到 %d", got)
+	if got := bucketFromName("no such ledger"); got != BucketNone {
+		t.Errorf("an unknown ledger name should fold into BucketNone, got %d", got)
 	}
-	// 没装译文表时 i18n.T 走恒等路径，所以这里读到的就是英文原文。
+	// With no catalog installed i18n.T takes the identity
+	// path, so what is read here is the English original.
 	names := map[Bucket]string{
 		BucketAvailability: "Availability",
 		BucketRateLimit:    "Rate limit",
@@ -234,75 +243,77 @@ func TestBucketRuleNames(t *testing.T) {
 	}
 }
 
-// TestDefaultPolicyIsComplete：策略表必须覆盖每一个会用到的账本，
-// 否则 rule() 会返回零值 Rule（阈值为 0 = 永不摘牌）——一个笔误就能让
-// 「500 不熔断」这种事故静默上线。
+// TestDefaultPolicyIsComplete: the policy table must cover every ledger that will
+// be used, or rule() returns a zero-value Rule (threshold 0 = never delist) --
+// one typo and an incident like "500 does not trip the breaker" ships silently.
 func TestDefaultPolicyIsComplete(t *testing.T) {
 	p := DefaultPolicy()
 	for _, b := range []Bucket{BucketAvailability, BucketRateLimit, BucketConfig, BucketShape} {
 		if _, ok := p.Rules[b]; !ok {
-			t.Errorf("默认策略缺了 %s 这本账", b.ruleName())
+			t.Errorf("the default policy is missing the %s ledger", b.ruleName())
 		}
 	}
 	for b, r := range p.Rules {
 		if b == BucketShape {
 			if r.Threshold != 0 {
-				t.Errorf("请求形状账本必须永不摘牌，阈值 = %d", r.Threshold)
+				t.Errorf("the request-shape ledger must never drop a binding, threshold = %d", r.Threshold)
 			}
 			continue
 		}
 		if r.Threshold < 1 {
-			t.Errorf("%s 账本的阈值 = %d，会变成永不摘牌", b.ruleName(), r.Threshold)
+			t.Errorf("the threshold of the %s ledger = %d would mean it never drops", b.ruleName(), r.Threshold)
 		}
 		if r.Cooldown <= 0 {
-			t.Errorf("%s 账本的冷却 = %v", b.ruleName(), r.Cooldown)
+			t.Errorf("the cooldown of the %s ledger = %v", b.ruleName(), r.Cooldown)
 		}
 		if r.Backoff < 1 {
-			t.Errorf("%s 账本的退避 = %v（<1 会让冷却越试越短）", b.ruleName(), r.Backoff)
+			t.Errorf("the backoff of the %s ledger = %v (<1 would make each cooldown shorter)", b.ruleName(), r.Backoff)
 		}
 		if r.MaxCooldown > 0 && r.MaxCooldown < r.Cooldown {
-			t.Errorf("%s 账本的封顶 %v 小于首次冷却 %v", b.ruleName(), r.MaxCooldown, r.Cooldown)
+			t.Errorf("the cap %v of the %s ledger is below the first cooldown %v", b.ruleName(), r.MaxCooldown, r.Cooldown)
 		}
 	}
 	if p.TrialTTL <= 0 {
-		t.Errorf("试探 TTL = %v：没有它，一个没回报的试探会把 binding 永久卡在半开", p.TrialTTL)
+		t.Errorf("trial TTL = %v: without it, a trial that never reports back would leave the binding half-open forever", p.TrialTTL)
 	}
 }
 
-// TestPolicyNormalizationFillsDefaults：SetPolicy 只写想改的几项，其余按默认
-// 补齐——不然调用方漏写一项就等于把那一类失败设成「永不摘牌」。
+// TestPolicyNormalizationFillsDefaults: SetPolicy writes only the
+// few items to change, the rest are filled with defaults -- otherwise a
+// caller omitting one item sets that class of failure to "never delist".
 func TestPolicyNormalizationFillsDefaults(t *testing.T) {
 	got := Policy{Rules: map[Bucket]Rule{
 		BucketRateLimit: {Threshold: 7, Cooldown: time.Second},
 	}}.normalized()
 
 	if got.Rules[BucketRateLimit].Threshold != 7 || got.Rules[BucketRateLimit].Cooldown != time.Second {
-		t.Fatalf("显式给出的项被覆盖了: %+v", got.Rules[BucketRateLimit])
+		t.Fatalf("an explicitly given entry was overridden: %+v", got.Rules[BucketRateLimit])
 	}
 	def := DefaultPolicy()
 	if got.Rules[BucketAvailability] != def.Rules[BucketAvailability] {
-		t.Fatalf("未给出的账本没有补默认值: %+v", got.Rules[BucketAvailability])
+		t.Fatalf("a ledger that was not given did not get defaults: %+v", got.Rules[BucketAvailability])
 	}
 	if got.TrialTTL != def.TrialTTL {
-		t.Fatalf("未给出的 TrialTTL 没有补默认值: %v", got.TrialTTL)
+		t.Fatalf("TrialTTL that was not given did not get a default: %v", got.TrialTTL)
 	}
-	// 退避 1 是「不退避」的**显式**写法，不能被当成零值丢掉。
+	// Backoff 1 is the **explicit** way to write "no backoff" and must not be dropped as a zero value.
 	p := Policy{Rules: map[Bucket]Rule{
 		BucketAvailability: {Threshold: 1, Cooldown: time.Second, Backoff: 1},
 	}}.normalized()
 	if p.Rules[BucketAvailability].Backoff != 1 {
-		t.Fatalf("显式的 Backoff=1 被覆盖了: %+v", p.Rules[BucketAvailability])
+		t.Fatalf("an explicit Backoff=1 was overridden: %+v", p.Rules[BucketAvailability])
 	}
 }
 
 func TestSplitBindingKey(t *testing.T) {
 	provider, model := splitBindingKey(bindingKey("relay", "deepseek-chat"))
 	if provider != "relay" || model != "deepseek-chat" {
-		t.Fatalf("splitBindingKey 往返失败: %q / %q", provider, model)
+		t.Fatalf("splitBindingKey round trip failed: %q / %q", provider, model)
 	}
-	// 模型名里带 \x00 是不可能的事，但拼接键的解析不能因此吃进错误的分割。
+	// A \x00 in a model name is impossible, but parsing the
+	// concatenated key must not eat a wrong split because of it.
 	if p, m := splitBindingKey("nokey"); p != "nokey" || m != "" {
-		t.Fatalf("没有分隔符时不该猜: %q / %q", p, m)
+		t.Fatalf("it must not guess when there is no separator: %q / %q", p, m)
 	}
 }
 

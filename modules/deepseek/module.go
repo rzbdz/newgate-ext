@@ -1,10 +1,10 @@
-// Package deepseek 拥有 DeepSeek 模型家族的识别和上游协议修补。
+// Package deepseek owns DeepSeek model-family detection and upstream protocol patches.
 //
-// 模型家族根据 model/provider/base URL 判断请求是否属于自己，并注册只由
-// DeepSeek 上游要求的 treatments。它不知道请求来自哪个客户端。
+// The model family decides from model/provider/base URL whether a request is its own,
+// and registers the treatments only DeepSeek upstreams require. It does not know the client.
 //
-// 如果某个问题只在 Claude Code 与 DeepSeek 组合时出现，则交给
-// claudecode_deepseek；这样模型模块不会把客户端猜测变成全局行为。
+// A problem only appearing with Claude Code plus DeepSeek belongs to claudecode_deepseek
+// - so the model module never turns a client guess into global policy.
 package deepseek
 
 import (
@@ -17,13 +17,13 @@ import (
 	modules "github.com/rzbdz/newgate/component"
 )
 
-// New 声明 DeepSeek 模型组件，同时提供模型判定端口并注册模型侧协议修补。
-// 客户端与模型的组合行为不放在这里，而由独立交叉组件拥有。
+// New declares the DeepSeek model component, provides the detection port and registers
+// the model-side protocol patches. Client-times-model behavior belongs to a cross component.
 //
-// 它还向健康表注册一条**形状判据**（reasoningShape）：那两句「must be passed
-// back」的 400 是请求形状问题，不该记在任何 provider 的可用性账本上。判据放
-// 在这里而不是 core，是因为文案是 DeepSeek 的方言——core 里不该出现任何上游
-// 专有字符串（见 shape.go 的注释）。
+// It also registers a **shape criterion** with the health table (reasoningShape): the
+// two "must be passed back" 400s are request-shape problems and must not be recorded
+// against any provider's availability. The criterion lives here, not core, because the
+// text is DeepSeek's dialect - core must hold no upstream-specific strings (shape.go).
 func New() modules.Component {
 	var releases []modules.Release
 	return modules.Component{
@@ -33,8 +33,8 @@ func New() modules.Component {
 		Requires: []modules.Requirement{
 			modules.Need(gatewayapi.Capability),
 			modules.Need(breakerapi.Capability),
-			// 上报细粒度开关点（第 2/3/4 手各自可关）。这是**自愿**参与：
-			// 不写这一行也能装配，只是这些开关点不会出现在 newgate plugin 里。
+			// Report fine-grained switch points (2nd/3rd/4th pass each switchable), voluntarily:
+			// without the line assembly still works, the points just miss from `newgate plugin`.
 			modules.Need(pluginmanagerapi.Capability),
 		},
 		Provides: []modules.Provision{
@@ -58,7 +58,7 @@ func New() modules.Component {
 			}
 			releases = append(releases, release)
 
-			// 上报开关点：Apply 里那三手各自可关。名字与路径都在 switches.go。
+			// Report switch points: each of the three passes in Apply can be turned off.
 			pm := modules.MustGet(ctx, pluginmanagerapi.Capability)
 			self, err := pm.RegisterSelf("deepseek", Switches())
 			if err != nil {

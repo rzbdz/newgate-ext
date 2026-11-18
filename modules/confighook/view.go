@@ -5,26 +5,26 @@ import (
 	"github.com/rzbdz/newgate/lib/i18n"
 )
 
-// 本文件是 confighook 交给**各客户端模块的 view.go** 的那一件东西：把「这个客户端
-// 从哪条链起步」拼成界面上的一格。
+// This file is what confighook hands to **each client module's view.go**: it turns
+// "which chain this client starts from" into one field on the UI.
 //
-// # 为什么它有单独一个文件，而不是塞进 profile.go
+// # Why it has its own file instead of living in profile.go
 //
-// profile.go 是**数据**（怎么读、怎么写、空串是什么意思），这里是把数据摆成
-// `view.ToggleItem` 那个形状。与 modules/config/view.go 里 `stateView` 的分工一样：
-// 形状归契约包（lib/view），内容归拥有者，而「拥有者的 UI 那一面」集中在一个
-// view.go 里，读的人一眼看得出这个模块往界面上贡献了什么。
+// profile.go is **data** (how to read, how to write, what an empty string means); here
+// the data is arranged into the `view.ToggleItem` shape. Same split as `stateView` in
+// modules/config/view.go: shape belongs to the contract package (lib/view), content to
+// the owner; the owner's own UI face in one view.go shows what this module contributes.
 //
-// 方向上是允许的：`lib/view` 是**叶子契约**（见它的包注释：箭头是
-// `modules/* → lib/view → component`），业务模块直接 import 它正是设计里的事。
-// 它拖进来的只有 component 与 i18n，没有 HTTP、没有前端。
+// The direction is allowed: `lib/view` is a **leaf contract** (see its package comment:
+// arrows are `modules/* -> lib/view -> component`), so importing it from a business
+// module is by design. It pulls in only component and i18n: no HTTP, no frontend.
 
-// ProfileItem 造出「链头」那一格。
+// ProfileItem builds the "chain head" field.
 //
-// 三家客户端（claude / codex / opencode）都插这一格，所以它必须**只有一份实现**：
-// 「空串 = 回到全局缺省」这条语义在每一家的 Apply 里都要一模一样，实现成
-// 「写一个空字符串」的话，state.json 里会留下一个 `"claude": ""` 的条目——
-// 那正是槽位表那边花了力气避免的「同值记录」。
+// All three clients (claude / codex / opencode) install this field, so it must have
+// **exactly one implementation**: "empty string = back to the global default" must be
+// identical in every Apply; implemented as "write an empty string", it leaves a
+// `"claude": ""` entry in state.json, the same-value record avoided elsewhere.
 func (p AgentProfile) ProfileItem() view.ToggleItem {
 	why := i18n.T("Which chain this client starts from. "+
 		"The chain decides what each tier resolves to; changing it takes effect the next "+
@@ -37,16 +37,16 @@ func (p AgentProfile) ProfileItem() view.ToggleItem {
 	return view.ToggleItem{
 		ID:   ProfileItemID,
 		Kind: view.ToggleSelect,
-		// 取值是**存下来的那个**，不是解析之后的（见 AgentProfile.Stored）：
-		// 这一格要回答的是「我单独定过没有」，而 `Active()` 把「跟随缺省到 ds」
-		// 与「我就是要 ds」压成同一个字符串——两种状态在界面上长得一样，用户就
-		// 没法知道改全局默认时这个客户端会不会跟着走。
+		// The value is **the stored one**, not the resolved one (see AgentProfile.Stored):
+		// this field answers "did I set it apart", while `Active()` flattens "following the
+		// default to ds" and "I want ds" into the same string - both states look alike
+		// on the UI, so the user cannot tell whether this client follows later default changes.
 		Label: i18n.T("Profile", nil),
 		Value: p.Stored(),
-		// 空串排在最前：它是「跟随全局缺省」，不是一个没得选的空档。
+		// Empty string comes first: it is "follow the global default", not a dead option.
 		Options: append([]string{""}, p.Options()...),
-		// 那一档的说法要**点名跟着谁**：用户看到的是「跟随缺省」，而「缺省是谁」
-		// 只有后端知道。括号不会与 profile 名撞——那是个文件名。
+		// The wording must **name whom it follows**: the user sees "follow default", and only
+		// the backend knows who that is. Parentheses won't collide with a profile name (a filename).
 		OptionLabels: map[string]string{
 			"": i18n.T("{profile} (the global default)", i18n.A{"profile": active}),
 		},
@@ -54,13 +54,13 @@ func (p AgentProfile) ProfileItem() view.ToggleItem {
 	}
 }
 
-// SplitProfile 把界面交回来的那一坨拆成「链头」与**其余格子**。
+// SplitProfile splits the blob the UI returns into "chain head" and **the other fields**.
 //
-// 界面一次交全部格子（见 kinds/Toggles.svelte），而同一张卡上既有链头、又有槽位
-// 映射——两者落到完全不同的地方（state.json 的 `active` 表 vs 各家的槽位表）。
-// 拆包这一步三家都要做，而它有一条**做错了不会红**的规矩：链头必须从 rest 里
-// **摘掉**，不能留在里面。留着的话它会被当成一个槽位名交给槽位表——那边对不认识
-// 的名字是「丢掉」，所以表现是「链头改了但没保存」，而槽位那边一切正常。
+// The UI submits all fields at once (see kinds/Toggles.svelte), and one card carries both
+// the chain head and the slot mapping, which land in different places (state.json's
+// `active` table vs each client's slot table). All three clients must do the split; its
+// silent rule: the head must be **removed** from rest, not left in, because a leftover
+// is taken as an unknown slot name, dropped, and the head changed but was never saved.
 func SplitProfile(patch map[string]string) (profile string, rest map[string]string) {
 	profile = patch[ProfileItemID]
 	rest = make(map[string]string, len(patch))

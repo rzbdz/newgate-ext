@@ -11,76 +11,81 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// 本文件是 codex 的**模型名 ↔ 我们的档位**那张表，外加接管模式。
+// This file is codex's **model name <-> our tier** table, plus the takeover mode.
 //
-// # 为什么需要它（2026-09-21 实测的结论）
+// # Why it is needed (the conclusion from measuring 2026-09-21)
 //
-// codex 的模型目录**编在它二进制里**：`codex debug models` 打出 9 个（gpt-6-astra、
-// gpt-5.6-sol、gpt-5.6-terra、gpt-5.6-luna、gpt-5.5 …），而它**不问服务端要**。
-// 实测把它的 provider 指向一个记账的假上游：`/v1/models` **一次都没被请求过**——
-// `--enable remote_models`、provider 表里声明 `models_endpoint`、再给 `env_key`
-// 配 API key，三条都试了，假上游始终收到 0 条。那条路（`model-provider/src/
-// models_endpoint.rs` 确实在二进制里）在「自定义 provider、无官方 auth」这种形态下
-// 不开。
+// codex's model catalog is **compiled into its binary**: `codex debug models` prints 9
+// (gpt-6-astra, gpt-5.6-sol, gpt-5.6-terra, gpt-5.6-luna, gpt-5.5 …), and it **never asks the
+// server**. Measured by pointing its provider at a recording fake upstream: `/v1/models` was
+// **never requested once** -- we tried `--enable remote_models`, declaring `models_endpoint`
+// in the provider table, and giving `env_key` an API key, all three, and the fake
+// upstream always received 0. That path (which `model-provider/src/models_endpoint.rs`
+// really is in the binary) is not opened in the "custom provider, no official auth" form.
 //
-// 所以「把档位塞进 `/v1/models`、让它自己的选择器里出现档位」这条路**不存在**。
-// 反过来做：**让它照旧用它自己的模型名，名字进来我们认**——用户在 codex 里按
-// `/model` 选中谁，就落到我们哪一档。这正是它「里面无法切模型」的解法：今天
-// config.toml 里写的是档位名，codex 只认一个模型，切也切不动。
+// So the path "push tiers into `/v1/models` and let its own picker show tiers" **does not
+// exist**. Do the reverse: **let it keep using its own model names, and recognize the names
+// when they come in** -- whichever one the user picks via `/model` in codex lands on whichever
+// of our tiers. This is exactly the fix for "it cannot switch models from the inside":
+// today config.toml has a tier name, codex knows only one model, and switching does nothing.
 //
-// # 机制不是新开的洞
+// # The mechanism is not a new hole
 //
-// 这些模型名登记成**动态角色**（domain.ExtraRole），与 omo 的 intra-agent 槽位走
-// 同一条解析路径——`resolve.ResolveRequest` 的第一句就是
-// `if domain.IsKnownRole(model) → BuildChain(...)`。core 完全不知道 codex 有哪几个
-// 模型，也不知道「gpt-5.6-luna」是个什么东西。
+// These model names are registered as **dynamic roles** (domain.ExtraRole),
+// going the same resolution path as omo's intra-agent slot -- the first line of
+// `resolve.ResolveRequest` is `if domain.IsKnownRole(model) -> BuildChain(...)`.
+// core does not know which models codex has, nor what "gpt-5.6-luna" is.
 //
-// # 为什么是**文件**而不是代码里的常量
+// # Why a **file** rather than constants in code
 //
-// codex 会出新模型（它自己那份目录就是会变的）。写死在代码里意味着「上游加一个
-// 模型 → 我们发一版」，而这件事的知识（哪个名字该落哪一档）**用户自己就有**。
-// 所以出厂给一张表，落在 `$NEWGATE_HOME/codex-models.json`，加一行就生效——
-// 与 omo 的槽位表同一套做法（modules/opencodeomo 的 omo-slots.json）。
+// codex will ship new models (its own catalog changes). Hardcoding means
+// "the upstream adds a model -> we ship a release", while the knowledge of this (which
+// name goes to which tier) **users already have**. So a table ships as the factory
+// default, lands in `$NEWGATE_HOME/codex-models.json`, and one added line takes effect
+// -- the same approach as omo's slot table (omo-slots.json in modules/opencodeomo).
 //
-// 表是**叠加**的：文件里写的盖住同名的出厂值，多出来的就是新增的。所以「加一个
-// 新模型」真的只是加一行，不必把出厂那五条抄一遍。
+// The table is **overlaid**: what the file writes overrides same-named
+// factory values, and the extras are new additions. So "add a new model"
+// really is just one line, and the five factory ones need not be copied.
 
-// ModelsFile 是这张表住的地方。放在配置根下，与其它模块自己的表并排。
+// ModelsFile is where this table lives: under the config root, beside other modules' own tables.
 func ModelsFile() string { return filepath.Join(paths.Config(), "codex-models.json") }
 
-// 接管模式的两个取值。
+// The two values of the takeover mode.
 const (
-	// ModeTakeover 把**档位名**写进 config.toml（`model = "normal"`）。
-	// 2026-09-21 之前的唯一行为，也是缺省——不变更任何人的现状。
+	// ModeTakeover writes the **tier name** into config.toml (`model = "normal"`). It was the
+	// only behavior before 2026-09-21, and is the default -- changing no one's current state.
 	ModeTakeover = "takeover"
-	// ModeRename 写 **codex 自己的模型名**（`model = "gpt-5.6-luna"`），
-	// 由下面的表在请求进来时认回档位。用户在 codex 里换模型 = 换档位。
+	// ModeRename writes **codex's own model name** (`model =
+	// "gpt-5.6-luna"`), and the table below maps it back to a tier when the
+	// request arrives. The user switching models in codex = switching tiers.
 	ModeRename = "rename"
 )
 
-// modelTier 是表里的一条。
+// modelTier is one entry in the table.
 type modelTier struct {
-	// Slug 是 codex 认的那个模型名（`codex debug models` 里的 slug）。机器标记，不翻。
+	// Slug is the model name codex knows (the slug in `codex debug models`). Not translated.
 	Slug string `json:"slug"`
-	// Tier 是它落到我们哪一档。
+	// Tier is which of our tiers it lands on.
 	Tier string `json:"tier"`
 }
 
-// Models 是这份文件的形状。
+// Models is the shape of this file.
 type Models struct {
-	// Mode 见上面的两个常量；空 = takeover（缺省）。
+	// Mode: see the two constants above; empty = takeover (the default).
 	Mode string `json:"mode,omitempty"`
-	// Models 是要**加**或要**改**的那些条（出场的那五条不必抄进来）。
+	// Models are the entries to **add** or **change** (the five factory ones need not be copied in).
 	Models []modelTier `json:"models,omitempty"`
 }
 
-// defaultModels 是出厂那张表：codex 目录里可见的五个 → 我们有的档位。
+// defaultModels is the factory table: the five visible in the codex catalog -> the tiers we have.
 //
-// 按 codex 自己的 priority 排（`codex debug models` 里那个数字，越小越能干）：
-// 最能干的给 heavy，最便宜的给 light。2026-09-21 用户定的。
+// Ordered by codex's own priority (the number in `codex debug models`: smaller is more capable):
+// the most capable gets heavy, the cheapest gets light. Settled by the user on 2026-09-21.
 //
-// **只登记可见的那五个**（visibility=list）：隐藏的那几个（daybreak-*、
-// codex-auto-review）不进选择器，登记了也没人会选。
+// **Only the five visible ones are registered** (visibility=list):
+// the hidden ones (daybreak-*, codex-auto-review) do not appear in
+// the picker, and registering them would mean nobody ever picks them.
 var defaultModels = []modelTier{
 	{Slug: "gpt-6-astra", Tier: "heavy"},
 	{Slug: "gpt-5.6-sol", Tier: "normal"},
@@ -89,11 +94,12 @@ var defaultModels = []modelTier{
 	{Slug: "gpt-5.5", Tier: "light"},
 }
 
-// readModels 读这份文件；读不到（还没建过）或读不动时回落到出厂表。
+// readModels reads this file; when it cannot be read (never
+// created) or cannot be parsed, it falls back to the factory table.
 //
-// 读不动**不报错也不静默**：坏掉的那份会被忽略（fail-open，接管照常写成缺省的
-// 行为），而这件事由 diagnostics 说出来——配置坏掉本身值得知道，但不该让
-// `newgate on codex` 因此失败。
+// Unparseable does **not error and is not silent**: the broken copy is ignored (fail-open,
+// takeover writes the default behavior as usual), and diagnostics says so -- a broken
+// config is worth knowing about, but must not make `newgate on codex` fail because of it.
 func readModels() (Models, string) {
 	var m Models
 	b, err := ioutil.ReadFile(ModelsFile())
@@ -107,7 +113,7 @@ func readModels() (Models, string) {
 	return m, ""
 }
 
-// Mode 是这一刻的接管模式（缺省 takeover）。
+// Mode is the takeover mode right now (default takeover).
 func Mode() string {
 	m, _ := readModels()
 	if m.Mode == ModeRename {
@@ -116,8 +122,9 @@ func Mode() string {
 	return ModeTakeover
 }
 
-// SetMode 写模式。**只动这一格**：表里其余的部分原样保留（用户手写的东西不能因为
-// 我们切一下开关就没了）。文件不存在时建一份最小的。
+// SetMode writes the mode. **Only this one cell is touched**: the rest of the
+// table is preserved as is (what the user hand-wrote must not vanish because
+// we flipped a switch). When the file does not exist, a minimal one is created.
 func SetMode(mode string) error {
 	if mode != ModeRename {
 		mode = ModeTakeover
@@ -138,24 +145,27 @@ func writeModels(m Models) error {
 	return ioutil.WriteFile(ModelsFile(), append(b, '\n'), 0o660)
 }
 
-// effectiveModels 是这一刻生效的那张表。
+// effectiveModels is the table in effect right now.
 //
-// # 语义（2026-09-21 改过一次，理由是被界面逼出来的）
+// # Semantics (changed once on 2026-09-21, forced by the UI)
 //
-//	文件里**没有** `models` 这一段  → 出厂那五条（fresh 装机、或者用户只写了 mode）
-//	文件里**有** `models`（哪怕是空数组）→ **它就是全部**，出厂值不再参与
+//	file has **no** `models`        -> the five factory ones (fresh install or only `mode`)
+//	file **has** `models` (even `[]`) -> **it is everything**; factory values do not apply
 //
-// 曾经是「叠加」：文件里的盖住同名的、多出来的算新增，出厂值永远兜底。那个语义在
-// 手写文件时很舒服（加一行就是加一行），但**做成界面上的表之后它是错的**：用户在
-// 卡上删掉一行，保存写回文件，而读的时候出厂值又把它顶回来了——界面上显示删除
-// 成功、实际什么也没发生。表的界面只有「所见即所得」才成立。
+// It used to be "overlaid": what was in the file overrode same-named ones, extras counted
+// as additions, and factory values always backstopped. That semantic was comfortable
+// when hand-writing the file (one line adds one line), but **once it became a table in
+// the UI it was wrong**: the user deletes a row on the card, saves it back to the file,
+// and on read the factory value pushes it back -- the UI shows the delete succeeded
+// while nothing happened. A table UI only holds with "what you see is what you get".
 //
-// 代价是「加一行」现在要把整张表写全（界面正是这么做的），而手写文件时得自己
-// 抄一遍出厂值。这个取舍是明确的：**界面那一份是主要入口**（见 modelsview.go 的
-// 文件头），手写是次要路径。
+// The cost is that "add one line" now means writing the whole table (which
+// is exactly what the UI does), and hand-writing the file requires copying
+// the factory values. That trade-off is explicit: **the UI copy is the primary
+// entry** (see the header of modelsview.go), hand-writing is the secondary path.
 //
-// 稳定性：同一份文件两次装配得到同一张表（顺序由文件或出厂切片决定，不来自 map
-// 遍历），所以界面与接管两次问出来的答案一致。
+// Stability: two assemblies of the same file yield the same table (the order comes from the file or
+// the factory slice, not map iteration), so the UI and takeover asking twice get the same answer.
 func effectiveModels() []modelTier {
 	m, _ := readModels()
 	if m.Models == nil {
@@ -171,11 +181,13 @@ func effectiveModels() []modelTier {
 	return out
 }
 
-// modelFor 反过来问：这一档该写 codex 的哪个模型名（rename 模式用）。
+// modelFor asks the reverse: which codex model name
+// should be written for this tier (used in rename mode).
 //
-// 找不到就回空串——调用方据此回落到档位名（见 takeover.go 的 slotValue），
-// 也就是与 takeover 模式一模一样的行为。**回落而不是报错**：一条表被改窄了不该
-// 让接管失败，那只是「这一档没有对应的 codex 模型」而已。
+// When not found it returns the empty string -- the caller falls back to the tier
+// name from that (see slotValue in takeover.go), i.e. exactly the same behavior as
+// takeover mode. **Fall back rather than error**: a table narrowed down should not
+// make takeover fail; it just means "this tier has no corresponding codex model".
 func modelFor(tier string) string {
 	if tier == "" {
 		return ""
@@ -188,24 +200,25 @@ func modelFor(tier string) string {
 	return ""
 }
 
-// ---------- 动态角色 ----------
+// ---------- Dynamic roles ----------
 
-// rolesProvider 把这张表交给 core 的解析路径（roleprov.RoleProvider）。
+// rolesProvider hands this table to core's resolution path (roleprov.RoleProvider).
 //
-// **只在 rename 模式下贡献**（2026-09-21 的一个取舍，理由是实测出来的）：
-// 这些名字一旦登记成「角色」，`IsKnownRole` 就为真，于是**反解那条路被短路**——
-// 而反解（「具体模型名反解回它所属档位，并把点名的模型放最前」）正是别的客户端
-// 点名 `gpt-5.6-terra` 时依赖的东西（本机 smt-codex 的链上就有这个名字）。
-// 换句话说：无条件登记会悄悄改掉**没让路的人**的行为。
+// **Contributed only in rename mode** (a trade-off from 2026-09-21, reasoned from measurement):
+// once these names are registered as "roles", `IsKnownRole` is true, so **the reverse-resolution
+// path is short-circuited** -- and reverse resolution ("resolve a concrete model name
+// back to its tier, putting the named model first") is exactly what other clients rely on when
+// naming `gpt-5.6-terra` (this machine's smt-codex chain carries that name). In other words:
+// unconditional registration would quietly change the behavior of **people who never opted in**.
 //
-// 所以它跟着模式走——rename 模式是用户**明确要过**的形态，那时候他要的就是
-// 「codex 的模型名 = 档位」；takeover 模式下这份表对解析毫无用处（codex 只发
-// 档位名），登记它纯属副作用。
+// So it follows the mode -- rename mode is the form the user **explicitly opted into**,
+// and there what they want is "codex's model names = tiers"; in takeover mode this table is
+// useless for resolution (codex only sends tier names), and registering it is pure side effect.
 type rolesProvider struct{}
 
 func (rolesProvider) Source() string { return "codex" }
 
-// WatchFiles：这份表改了要重新灌角色（含模式——两个都在同一个文件里）。
+// WatchFiles: a change to this table must re-feed the roles (mode lives in the same file).
 func (rolesProvider) WatchFiles() []string { return []string{ModelsFile()} }
 
 func (rolesProvider) Roles() ([]domain.ExtraRole, error) {
@@ -219,7 +232,7 @@ func (rolesProvider) Roles() ([]domain.ExtraRole, error) {
 			Key:     e.Slug,
 			Source:  "codex",
 			Default: e.Tier,
-			// Meta 只给人看（core 不解释）：这一条是哪个客户端要的、落到哪一档。
+			// Meta is for humans only (core does not read it): which client asked, which tier it lands on.
 			Meta: map[string]string{"client": "codex", "tier": e.Tier},
 		})
 	}

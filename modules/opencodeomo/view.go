@@ -44,25 +44,25 @@ func profileOf() agentapi.AgentProfile { return agentapi.AgentProfile{AgentID: o
 // slotsConceptID 是这张卡片的稳定身份。
 const slotsConceptID = "opencode-omo.slots"
 
-// omoToggle 是这张卡的一行。形状与 config 的 toggles 一致（前端按 `toggles`
-// 这个 Kind 渲染，多一个字段它不看）——每个槽位一个下拉：选一个档位 / @引用，
-// 或者留空表示「跟随缺省」。
+// omoToggle is one row of this card. Same shape as config's toggles (the front
+// end renders the `toggles` Kind, ignoring extra fields) - one dropdown per slot:
+// a tier / an @reference, or blank = "follow the default".
 //
-// 为什么不自己造一个 Kind：多一个 Kind 就多一个渲染器，而这件事的形状
-// （一行一个选择器 + 一句为什么）与「全局设置」那张卡完全一样。
-// omoToggle / omoData 的形状住在契约包里（`lib/view` 的 ToggleItem / Toggles）：
-// 形状是 **Kind 的事**。本模块曾经自己写了一份（第三份），2026-09-21 收掉。
+// Why not invent a Kind: one more Kind means one more renderer, and this shape
+// (one selector per row + a why) is exactly the "global settings" card.
+// omoToggle / omoData live in the contract package (`lib/view`'s ToggleItem / Toggles):
+// shape is the **Kind's business**. This module had a third copy, dropped 2026-09-21.
 type omoToggle = view.ToggleItem
 type omoData = view.Toggles
 
-// lock 是「这台机器上有没有 opencode」，由 Start 算好传进来（判据在目录端口那边，
-// 见 module.go）。非空 = 这张卡整张锁灰。
+// lock is "is opencode present on this machine", computed by Start and passed in
+// (criterion on the directory port, see module.go). Non-empty = whole card greyed.
 func omoConcepts(lock string) ([]view.Concept, error) {
 	reg := ReadOmoSlots()
 	if reg == nil {
-		// 没有注册表 = 还没接管过 omo。**照常报一张卡片**，写上原因与怎么生成
-		// （与 CLI 的 omoRegistry 同一句话）：让它从列表里消失的话，用户会以为
-		// 这个模块不存在，而不是「还没接管过」。
+		// No registry = omo was never taken over. **Still report a card**, with the
+		// reason and how to generate it (same sentence as the CLI's omoRegistry): hiding
+		// it would read as "module absent", not "never taken over".
 		return []view.Concept{{
 			ID:    slotsConceptID,
 			Kind:  view.KindTable,
@@ -73,9 +73,9 @@ func omoConcepts(lock string) ([]view.Concept, error) {
 		}}, nil
 	}
 
-	// 可选值：空（= 跟随缺省）、四个阶梯档、正交的 vision、以及 @其它槽位键
-	// （「这个槽位跟那个槽位走」）。档位名的权威列表在 domain.TierLadder —— 抄一份
-	// 到这里就会在加档位时漏掉这一处。
+	// Values: empty (= follow the default), the four ladder tiers, the orthogonal
+	// vision, and @other-slot keys ("this slot follows that slot"). The authoritative
+	// tier list is domain.TierLadder - a copy here misses it when a tier is added.
 	opts := append([]string{""}, domain.TierLadder...)
 	opts = append(opts, "vision")
 	for _, s := range reg.Slots {
@@ -84,8 +84,8 @@ func omoConcepts(lock string) ([]view.Concept, error) {
 		}
 	}
 
-	// 第一格是**链头**，第二格是绑定模式，后面才是各槽位。顺序有意义：链决定每个
-	// 档位落到哪家模型上，模式决定接管时按哪一套给它分档，最后才是逐槽位的覆盖。
+	// First cell is the **chain head**, second the binding mode, then the slots. Order
+	// matters: the chain maps tiers to models, the mode assigns them at takeover, overrides last.
 	items := []omoToggle{profileOf().ProfileItem(), {
 		ID: "mode", Label: i18n.T("Binding mode", nil), Kind: "select",
 		Value:   modeOrDefault(reg.Mode),
@@ -94,16 +94,16 @@ func omoConcepts(lock string) ([]view.Concept, error) {
 			"suggested = move each slot to the tier its model build implies.", nil),
 	}}
 	for _, s := range reg.Slots {
-		// OmoSlot.Key 是**存下来的**键（登记时算好的），不是 Slot.Key() 那个
-		// 由 kind+name 现算的方法——两个类型，两个来源，别混。
+		// OmoSlot.Key is the **stored** key (computed at registration), not the
+		// Slot.Key() method recomputed from kind+name - two types, two sources.
 		key := s.Key
-		// 值是**覆盖**（没写就是空 = 跟随缺省）。空选项在界面上显示成「—」，
-		// 而「跟随缺省到底跟到哪」写在 why 里——不然用户看不出留空会发生什么。
-		// 「与建议不符」这条信号要留着（CLI 上它是标黄）：两个界面对「哪些槽位
-		// 偏离了建议」必须给出同一个答案。toggles 的行没有颜色可言，所以把它写进
-		// 那句 why 的措辞里——判据仍然是 `Suggested != "" && Suggested != Current`
-		// （**不能**拿 effective 去比：override 之后两者常常不等，于是整张卡都在
-		// 喊「不符」，喊了就没人看）。
+		// The value is an **override** (absent = empty = follow the default). An empty
+		// option shows as "-", and why says where "follow the default" lands - else the
+		// user cannot tell what blank does. Keep the "differs from suggested" signal
+		// (yellow in the CLI): both UIs must give the same answer on which slots
+		// deviate. Toggle rows have no color, so it goes into the wording of why - the
+		// criterion is still `Suggested != "" && Suggested != Current` (**never** compare
+		// effective: after an override the two often differ, the card shouts, nobody reads).
 		why := i18n.T("{slot} · now {now} · effective {effective} · suggested {suggested}",
 			i18n.A{
 				"slot":      s.Kind + "/" + s.Name,
@@ -137,21 +137,21 @@ func omoConcepts(lock string) ([]view.Concept, error) {
 			Items: items,
 		},
 		Locked: lock,
-		// 读一次很便宜（一个小 JSON），而且**命令行也会改它**（newgate omo use）,
-		// 所以声明 Live：开着页面时 CLI 改一下，几秒后就对上。
+		// Reading it is cheap (one small JSON), and **the CLI writes it too**
+		// (`newgate omo use`), so declare Live: edit via CLI, it catches up in seconds.
 		Live:  true,
 		Apply: applyOmoSlots,
 	}}, nil
 }
 
-// applyOmoSlots 把界面交回来的整张表写进 omo-slots.json。
+// applyOmoSlots writes the whole table handed back by the UI into omo-slots.json.
 //
-// 交上来的是**全部项**（toggles 的形状，见前端 Toggles.svelte）：mode 一项，
-// 其余每项是一个槽位的覆盖。空值 = **清掉覆盖**（回到缺省），这是「我反悔了」
-// 唯一自然的表达方式——没有第二个「清除」按钮。
+// What comes back is **every row** (the toggles shape, see front-end Toggles.svelte):
+// one mode row, the rest per-slot overrides. An empty value = **clear the override**
+// (back to the default), the only natural way to say "I changed my mind".
 //
-// 只动 Overrides 与 Mode 这两个字段，其它（Was/Current/Suggested/Why/Slots）
-// 是接管时算出来的现场记录，界面不该也没能力改它们。
+// Only Overrides and Mode are touched; Was/Current/Suggested/Why/Slots are the
+// record computed at takeover, which the UI may not and cannot change.
 func applyOmoSlots(edit json.RawMessage, _ string) (string, error) {
 	var patch map[string]string
 	if err := json.Unmarshal(edit, &patch); err != nil {
@@ -162,9 +162,9 @@ func applyOmoSlots(edit json.RawMessage, _ string) (string, error) {
 	if reg == nil {
 		return "", i18n.E("no omo slot registry; run newgate on opencode first", nil)
 	}
-	// 同一张卡上有两件事：链头（一格）与槽位覆盖（若干格）。拆包这一步在内核
-	// （见 confighook.SplitProfile）：链头必须从槽位那份里摘掉，否则它会被当成一个
-	// 不认识的键跳过，症状是「链头改了但没保存」，而槽位那边一切正常。
+	// This card holds two things: the chain head (one cell) and slot overrides
+	// (several). Splitting happens in the kernel (see confighook.SplitProfile): the head
+	// must be pulled out, else it is skipped as an unknown key - "head edited, never saved".
 	profile, patch := agentapi.SplitProfile(patch)
 	if err := profileOf().Write(profile); err != nil {
 		return "", err
@@ -181,8 +181,8 @@ func applyOmoSlots(edit json.RawMessage, _ string) (string, error) {
 		if key == "mode" {
 			continue
 		}
-		// 不认识的键**跳过**而不是报错：注册表可能刚被重新接管改过名，而界面手里
-		// 还是上一份——跳过它顶多少写一个覆盖，报错则会让整次保存失败。
+		// Unknown keys are **skipped**, not errors: the registry may have been renamed
+		// by a fresh takeover while the UI holds the old one: skipping drops one, erroring fails all.
 		if _, ok := reg.SlotOf(key); !ok {
 			continue
 		}
@@ -202,8 +202,8 @@ func applyOmoSlots(edit json.RawMessage, _ string) (string, error) {
 	if err := WriteOmoSlots(reg); err != nil {
 		return "", i18n.Ef(err, "cannot write the registry: {err}", nil)
 	}
-	// 新基线：写完之后重新算一次内容哈希（WriteOmoSlots 会更新 Updated 字段，
-	// 所以每次写都不同——这正是界面下一次 CAS 要的那个值）。
+	// New baseline: recompute the content hash after writing (WriteOmoSlots updates
+	// Updated, so every write differs - exactly what the UI's next CAS needs).
 	return store.Revision(SlotsFile()), nil
 }
 
@@ -214,8 +214,8 @@ func modeOrDefault(m string) string {
 	return m
 }
 
-// relToHome 把绝对路径折成 ~/… —— 卡片上那行路径是给人看的，绝对路径在别人的
-// 机器上没人认得。
+// relToHome folds an absolute path into ~/... - the path on the card is for
+// humans, and an absolute path means nothing on someone else's machine.
 func relToHome(p string) string {
 	if h, err := os.UserHomeDir(); err == nil && strings.HasPrefix(p, h) {
 		return "~" + strings.TrimPrefix(p, h)
@@ -223,7 +223,7 @@ func relToHome(p string) string {
 	return p
 }
 
-// effectiveCell 是**实际生效**的那个绑定：overrides 最优先，其次看 mode。
+// effectiveCell is the binding that **actually takes effect**: overrides first, then mode.
 func effectiveCell(reg *OmoSlots, key string) view.Cell {
 	binding := reg.SlotBinding(key)
 	if binding == "" {
@@ -235,17 +235,17 @@ func effectiveCell(reg *OmoSlots, key string) view.Cell {
 	return view.Cell{Text: binding}
 }
 
-// suggestsDifferently 说「这个槽位偏离了建议」。
+// suggestsDifferently says "this slot deviates from the suggestion".
 //
-// 判据与 CLI 一字不差（`s.Suggested != "" && s.Suggested != s.Current`）：两个
-// 界面对「哪些槽位与建议不符」必须给出同一个答案，否则用户会在终端里看到三条、
-// 在网页上看到两条，然后开始怀疑数据本身。
+// The criterion is word-for-word the CLI's (`s.Suggested != "" && s.Suggested !=
+// s.Current`): both UIs must give the same answer about which slots deviate, or
+// the user sees three in the terminal, two on the web page, and doubts the data.
 func suggestsDifferently(s OmoSlot) bool {
 	return s.Suggested != "" && s.Suggested != s.Current
 }
 
-// dashIfEmpty 给空值一个显式的占位符：空格子读起来像「这里出了问题」，
-// 而它其实只是在说「没有」。
+// dashIfEmpty gives an empty value an explicit placeholder: a blank cell reads
+// like "something is broken here", when it only means "none".
 func dashIfEmpty(s string) view.Cell {
 	if s == "" {
 		return view.Cell{Text: "-"}

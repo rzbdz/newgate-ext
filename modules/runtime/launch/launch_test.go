@@ -9,8 +9,8 @@ import (
 	agentapi "github.com/rzbdz/newgate-ext/modules/confighook"
 )
 
-// sandboxStore 在 NEWGATE_HOME 沙箱里铺一份最小配置：一个 provider、
-// 两个 profile——glm 声明了窗口，tiny 没声明。
+// sandboxStore lays out a minimal config in a NEWGATE_HOME sandbox: one provider, two
+// profiles - glm declares windows, tiny does not.
 func sandboxStore(t *testing.T) {
 	t.Helper()
 	dir := t.TempDir()
@@ -32,23 +32,23 @@ func sandboxStore(t *testing.T) {
 		"roles": {"heavy": "smt-glm/glm-5.3", "mid": "smt-glm/glm-5.3",
 			"light": "smt-glm/glm-4.5-air", "vision": "smt-glm/glm-4.5-air"}
 	}`)
-	// tiny 只写 heavy 的话，主力槽（四档化后是 normal）在它身上没有候选，
-	// 链会掉到下一个 profile——所以这里显式给 tiny 一条 normal（也是给它
-	// 的测试用例留个「主力档真名跟 profile 走」的断言点）。
+	// tiny with only heavy would leave the main slot (normal after the four-tier change) with
+	// no candidate, and the chain falls to the next profile - so tiny gets an explicit normal
+	// (which also leaves an assertion point that the main tier's real name follows the profile).
 	write("mappings/tiny.json", `{"name":"tiny","priority":30,
 		"roles":{"heavy":"smt-glm/glm-4-plus","normal":"smt-glm/glm-4-plus"}}`)
 }
 
-// TestBuildInjectWindowEnv 窗口声明的注入。Claude Code 不认识我们注入的
-// 真实模型名（glm-5.3），按「未知模型」默认 200k 窗口提前 compact——
-// profile 里声明了 context_window/auto_compact_window 才有 env（2026-09
-// 实测二进制 2.1.265 的解析链：MAX_CONTEXT_TOKENS 只对未知模型生效，
-// AUTO_COMPACT_WINDOW 优先级最高、window=min(两者)）。客户端描述符还能给
-// 这两个数封顶（见 TestBuildInjectWindowCap）。
-// testAgent 是内核测试用的**合成**客户端定义：真实的 claude 定义住在发行版里
-// （客户端接入是产品取舍，2026-09-20 搬走）。窗口 env 的**名字**如今也来自定义
-// （agentapi.Agent.ContextWindowEnv / AutoCompactEnv）——内核不认识任何一家的变量名，
-// 所以这里用合成的名字，测的是「配置里声明了就按定义的名字注入」这条机制。
+// TestBuildInjectWindowEnv: injecting window declarations. Claude Code does not know the
+// real model name we inject (glm-5.3), takes it for "unknown" and compacts at a 200k
+// window - only context_window/auto_compact_window in the profile produce env (measured
+// 2026-09 on binary 2.1.265: MAX_CONTEXT_TOKENS applies only to unknown models,
+// AUTO_COMPACT_WINDOW has top priority, window=min(both)). The descriptor can cap them.
+// testAgent is the kernel tests' **synthetic** client definition: the real claude
+// definition lives in the distribution (client integration is a product choice, moved
+// 2026-09-20). The window env **names** now also come from the definition
+// (agentapi.Agent.ContextWindowEnv / AutoCompactEnv), so synthetic names can test it:
+// "declared -> injected under the defined name".
 func testAgent() *agentapi.Agent {
 	return &agentapi.Agent{
 		ID:               "test-client",
@@ -58,8 +58,8 @@ func testAgent() *agentapi.Agent {
 		AuthEnv:          "TEST_API_KEY",
 		ContextWindowEnv: "TEST_MAX_CONTEXT_TOKENS",
 		AutoCompactEnv:   "TEST_AUTO_COMPACT_WINDOW",
-		// 三个槽位与档位一一对应：这样断言读起来就是「槽位拿到自己那一档」，
-		// 不需要知道任何一家客户端的槽位命名（claude 的 opus/fable/haiku 是它的知识）。
+		// Three slots map one-to-one to tiers: assertions then read "a slot gets its tier",
+		// with no need to know any client's slot naming (claude's opus/fable/haiku is its own).
 		Slots: []agentapi.Slot{
 			{Name: "heavy", Tier: "heavy", EnvVar: "TEST_HEAVY_MODEL"},
 			{Name: "normal", Tier: "normal", EnvVar: "TEST_NORMAL_MODEL"},
@@ -73,35 +73,35 @@ func TestBuildInjectWindowEnv(t *testing.T) {
 	st := &domain.State{Port: 8899}
 	a := testAgent()
 
-	t.Run("声明了窗口的 profile → 两个 env 都注入", func(t *testing.T) {
+	t.Run("a profile that declares windows -> both env vars are injected", func(t *testing.T) {
 		inject, _ := buildInject(a, nil, st, "glm", "")
 		if got := inject["TEST_MAX_CONTEXT_TOKENS"]; got != "1000000" {
-			t.Errorf("MAX_CONTEXT_TOKENS = %q，应为 1000000", got)
+			t.Errorf("MAX_CONTEXT_TOKENS = %q, want 1000000", got)
 		}
 		if got := inject["TEST_AUTO_COMPACT_WINDOW"]; got != "500000" {
-			t.Errorf("AUTO_COMPACT_WINDOW = %q，应为 500000", got)
+			t.Errorf("AUTO_COMPACT_WINDOW = %q, want 500000", got)
 		}
 	})
 
-	t.Run("没声明的 profile → 不注入", func(t *testing.T) {
+	t.Run("an undeclaring profile -> nothing injected", func(t *testing.T) {
 		inject, _ := buildInject(a, nil, st, "tiny", "")
 		if _, has := inject["TEST_MAX_CONTEXT_TOKENS"]; has {
-			t.Error("tiny 没配 context_window，不该注入 MAX_CONTEXT_TOKENS")
+			t.Error("tiny declares no context_window, so MAX_CONTEXT_TOKENS must not be injected")
 		}
 		if _, has := inject["TEST_AUTO_COMPACT_WINDOW"]; has {
-			t.Error("tiny 没配 auto_compact_window，不该注入 AUTO_COMPACT_WINDOW")
+			t.Error("tiny declares no auto_compact_window, so AUTO_COMPACT_WINDOW must not be injected")
 		}
 	})
 
-	t.Run("不存在的 profile → fail-open 不注入", func(t *testing.T) {
+	t.Run("a missing profile -> fail-open, nothing injected", func(t *testing.T) {
 		inject, _ := buildInject(a, nil, st, "ghost", "")
 		if _, has := inject["TEST_MAX_CONTEXT_TOKENS"]; has {
-			t.Error("profile 不存在时窗口 env 不该出现")
+			t.Error("no window env var should appear when the profile does not exist")
 		}
 	})
 
-	t.Run("只有 context_window → 只注入一个", func(t *testing.T) {
-		// 两个都独立生效：用户可以只报真实窗口、让客户端自己定 compact 点。
+	t.Run("only context_window -> only one env var", func(t *testing.T) {
+		// Both take effect independently: report only the real window, let the client pick compact.
 		dir := os.Getenv("NEWGATE_HOME")
 		if err := os.WriteFile(filepath.Join(dir, "mappings", "glm.json"),
 			[]byte(`{"name":"glm","priority":20,"context_window":1000000,
@@ -110,20 +110,20 @@ func TestBuildInjectWindowEnv(t *testing.T) {
 		}
 		inject, _ := buildInject(a, nil, st, "glm", "")
 		if got := inject["TEST_MAX_CONTEXT_TOKENS"]; got != "1000000" {
-			t.Errorf("MAX_CONTEXT_TOKENS = %q，应为 1000000", got)
+			t.Errorf("MAX_CONTEXT_TOKENS = %q, want 1000000", got)
 		}
 		if _, has := inject["TEST_AUTO_COMPACT_WINDOW"]; has {
-			t.Error("没配 auto_compact_window 就不该注入")
+			t.Error("without auto_compact_window nothing should be injected")
 		}
 	})
 }
 
-// TestBuildInjectWindowCap 客户端的封顶（ContextWindowCap / AutoCompactCap）：
-// profile 声明得再大也不超过客户端的数，且**超过时要说一声**。
+// TestBuildInjectWindowCap: the client's caps (ContextWindowCap / AutoCompactCap),
+// no matter how big the profile declares, and **say so** when it exceeds.
 //
-// 现场（2026-11-12）：1M 窗口把会话顶到最后一格，400 之后连 /compact 都发不出去
-// ——压缩请求本身也超限。封顶的作用是给压缩留出余量；悄悄把用户要的 1M 换掉
-// 则会制造「配置看着对、/context 显示 512K」的困惑，所以要有一条 warn。
+// Live (2026-11-12): a 1M window pushed the session to the last cell, and past 400 even
+// /compact could not be sent - the compaction request itself exceeded. A cap leaves
+// room for compaction; silently swapping the 1M gives "config right, /context 512K" - warn.
 func TestBuildInjectWindowCap(t *testing.T) {
 	sandboxStore(t)
 	st := &domain.State{Port: 8899}
@@ -131,33 +131,33 @@ func TestBuildInjectWindowCap(t *testing.T) {
 	a.ContextWindowCap = 512000
 	a.AutoCompactCap = 400000
 
-	t.Run("profile 声明 1M → 封到 512K/400K，并 warn", func(t *testing.T) {
+	t.Run("a profile declaring 1M -> capped to 512K/400K, with a warn", func(t *testing.T) {
 		inject, warns := buildInject(a, nil, st, "glm", "")
 		if got := inject["TEST_MAX_CONTEXT_TOKENS"]; got != "512000" {
-			t.Errorf("MAX_CONTEXT_TOKENS = %q，应封到 512000", got)
+			t.Errorf("MAX_CONTEXT_TOKENS = %q, want it capped at 512000", got)
 		}
 		if got := inject["TEST_AUTO_COMPACT_WINDOW"]; got != "400000" {
-			t.Errorf("AUTO_COMPACT_WINDOW = %q，应封到 400000", got)
+			t.Errorf("AUTO_COMPACT_WINDOW = %q, want it capped at 400000", got)
 		}
 		if len(warns) != 1 {
-			t.Errorf("把 1M 封成 512K 必须有一条 warn，实际 %v", warns)
+			t.Errorf("capping 1M to 512K must come with a warn line, got %v", warns)
 		}
 	})
 
-	t.Run("profile 没声明窗口 → 上限当声明，compact 不兜底", func(t *testing.T) {
+	t.Run("a profile declaring no window -> the cap counts as declared, compact gets no fallback", func(t *testing.T) {
 		inject, warns := buildInject(a, nil, st, "tiny", "")
 		if got := inject["TEST_MAX_CONTEXT_TOKENS"]; got != "512000" {
-			t.Errorf("没声明窗口时该用客户端上限 512000，实际 %q", got)
+			t.Errorf("with no declared window the client cap 512000 should be used, got %q", got)
 		}
 		if _, has := inject["TEST_AUTO_COMPACT_WINDOW"]; has {
-			t.Error("没声明 compact 时不该注入——客户端会按自己的窗口算压缩点")
+			t.Error("no injection when compact is undeclared -- the client computes its compaction point from its own window")
 		}
 		if len(warns) != 0 {
-			t.Errorf("没声明大窗口，不该 warn，实际 %v", warns)
+			t.Errorf("no large window was declared, so no warn is expected, got %v", warns)
 		}
 	})
 
-	t.Run("profile 声明得比上限小 → 原样", func(t *testing.T) {
+	t.Run("a profile declaring less than the cap -> left as is", func(t *testing.T) {
 		dir := os.Getenv("NEWGATE_HOME")
 		if err := os.WriteFile(filepath.Join(dir, "mappings", "glm.json"),
 			[]byte(`{"name":"glm","priority":20,"context_window":200000,
@@ -166,80 +166,80 @@ func TestBuildInjectWindowCap(t *testing.T) {
 		}
 		inject, warns := buildInject(a, nil, st, "glm", "")
 		if got := inject["TEST_MAX_CONTEXT_TOKENS"]; got != "200000" {
-			t.Errorf("MAX_CONTEXT_TOKENS = %q，应为 200000", got)
+			t.Errorf("MAX_CONTEXT_TOKENS = %q, should be 200000", got)
 		}
 		if got := inject["TEST_AUTO_COMPACT_WINDOW"]; got != "150000" {
-			t.Errorf("AUTO_COMPACT_WINDOW = %q，应为 150000", got)
+			t.Errorf("AUTO_COMPACT_WINDOW = %q, should be 150000", got)
 		}
 		if len(warns) != 0 {
-			t.Errorf("没超过上限，不该 warn，实际 %v", warns)
+			t.Errorf("it does not exceed the cap, so it must not warn, got %v", warns)
 		}
 	})
 }
 
-// TestBuildInjectModelNames 槽位命名的两种模式（2026-09-09 定稿）：
-// 默认动态——槽位保持档位名，--set-profile 对跑着的会话立刻生效；
-// 显式 --profile 钉死——注入真实模型名，显示的就是这次真用的。
+// TestBuildInjectModelNames: the two slot naming modes (settled 2026-09-09):
+// default dynamic - slots keep tier names, --set-profile applies to running sessions at
+// once; explicit --profile pins - inject real model names, showing what is really used.
 func TestBuildInjectModelNames(t *testing.T) {
 	sandboxStore(t)
 	st := &domain.State{Port: 8899}
 	a := testAgent()
 
-	t.Run("默认（动态）：槽位 = 档位名，base URL 不带 /p/", func(t *testing.T) {
+	t.Run("default (dynamic): slots = tier names, base URL has no /p/", func(t *testing.T) {
 		inject, _ := buildInject(a, nil, st, "glm", "")
 		if got := inject["TEST_BASE_URL"]; got != "http://127.0.0.1:8899/a/test-client" {
 			t.Errorf("BASE_URL = %q", got)
 		}
-		// 四档化（2026-09-16）：opus 槽 = 主力档 normal，fable 槽才是 heavy
+		// Four-tier change (2026-09-16): the opus slot = the main tier normal, fable is heavy
 		if got := inject["TEST_NORMAL_MODEL"]; got != "normal" {
-			t.Errorf("动态模式槽位应是档位名，NORMAL_MODEL = %q", got)
+			t.Errorf("in dynamic mode the slot should be the tier name, NORMAL_MODEL = %q", got)
 		}
 		if got := inject["TEST_HEAVY_MODEL"]; got != "heavy" {
-			t.Errorf("HEAVY_MODEL = %q，应为 heavy", got)
+			t.Errorf("HEAVY_MODEL = %q, should be heavy", got)
 		}
 		if got := inject["TEST_LIGHT_MODEL"]; got != "light" {
-			t.Errorf("LIGHT_MODEL = %q，应为 light", got)
+			t.Errorf("LIGHT_MODEL = %q, should be light", got)
 		}
 	})
 
-	t.Run("显式 profile（钉死）：槽位 = 真实模型名，base URL 带 /p/", func(t *testing.T) {
+	t.Run("explicit profile (pinned): slots = real model names, base URL carries /p/", func(t *testing.T) {
 		inject, _ := buildInject(a, nil, st, "glm", "glm")
 		if got := inject["TEST_BASE_URL"]; got != "http://127.0.0.1:8899/a/test-client/p/glm" {
 			t.Errorf("BASE_URL = %q", got)
 		}
 		if got := inject["TEST_NORMAL_MODEL"]; got != "glm-5.3" {
-			t.Errorf("钉死模式应是真实名，NORMAL_MODEL = %q", got)
+			t.Errorf("pinned mode should use real names, NORMAL_MODEL = %q", got)
 		}
 		if got := inject["TEST_LIGHT_MODEL"]; got != "glm-4.5-air" {
-			t.Errorf("LIGHT_MODEL = %q，应为 glm-4.5-air", got)
+			t.Errorf("LIGHT_MODEL = %q, should be glm-4.5-air", got)
 		}
 	})
 
-	t.Run("钉死到别的 profile：真名跟被选中的 profile 走", func(t *testing.T) {
-		// 默认链头是 glm，--profile tiny：真名必须是 tiny 的，不然界面
-		// 显示的和实际跑的对不上
+	t.Run("pinned to another profile: real names follow the selected profile", func(t *testing.T) {
+		// The default chain head is glm, --profile tiny: the real name must be tiny's, else
+		// the UI shows what does not match what runs
 		inject, _ := buildInject(a, nil, st, "tiny", "tiny")
 		if got := inject["TEST_NORMAL_MODEL"]; got != "glm-4-plus" {
-			t.Errorf("NORMAL_MODEL = %q，应为 tiny 的 glm-4-plus", got)
+			t.Errorf("NORMAL_MODEL = %q, should be glm-4-plus from tiny", got)
 		}
 		if _, has := inject["TEST_MAX_CONTEXT_TOKENS"]; has {
-			t.Error("窗口应该跟被选中的 profile（tiny，没声明）走")
+			t.Error("the window should follow the selected profile (tiny, which declares none)")
 		}
 	})
 }
 
-// TestModelSuffixSurvivesBothModes 槽位声明的模型名后缀（客户端的能力标记）
-// 在**两种命名模式**下都必须跟着值走，且**只**跟着模型名走。
+// TestModelSuffixSurvivesBothModes: the model-name suffix a slot declares (the client's
+// capability marker) must ride along in **both naming modes**, and **only** on model names.
 //
-// 为什么这条要单独锁（2026-09-28）：标记的落点是「注入出去的模型名」，而这条
-// 注入在代码里有**两处**——BuildEnv（动态：档位名）与 buildInject 的钉死分支
-// （真实模型名）。用户点名要优先支持的是后者（`newgate claude --profile=xx`），
-// 而它恰好是后加的那一处：动态模式对了、钉死模式丢了标记，症状是「切了 profile
-// 之后 1M 上下文又没了」，而配置看起来一切正常。
+// Why a separate lock (2026-09-28): the marker lands on the injected model name, and that
+// injection has **two places** - BuildEnv (dynamic: tier name) and buildInject's pinned
+// branch (real model name). Users named the latter as priority (`newgate claude
+// --profile=xx`), and it is exactly the later-added place: dynamic mode right, pinned
+// mode lost the marker - "after switching profile the 1M context is gone", config normal.
 //
-// 标记本身是**合成的**（`@1m`）：内核不认识任何一家的真实标记——真实那个由客户端
-// 模块给（发行版 modules/claudecode 用 gateway/protocol.OneMMarker）。这里测的是
-// 机制：「声明了就拼、两种模式都拼、数字变量不拼」。
+// The marker itself is **synthetic** (`@1m`): the kernel knows no vendor's real marker -
+// the client module supplies it (this distribution's modules/claudecode). Tested here:
+// "declared -> appended, both modes, not numbers".
 func TestModelSuffixSurvivesBothModes(t *testing.T) {
 	sandboxStore(t)
 	st := &domain.State{Port: 8899}
@@ -249,82 +249,82 @@ func TestModelSuffixSurvivesBothModes(t *testing.T) {
 		a.Slots[i].ModelSuffix = mark
 	}
 
-	t.Run("动态模式：档位名带标记", func(t *testing.T) {
+	t.Run("dynamic mode: tier names carry the marker", func(t *testing.T) {
 		inject, _ := buildInject(a, nil, st, "glm", "")
 		if got := inject["TEST_NORMAL_MODEL"]; got != "normal"+mark {
-			t.Errorf("NORMAL_MODEL = %q，应为 normal%s", got, mark)
+			t.Errorf("NORMAL_MODEL = %q, should be normal%s", got, mark)
 		}
 		if got := inject["TEST_LIGHT_MODEL"]; got != "light"+mark {
-			t.Errorf("LIGHT_MODEL = %q，应为 light%s", got, mark)
+			t.Errorf("LIGHT_MODEL = %q, should be light%s", got, mark)
 		}
 	})
 
-	t.Run("钉死模式：真实模型名带标记（--profile=xx 那条路）", func(t *testing.T) {
+	t.Run("pinned mode: real model names carry the marker (the --profile=xx path)", func(t *testing.T) {
 		inject, _ := buildInject(a, nil, st, "glm", "glm")
 		if got := inject["TEST_NORMAL_MODEL"]; got != "glm-5.3"+mark {
-			t.Errorf("NORMAL_MODEL = %q，应为 glm-5.3%s", got, mark)
+			t.Errorf("NORMAL_MODEL = %q, should be glm-5.3%s", got, mark)
 		}
 		if got := inject["TEST_LIGHT_MODEL"]; got != "glm-4.5-air"+mark {
-			t.Errorf("LIGHT_MODEL = %q，应为 glm-4.5-air%s", got, mark)
+			t.Errorf("LIGHT_MODEL = %q, should be glm-4.5-air%s", got, mark)
 		}
 	})
 
-	// 窗口声明是**数字**（strconv.Itoa 出来的），拼上标记会写进去一个解析不了的
-	// 值——失败的样子是「窗口声明静默失效、又回到 200k 假设」，看起来像这条注入
-	// 根本不存在。所以数字变量一次都不许过 Apply。
-	t.Run("窗口声明不沾标记", func(t *testing.T) {
+	// Window declarations are **numbers** (from strconv.Itoa), and appending a marker writes
+	// an unparseable value - the failure looks like "the window declaration silently died,
+	// back to 200k", as if this injection did not exist. So number vars never go through Apply.
+	t.Run("window declarations do not carry the marker", func(t *testing.T) {
 		inject, _ := buildInject(a, nil, st, "glm", "glm")
 		if got := inject["TEST_MAX_CONTEXT_TOKENS"]; got != "1000000" {
-			t.Errorf("MAX_CONTEXT_TOKENS = %q，应为 1000000（不带标记）", got)
+			t.Errorf("MAX_CONTEXT_TOKENS = %q, should be 1000000 (without the marker)", got)
 		}
 		if got := inject["TEST_AUTO_COMPACT_WINDOW"]; got != "500000" {
-			t.Errorf("AUTO_COMPACT_WINDOW = %q，应为 500000（不带标记）", got)
+			t.Errorf("AUTO_COMPACT_WINDOW = %q, should be 500000 (without the marker)", got)
 		}
 	})
 }
 
-// TestBuildInjectOverridesInherited execReal 的 env 白名单保证注入值赢过
-// 用户 shell 里残留的同名变量——「切了没生效」最常见的成因。
-// 这里只验证 buildInject 产出正确；覆盖发生在 execReal，由 e2e 盖着。
+// TestBuildInjectOverridesInherited: execReal's env allowlist ensures injected values beat
+// stale same-name variables in the user's shell - the most common cause of "switch did
+// nothing". Only buildInject's output is verified here; the override is covered by e2e.
 func TestBuildInjectOverridesInherited(t *testing.T) {
 	sandboxStore(t)
 	st := &domain.State{Port: 8899}
 	a := testAgent()
 
-	t.Setenv("TEST_AUTO_COMPACT_WINDOW", "666") // 用户自己设过别的值
+	t.Setenv("TEST_AUTO_COMPACT_WINDOW", "666") // the user has set a different value themselves
 	inject, _ := buildInject(a, nil, st, "glm", "")
 	if got := inject["TEST_AUTO_COMPACT_WINDOW"]; got != "500000" {
-		t.Fatalf("profile 的声明应该赢过用户环境里的旧值: %q", got)
+		t.Fatalf("the profile declaration should win over an old value in the user environment: %q", got)
 	}
 }
 
-// TestBuildInjectWarnsWhenConfigUnreadable 配置读不出来时必须留一句话。
+// TestBuildInjectWarnsWhenConfigUnreadable: an unreadable config must leave a word behind.
 //
-// 这条路径是 fail-open 的：读不到配置就退回「槽位保持档位名」，代理仍能按档位
-// 名路由，所以这次调用照样起得来。但它同时**少注入**了两样东西——真实模型名，
-// 以及 profile 声明的窗口（不给的话 Claude Code 按 200k 假设提前 compact）。
-// 后者是用户能直接感觉到的行为变化，而 2026-09-18 之前这条 if 没有 else，
-// 整块注入静默跳过，一个字都不说。
+// This path is fail-open: no config means "slots keep tier names", the proxy still routes
+// by tier, so the call still starts. But it also **drops** two things - the real model
+// name, and the profile's window (else Claude Code compacts at a 200k assumption). The
+// latter is a behavior change the user feels, and before 2026-09-18 this if had no else,
+// so the whole injection was skipped silently, saying nothing.
 func TestBuildInjectWarnsWhenConfigUnreadable(t *testing.T) {
 	sandboxStore(t)
 	st := &domain.State{Port: 8899}
 	a := testAgent()
 
-	// 把 providers.json 弄坏：Load 在第一步就失败。
+	// Break providers.json: Load fails at its first step.
 	p := filepath.Join(os.Getenv("NEWGATE_HOME"), "providers.json")
-	if err := os.WriteFile(p, []byte("{ 这不是 json"), 0o644); err != nil {
+	if err := os.WriteFile(p, []byte("{ this is not json"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	inject, warns := buildInject(a, nil, st, "glm", "glm")
 	if len(warns) == 0 {
-		t.Fatal("配置读不出来时必须给出警告，否则用户只看到「窗口没生效」而不知道原因")
+		t.Fatal("when the config cannot be read it must warn, or the user only sees 'the window did not take effect' without knowing why")
 	}
-	// fail-open：槽位仍然注入了（档位名），只是不是真实模型名。
+	// fail-open: slots are still injected (tier names), just not the real model names.
 	if got := inject["TEST_NORMAL_MODEL"]; got != "normal" {
-		t.Errorf("读不到配置时槽位应保持档位名 normal，实际 %q", got)
+		t.Errorf("when the config cannot be read the slot should stay the tier name normal, got %q", got)
 	}
 	if _, has := inject["TEST_MAX_CONTEXT_TOKENS"]; has {
-		t.Error("读不到配置时不该有窗口声明")
+		t.Error("when the config cannot be read there should be no window declaration")
 	}
 }

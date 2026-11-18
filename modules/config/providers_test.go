@@ -12,10 +12,11 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// provider 表那张卡的两半：**画出来的东西对不对**，以及**写下去的东西对不对**。
-// 后者最要紧——那张卡是用户配凭据的地方，而凭据这件事只有一条规矩：值不许出去。
+// The two halves of the provider table card: **is what is drawn right**, and **is what
+// is written right**. The latter matters most -- that card is where the user configures
+// credentials, and there is only one rule for credentials: the value must not leave.
 
-// seedProviders 在沙箱里放一份 providers.json。
+// seedProviders places a providers.json in the sandbox.
 func seedProviders(t *testing.T, body string) {
 	t.Helper()
 	testkit.Sandbox(t)
@@ -27,26 +28,27 @@ func seedProviders(t *testing.T, body string) {
 	}
 }
 
-// providersCard 取那张卡，顺便确认它还是**可写**的。
+// providersCard takes that card, and confirms it is still **writable**.
 //
-// 这条断言不是废话：这张卡存在之前的形态是「只读的原文」，而只读与可写之间的
-// 差别在界面上只表现为一个保存按钮——掉了没有任何东西会红。
+// This assertion is not fluff: before this card existed its form was
+// "read-only source text", and the difference between read-only and writable
+// shows in the UI only as a save button -- lose it and nothing goes red.
 func providersCard(t *testing.T) view.Concept {
 	t.Helper()
 	c := providersConcept()
 	if c.Kind != view.KindRecords {
-		t.Fatalf("provider 表该是 %q，实际 %q", view.KindRecords, c.Kind)
+		t.Fatalf("the provider table should be %q, actual %q", view.KindRecords, c.Kind)
 	}
 	if c.Broken != "" {
-		t.Fatalf("这张卡读不出来: %s", c.Broken)
+		t.Fatalf("cannot read this card: %s", c.Broken)
 	}
 	if c.Apply == nil {
-		t.Fatal("provider 表不可写——那用户就只能去命令行加 provider 了")
+		t.Fatal("the provider table is not writable -- then users can only add providers from the command line")
 	}
 	return c
 }
 
-// fieldValue 按字段名取值（Records 的字段是数组，按 ID 找）。
+// fieldValue takes a value by field name (Records' fields are an array, found by ID).
 func fieldValue(t *testing.T, rec view.Record, id string) view.Field {
 	t.Helper()
 	for _, f := range rec.Fields {
@@ -54,56 +56,61 @@ func fieldValue(t *testing.T, rec view.Record, id string) view.Field {
 			return f
 		}
 	}
-	t.Fatalf("记录 %s 里没有字段 %q", rec.ID, id)
+	t.Fatalf("record %s has no field %q", rec.ID, id)
 	return view.Field{}
 }
 
-// TestTheKeyNeverLeavesTheDaemon 是这张卡的安全那一半：**凭据的值不进快照**。
+// TestTheKeyNeverLeavesTheDaemon is this card's security
+// half: **the credential value does not enter the snapshot**.
 //
-// 判据是「值根本不出 daemon」，而不是「出去之前脱敏」：脱敏过的原文回到界面，
-// 用户一保存就把 *** 写回磁盘了（那正是 providers.json 一直是只读的原因）。
-// 值不出去，就没有写回来这回事。
+// The criterion is "the value never leaves the daemon", not "redacted before
+// leaving": redacted source text going back to the UI means the user saves
+// once and writes *** back to disk (which is exactly why providers.json was
+// read-only all along). If the value never leaves, there is no writing it back.
 func TestTheKeyNeverLeavesTheDaemon(t *testing.T) {
 	seedProviders(t, `{"providers":{"demo":{"protocol":"anthropic","base_url":"https://x","api_key":"sk-super-secret"}}}`)
 
 	card := providersCard(t)
 	data := card.Data.(view.Records)
 	if len(data.Items) != 1 {
-		t.Fatalf("该有一家 provider，实际 %d", len(data.Items))
+		t.Fatalf("want exactly one provider, got %d", len(data.Items))
 	}
 	key := fieldValue(t, data.Items[0], "api_key")
 	if key.Kind != view.FieldSecret {
-		t.Errorf("api_key 该是 %q，实际 %q", view.FieldSecret, key.Kind)
+		t.Errorf("api_key kind should be %q, got %q", view.FieldSecret, key.Kind)
 	}
 	if key.Value != "" {
-		t.Errorf("凭据的值进了快照（%q）——它会经 HTTP 到浏览器、再被原样写回来", key.Value)
+		t.Errorf("the credential value leaked into the snapshot (%q) -- it travels over HTTP to the browser and is written back verbatim", key.Value)
 	}
-	// 非凭据的字段照常给值：不然这张卡就没法用了。
+	// Non-credential fields give their values as usual: otherwise this card would be unusable.
 	if got := fieldValue(t, data.Items[0], "base_url").Value; got != "https://x" {
-		t.Errorf("base_url 该照常给值，实际 %q", got)
+		t.Errorf("base_url should be shown as usual, got %q", got)
 	}
-	// 提示要说清「已经设过了」——那是用户唯一能看到的区别（值本身永远不显示）。
-	// 判据拿两句 i18n 比，不写死中文：测试跑在源语言下，写死中文的那条会红在
-	// 「有没有装目录」上，而它想验的是「设过 key 时提示与没设时不一样」。
+	// The hint must say "already set" -- that is the only difference the user
+	// can see (the value itself is never shown). The criterion compares two i18n
+	// strings rather than hardcoding Chinese: tests run in the source language, and
+	// a hardcoded-Chinese one would go red on "is the catalog installed", while what
+	// it wants to verify is "the hint differs when a key is set and when it is not".
 	if key.Placeholder == "" || key.Placeholder == i18n.T("not set — paste the key here", nil) {
-		t.Errorf("设过 key 时的提示该与没设时不同，实际 %q", key.Placeholder)
+		t.Errorf("with a key set, the hint should differ from the unset case, got %q", key.Placeholder)
 	}
 
-	// 整张卡序列化出来也不许带那句密钥：它可能从别的字段漏出去（label、why…）。
+	// Serializing the whole card must not carry that key
+	// either: it could leak from another field (label, why...).
 	raw, err := json.Marshal(card.Data)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(string(raw), "sk-super-secret") {
-		t.Fatalf("快照里带着明文密钥:\n%s", raw)
+		t.Fatalf("the snapshot carries a plaintext key:\n%s", raw)
 	}
 }
 
-// TestSavingWithoutTypingAKeyKeepsTheOldOne：界面手里没有那个值，它回传的空串
-// 意思是「别动它」——不是「删掉」。
+// TestSavingWithoutTypingAKeyKeepsTheOldOne: the UI does not have the value,
+// and the empty string it sends back means "do not touch it" -- not "delete it".
 //
-// 这条要是错了，症状是**用户改一次 base_url 就把 key 弄没了**，而且是静默的：
-// 保存成功，下一次请求 401。
+// If this is wrong, the symptom is **the user changes base_url once and the
+// key is gone**, and silently: save succeeds, the next request is a 401.
 func TestSavingWithoutTypingAKeyKeepsTheOldOne(t *testing.T) {
 	seedProviders(t, `{"providers":{"demo":{"base_url":"https://old","api_key":"sk-keep-me"}}}`)
 	card := providersCard(t)
@@ -111,20 +118,20 @@ func TestSavingWithoutTypingAKeyKeepsTheOldOne(t *testing.T) {
 	base := baseOf(t, card)
 	if _, err := card.Apply(json.RawMessage(`{"items":[{"id":"demo","values":{
 		"name":"demo","base_url":"https://new","api_key":""}}]}`), base); err != nil {
-		t.Fatalf("保存失败: %v", err)
+		t.Fatalf("save failed: %v", err)
 	}
 
 	got := readProviders(t)
 	p := got["demo"]
 	if p["base_url"] == nil || !strings.Contains(string(p["base_url"]), "https://new") {
-		t.Errorf("base_url 没被改掉: %s", p["base_url"])
+		t.Errorf("base_url was not edited: %s", p["base_url"])
 	}
 	if p["api_key"] == nil || !strings.Contains(string(p["api_key"]), "sk-keep-me") {
-		t.Errorf("回传空串把 key 弄没了: %s", p["api_key"])
+		t.Errorf("posting back an empty string lost the key: %s", p["api_key"])
 	}
 }
 
-// TestTypingAKeyReplacesIt：敲了就是改（这是新增一家 provider 的唯一办法）。
+// TestTypingAKeyReplacesIt: typed means changed (the only way to add a provider).
 func TestTypingAKeyReplacesIt(t *testing.T) {
 	seedProviders(t, `{"providers":{"demo":{"base_url":"https://x","api_key":"sk-old"}}}`)
 	card := providersCard(t)
@@ -133,15 +140,15 @@ func TestTypingAKeyReplacesIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	if p := readProviders(t)["demo"]; !strings.Contains(string(p["api_key"]), "sk-new") {
-		t.Errorf("敲进去的 key 没写下去: %s", p["api_key"])
+		t.Errorf("the key typed in was not written: %s", p["api_key"])
 	}
 }
 
-// TestANewProviderAndADeletedOne：界面交回来的是**它手里的全部记录**，没交的就是
-// 删掉；id 为空的那条是新增。
+// TestANewProviderAndADeletedOne: what the UI sends back is **all the records it
+// holds**; what is not sent is deleted; a record with an empty id is a new one.
 //
-// 改名走的是同一条路（id 对不上就是删一条加一条），所以这一条同时钉住了「改名不是
-// 静默留下两家」。
+// Rename takes the same path (a mismatched id is one deleted and one
+// added), so this also pins "rename does not silently leave two".
 func TestANewProviderAndADeletedOne(t *testing.T) {
 	seedProviders(t, `{"providers":{"old":{"base_url":"https://o"},"kept":{"base_url":"https://k"}}}`)
 	card := providersCard(t)
@@ -153,20 +160,21 @@ func TestANewProviderAndADeletedOne(t *testing.T) {
 	}
 	got := readProviders(t)
 	if len(got) != 2 {
-		t.Fatalf("该剩两家（kept 与 fresh），实际 %d: %v", len(got), keysOf(got))
+		t.Fatalf("should be two left (kept and fresh), got %d: %v", len(got), keysOf(got))
 	}
 	if got["old"] != nil {
-		t.Error("没交回来的那家该被删掉——不然界面上的删除按钮是个摆设")
+		t.Error("a provider that was not posted back must be deleted -- otherwise the UI's delete button is decoration")
 	}
 	if !strings.Contains(string(got["fresh"]["api_key"]), "sk-fresh") {
-		t.Errorf("新增那家没写全: %v", got["fresh"])
+		t.Errorf("the newly added provider was not written in full: %v", got["fresh"])
 	}
 }
 
-// TestUnknownKeysSurvive：这份文件里可能有界面不认识的东西（手写的备注、将来
-// core 加的字段）。整份重写会把它们抹掉，而用户不会知道是哪一次保存弄丢的。
+// TestUnknownKeysSurvive: this file may hold things the UI does not
+// recognize (hand-written notes, fields core adds later). A full rewrite
+// would erase them, and the user would not know which save lost them.
 func TestUnknownKeysSurvive(t *testing.T) {
-	seedProviders(t, `{"providers":{"demo":{"base_url":"https://x","my_note":"手写的"}},"other_section":1}`)
+	seedProviders(t, `{"providers":{"demo":{"base_url":"https://x","my_note":"hand-written"}},"other_section":1}`)
 	card := providersCard(t)
 	if _, err := card.Apply(json.RawMessage(`{"items":[{"id":"demo","values":{
 		"name":"demo","base_url":"https://y"}}]}`), baseOf(t, card)); err != nil {
@@ -177,15 +185,15 @@ func TestUnknownKeysSurvive(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(raw), "my_note") {
-		t.Errorf("provider 里不认识的键被抹掉了:\n%s", raw)
+		t.Errorf("an unknown key inside a provider was erased:\n%s", raw)
 	}
 	if !strings.Contains(string(raw), "other_section") {
-		t.Errorf("顶层不认识的段被抹掉了:\n%s", raw)
+		t.Errorf("an unknown top-level section was erased:\n%s", raw)
 	}
 }
 
-// TestDuplicateNamesAreRejected：两条记录写同一个名字时，静默留一条的结果是
-// 「我改的那家不见了」。报错，让用户看见。
+// TestDuplicateNamesAreRejected: when two records write the same name, quietly keeping
+// one results in "the one I edited is gone". Report an error and let the user see it.
 func TestDuplicateNamesAreRejected(t *testing.T) {
 	seedProviders(t, `{"providers":{}}`)
 	card := providersCard(t)
@@ -194,62 +202,63 @@ func TestDuplicateNamesAreRejected(t *testing.T) {
 		{"id":"","values":{"name":"dup","base_url":"https://b"}}
 	]}`), baseOf(t, card))
 	if err == nil {
-		t.Fatal("重名该被拒绝")
+		t.Fatal("a duplicate name must be rejected")
 	}
 	if !strings.Contains(err.Error(), "dup") {
-		t.Errorf("报错要点名是哪个名字: %v", err)
+		t.Errorf("the error must name which name collided: %v", err)
 	}
 }
 
-// TestAProviderWithoutANameIsRejected：名字是档位绑定引用它的那个键，空的等于
-// 写了一条谁也指不到的东西。
+// TestAProviderWithoutANameIsRejected: the name is the key tier bindings
+// reference it by, and an empty one writes something nobody can point at.
 func TestAProviderWithoutANameIsRejected(t *testing.T) {
 	seedProviders(t, `{"providers":{}}`)
 	card := providersCard(t)
 	if _, err := card.Apply(json.RawMessage(`{"items":[{"id":"","values":{"name":"  "}}]}`),
 		baseOf(t, card)); err == nil {
-		t.Fatal("没有名字的 provider 该被拒绝")
+		t.Fatal("a provider with no name must be rejected")
 	}
 }
 
-// TestAMissingFileIsNotAnError：全新安装还没建 providers.json。那不是故障——
-// 界面该能照着它加第一家。
+// TestAMissingFileIsNotAnError: a fresh install has not created providers.json yet.
+// That is not a fault -- the UI should be able to add the first one against it.
 func TestAMissingFileIsNotAnError(t *testing.T) {
 	testkit.Sandbox(t)
 	card := providersConcept()
 	if card.Broken != "" {
-		t.Fatalf("文件不存在不该是一张坏卡片: %s", card.Broken)
+		t.Fatalf("a missing file must not become a broken card: %s", card.Broken)
 	}
 	data := card.Data.(view.Records)
 	if len(data.Items) != 0 {
-		t.Fatalf("空表该没有记录，实际 %d", len(data.Items))
+		t.Fatalf("an empty table should have no rows, got %d", len(data.Items))
 	}
 	if !data.CanAdd {
-		t.Error("空表最需要的恰恰是「加一家」——CanAdd 该是 true")
+		t.Error("an empty table needs \"add one\" most of all -- CanAdd should be true")
 	}
 	if _, err := card.Apply(json.RawMessage(`{"items":[{"id":"","values":{
 		"name":"first","base_url":"https://f","api_key":"sk-1"}}]}`), ""); err != nil {
-		t.Fatalf("从零建一家该成功: %v", err)
+		t.Fatalf("creating one from scratch should succeed: %v", err)
 	}
 	if p := readProviders(t)["first"]; p == nil {
-		t.Error("第一家没写下去")
+		t.Error("the first one was not written")
 	}
 }
 
-// ---------- 小工具 ----------
+// ---------- small helpers ----------
 
-// baseOf 是这张卡交出去的基线。刻意从**卡片自己**取（而不是现算一个），因为
-// 「基线是不是跟着卡一起给的」正是要钉住的东西之一：前端保存时就靠它。
+// baseOf is the baseline this card hands out. Deliberately taken from **the card
+// itself** (rather than computed on the spot), because "is the baseline given along
+// with the card" is one of the things to pin: the front end relies on it when saving.
 func baseOf(t *testing.T, c view.Concept) string {
 	t.Helper()
 	got, ok := c.Data.(view.Records)
 	if !ok {
-		t.Fatalf("Data 该是 view.Records，实际 %T", c.Data)
+		t.Fatalf("Data should be view.Records, actual %T", c.Data)
 	}
 	return got.Base
 }
 
-// readProviders 读回 providers 那一段的原文（保持原始 JSON）。
+// readProviders reads back the source text of the providers section (keeping the raw JSON).
 func readProviders(t *testing.T) map[string]map[string]json.RawMessage {
 	t.Helper()
 	got, err := readProvidersRaw(paths.ProvidersFile())

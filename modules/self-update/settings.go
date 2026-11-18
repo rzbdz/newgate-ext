@@ -13,8 +13,8 @@ import (
 	"github.com/rzbdz/newgate-ext/manifest/distinfo"
 )
 
-// stateKey 是 state.json 里属于本模块的那一段（core 不认识这个键，见
-// domain.State.ModuleConfig）。
+// stateKey is this module's section in state.json (core does not know the key, see
+// domain.State.ModuleConfig).
 const stateKey = "self-update"
 
 const (
@@ -22,21 +22,21 @@ const (
 	modeGit     = "git"
 )
 
-// settings 是本模块在 state.json 里自己那一段。
+// settings is this module's own section in state.json.
 type settings struct {
-	// Mode 是 release 或 git。
+	// Mode is release or git.
 	Mode string `json:"mode"`
-	// Repo 是 git 模式的本地 checkout（仓库根，绝对路径）。
+	// Repo is the git-mode local checkout (repo root, absolute path).
 	Repo string `json:"repo,omitempty"`
-	// GitHub 覆盖规格书里的发布仓库（`owner/repo`）。空 = 用规格书的——fork 的人
-	// 一般改规格书；这里是给「同一个二进制、换个仓库拉」留的口子。
+	// GitHub overrides the spec's release repo (`owner/repo`). Empty = the spec's - forkers
+	// usually edit the spec; this is the hatch for "same binary, another repo".
 	GitHub string `json:"github,omitempty"`
-	// DecidedBy 记这个决定是谁做的：first-run（第一次运行时推断）或 user。
-	// 只给人看——「我从没设过，怎么是 git」的答案。
+	// DecidedBy records who made this decision: first-run (inferred) or user.
+	// Human-facing only - the answer to "I never set it, why git?".
 	DecidedBy string `json:"decided_by,omitempty"`
 }
 
-// github 是这次要用的发布仓库：自己那段的覆盖值，否则规格书声明的。
+// github is the release repo for this run: our section's override, else the spec's.
 func (s settings) github() string {
 	if s.GitHub != "" {
 		return s.GitHub
@@ -44,7 +44,7 @@ func (s settings) github() string {
 	return distinfo.Current().GitHub
 }
 
-// sourceDir 是构建期注入的源码目录（测试换掉它）。
+// sourceDir is the build-time source dir (tests swap it).
 var sourceDir = distinfo.Source
 
 func loadSettings() (settings, bool) {
@@ -54,14 +54,14 @@ func loadSettings() (settings, bool) {
 	}
 	var s settings
 	if err := json.Unmarshal(raw, &s); err != nil || (s.Mode != modeRelease && s.Mode != modeGit) {
-		// 写坏了的一段当作没有：重新推断比拿一段读不懂的东西去换二进制好。
+		// A corrupted section counts as absent: re-inferring beats swapping binaries on gibberish.
 		return settings{}, false
 	}
 	return s, true
 }
 
-// saveSettings 写回自己那一段。拿配置目录的写锁：state.json 是大家共用的文件，
-// 读-改-写之间别人的改动不能被这一次整段盖掉。
+// saveSettings writes our section back. Take the config dir's write lock: state.json is
+// shared, and another's change between read and write must not be overwritten wholesale.
 func saveSettings(s settings) error {
 	raw, err := json.Marshal(s)
 	if err != nil {
@@ -78,9 +78,9 @@ func saveSettings(s settings) error {
 	return err
 }
 
-// ensureSettings 返回生效的设置；还没有那一段时推断一份，**推断得有把握才写下来**。
+// ensureSettings returns the effective settings, inferring (and **only writing**) when unset.
 //
-// 第二个返回值说的是「这份是不是落了盘」。
+// The second value says whether this copy landed on disk.
 func ensureSettings() (settings, bool) {
 	if s, ok := loadSettings(); ok {
 		return s, true
@@ -89,8 +89,8 @@ func ensureSettings() (settings, bool) {
 	if !sure {
 		return s, false
 	}
-	// state.json 还不存在就不写：`newgate init` 看「文件在不在」决定要不要种一份
-	// 缺省状态（端口、缺省 profile），抢先写进去一段会让它以为已经初始化过了。
+	// state.json absent, write nothing: `newgate init` decides by "does the file exist"
+	// whether to seed a default state (port, default profile); an early section is worse.
 	if _, err := os.Stat(paths.StateFile()); err != nil {
 		return s, false
 	}
@@ -101,20 +101,20 @@ func ensureSettings() (settings, bool) {
 	return s, true
 }
 
-// infer 按构建期的源码目录猜这台机器走哪条路。
+// infer guesses this machine's route from the build-time source dir.
 //
-//   - 目录在、是一份带 build/build.sh 与这份规格书的 git checkout → git；
-//   - 目录不在（CI 编的产物带的是 runner 的路径）、或者这个用户看不见它 → release；
-//   - 没注入（`go run`、测试）或者在临时目录里（`upgrade@<ref>` 那份临时 clone
-//     编出来的产物，第一次跑 `version` 时那个目录还在）→ 不下结论。
+//   - Directory present and a git checkout with build/build.sh and this spec -> git;
+//   - directory absent (a CI artifact carries the runner's path) or invisible -> release;
+//   - not injected (`go run`, tests) or in a temp dir (the artifact built from an
+//     `upgrade@<ref>` temp clone, whose dir still exists on the first `version`) -> no guess.
 //
-// 「看不见」算 release 而不是「不下结论」：第一版是后者，理由是「daemon 以别的用户
-// 跑、源码在 /root 下，别让它把开发机写成 release」。结果 2026-10-29 部署到 snode1
-// 第一件事就撞上反例——那台机器上**也有** /root（0700），本机编的产物带着
-// /root/workspace/newgate-ext，于是普通用户那边永远是「推断的，还没写下来」。
-// 而真正的判据很简单：这个用户读不到那份源码，就**编不了**它，git 模式对他没有
-// 意义。开发机上那个担心也不成立：daemon 是 CLI 拉起来的，CLI 那一次 Start 早就
-// 把 git 写下了。
+// "Invisible" counts as release, not "no guess": earlier reasoning was "the daemon runs
+// as another user and the source is under /root, do not let it write release onto a dev
+// machine". On 2026-10-29 the first deployment to snode1 hit the counterexample - that
+// machine **also** has /root (0700), and a locally built artifact carried
+// /root/workspace/newgate-ext, so ordinary users were forever "inferred, not written".
+// But the criterion is simple: a user who cannot read the source **cannot build** it, and
+// git mode is meaningless to him; the daemon's Start (in the CLI) wrote git long before.
 func infer(source, spec string) (settings, bool) {
 	fallback := settings{Mode: modeRelease}
 	if source == "" || underTemp(source) {
@@ -124,7 +124,7 @@ func infer(source, spec string) (settings, bool) {
 		return fallback, true
 	}
 	if checkRepo(source, spec) != nil {
-		// 目录在但不是本仓库（被别的东西占了这个路径）：那就不是「自己编的」。
+		// Directory present but not this repo (something else took the path): not "self-built".
 		return fallback, true
 	}
 	return settings{Mode: modeGit, Repo: source}, true
@@ -135,8 +135,8 @@ func underTemp(dir string) bool {
 	return strings.HasPrefix(filepath.Clean(dir)+string(filepath.Separator), tmp)
 }
 
-// checkRepo 核对一个目录能不能当 git 模式的仓库用：是 git 仓库的根、带构建入口、
-// 带这份规格书。三条缺一条，`build/build.sh` 就编不出**这个**发行版。
+// checkRepo checks whether a dir can serve as the git-mode repo: a git root, with a build
+// entry point, and this spec. Missing one, `build/build.sh` cannot build **this** distribution.
 func checkRepo(dir, spec string) error {
 	if !filepath.IsAbs(dir) {
 		return i18n.E("{dir} is not an absolute path", i18n.A{"dir": dir})

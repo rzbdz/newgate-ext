@@ -1,15 +1,15 @@
 package config
 
-// 本文件是**配置自己的**那批命令：tier / profiles / profile kv / --set-profile /
-// agents。2026-09-18 从 modules/cli/profile.go 整体搬来。
+// This file is **the config's own** batch of commands: tier / profiles / profile kv /
+// --set-profile / agents. Moved here wholesale from modules/cli/profile.go on 2026-09-18.
 //
-// 为什么搬：档位怎么解析、链怎么建、跳过谁、profile 文件长什么样——全是配置的
-// 知识，界面留着一份「抄来的理解」就必然和实现漂移（这一轮之前，界面为了渲染
-// tier 得 import resolve + domain + paths + store）。搬回来之后界面既不认识
-// profile，也不认识链。
+// Why move it: how tiers resolve, how chains are built, who gets skipped, what a profile file looks
+// like -- all of it is config knowledge, and the UI keeping a "copied understanding" necessarily
+// drifts from the implementation (before this round, the UI had to import resolve + domain +
+// paths + store just to render tier). After the move the UI knows neither profile nor chain.
 //
-// 依赖方向：config → cli/extension（叶子契约），不是 → modules/cli。命令由本模块
-// 在 Start 里注入界面，和其它模块完全一样。
+// Dependency direction: config -> cli/extension (the leaf contract), not -> modules/cli.
+// The commands are injected into the UI by this module in Start, exactly like other modules.
 
 import (
 	"encoding/json"
@@ -75,11 +75,12 @@ func cmdSetProfile(agent, name string) int {
 	return 0
 }
 
-// cmdProfiles 列出全部 profile。
+// cmdProfiles lists every profile.
 //
-// 一屏回答三个问题：默认是哪个、优先级怎么排、哪个 agent 挂了别名的 profile。
-// 标了标志的 profile 才是异常的（pinned / excluded），所以不加额外段落，
-// 全部信息压在一张表里——段落一多，扫读就变成阅读。
+// One screen answers three questions: which is the default, how priorities sort,
+// and which agents hang an aliased profile. Only profiles marked with a flag are the
+// exceptions (pinned / excluded), so no extra section is added and all the information
+// is pressed into one table -- more sections and skimming turns into reading.
 func cmdProfiles() int {
 	names, err := store.ListProfiles()
 	if err != nil {
@@ -134,11 +135,11 @@ func cmdProfiles() int {
 	return 0
 }
 
-// cmdProfileKV 把一个 profile 转成 KV 文本——json→kv 的转换口。
+// cmdProfileKV turns one profile into KV text -- the json->kv conversion point.
 //
-// 不带 --write 只打印（拷走、改完再贴回来都行）；带 --write 落盘成
-// mappings/<名>.kv 并把旧 .json 改名 .bak（kv 优先于 json，留着旧文件
-// 会永远被压着，退役比并存干净）。
+// Without --write it only prints (copy it away, edit, paste back); with --write it lands on
+// disk as mappings/<name>.kv and renames the old .json to .bak (kv takes precedence over json,
+// so keeping the old file would have it always overridden; retiring is cleaner than coexisting).
 func cmdProfileKV(args []string) int {
 	if len(args) < 1 || args[0] == "" {
 		return style.Die(64, i18n.T("usage: newgate profile kv <name> [--write]", nil))
@@ -157,9 +158,10 @@ func cmdProfileKV(args []string) int {
 		return 0
 	}
 	kvPath := filepath.Join(paths.Mappings(), name+".kv")
-	// 走 store.Write（原子 + 备份环），**不是 os.WriteFile**：这条命令是当场把一份
-	// profile 换成另一种格式，覆盖的正是用户手上那份配置；直写让它死在半路时留下
-	// 一份被截断的文件，而且那一版连备份都没有（见 store.Write 的注释）。
+	// Goes through store.Write (atomic + backup ring), **not os.WriteFile**: this
+	// command turns one profile into another format on the spot, overwriting exactly
+	// the config in the user's hands; a direct write dying halfway leaves a truncated
+	// file, and that version has not even a backup (see the comment on store.Write).
 	if err := store.Write(kvPath, []byte(text)); err != nil {
 		return style.Die(70, i18n.T("cannot write {path}: {err}",
 			i18n.A{"path": kvPath, "err": err.Error()}))
@@ -178,26 +180,28 @@ func cmdProfileKV(args []string) int {
 	return 0
 }
 
-// tierView 一个档位解析出来的结果。
+// tierView is one tier's resolved result.
 type tierView struct {
 	name  string
 	steps []resolve.Step
 	skips []resolve.Skip
 }
 
-// skipKindOrder 类目顺序固定：数字对不上时，两次输出可以直接比。
+// skipKindOrder fixes the category order: with the numbers matching, two outputs compare directly.
 //
-// 表里放的是 resolve 建链时打的**机器标记**（resolve.Skip.Kind），不是给人看的
-// 话——显示名由 skipLabel 现查。所以「翻译改了措辞、汇总就少一栏」这种事不可能
-// 发生：分组认的是标记，标记不随语言变。
+// What the table holds is the **machine markers** resolve stamps when building the
+// chain (resolve.Skip.Kind), not human-facing sentences -- display names are looked up by
+// skipLabel on the spot. So "a translation wording change and the summary loses a column"
+// cannot happen: grouping goes by marker, and markers do not change with language.
 var skipKindOrder = []string{
 	resolve.SkipExcluded, resolve.SkipUndefined, resolve.SkipNoKey,
 	resolve.SkipUnavailable, resolve.SkipDisabled, resolve.SkipMaxSteps,
 	resolve.SkipDuplicate, resolve.SkipCycle, resolve.SkipOther,
 }
 
-// skipKind 取一条 skip 的类目。建链时就打好了（见 resolve.Skip.Kind）；
-// 没打标记的（今天没有，将来也只可能是外面手搓的 Skip）归「其他」。
+// skipKind takes a skip's category. It was stamped when the chain
+// was built (see resolve.Skip.Kind); anything unstamped (none today,
+// and in future only Skips hand-made outside) counts as "other".
 func skipKind(s resolve.Skip) string {
 	if s.Kind != "" {
 		return s.Kind
@@ -205,10 +209,12 @@ func skipKind(s resolve.Skip) string {
 	return resolve.SkipOther
 }
 
-// skipLabel 类目的显示名——只有这里过 i18n，类目本身是机器标记。
+// skipLabel is the category's display name -- only this goes
+// through i18n, the category itself is a machine marker.
 //
-// 为什么是函数而不是一张包级 map：i18n.T 要等 modules/locale 在 Start 里把语言
-// 装上才认得译文，包级变量在初始化时求值会永远停在源语言。
+// Why a function rather than a package-level map: i18n.T only knows the translations
+// once modules/locale has installed the language in Start, and a package-level
+// variable evaluated at init would stay in the source language forever.
 func skipLabel(kind string) string {
 	switch kind {
 	case resolve.SkipExcluded:
@@ -231,17 +237,18 @@ func skipLabel(kind string) string {
 	return i18n.T("other", nil)
 }
 
-// cmdTier 展示 fallback 链——这是整套配置的**接口**：一眼要能回答
-// 「这次请求会走谁」和「为什么不是我想的那个」。
+// cmdTier shows the fallback chain -- this is the **interface** of the whole config: at
+// a glance it must answer "who will this request go to" and "why not the one I thought".
 //
-// 版式分两档（详略得当）：
+// The layout has two levels (detail where it matters):
 //
-//	newgate tier            每个档位一行，链相同就写 `= heavy`，末行给跳过统计
-//	newgate tier <档位>     展开：编号的站 + 按原因分组的跳过统计
+//	newgate tier            one line per tier, `= heavy` when the chain is the same, skip stats last
+//	newgate tier <tier>     expanded: numbered stops + skip stats grouped by reason
 //
-// 跳过一律**只给汇总**，永不逐条铺开。实测一份配置里 106 条跳过中有 91 条
-// 是「与链上更靠前的候选重复」——把必然发生的去重当成一行行结果打出来，
-// 只会把真正的结论（走谁）淹掉。用户要的是链，不是候选全集的流水账。
+// Skips are always **summary only**, never laid out one by one. Measured, of 106
+// skips in one config 91 were "duplicate of a candidate earlier on the chain" -- printing an
+// inevitable deduplication as line after line of results only drowns out the real conclusion
+// (who is taken). The user wants the chain, not a running account of the whole candidate set.
 func cmdTier(args []string) int {
 	which := ""
 	for _, a := range args {
@@ -250,14 +257,16 @@ func cmdTier(args []string) int {
 		}
 		which = a
 	}
-	// 缩写也认（heavy 写成 h、normal 写成 n…），省得记全名。
-	// 校验放在 tierReport 里、store.Load 之后——动态角色键要等 Load 把
-	// roleprov 刷新过才认得（在这里查会把自己刚注册的键判成未知）。
+	// Abbreviations are accepted too (heavy as h, normal as n...), so the
+	// full names need not be remembered. Validation goes in tierReport, after
+	// store.Load -- dynamic role keys are only known once Load has refreshed
+	// roleprov (checking here would judge the keys just registered as unknown).
 	return tierReport(which)
 }
 
-// knownRolesLine 报错时给的可选项。动态角色键可能几十个，全列出来会把
-// 错误信息冲成一堵墙，只给数量与查询入口。
+// knownRolesLine offers the options when reporting an error. Dynamic
+// role keys can number dozens, and listing them all would turn the
+// error message into a wall; only the count and where to look are given.
 func knownRolesLine() string {
 	if n := len(domain.ExtraRoles()); n > 0 {
 		return i18n.T("roles {roles}, plus {n} dynamic role keys (newgate omo ls)",
@@ -282,11 +291,11 @@ func tierReport(which string) int {
 	}
 	st := snap.State
 
-	// 角色键的校验必须在这里做：动态角色键（omo-sisyphus / cat-deep）是
-	// store.Load 里跟着 roleprov 刷进来的，在 Load 之前查会把自己刚注册
-	// 的键判成未知。模块注册的槽位和档位在解析层是一回事，命令层不该比
-	// 解析层更窄——newgate tier omo-sisyphus 是查「这个槽位走哪条链」的
-	// 正规入口。
+	// Role key validation must happen here: dynamic role keys (omo-sisyphus / cat-deep) are
+	// refreshed into store.Load together with roleprov, and checking before Load would judge the
+	// keys just registered as unknown. To the resolution layer, module-registered slots and tiers
+	// are the same thing, and the command layer should not be narrower than the resolution layer --
+	// newgate tier omo-sisyphus is the proper entry point for asking "which chain this slot takes".
 	if which != "" {
 		if full := matchTier(which); full != "" {
 			which = full
@@ -296,7 +305,7 @@ func tierReport(which string) int {
 		}
 	}
 
-	// 链头可能不止一个（claude 和 opencode 可以各挂一个 profile）。
+	// There may be more than one chain head (claude and opencode can each hang a profile).
 	heads := map[string][]string{st.DefaultProfile: {i18n.T("default", nil)}}
 	for agent, p := range st.Active {
 		heads[p] = append(heads[p], agent)
@@ -330,8 +339,8 @@ func tierReport(which string) int {
 				Active:    head,
 				Available: available,
 				Rank:      rank,
-				// tier 展示的是完整候选链；maxAttempts 是执行约束，不是
-				// membership。否则后续 profile 会被误解成根本没进链。
+				// tier shows the complete candidate chain; maxAttempts is an execution constraint, not
+				// membership. Otherwise later profiles would be misread as not on the chain at all.
 				MaxSteps: 0,
 			})
 			rows = append(rows, tierView{name, steps, skips})
@@ -339,7 +348,7 @@ func tierReport(which string) int {
 
 		fmt.Println()
 		if which == "" {
-			// 概览：链一样的档位合并成 `= <先出现的那个>`
+			// Overview: tiers with the same chain are merged into `= <the first one that appeared>`
 			fmt.Print(tierOverview(rows))
 			if n := countSkips(rows); n > 0 {
 				fmt.Println(style.Hint(i18n.N("skipped {n} candidate: {reasons}",
@@ -376,10 +385,11 @@ func tierReport(which string) int {
 	return 0
 }
 
-// bindingHealthLabel 一行说清这条 binding 现在什么状态。
+// bindingHealthLabel says in one line what state this binding is in right now.
 //
-// **阈值与档位名都来自 breaker/status**（2026-09-18）：这里曾经自己抄了一份
-// 3000/12000，于是 daemon 改口径这一屏不会跟着变。
+// **Both the thresholds and the tier names come from breaker/status**
+// (2026-09-18): this used to keep its own copy of 3000/12000, so
+// when the daemon changed its standard this screen did not follow.
 func bindingHealthLabel(h status.Status) string {
 	if h.Open {
 		return style.Red(i18n.T("circuit open", nil))
@@ -424,7 +434,7 @@ func bindingChain(steps []resolve.Step, indent string) string {
 	return out.String()
 }
 
-// PrintChain 把编号后的候选链渲染出来，理由同 PrintSkips。
+// PrintChain renders the numbered candidate chain; the reason is the same as PrintSkips.
 func PrintChain(steps []resolve.Step) { fmt.Print(numberedBindingChain(steps, nil)) }
 
 func numberedBindingChain(steps []resolve.Step, extra func(resolve.Step) string) string {
@@ -489,8 +499,9 @@ func countSkips(rows []tierView) int {
 	return n
 }
 
-// skipSummary 跳过原因按类目计数。用户真正想问的是「为什么没轮到它」，
-// 一百行里其实只有三五类原因。
+// skipSummary counts skip reasons by category. What the user really
+// wants to ask is "why did it not get its turn", and out of a hundred
+// lines there are really only three or five categories of reason.
 func skipSummary(rows []tierView) string {
 	reasons := map[string]int{}
 	for _, r := range rows {
@@ -507,14 +518,16 @@ func skipSummary(rows []tierView) string {
 	return strings.Join(parts, " · ")
 }
 
-// printSkips 跳过**汇总**。永远只给按原因分组的计数与一句解释——
-// 逐条铺开是候选全集的流水账，真正的结论是上面那条链。
+// printSkips the skip **summary**. Always only per-category counts and
+// one explanation -- laying them out one by one is a running account of
+// the whole candidate set, and the real conclusion is the chain above.
 //
-// 需要一个个看的时候有别的口子：newgate profiles 看标志、doctor 看链路、
-// metrics / probe 看熔断，那些才是可操作的信息。
+// When one needs to look one by one there are other openings: newgate profiles for flags,
+// doctor for chain paths, metrics / probe for breakers; those are the actionable information.
 //
-// healthFromProxy 把 daemon 的熔断表按 "provider/model" 索引成一次命令内的快照。
-// daemon 不在线时是空表——诊断退化为只看静态配置，不凭空判坏。
+// healthFromProxy indexes the daemon's breaker table by "provider/model" into a snapshot
+// for one command. When the daemon is offline it is an empty table -- diagnostics degrade
+// to looking only at the static config, and do not declare things broken out of nothing.
 func healthFromProxy(ps *controlplane.Doc) map[string]status.Status {
 	out := map[string]status.Status{}
 	if ps != nil {
@@ -525,15 +538,15 @@ func healthFromProxy(ps *controlplane.Doc) map[string]status.Status {
 	return out
 }
 
-// prettyMs 毫秒 → 人话。链预算是按 ms 配的（state.json 里 120000），
-// 打印时不该原样甩 120000ms 给用户。
+// prettyMs milliseconds -> plain words. The chain budget is configured in ms
+// (120000 in state.json), and printing should not throw a raw 120000ms at the user.
 func prettyMs(ms int) string { return (time.Duration(ms) * time.Millisecond).String() }
 
-// PrintSkips 把跳过汇总渲染出来。导出的理由：**需要它的模块命令**（opencodeomo
-// 的 `newgate omo`）直接调它，排版归本模块。
+// PrintSkips renders the skip summary. Why exported: **module commands that need it**
+// (opencodeomo's `newgate omo`) call it directly, and the typesetting belongs to this module.
 //
-// 它曾经挂在界面的 `Host` 上（界面替模块转发），2026-09-18 摘掉了——转发让界面
-// import 配置，而界面不该认识任何模块。
+// It used to hang on the UI's `Host` (the UI forwarding for modules), removed on 2026-09-18
+// -- forwarding would make the UI import config, and the UI should not know any module.
 func PrintSkips(skips []resolve.Skip) { printSkips(skips) }
 
 func printSkips(skips []resolve.Skip) {
@@ -558,11 +571,13 @@ func printSkips(skips []resolve.Skip) {
 	fmt.Print(t.String())
 }
 
-// skipDetail 给整组配一句「所以呢」——光有类目名，用户还是不知道要改什么。
+// skipDetail gives the whole group one "so what" sentence -- with
+// only the category name, the user still does not know what to change.
 //
-// 按类目给的那几句是本模块自己的话，过 i18n；两处直接回 s.Reason 的（已禁用 /
-// 引用成环）是**别处来的话**：禁用理由是判据提供者说的，成环那句已经写清了
-// 环长什么样（`a → b`），再包一层只会把信息压掉。
+// The sentences given per category are this module's own words, going through i18n; the two
+// that return s.Reason directly (disabled / reference cycle) are **words from elsewhere**: the
+// disabled reason is what the criterion provider says, and the cycle sentence already spells out
+// what the cycle looks like (`a -> b`); wrapping another layer would only squash the information.
 func skipDetail(s resolve.Skip) string {
 	switch skipKind(s) {
 	case resolve.SkipExcluded:
@@ -585,7 +600,7 @@ func skipDetail(s resolve.Skip) string {
 	return s.Reason
 }
 
-// ---------- 配置自己的两条维护命令 ----------
+// ---------- the config's own two maintenance commands ----------
 
 type initCommand struct{}
 
@@ -600,8 +615,8 @@ func (initCommand) Run(_ cliapi.Host, args []string) int {
 	return runInit(cliapi.Flag(args, "--force"))
 }
 
-// runInit 铺开默认配置。它归 config：写的是 providers.json / state.json / mappings，
-// 全是本模块的文件。
+// runInit lays out the default config. It belongs to config: what it writes
+// is providers.json / state.json / mappings, all this module's files.
 func runInit(force bool) int {
 	created, err := store.Init(force)
 	if err != nil {
@@ -643,10 +658,11 @@ func (reloadCommand) Run(_ cliapi.Host, _ []string) int {
 	return 0
 }
 
-// ---------- 命令声明 ----------
+// ---------- command declarations ----------
 //
-// 每一条都只做「解析 argv → 调本文件里的实现」：帮助行、位置、别名是**给界面看
-// 的元数据**，由拥有这条命令的模块声明（见 cliapi.Documented）。
+// Each one does only "parse argv -> call the implementation in this
+// file": help lines, position, aliases are **metadata for the UI**,
+// declared by the module that owns the command (see cliapi.Documented).
 
 type tierCommand struct{}
 
@@ -690,7 +706,7 @@ var (
 
 func (profileCommand) Names() []string { return []string{"profile"} }
 
-// Unstyled：`profile kv` 吐的是给管道/文件用的原始 KV 文本，不是控制面版式。
+// Unstyled: `profile kv` outputs raw KV text for pipes/files, not control-plane layout.
 func (profileCommand) Unstyled(args []string) bool { return cliapi.Positional(args, 0) == "kv" }
 
 func (profileCommand) Help() cliapi.HelpLine {
@@ -726,9 +742,9 @@ func (setProfileCommand) Help() cliapi.HelpLine {
 		Summary: i18n.T("switch profile; omit --agent to set the global default", nil)}
 }
 
-// Run 的形状由界面归一后给：args[0] 是 profile 名，可选的 `--agent <agent>` 跟在
-// 后面。界面负责认 `--set-profile=x` 与 `--set-profile x` 两种写法（argv 解析是它
-// 的活），语义归本模块。
+// Run's shape is given after the UI normalizes: args[0] is the profile name, and the optional
+// `--agent <agent>` follows. The UI is responsible for recognizing both `--set-profile=x`
+// and `--set-profile x` (argv parsing is its job); the semantics belong to this module.
 func (setProfileCommand) Run(_ cliapi.Host, args []string) int {
 	name := cliapi.Positional(args, 0)
 	if name == "" {
@@ -737,7 +753,7 @@ func (setProfileCommand) Run(_ cliapi.Host, args []string) int {
 	return cmdSetProfile(flagValue(args, "--agent"), name)
 }
 
-// flagValue 取 `--名字 值` 里的值，没有给空串。
+// flagValue takes the value in `--name value`, empty string when not given.
 func flagValue(args []string, name string) string {
 	for i, a := range args {
 		if a == name && i+1 < len(args) {
@@ -747,8 +763,9 @@ func flagValue(args []string, name string) string {
 	return ""
 }
 
-// commands 是本模块注入界面的全部命令。没有它就等于没有入口——而入口是 ui 的事，
-// 本模块的功能不受影响（见 CLAUDE.md §4）。
+// commands are all the commands this module injects into the UI. Without
+// it there is no entry point -- and entry points are the ui's business,
+// this module's functionality is unaffected (see CLAUDE.md §4).
 func commands() []cliapi.Command {
 	return []cliapi.Command{
 		tierCommand{}, profilesCommand{}, profileCommand{}, setProfileCommand{},
@@ -756,16 +773,19 @@ func commands() []cliapi.Command {
 	}
 }
 
-// cmdProfileHistory 列出某个档位文件的历史版本（写盘之前自动留的那些）。
+// cmdProfileHistory lists the history versions of one tier
+// file (the ones kept automatically before each write).
 //
-// # 为什么这个命令必须存在
+// # Why this command must exist
 //
-// 备份环（见 store/history.go）从 2026-09-20 起就在写：每一次落盘之前都把当前那份
-// 抄进 `.history/`。但那批文件**只有一个地方够得着**——知道路径拼法
-// （`mappings__demo.kv/1789…bak`）、并且敢自己 cp 回来的人。对一个安全网来说，
-// 「存在但取不回来」与「不存在」是同一种结果：改坏了的那个用户照样只能凭记忆重写。
-// 所以这条命令不是锦上添花，它是那个功能**完成的另一半**（判据一直是代价不对称：
-// 多一条命令是几十行，丢一次是用户手上的配置）。
+// The backup ring (see store/history.go) has been writing
+// since 2026-09-20: before every write the current copy is copied into `.history/`. But
+// those files were **reachable in only one way** -- by someone who knows the path spelling
+// (`mappings__demo.kv/1789...bak`) and dares cp it back himself. For a safety net, "exists
+// but cannot be retrieved" and "does not exist" are the same outcome: the user who broke
+// something still has to rewrite it from memory. So this command is not a flourish, it
+// is **the other completed half** of that feature (the criterion has always been asymmetric
+// cost: one more command is a few dozen lines, one loss is the config in the user's hands).
 func cmdProfileHistory(args []string) int {
 	name := cliapi.Positional(args, 0)
 	if name == "" {
@@ -794,11 +814,11 @@ func cmdProfileHistory(args []string) int {
 	return 0
 }
 
-// cmdProfileRestore 把某一个历史版本放回来（不带版本号 = 最近那一版）。
+// cmdProfileRestore puts one history version back (no version number = the most recent one).
 //
-// **恢复本身也走 store.Write**，于是当前那份会先被抄进历史——恢复错了可以再恢复
-// 回来。这一点很重要：一个不可撤销的「撤销」，没人在慌的时候敢按，而这条命令的
-// 全部使用场景都是「我正在慌」。
+// **The restore itself also goes through store.Write**, so the current copy is copied into history
+// first -- a mistaken restore can be restored again. This matters: an irreversible "undo" is one
+// nobody dares press while panicking, and every use case of this command is "I am panicking".
 func cmdProfileRestore(args []string) int {
 	name := cliapi.Positional(args, 0)
 	if name == "" {
@@ -837,8 +857,8 @@ func cmdProfileRestore(args []string) int {
 	return 0
 }
 
-// historyStamp 把 `<unixnano>.bak` 读成一个本地时间。读不出来就原样退回文件名
-// ——一个看不懂的字符串也比一个假的日期强（同 web 界面那条）。
+// historyStamp reads `<unixnano>.bak` as a local time. When unreadable it falls back to the file
+// name as is -- a string you cannot read is better than a fake date (same as the web UI one).
 func historyStamp(path string) string {
 	base := filepath.Base(path)
 	var n int64
@@ -848,10 +868,12 @@ func historyStamp(path string) string {
 	return time.Unix(0, n).Format("2006-01-02 15:04:05")
 }
 
-// historyHint 给一版备份写一句「它当时说了什么」——挑版本时唯一能看的东西。
+// historyHint writes one "what it said at the time" for a backup
+// version -- the only thing visible when picking a version.
 //
-// 先试描述（那是档位文件里唯一一句人话），没有就退回第一行非空内容。这一步不该
-// 失败：读不出来就返回空串，表格里那一格空着也比报错强（这是「看一眼」的命令）。
+// It tries the description first (the only human sentence in a tier file), falling back to
+// the first non-empty line. This step should not fail: unreadable returns the empty string,
+// and an empty cell in the table is better than an error (this is a "take a look" command).
 func historyHint(file string, b []byte) string {
 	var pr *domain.Profile
 	if strings.HasSuffix(file, ".kv") {

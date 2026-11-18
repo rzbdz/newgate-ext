@@ -10,18 +10,20 @@ import (
 	"github.com/rzbdz/newgate-ext/testing/testkit"
 )
 
-// 这一族是那张映射表的**写入侧**：界面上按一次「应用」之后，盘上到底发生了什么。
+// This family covers the **write side** of that mapping table: what
+// actually happened on disk after one press of "apply" in the UI.
 //
-// 它是这张卡唯一会毁掉东西的地方（用户的表、以及表里那些他手写的行），而它的
-// 失败方式全是**静默**的：写空了、把 mode 抹了、把别人刚改的那份盖了——三种在
-// 界面上都只表现为「保存成功」。
+// It is the only place this card can destroy things (the user's table, and the rows
+// he hand-wrote in it), and its failure modes are all **silent**: written empty, mode wiped,
+// someone else's fresh change overwritten -- all three show in the UI only as "save succeeded".
 //
-// 为什么压在这一层而不是浏览器那一层（2026-09-21 用户定的规矩）：**UI 的测试主要
-// 覆盖 BFF 与它下面这层，e2e 尽量少动**——那条浏览器检查跑一次要几分钟，而这几条
-// 是纯函数与文件读写，毫秒级。真正只有浏览器能验的（点了按钮界面变没变）留在
-// ui_check 里，别的都下来。
+// Why it is pushed down to this layer rather than the browser layer (a rule the user
+// set 2026-09-21): **UI tests mainly cover the BFF and the layer below it, and e2e is touched
+// as little as possible** -- that browser check takes minutes per run, while these are pure
+// functions and file I/O, millisecond scale. What really only the browser can verify (did the
+// UI change after clicking the button) stays in ui_check; everything else comes down here.
 
-// editOf 拼一份界面回传的载荷：`{items:[{id, values:{slug,tier}}]}`。
+// editOf assembles a payload the UI sends back: `{items:[{id, values:{slug,tier}}]}`.
 func editOf(rows ...[2]string) json.RawMessage {
 	type item struct {
 		ID     string            `json:"id"`
@@ -43,16 +45,18 @@ func readFile(t *testing.T) Models {
 	}
 	var m Models
 	if err := json.Unmarshal(b, &m); err != nil {
-		t.Fatalf("盘上那份读不出来: %v", err)
+		t.Fatalf("cannot read the copy on disk: %v", err)
 	}
 	return m
 }
 
-// TestApplyWritesTheWholeTableAndKeepsTheMode：整表写回，而 mode 那一格不许被抹掉。
+// TestApplyWritesTheWholeTableAndKeepsTheMode: whole-table
+// write-back, and the mode cell must not be wiped.
 //
-// mode 是**另一件事**（它说的是接管怎么写 config.toml），保存这张表与它无关——
-// 抹掉的症状是「改完映射，模式悄悄变回 takeover」，而界面上那句 Note 也跟着变了，
-// 用户只会以为是自己点错了。
+// mode is **another matter** (it says how takeover writes config.toml),
+// and saving this table has nothing to do with it -- the symptom of wiping it
+// is "after editing the mapping, the mode quietly went back to takeover", and
+// that Note in the UI changes with it, so the user only thinks they misclicked.
 func TestApplyWritesTheWholeTableAndKeepsTheMode(t *testing.T) {
 	testkit.Sandbox(t)
 	if err := SetMode(ModeRename); err != nil {
@@ -63,67 +67,71 @@ func TestApplyWritesTheWholeTableAndKeepsTheMode(t *testing.T) {
 	}
 	m := readFile(t)
 	if m.Mode != ModeRename {
-		t.Errorf("保存那张表之后模式变成了 %q——它不属于这张表，不该被动", m.Mode)
+		t.Errorf("saving that table changed the mode to %q - it does not belong to this table, it must not be touched", m.Mode)
 	}
 	if len(m.Models) != 2 || m.Models[0].Slug != "gpt-9-a" || m.Models[1].Tier != "light" {
-		t.Errorf("盘上那张表不是界面上交回来的那份: %+v", m.Models)
+		t.Errorf("the table on disk is not the one submitted by the UI: %+v", m.Models)
 	}
 }
 
-// TestApplyRejectsRowsThatWouldSilentlyDoNothing 锁的是三种「存下去但不算数」。
+// TestApplyRejectsRowsThatWouldSilentlyDoNothing pins the three "stored but does not count".
 //
-// 这三种都不会让界面报错，而症状全都是「加了、没了、也没说为什么」：
+// None of the three makes the UI error, and the
+// symptom is always "added, gone, and no reason given":
 //
-//	名字空   → 谁也匹配不上；
-//	档位空   → effectiveModels 会把它丢掉，于是那一行保存之后自己消失；
-//	两行同名 → 后一行永远轮不到，而界面上两行都画着。
+//	empty name  -> matches nothing;
+//	empty tier  -> effectiveModels drops it, so that row disappears by itself after saving;
+//	two rows with the same name -> the later one never gets a turn, while both are drawn in the UI.
 func TestApplyRejectsRowsThatWouldSilentlyDoNothing(t *testing.T) {
 	cases := []struct {
 		name string
 		rows [][2]string
 	}{
-		{"名字空", [][2]string{{"", "heavy"}}},
-		{"档位空", [][2]string{{"gpt-9-a", ""}}},
-		{"两行同名", [][2]string{{"gpt-9-a", "heavy"}, {"gpt-9-a", "light"}}},
+		{"name empty", [][2]string{{"", "heavy"}}},
+		{"tier empty", [][2]string{{"gpt-9-a", ""}}},
+		{"two rows with the same name", [][2]string{{"gpt-9-a", "heavy"}, {"gpt-9-a", "light"}}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			testkit.Sandbox(t)
 			if _, err := applyModels(editOf(c.rows...), store.Revision(ModelsFile())); err == nil {
-				t.Fatal("这一行该被拒（它会静静地什么都不做），却保存成功了")
+				t.Fatal("this row should be rejected (it would silently do nothing), yet it was saved")
 			}
 			if _, err := os.Stat(ModelsFile()); err == nil {
-				t.Error("被拒的那次不该动盘上那份")
+				t.Error("a rejected save must not touch the copy on disk")
 			}
 		})
 	}
 }
 
-// TestApplyRefusesToClobberAFileChangedUnderneath：别人（手改、另一个标签页）动过
-// 那份文件时，回一句冲突**且什么都不写**。
+// TestApplyRefusesToClobberAFileChangedUnderneath: when someone else (a hand edit,
+// another tab) changed that file, answer with a conflict **and write nothing**.
 //
-// 这条与别的模块的 CAS 是同一条规矩，但这里多一层必要：那张表是**用户手写得到**
-// 的（它住在他的配置目录里），所以「命令行刚改过它」不是假想。
+// This is the same rule as other modules' CAS, but one more layer is necessary
+// here: that table is **hand-writable by the user** (it lives in his config
+// directory), so "the command line just changed it" is not hypothetical.
 func TestApplyRefusesToClobberAFileChangedUnderneath(t *testing.T) {
 	testkit.Sandbox(t)
 	if _, err := applyModels(editOf([2]string{"gpt-9-a", "heavy"}), ""); err != nil {
 		t.Fatal(err)
 	}
-	// 拿一份**过期**的基线（文件刚建之前那份，也就是空串）再保存一次。
+	// Take an **outdated** baseline (from before the file was created) and save again.
 	stale := store.RevisionOf([]byte("{}"))
 	if _, err := applyModels(editOf([2]string{"gpt-9-b", "light"}), stale); err == nil {
-		t.Fatal("基线对不上时该拒绝，而不是把别人那份盖掉")
+		t.Fatal("a stale baseline should be refused, not overwrite someone else's copy")
 	}
 	m := readFile(t)
 	if len(m.Models) != 1 || m.Models[0].Slug != "gpt-9-a" {
-		t.Errorf("被拒的那次把盘上那份改了: %+v", m.Models)
+		t.Errorf("a rejected save changed the copy on disk: %+v", m.Models)
 	}
 }
 
-// TestApplyKeepsUnknownKeys：只换 models 那一段，文件里别的键原样留着。
+// TestApplyKeepsUnknownKeys: replace only the models
+// section; other keys in the file are left as is.
 //
-// 今天只有 mode，而这条测试是为**将来**写的：往那份文件里加一个键（比如某个版本
-// 的迁移标记）时，谁都不该因为「保存了一下映射表」而把它弄丢。
+// Today there is only mode, and this test is written for **the future**:
+// when a key is added to that file (say some version's migration
+// marker), nobody should lose it because "the mapping table was saved".
 func TestApplyKeepsUnknownKeys(t *testing.T) {
 	testkit.Sandbox(t)
 	seed := `{"mode":"rename","something_else":{"a":1}}`
@@ -135,6 +143,6 @@ func TestApplyKeepsUnknownKeys(t *testing.T) {
 	}
 	b, _ := os.ReadFile(ModelsFile())
 	if !strings.Contains(string(b), "something_else") {
-		t.Errorf("保存那张表把一个不认识的键弄丢了:\n%s", b)
+		t.Errorf("saving that table lost an unknown key:\n%s", b)
 	}
 }

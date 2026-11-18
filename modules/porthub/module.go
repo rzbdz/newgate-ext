@@ -1,12 +1,12 @@
-// Package porthub 把「一个端口上挂多个服务」做成一个组件。
+// Package porthub makes "several services on one port" a component.
 //
-// 它存在的意义只有一个：让消费者能问出「**这个进程里有没有共享端口这回事**」
-// ——有就挂上去（共用 gateway 那个端口），没有就自己监听一个端口（fallback）。
-// 表本身住在 lib/porthub（叶子机制）。
+// It exists for one reason: to let consumers ask "**does this process have a shared
+// port**" - if yes, mount on it (share gateway's port); if not, listen on its own (fallback).
+// The table itself lives in lib/porthub (a leaf mechanism).
 //
-// 端口归这张表：守护进程入口（modules/gateway/serve.go）把数据面的 handler 交给
-// `Root`，拿到根 handler 交给 http.Server。所以「关掉 porthub」不是任何一处的
-// 特判——是数据面自己服务端口（今天的样子）vs 交出去让表来分派。
+// The port belongs to this table: the daemon entry (modules/gateway/serve.go) hands the
+// data plane's handler to `Root`, gets the root handler, gives it to http.Server. So
+// "turn porthub off" is no special case - serve it ourselves (today) vs hand over to dispatch.
 package porthub
 
 import (
@@ -17,28 +17,28 @@ import (
 	modules "github.com/rzbdz/newgate/component"
 )
 
-// Service 是消费者看到的那一面：往表里挂一条（web 界面这类），或者交出这个端口
-// 的根 handler（数据面）。
+// Service is the face consumers see: mount a row on the table (the web UI, say), or hand
+// over this port's root handler (the data plane).
 //
-// 查询那半边不给出去——「谁接住了这个路径」只有分派处需要知道，多一个人问就多
-// 一个「谁排谁前面」的问题。
+// The query half is not exposed - "who caught this path" is needed only where dispatch
+// happens, and every extra asker adds one more "who comes before whom" question.
 type Service interface {
 	Mount(prefix, owner string, h http.Handler) (func(), error)
 
-	// Root 见 lib/porthub.Registry.Root：登记兜底服务（数据面），换回这个端口
-	// 该用的根 handler。
+	// Root, see lib/porthub.Registry.Root: register the fallback service (the data plane)
+	// and get back the root handler this port should use.
 	Root(owner string, fallback http.Handler) (http.Handler, error)
 }
 
-// Capability 是「这张挂载表在这个进程里」这件事本身。
+// Capability is the fact "this mount table exists in this process" itself.
 var Capability = modules.NewCapability[Service]("porthub")
 
-// New 声明 porthub 组件。
+// New declares the porthub component.
 //
-// 没有 Requires、不起监听、不打日志、也没有 Stop：Start 在**每一条** `newgate …`
-// 命令里都会跑（modules/i18n 在 Start 里打一行日志，结果每条命令都刷屏——那条
-// 教训记在它的注释里），所以这里只做「把自己提供出去」这一件事。挂载是进程内
-// 注册，不产生 socket、不产生 goroutine，因此在 CLI 进程里被调用也是安全的。
+// No Requires, no listener, no logging, no Stop: Start runs in **every** `newgate ...`
+// command (modules/i18n logged a line in Start and every command flooded - that lesson
+// is recorded in its note), so all this does is "offer itself". Mounting is in-process
+// registration, creating no socket and no goroutine, so a CLI process can call it safely.
 func New() modules.Component {
 	return modules.Component{
 		Name: "porthub",

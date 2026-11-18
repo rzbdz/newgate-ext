@@ -5,33 +5,33 @@ import (
 	"testing"
 )
 
-// 布局是这张图唯一的**算法**部分，而它算错的样子是「有点难看」——没人会怀疑工具。
-// 所以这几条断言不是排版洁癖，是让「难看」有个下限：违反拓扑约束的边、空掉的层、
-// 飘忽不定的坐标，各自是一条红灯。
-//
-// 都在**数据**上断言，不在 HTML 文本上断言：HTML 是渲染，数据才是结论。
+// Layout is the map's only **algorithm** part, and its wrong output looks "a bit ugly" -
+// nobody suspects the tool. So these assertions are not typographic fuss: they give
+// "ugly" a floor - a topological violation, an empty layer, a floating coordinate is
+// a red light each.
+// Assert on **data**, not HTML text: HTML is rendering, data is the conclusion.
 
 func node(id string) Node { return Node{ID: id, Label: id} }
 
 func edge(from, to string) Edge { return Edge{From: from, To: to, Style: "solid"} }
 
-// TestShortcutEdgeStillPointsUp：一条「抄近路」的边（a→d，跳过中间两层）不许把
-// 分层压平——分层是**最长路径**，不是一个点爱在哪就在哪。
+// TestShortcutEdgeStillPointsUp: a "shortcut" edge (a->d, skipping two layers) must not
+// flatten the layering - layering is **longest path**, not "a point may sit wherever".
 func TestShortcutEdgeStillPointsUp(t *testing.T) {
 	g := Graph{Nodes: []Node{node("a"), node("b"), node("c"), node("d")},
 		Edges: []Edge{edge("a", "b"), edge("b", "c"), edge("c", "d"), edge("a", "d")}}
 	Layout(&g)
 	layer := layersOf(g)
 	if layer["d"] != 0 || layer["a"] != 3 {
-		t.Errorf("最长路径分层该把链拉满，实际 a=L%d d=L%d", layer["a"], layer["d"])
+		t.Errorf("layering by longest path should stretch the chain to the full length, actual a=L%d d=L%d", layer["a"], layer["d"])
 	}
 	assertEveryEdgePointsUp(t, g)
 }
 
-// TestCompactKeepsTheOrdering：收紧（refineLayers）只挪**层号**，不许挪出非法
-// 关系——把依赖挪到使用者上面，画出来的箭头就反了，而图还是「挺好看」的。
+// TestCompactKeepsTheOrdering: tightening (refineLayers) moves only **layer numbers**,
+// never into an illegal relation - moving a dependency above its user reverses the arrow.
 func TestCompactKeepsTheOrdering(t *testing.T) {
-	// 四条链挂在一个叶子上：不收紧的话最长路径会把它们全顶到同一层，图又长又稀。
+	// Four chains on one leaf: untightened, longest path puts all on one layer - long, sparse graph.
 	g := Graph{Compact: true}
 	g.Nodes = append(g.Nodes, node("leaf"))
 	for _, id := range []string{"a", "b", "c", "d"} {
@@ -43,54 +43,54 @@ func TestCompactKeepsTheOrdering(t *testing.T) {
 	assertNoEmptyLayer(t, g)
 }
 
-// TestSCCStaysOnOneBand：聚合出来的环（两个目录互相可达）必须落在同一条带上、
-// 边标出来。让分层算法在有环的图上自己决定——它会给出一个看起来正常、其实随机
-// 的答案，那正是这张图最不能有的东西。
+// TestSCCStaysOnOneBand: an aggregated cycle (two directories reachable from each
+// other) must land on one band with its edges marked. Left to the layering algorithm,
+// a cyclic map gets a plausible but random answer - the worst thing this map can have.
 func TestSCCStaysOnOneBand(t *testing.T) {
 	g := Graph{Nodes: []Node{node("a"), node("b"), node("c")},
 		Edges: []Edge{edge("a", "b"), edge("b", "a"), edge("a", "c")}}
 	Layout(&g)
 	layer := layersOf(g)
 	if layer["a"] != layer["b"] {
-		t.Errorf("互为依赖的两个点该在同一条带上，实际 a=L%d b=L%d", layer["a"], layer["b"])
+		t.Errorf("two nodes that depend on each other should be on the same band, actual a=L%d b=L%d", layer["a"], layer["b"])
 	}
 	if layer["c"] >= layer["a"] {
-		t.Errorf("c 被 a 依赖，该在下面：a=L%d c=L%d", layer["a"], layer["c"])
+		t.Errorf("c is depended on by a, so it should be below: a=L%d c=L%d", layer["a"], layer["c"])
 	}
 	marked := 0
 	for _, e := range g.Edges {
 		if e.Cycle {
 			marked++
 			if layer[e.From] != layer[e.To] {
-				t.Errorf("标了环的边 %s→%s 跨层了", e.From, e.To)
+				t.Errorf("edge %s->%s marked as a cycle crosses layers", e.From, e.To)
 			}
 		}
 		if layer[e.From] <= layer[e.To] && !e.Cycle {
-			t.Errorf("边 %s→%s 没有从下往上", e.From, e.To)
+			t.Errorf("edge %s->%s does not go bottom-up", e.From, e.To)
 		}
 	}
 	if marked != 2 {
-		t.Errorf("环里的两条边都该标出来，实际标了 %d 条", marked)
+		t.Errorf("both edges in the cycle should be marked, actually marked %d", marked)
 	}
 }
 
-// TestTransposeRemovesAnObviousCrossing：中位数排序之后那一步交换该把这两条线
-// 解开。构造得很直白：a、b 两个上层点，a 依赖右边的 q、b 依赖左边的 p——而按
-// 标签排序的起点恰好是 a 在左。交换一次就干净了。
+// TestTransposeRemovesAnObviousCrossing: the swap step after median ordering should
+// untangle these two lines. Built plainly: upper points a, b; a depends on q on the
+// right, b on p on the left, and label order happens to start with a on the left.
 //
-// 刻意**不用**四条边的完全二分图（a/b 各连 p/q）：那个无论怎么排都必然交叉一次，
-// 拿它当「算法没干活」的证据是冤枉。
+// Deliberately **not** the complete bipartite graph (a/b each to p/q): that crosses
+// no matter what, so it would be unfair evidence of "the algorithm did nothing".
 func TestTransposeRemovesAnObviousCrossing(t *testing.T) {
 	g := Graph{Nodes: []Node{node("a"), node("b"), node("p"), node("q")},
 		Edges: []Edge{edge("a", "q"), edge("b", "p")}}
 	Layout(&g)
 	if n := totalCrossings(g); n != 0 {
-		t.Errorf("这两条边可以一条不交叉地画出来，实际交叉 %d 次", n)
+		t.Errorf("these two edges can be drawn without a single crossing, actual crossings %d", n)
 	}
 }
 
-// TestLayoutIsStable：同一份图跑两次，点必须落在同一个地方。review 时点开两次
-// 对不上，就没法对比着看——而「对比着看」正是这个产物存在的理由。
+// TestLayoutIsStable: run the same map twice, points must land in the same place.
+// Open it twice in review and they differ, nothing can be compared - the reason it exists.
 func TestLayoutIsStable(t *testing.T) {
 	build := func() Graph {
 		g := Graph{Compact: true}
@@ -106,12 +106,12 @@ func TestLayoutIsStable(t *testing.T) {
 	Layout(&second)
 	for i := range first.Nodes {
 		if first.Nodes[i] != second.Nodes[i] {
-			t.Fatalf("同输入两次布局不一致:\n  %+v\n  %+v", first.Nodes[i], second.Nodes[i])
+			t.Fatalf("two layouts of the same input differ:\n  %+v\n  %+v", first.Nodes[i], second.Nodes[i])
 		}
 	}
 }
 
-// ---------- 断言用的小工具 ----------
+// ---------- assertion helpers ----------
 
 func layersOf(g Graph) map[string]int {
 	out := map[string]int{}
@@ -129,14 +129,14 @@ func assertEveryEdgePointsUp(t *testing.T, g Graph) {
 			continue
 		}
 		if layer[e.From] <= layer[e.To] {
-			t.Errorf("边 %s(L%d) → %s(L%d) 违反了「依赖在下面」",
+			t.Errorf("edge %s(L%d) -> %s(L%d) violates \"dependencies are below\"",
 				e.From, layer[e.From], e.To, layer[e.To])
 		}
 	}
 }
 
-// assertNoEmptyLayer：空层是收紧之后该被 repack 掉的东西。留着它只会让图重新
-// 变长，而图一长，层号那个「分组」的意思就没人看得出来了。
+// assertNoEmptyLayer: an empty layer is what repack should have removed after tightening.
+// Keeping it only makes the map longer, and a long map loses the layer's grouping meaning.
 func assertNoEmptyLayer(t *testing.T, g Graph) {
 	t.Helper()
 	seen := map[int]bool{}
@@ -145,12 +145,12 @@ func assertNoEmptyLayer(t *testing.T, g Graph) {
 	}
 	for l := 0; l < g.Layers; l++ {
 		if !seen[l] {
-			t.Errorf("第 %d 层是空的（%d 层里只用上了 %d 个）", l, g.Layers, len(seen))
+			t.Errorf("layer %d is empty (out of %d layers only %d are used)", l, g.Layers, len(seen))
 		}
 	}
 }
 
-// totalCrossings 用**画完之后的次序**数一遍全部相邻层之间的交叉。
+// totalCrossings counts crossings between all adjacent layers using the **final order**.
 func totalCrossings(g Graph) int {
 	max := 0
 	for _, n := range g.Nodes {

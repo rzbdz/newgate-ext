@@ -24,10 +24,11 @@ func shouldAuditLayout(service *service, args []string) bool {
 	if len(args) == 0 {
 		return explicit || service.verboseOn()
 	}
-	// 不审计的两类，**都由命令自己声明**，界面不列名单、也不猜：
-	//   - Unstyled：这次的输出本来就不是 newgate 的版式（JSON / 原始配置 / 日志）；
-	//   - Handoff：控制权要交给别的进程（包装启动一个客户端）。
-	// 上一版这里是界面里一张 `switch args[0]` 的名字表，每加一个命令都得回来改。
+	// The two classes not audited, **both declared by the command
+	// itself**; the UI lists no names and guesses nothing:
+	// - Unstyled: this output is not newgate's layout at all (JSON / raw config / logs);
+	// - Handoff: control goes to another process (wrapping a client launch). The previous version was
+	//   a `switch args[0]` name table in the UI, and every new command meant coming back to edit it.
 	if command, ok := lookupCommand(service, args); ok {
 		if _, handoff := command.(Handoff); handoff {
 			return false
@@ -75,8 +76,9 @@ func auditLayout(args []string, run func() int) int {
 		violations = append(violations, batch...)
 	}
 	for _, v := range violations {
-		// `[layout]`、命令名、流名（stdout/stderr）与那一行原文都是**机器标记**
-		// 与原文，留在消息外面：能翻译的只有中间那句陈述。
+		// `[layout]`, the command name, the stream name (stdout/stderr), and
+		// that raw line are **machine markers** and raw text, kept outside
+		// the message: only the statement in the middle is translatable.
 		fmt.Fprintf(stderr, "[layout] %s %s %s: %s\n",
 			command, v.stream,
 			i18n.T("line {n} is {w} columns wide (limit {max})",

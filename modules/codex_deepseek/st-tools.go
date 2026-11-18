@@ -17,13 +17,14 @@ func Treatments(client codexapi.Client, model deepseekapi.Model) []special.Plugi
 	return []special.Plugin{tools{client: client, model: model}}
 }
 
-// tools 是这一手补丁：把 Codex 的工具方言抬成 DeepSeek 认的形状（请求侧），并把
-// 被抬过的那些在响应里改回去（响应侧）。
+// tools is this move's patch: lift Codex's tool dialect into the shape DeepSeek recognizes
+// (request side), and change the lifted ones back in the response (response side).
 //
-// 两个方向由**同一个插件**负责，不拆成两个。理由不是省事：响应侧要改哪几条，
-// 判据是「请求侧降级了哪几个工具」，拆开就要让那个结论跨插件传递——而插件之间
-// 只有 Request 这一条通道，把「谁被降级了」塞进它等于往公共契约里加一个只有两家
-// 用得上的字段。
+// Both directions belong to **one plugin**, not split into two. The reason
+// is not convenience: which entries the response side changes is judged by "which tools the
+// request side downgraded", and splitting would mean passing that conclusion across plugins
+// -- and plugins have only the one Request channel, so stuffing "who was downgraded"
+// into it means adding a field to the public contract that only two parties use.
 type tools struct {
 	client codexapi.Client
 	model  deepseekapi.Model
@@ -31,8 +32,8 @@ type tools struct {
 
 func (tools) Name() string { return "codex-deepseek" }
 
-// Before 抢在别的插件前面：它读的是**客户端发来的原文**（input[0]），谁要是先
-// 动了 input，它读到就不是原文了。
+// Before gets ahead of other plugins: it reads **the source the client sent** (input[0]),
+// and if someone else changed input first, what it reads is no longer the source.
 func (tools) Before() []string { return []string{"deepseek"} }
 func (tools) After() []string  { return nil }
 
@@ -49,36 +50,38 @@ func (t tools) Match(r *special.Request) bool {
 		t.model.MatchTarget(r.Model, r.Provider, r.BaseURL)
 }
 
-// Apply 改写请求：把工具提上来，或者只对顶层做降级。
+// Apply rewrites the request: lift the tools up, or only downgrade the top level.
 //
-// 两种路线（互相排斥）：
+// Two routes (mutually exclusive):
 //
-//  1. 读出 input[0].additional_tools（旧版格式）：把这棵树拍平、custom 降成
-//     function、写进顶层 tools（覆盖原有的），原来的 input[0] 原样保留。
-//     DeepSeek 会从这棵新造的树里读工具。
-//  2. 没有 additional_tools，但顶层有 tools（新版格式）：里面可能是
-//     namespace/function/web_search/custom 混着。DeepSeek 对前三种都能消化
-//     （namespace 回显时原样带回，见 2026-09-21 实测），但对未知的 custom 报 400。
-//     所以顺着扫一遍，只把 custom（除 apply_patch 外）降成 function，其余一个
-//     字节不动。
+//  1. Read input[0].additional_tools (old format): flatten this tree, downgrade custom
+//     to function, write it into the top-level tools (overwriting the existing one), and
+//     keep the original input[0] as is. DeepSeek reads tools from this newly built tree.
+//  2. No additional_tools, but a top-level tools exists (new format):
+//     it may mix namespace/function/web_search/custom. DeepSeek digests
+//     the first three (namespaces are echoed back as is, measured 2026-09-21),
+//     but reports 400 on an unknown custom. So scan through and downgrade only
+//     custom (other than apply_patch) to function, touching not one other byte.
 //
-// **路线 1 那一半 2026-09-23 搬去了 `modules/codex`**（`codex.lift-tools`）：把工具
-// 从 input[0] 抬到顶层与上游是谁无关（Codex 配 Ark / Claude / Kimi 同样需要），
-// 判据就不该住在一个叫 codex-deepseek 的模块里。搬走之后本模块**仍然读那个开关**
-// （见 liftEnabled），否则「关掉 codex.lift-tools」在 DeepSeek 这条路上会变成空操作
-// ——开关报了名却没人读，那是比没有开关更糟的一种谎（2026-09-21 在 live 上实测过
-// 同一族的事）。
+// **Route 1's half moved to `modules/codex` on 2026-09-23** (`codex.lift-tools`):
+// lifting tools from input[0] to the top level has nothing to do with which upstream
+// it is (Codex with Ark / Claude / Kimi needs it just the same), so the judgment
+// should not live in a module named codex-deepseek. After the move this module **still
+// reads that switch** (see liftEnabled); otherwise "turn off codex.lift-tools" would
+// become a no-op on the DeepSeek path -- a switch that reports a name nobody reads is
+// a lie worse than having no switch (measured live on 2026-09-21 in the same family).
 //
-// 留着路线 1 这一支的理由是**它现在只在对的位置才跑**：判据是「顶层还没有可用的
-// tools」（`HasUsableTopLevelTools`），而 codex-tools 排在本插件前面——所以正常的
-// 装配里走的一律是路线 2（抬已经在前面做完了，这里只降级）。它剩下的用武之地是
-// 客户端那一手没挂上时（本模块的单测、以及任何没有 codex 客户端 hook 的装配），
-// 那时这一支仍能把请求修对，而不是把 custom 直接发给一个会 400 的上游。
+// Route 1 is kept because **it now runs only in the right place**: the criterion is "the top
+// level has no usable tools yet" (`HasUsableTopLevelTools`), and codex-tools sorts ahead of
+// this plugin -- so a normal assembly always takes route 2 (the lift is already done up front,
+// only the downgrade happens here). What is left for it is when the client move is not mounted
+// (this module's unit tests, and any assembly without the codex client hook); then this branch
+// can still fix the request, rather than sending custom straight to an upstream that will 400.
 //
-// 这一手可以被单独关掉（`newgate plugin codex-deepseek.degrade-tools off`）——
-// **开关点必须真的被读**，否则 `newgate plugin` 会报「已关闭」而请求照改不误
-// （2026-09-21 实测到：关掉之后 live 上顶层 tools 照样被抬上来）。它的默认值是
-// 开，所以关掉是排查动作，不是常态。
+// This move can be turned off on its own (`newgate plugin codex-deepseek.degrade-tools
+// off`) -- **the switch point must really be read**, otherwise `newgate plugin` reports "off" while
+// requests are rewritten anyway (measured 2026-09-21: after turning it off the top-level tools were
+// still lifted on live). Its default is on, so turning it off is a debugging action, not the norm.
 func (tools) Apply(body []byte, r *special.Request) ([]byte, []string, error) {
 	if pluginmanager.Off(stateOf(r), SwitchDegradeTools) {
 		return body, nil, nil
@@ -93,15 +96,16 @@ func (tools) Apply(body []byte, r *special.Request) ([]byte, []string, error) {
 			if err != nil {
 				return body, nil, err
 			}
-			// note 分两条报，因为它们是**两件事**：抬了几条（修根因的那一步），以及
-			// 其中几条被降级了。合成一句会让「一个 custom 都没有」时那句变成
-			// 「抬了 N 条，0 条被降级」——而 0 条降级不是噪音，是「这次没动过任何
-			// 工具的字段」这条信息。见 lift.go 里那段「抬本身才是修根因」的说明。
+			// note is reported as two lines, because they are **two things**: how many were lifted
+			// (the step that fixes the root cause), and how many of those were downgraded. Merging them
+			// into one sentence would make it read "lifted N, 0 downgraded" when there is no custom at
+			// all -- and 0 downgraded is not noise, it is the information "no tool field was touched
+			// this time". See the "the lift itself is what fixes the root cause" passage in lift.go.
 			//
-			// 抬的这一句与 modules/codex 的 codex-tools 说的是同一件事、同一句
-			// 措辞——两条路走到这里对读者是一件事（工具被抬上去了），分两个措辞
-			// 只会让排查的人先猜是哪一条路动的。正常情况下这里一次都不会命中：
-			// codex-tools 排在本插件前面（见 ToolsLift.Before）。
+			// The lifted sentence says the same thing in the same wording as modules/codex's codex-tools
+			// -- reaching here by either route is one thing to the reader (the tools were lifted), and
+			// two wordings would only make the person debugging first guess which route acted. Normally
+			// this never fires here: codex-tools sorts ahead of this plugin (see ToolsLift.Before).
 			notes := []string{i18n.N(
 				"lifted {n} tool declaration from input[0] to the top level (DeepSeek reads tools only there)",
 				"lifted {n} tool declarations from input[0] to the top level (DeepSeek reads tools only there)",
@@ -128,11 +132,12 @@ func (tools) Apply(body []byte, r *special.Request) ([]byte, []string, error) {
 	return body, nil, nil
 }
 
-// degradeNote 是「把 custom 降成了 function」那句话。
+// degradeNote is the sentence "downgraded custom to function".
 //
-// **两条来源共用一句**（input[0] 抬上来的、顶层本来就有的）：对读者来说那是同
-// 一件事——同一个上游拒了同一族的声明——而两句话会让日志里同一个原因有两个
-// 措辞，排查时得先猜是哪一条路动的。
+// **The two sources share one wording** (lifted from input[0], and already at
+// the top level): to the reader it is one thing -- the same upstream rejecting
+// the same family of declarations -- and two wordings would give one cause two
+// texts in the log, making the person debugging first guess which route acted.
 func degradeNote(n int) string {
 	return i18n.N(
 		"degraded {n} custom tool to a standard function (DeepSeek rejects any custom tool other than apply_patch with 400)",
@@ -140,9 +145,10 @@ func degradeNote(n int) string {
 		n, i18n.A{"n": n})
 }
 
-// stateOf 从插件上下文里取配置快照。允许 nil（旧调用面与单测常见）——
-// pluginmanager.Off 对 nil 一律回 false，也就是「没关」。方向不能反：
-// 快照缺席不该把补丁关掉。与 claudecode_deepseek 那份同款。
+// stateOf takes the config snapshot from the plugin context. nil is allowed (common
+// with the old call surface and unit tests) -- pluginmanager.Off always answers
+// false for nil, i.e. "not off". The direction must not be reversed: a missing
+// snapshot should not turn the patch off. Same as the claudecode_deepseek one.
 func stateOf(r *special.Request) *domain.State {
 	if r == nil {
 		return nil
@@ -150,14 +156,16 @@ func stateOf(r *special.Request) *domain.State {
 	return r.State
 }
 
-// Egress 认领这一发的响应改写。
+// Egress claims the response rewrite of this exchange.
 //
-// 判据从**客户端发来的原文**里读（`original`），因为 Apply 之后那几个 custom 已经
-// 变成 function 了，从那份里再也分不出「谁原本是 custom」。见 lift.go 的说明。
+// The criterion is read from **the source the client sent** (`original`), because
+// after Apply those customs have become functions, and from that copy there
+// is no telling "who was originally custom". See the explanation in lift.go.
 //
-// 开关点与 Apply **同一把尺子**：关掉之后请求侧不改，响应侧也就没有该改的东西
-// ——两边只要有一边读了开关、另一边没读，就会出现「请求没降级、响应却被改成
-// custom_tool_call」这种把客户端弄坏的不对称。
+// The switch point uses **the same ruler** as Apply: once off, the request side is
+// unchanged, and the response side has nothing that should change -- if one side reads
+// the switch and the other does not, you get "the request was not downgraded, but
+// the response was changed to custom_tool_call", an asymmetry that breaks the client.
 func (tools) Egress(r *special.Request, original []byte) special.Egress {
 	if pluginmanager.Off(stateOf(r), SwitchDegradeTools) {
 		return nil
@@ -169,29 +177,33 @@ func (tools) Egress(r *special.Request, original []byte) special.Egress {
 	return &egressTools{degraded: degraded}
 }
 
-// liftEnabled 读**客户端那一手**的开关（`codex.lift-tools`，住在 modules/codex）。
+// liftEnabled reads **the client move's** switch (`codex.lift-tools`, living in modules/codex).
 //
-// 本模块只是它的读者，不是它的拥有者：抬工具是客户端方言的事，与上游无关
-// （见 switches.go 里那段为什么）。读它的原因有两个，都是「两条尺子必须一致」：
+// This module is only its reader, not its owner: lifting tools is the client
+// dialect's business, independent of the upstream (see the why in switches.go).
+// There are two reasons to read it, both "the two rulers must agree":
 //
-//   - Apply：抬的那一手关着时，本模块的兜底那一支**不能**自己抬。否则「关掉
-//     codex.lift-tools」在 DeepSeek 这条路上会变成空操作——开关报了名却没人读，
-//     那是比没有开关更糟的一种谎（2026-09-21 在 live 上实测过同一族的事）。
-//   - degradedNames：抬都不抬，就没有「被降级过的名字」可言，响应侧也就不该去
-//     认领。两条路线上任何一个不对称都会把客户端弄坏。
+//   - Apply: when the lift is off, this module's fallback branch **must not** lift
+//     by itself. Otherwise "turn off codex.lift-tools" would become a no-op on the
+//     DeepSeek path -- a switch that reports a name nobody reads is a lie worse
+//     than having no switch (measured live on 2026-09-21 in the same family).
+//   - degradedNames: with no lift there are no "names that were downgraded" to speak of, so the
+//     response side should not claim either. An asymmetry on either route breaks the client.
 //
-// 快照缺席 = 没关（pluginmanager.Off 对 nil 回 false），方向不能反。
+// A missing snapshot = not off (pluginmanager.Off answers
+// false for nil); the direction must not be reversed.
 func liftEnabled(r *special.Request) bool {
 	return !pluginmanager.Off(stateOf(r), codexapi.SwitchLiftTools)
 }
 
-// degradedNames 从客户端原文里读出「会被降级」的工具名。
+// degradedNames reads from the client source the names of tools "that will be downgraded".
 //
-// 判据与 Apply 逐字一致（`type: "custom"` 且不是 apply_patch）——两处必须
-// 用同一条尺子，否则会出现「请求侧没改、响应侧却去改」这种对不上的情况。
-// 所以对两种来源（input[0].additional_tools 与顶层 tools）各走一遍对应的
-// 降级扫描，不另写一份判断；而 input[0] 那一支**跟着客户端的抬开关走**，
-// 理由见 liftEnabled。
+// The criterion is word for word the same as Apply (`type: "custom"`
+// and not apply_patch) -- the two places must use the same ruler, otherwise you get the
+// mismatch "the request side changed nothing while the response side goes and changes
+// things". So both sources (input[0].additional_tools and the top-level tools) get
+// their own corresponding downgrade scan, not a second judgment written by hand; and the
+// input[0] branch **follows the client's lift switch**, for the reason in liftEnabled.
 func degradedNames(r *special.Request, original []byte) map[string]bool {
 	degraded := map[string]bool{}
 	if liftEnabled(r) {
@@ -214,36 +226,39 @@ func degradedNames(r *special.Request, original []byte) map[string]bool {
 	return degraded
 }
 
-// egressTools 是一发的响应改写者。
+// egressTools is one exchange's response rewriter.
 //
-// 它带着**这一发的状态**（哪几个工具被降级了、正在流式吐出的那几条调用攒到了
-// 哪儿），所以每次认领都给一个新实例：多个请求同时在线上跑，状态不能跨请求串。
-// 不带锁的另一个理由是它的生命周期就是这一发——从认领到流结束。
+// It carries **this exchange's state** (which tools were downgraded, how far the calls
+// being streamed out have accumulated), so each claim gets a new instance: several requests
+// run on the wire at once, and state must not leak across requests. The other reason
+// for no lock is that its lifetime is this one exchange -- from claim to end of stream.
 type egressTools struct {
 	degraded map[string]bool
 
-	// calls 是这一发里**正在吐**的降级调用，按 output_index 索引。
-	// 请求侧把那几个工具声明成了 function，响应侧的 arguments 是一段一段
-	// delta 吐出来的，得攒齐了才知道 input 是什么。
+	// calls are the downgraded calls **being streamed** in this exchange, indexed by output_index.
+	// The request side declared those tools as functions, and the response's arguments come
+	// out as delta after delta; they must be accumulated before we know what the input is.
 	calls map[int]*degradedCall
 }
 
-// degradedCall 是一条降级调用的现场。
+// degradedCall is the scene of one downgraded call.
 //
-// 为什么要攒：上游把参数分成几十个 delta 事件吐（实测一条 exec 调用 47 个），
-// 而**只有 done 那一条带完整 arguments**。可 codex 认的是 custom 工具，它等的
-// 是 output_item.done 上那条完整 item——所以要么把 delta 也改对（并且自己拼出
-// 完整 input），要么在 output_item.done 那一刻去别处找。前者是唯一能同时满足
-// 两条流的做法：攒下来的 args 就是 output_item.done 要填的 input。
+// Why accumulate: the upstream spits the parameters out in dozens of delta events (measured,
+// one exec call had 47), and **only the done one carries the complete arguments**. But codex
+// recognizes custom tools, and it waits for the complete item on output_item.done -- so
+// either the deltas must be fixed too (and the complete input assembled by ourselves), or at
+// output_item.done we go look elsewhere. The former is the only way to satisfy both streams
+// at once: the accumulated args are exactly the input that output_item.done must fill in.
 type degradedCall struct {
-	// item 是 added 那一刻我们改写过的 item（type 已经是 custom_tool_call）。
+	// item is the item we rewrote at the moment of added (type is already custom_tool_call).
 	item map[string]any
 
-	// args 是累计的 arguments 原文（delta 拼起来的那份 JSON）。
+	// args is the accumulated arguments source (the JSON the deltas were joined into).
 	args string
 }
 
-// Egress 改写**一条 SSE 事件**。改不动或不该改一律返回 nil（调用方原样转发）。
+// Egress rewrites **one SSE event**. Returns nil when it
+// cannot or should not change it (the caller forwards as is).
 func (e *egressTools) Egress(event []byte) []byte {
 	payload, start, end, ok := splitDataLine(event)
 	if !ok {
@@ -264,8 +279,8 @@ func (e *egressTools) Egress(event []byte) []byte {
 		if !e.degraded[name] {
 			return nil
 		}
-		// 客户端认定它是 custom：字段名跟着换（input 而不是 arguments），
-		// 值先给空串，等 done 那一刻填攒好的原文。
+		// The client believes it is custom: the field name changes with it (input rather than arguments),
+		// and the value starts as the empty string, to be filled with the accumulated source at done.
 		delete(item, "arguments")
 		item["type"] = "custom_tool_call"
 		item["input"] = ""
@@ -297,8 +312,8 @@ func (e *egressTools) Egress(event []byte) []byte {
 		if !ok {
 			return nil
 		}
-		// 这一条事件自己就带着完整的 arguments（实测上游两种都发：delta 拼起来
-		// 的和 done 上那份是一样的），所以优先用它，攒下来的那份兜底。
+		// This event itself carries the complete arguments (measured, the upstream sends both: the joined
+		// deltas and the one on done are the same), so prefer it, with the accumulated copy as fallback.
 		item, _ := ev["item"].(map[string]any)
 		fromItem := ""
 		if item != nil {
@@ -337,11 +352,12 @@ func (e *egressTools) Egress(event []byte) []byte {
 	return nil
 }
 
-// finalize 定下这条改写的 input：优先用事件自己带的那份（它一定是完整的），
-// 没有才退回攒下来的 delta。
+// finalize settles the input of this rewrite: prefer the copy the event itself carries
+// (it is always complete), falling back to the accumulated deltas only when there is none.
 //
-// 两份在正常流里是同一段字节（实测一条 exec 调用 47 个 delta，拼起来与 done 上
-// 那份逐字相同），所以这不是「选一个更好的」——是「少发 delta 的上游也能对」。
+// The two are the same bytes in a normal stream (measured: one exec call with 47
+// deltas, joined, is identical to the one on done), so this is not "pick a better
+// one" -- it is "an upstream that sends fewer deltas also comes out right".
 func (c *degradedCall) finalize(fromEvent string) string {
 	raw := fromEvent
 	if raw == "" {
@@ -365,15 +381,18 @@ func (e *egressTools) take(idx int) (*degradedCall, bool) {
 	return call, ok
 }
 
-// unwrapInput 拆掉 function 参数外面那层壳，取出 custom 工具真正要的那串原文。
+// unwrapInput removes the shell around the function parameters,
+// taking out the real source text the custom tool needs.
 //
-// 请求侧把 `{"cmd": "…"}` 整段塞进了 function 的 `input` 参数，响应侧模型自然也
-// 按那个形状回 `{"input": "<那段 JS 原文>"}`。Codex 要的是**里面那串原文**——
-// 不拆的话它拿整个 JSON 去 eval，报 `SyntaxError: Unexpected token ':'`，然后
-// 一轮一轮重试同一个坏调用（实测 18 轮还没停，`codex exec` 永远不退出）。
+// The request side stuffed the whole `{"cmd": "..."}` into the function's `input` parameter,
+// so the response-side model naturally replies in that shape too: `{"input": "<the JS
+// source>"}`. Codex wants **the source text inside** -- without unwrapping it it takes the
+// whole JSON to eval, gets `SyntaxError: Unexpected token ':'`, and retries the same bad
+// call round after round (measured: still going after 18 rounds, `codex exec` never exits).
 //
-// 拆不出来时原样返回：宁可让客户端看见一段它认不出的原文（它会自己报错，那是一条
-// 能排查的错），也不能在这里编一段它没写过的代码。
+// When it cannot be unwrapped, return as is: better that the client sees
+// a piece of source it cannot read (it reports its own error, which is a
+// debuggable error) than that we make up a piece of code it never wrote.
 func unwrapInput(s string) string {
 	var args map[string]any
 	if json.Unmarshal([]byte(s), &args) != nil {
@@ -399,11 +418,12 @@ func indexOf(v any) int {
 	return int(f)
 }
 
-// splitDataLine 把一条 SSE 事件里的 data 行切成 (JSON 载荷, 载荷起点, 终点)。
+// splitDataLine cuts the data line out of an SSE event into (JSON payload, payload start, end).
 //
-// 事件里只有一行 data（上游就是这么发的），所以找第一行 `data: ` 即可。返回的
-// 两个下标是**载荷在整条事件字节里的位置**，改写时只替换这一段——`event:` 行、
-// 前后换行、结尾空行都逐字不动。
+// There is only one data line in the event (that is how the upstream sends it), so find
+// the first `data: ` line. The two returned indices are **the payload's position in the
+// whole event's bytes**, and the rewrite replaces only that span -- the `event:` line,
+// the newlines around it and the trailing blank line all stay untouched byte for byte.
 func splitDataLine(event []byte) ([]byte, int, int, bool) {
 	at := 0
 	for at < len(event) {
@@ -426,10 +446,11 @@ func splitDataLine(event []byte) ([]byte, int, int, bool) {
 	return nil, 0, 0, false
 }
 
-// spliceEvent 把改写后的载荷拼回整条事件。
+// spliceEvent splices the rewritten payload back into the whole event.
 //
-// 载荷长度会变（多了 `"input"`、少了 `"arguments"`），但**这是响应**：事件之间没有
-// 长度字段互相关联，SSE 的边界是空行。所以只换这一段就够，其余字节原样。
+// The payload length changes (more `"input"`, less `"arguments"`), but **this is a
+// response**: there is no length field tying events to each other, and SSE boundaries are
+// blank lines. So replacing this span is enough, and the rest of the bytes stay as is.
 func spliceEvent(event []byte, start, end int, payload map[string]any) []byte {
 	body, err := json.Marshal(payload)
 	if err != nil {

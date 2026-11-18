@@ -18,38 +18,38 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// 参考数据的下载器。
+// The reference data downloader.
 //
-// # 为什么不直接让 SDK 下载
+// # Why not let the SDK download
 //
-// SDK 的 `Load` 对 `bundle.json` 只给 10 秒。这在大多数网络上够用，但
-// 2026-10-28 这台机器实测：bundle.json 只有 7 KB，却要 11 秒才回来——于是
-// SDK 的超时先到，`newgate upgrade` 永远失败，而 curl 明明能下。参考数据不是
-// 热路径：一次下载几十秒是正常的，超时应该按「这份文件多大」给，不该按
-// 「一次 API 调用」给。
+// The SDK's `Load` gives `bundle.json` only 10 seconds. Enough on most networks, but this
+// machine on 2026-10-28: bundle.json is 7 KB yet took 11 seconds - so the SDK timeout fired
+// first, `newgate upgrade` always failed, while curl downloaded fine. Reference data is not
+// hot path: tens of seconds for a download is normal, and the timeout should follow "how
+// big is this file", not "one API call".
 //
-// 所以这里自己做三件事，仍然只碰 SDK 的**公开契约**：
-//  1. 用更长的、按文件大小给的超时下载；
-//  2. 校验 bundle 声明的 sha256（SDK 只拿它当版本号，不校验内容）；
-//  3. 按 SDK 的缓存格式原子写入，再由 `lmfpd.Load` 读一遍——读得进来才
-//     算成功，读不进来就把旧文件原样留着。
+// So this does three things itself, still touching only the SDK's **public contract**:
+//  1. download with a longer timeout sized by file size;
+//  2. verify the sha256 the bundle declares (the SDK only uses it as a version, not a check);
+//  3. write in the SDK's cache format atomically, then read via `lmfpd.Load` - readable
+//     means success, otherwise the old file stays exactly as it was.
 //
-// 缓存格式（`u32 LE 长度 + bundle.json + detector 字节`）是 SDK 的落盘格式，
-// 不是 Go API；它变了的话 `lmfpd.Load` 会拒绝我们写的文件，我们回落到旧缓存
-// 并报错，不会静默喂错数据。集成测试会走一遍真实下载。
+// The cache format (`u32 LE length + bundle.json + detector bytes`) is the SDK's on-disk
+// format, not a Go API; if it changes, `lmfpd.Load` rejects our file, we fall back to the old
+// cache and error - never silently feed wrong data. The integration test does a real download.
 const (
 	referenceDataSchema     = "lmfpd-data-v1"
 	referenceDetectorSchema = "shared-detector-v2"
 	referenceDetectorFile   = "shared_detector.bin"
 
-	// 单次 HTTP 的超时。bundle 很小，但这条链路的延迟可以到十几秒；chunk
-	// 是几 MB，按 3 分钟给。总时长仍由调用方的 context 约束。
+	// Timeout of a single HTTP request. The bundle is small but this link can take ten-odd
+	// seconds; chunks are a few MB, so give 3 minutes. Total time is still bounded by context.
 	bundleTimeout = 60 * time.Second
 	chunkTimeout  = 3 * time.Minute
 )
 
-// referenceSources 默认就是 SDK 的两个源；测试把它指到 httptest。它是变量而不是
-// 常量，正是为了让下载逻辑（超时、校验、同版短路）能在离线测试里跑一遍。
+// referenceSources defaults to the SDK's two sources; tests point it at httptest. A var, not a
+// const, so download logic (timeout, verify, same-version short circuit) runs in offline tests.
 var referenceSources = lmfpd.DefaultDataURLs
 
 type referenceBundle struct {
@@ -61,11 +61,11 @@ type referenceBundle struct {
 	} `json:"files"`
 }
 
-// referenceClient 走 HTTP/1.1。
+// referenceClient uses HTTP/1.1.
 //
-// 2026-10-28 实测：同样的 CDN，curl（HTTP/1.1）能下，Go 的 HTTP/2 客户端报
-// `stream ID 1; INTERNAL_ERROR`。参考数据不是需要多路复用的高频请求，退回
-// HTTP/1.1 换来的是「这条链路能用」。
+// 2026-10-28: on the same CDN, curl (HTTP/1.1) downloads while Go's HTTP/2 client reports
+// `stream ID 1; INTERNAL_ERROR`. Reference data is not a high-frequency request needing
+// multiplexing; falling back to HTTP/1.1 buys "this link works".
 func referenceClient() *http.Client {
 	tr, ok := http.DefaultTransport.(*http.Transport)
 	if !ok {
@@ -76,10 +76,10 @@ func referenceClient() *http.Client {
 	return &http.Client{Transport: clone}
 }
 
-// fetchReference 下载并解出一份参考数据。
+// fetchReference downloads and extracts one reference data bundle.
 //
-// knownVersion 非空且 bundle 声明的是同一版时返回 changed=false：只更新
-// 「检查时间」，不重复下 3.6 MB（SDK 也是这么做的）。
+// When knownVersion is non-empty and the bundle declares the same version, it returns
+// changed=false: only the "checked at" time moves, no 3.6 MB download (the SDK does the same).
 func fetchReference(ctx context.Context, knownVersion string) (bundleBytes, detectorBytes []byte, version string, changed bool, err error) {
 	client := referenceClient()
 	failures := make([]string, 0, len(referenceSources))
@@ -110,7 +110,7 @@ func fetchFrom(ctx context.Context, client *http.Client, source, knownVersion st
 		return nil, nil, "", false, err
 	}
 	if b.Schema != referenceDataSchema || b.DetectorSchema != referenceDetectorSchema {
-		// 与 SDK 的判据同一条：schema 变了就拒绝，而不是猜着读。
+		// Same criterion as the SDK: a schema change is rejected, not read by guessing.
 		return nil, nil, "", false, i18n.E("reference data schema {schema}/{detector_schema} is not supported",
 			i18n.A{"schema": b.Schema, "detector_schema": b.DetectorSchema})
 	}
@@ -169,8 +169,8 @@ func httpGet(ctx context.Context, client *http.Client, url string, timeout time.
 	return io.ReadAll(resp.Body)
 }
 
-// writeReferenceCache 按 SDK 的落盘格式原子写入：先写临时文件，再 rename。
-// 旧缓存直到 rename 那一刻都还在；下载失败不会把一台离线机器仅有的尺子弄没。
+// writeReferenceCache writes in the SDK's format atomically: temp file, then rename. The old
+// cache survives until that rename; a failed download does not destroy an offline ruler.
 func writeReferenceCache(path string, bundleBytes, detectorBytes []byte) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o2770); err != nil {
@@ -182,8 +182,8 @@ func writeReferenceCache(path string, bundleBytes, detectorBytes []byte) error {
 	}
 	tmpName := tmp.Name()
 	defer func() { _ = os.Remove(tmpName) }()
-	// CreateTemp 给的是 0600；参考数据与 SDK 原来写的一样，让同组的另一个
-	// 进程（例如以另一个用户跑的 CLI）也能读。
+	// CreateTemp gives 0600; reference data matches what the SDK wrote, so another process
+	// in the same group (say a CLI run as another user) can read it too.
 	if err := tmp.Chmod(0o644); err != nil {
 		_ = tmp.Close()
 		return err

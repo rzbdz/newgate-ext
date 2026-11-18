@@ -1,16 +1,16 @@
 package runtime
 
-// 本文件是**包装启动**：`newgate claude …` / `newgate run claude …` /
-// `newgate --profile ds claude`。2026-09-18 从 modules/cli/launch.go 整体搬来。
+// This file is **wrapped launch**: `newgate claude ...` / `newgate run claude ...` /
+// `newgate --profile ds claude`. Moved wholesale from modules/cli/launch.go on 2026-09-18.
 //
-// 为什么搬：「把某个客户端拉起来，并把它需要的 env/argv 组装好」就是本模块的
-// 定义（见 package runtime 的说明）。原处的注释写着「runtime 只负责找到被 shim
-// 遮住的真实二进制、构造最小环境覆盖并启动它」——而这段代码正是那条规则的调用
-// 方，它留在界面里只因为界面是当初敲命令的地方。
+// Why: "bring up a client and assemble the env/argv it needs" is this module's definition
+// (see package runtime). The old note said "runtime only finds the real binary hidden by
+// the shim, builds the minimal env override and launches it" - and this code is that
+// rule's caller, left in the UI only because the UI was where commands were typed.
 //
-// 界面因此不再需要知道「有哪些 agent」才能启动一个：客户端 id 是本模块与
-// config-hook 的词汇。它把 `newgate claude …` 这一行交给账本里名字叫 claude 的
-// 命令——那条命令就是下面的 launchCommand，名字由它自己声明（各 agent 一个）。
+// So the UI no longer needs to know "which agents exist" to launch one: a client id is
+// vocabulary of this module and config-hook. It hands `newgate claude ...` to the command
+// named claude in the ledger - the launchCommand below, whose name it declares itself.
 
 import (
 	"bufio"
@@ -25,24 +25,24 @@ import (
 	"github.com/rzbdz/newgate/lib/i18n"
 )
 
-// launchCommand 包装启动一个 agent：`newgate claude …` / `newgate run claude …` /
-// `newgate --profile ds claude`。
+// launchCommand launches an agent wrapped: `newgate claude ...` / `newgate run claude ...` /
+// `newgate --profile ds claude`.
 //
-// **一条命令，动词现查**（2026-09-18 重写）。上一版是「每个已知 agent 一个实例、
-// 各自记着自己的 id」，那样注册期就必须知道全部动词；而动词是**运行期长出来的**
-// ——客户端模块在自己的 Start 里注册 agent。于是 launchCommands 只能在 Start 里
-// 枚举目录，而那一刻别人可能还没注册：实测（`Optional(cli)` 这条排序边把 cli 提到
-// 最前之后）runtime 排在 claudecode 之前，枚举出来是空表，`newgate claude` 报
-// 「未知命令」。70 条 e2e 断言就是这么红的。
+// **One command, verbs looked up on the spot** (rewritten 2026-09-18). The last version
+// was "one instance per known agent, each remembering its id", so registration had to know
+// every verb; but verbs **grow at runtime** - client modules register agents in Start. So
+// launchCommands could only enumerate the catalog in Start, when others might not be
+// registered yet: measured (`Optional(cli)` moved cli to the front), runtime starts before
+// claudecode, the table is empty, and `newgate claude` says "unknown command". 70 e2e
+// assertions went red that way.
 //
-// 根因不是顺序，是**在 Start 里读了别人写的东西**——依赖图表达不了「所有人都写完
-// 了」（见 docs/02-component-framework.md 的三段法则）。所以动词表在**分派那一刻**
-// 现查，注册期只交一条命令。
+// The root cause is not order but **reading others' output in Start** - the graph cannot
+// express "everyone finished" (docs/02-component-framework.md's three-phase rule). So
+// the verb table is looked up **at dispatch**, and registration hands over one command.
 //
-// 缺的那块信息由宿主补回来：分派器交给命令的 args **不含动词本身**（契约如此），
-// `newgate claude --profile=ds` 分派到这条命令时收到的是 `["--profile=ds"]`。宿主
-// 知道它是按哪个名字找到我们的（cliapi.Host.Verb），把 id 补回参数首位，后面走
-// 同一条 splitLaunch（它也负责校验 id 真的存在）。
+// The host adds back the missing bit: the args the dispatcher hands the command **exclude
+// the verb**, so `newgate claude --profile=ds` gets `["--profile=ds"]`. The host knows
+// which name found us (cliapi.Host.Verb), prepends the id, then splitLaunch runs it.
 type launchCommand struct {
 	rt     Runtime
 	agents confighookapi.AgentCatalog
@@ -54,54 +54,54 @@ var (
 	_ cliapi.Handoff    = (*launchCommand)(nil)
 )
 
-// Names 现查目录：每个已知 agent 一个动词，外加显式的 `run`。
+// Names looks up the catalog now: one verb per known agent, plus an explicit `run`.
 //
-// **每次分派都现查**（不是缓存）：目录在装配之后还会长，而且新 agent 注册进来
-// 就该立刻可分派——不需要重启，也不需要赌自己排在客户端模块后面。
+// **Looked up on every dispatch** (no cache): the catalog grows after assembly, and a new
+// agent must be dispatchable at once - no restart, no betting you start after the clients.
 func (c launchCommand) Names() []string {
 	names := append([]string(nil), c.agents.Names()...)
 	return append(names, "run")
 }
 
-// Help 只声明 `run <agent> [args…]` 一行。
+// Help declares only the one line `run <agent> [args...]`.
 //
-// **故意不逐个 agent 列一行**：agent 名是各客户端模块的键，help 里列出它们等于
-// 界面又认识了一遍客户端。用户敲 `newgate claude` 从来不是从 help 里学来的。
+// **Deliberately no per-agent line**: agent names are client modules' keys, listing them
+// would make the UI know the clients again. Users never learned `newgate claude` from help.
 //
-// 上一版靠「每个 agent 一个实例、实例按 agentID 返回空 Usage」来做这件事，代价是
-// 注册期就得知道全部 agent（见上面的说明）。一条命令之后，一行就是一行。
+// The last version did this via "one instance per agent, returning empty Usage per
+// agentID", at the price of knowing all agents at registration (see above). One line now.
 func (c launchCommand) Help() cliapi.HelpLine {
 	return cliapi.HelpLine{Section: cliapi.SectionRunOnce, Rank: 20,
 		Usage: "run <agent> [args…]", Summary: i18n.T("Run once with a given profile", nil)}
 }
 
 func (c launchCommand) Run(host cliapi.Host, args []string) int {
-	// 动词位被分派器剥掉了：名字就是 agent 的那种调用要把 id 补回参数首位，
-	// 让 splitLaunch 走同一条路径（它也负责校验 id 是不是真的存在）。
+	// The verb slot was stripped by the dispatcher: a name-is-the-agent call puts the id
+	// back first, so splitLaunch takes the same path (it also validates the id exists).
 	if verb := host.Verb(); verb != "" && verb != "run" {
 		args = append([]string{verb}, args...)
 	}
 	return runLaunch(c.rt, c.agents, args)
 }
 
-// launchCommands 只有一条：动词表在分派期现查（见 launchCommand 的说明）。
+// launchCommands has only one: the verb table is looked up at dispatch (see launchCommand).
 func launchCommands(rt Runtime, agents confighookapi.AgentCatalog) []cliapi.Command {
 	return []cliapi.Command{launchCommand{rt: rt, agents: agents}}
 }
 
-// HandsOff：这条命令接着会把控制权交给被启动的客户端，newgate 的版式审计不该
-// 去看那个进程的输出（见 cliapi.Handoff）。
+// HandsOff: this command then hands control to the launched client, and newgate's layout
+// audit must not inspect that process's output (see cliapi.Handoff).
 func (launchCommand) HandsOff() {}
 
-// cmdLaunch 包装启动一个 agent：解析 newgate 自己的选项，透传其余参数。
+// cmdLaunch launches an agent wrapped: parses newgate's own options, passes the rest through.
 //
-// 支持（docs/08-operations.md）：
+// Supported (docs/08-operations.md):
 //
 //	newgate claude
 //	newgate claude --profile=ds
 //	newgate --profile ds claude
 //	newgate run claude --profile=ds
-//	newgate claude --resume abc          # --resume abc 透传给 claude
+//	newgate claude --resume abc          # --resume abc is passed through to claude
 func runLaunch(rt Runtime, agents confighookapi.AgentCatalog, args []string) int {
 	agentName, profile, passthrough, err := splitLaunch(agents, args)
 	if err != nil {
@@ -109,15 +109,15 @@ func runLaunch(rt Runtime, agents confighookapi.AgentCatalog, args []string) int
 	}
 	a, _ := agents.Get(agentName)
 
-	// 没装的工具：这次调用归**我们**（见 offerInstall 与 takeYes）。装在的照旧，
-	// 一个字都不碰它的命令行。
+	// A tool that is not installed: this call is **ours** (see offerInstall and takeYes).
+	// Installed ones are untouched, not one character of their command line.
 	if !agents.Installed(agentName) {
 		if handled, rest := offerInstall(agents, a, passthrough); handled {
 			passthrough = rest
 		}
 	}
 
-	// profile 不存在立刻报错，绝不静默回落到默认——那正是「切了没生效」的来源。
+	// A profile that does not exist errors at once - never a silent fallback to the default.
 	if profile != "" {
 		if _, err := store.LoadProfile(profile); err != nil {
 			avail, _ := store.ListProfiles()
@@ -129,17 +129,17 @@ func runLaunch(rt Runtime, agents confighookapi.AgentCatalog, args []string) int
 	return rt.Launch(a, agents.Facts(a.ID), passthrough, profile)
 }
 
-// splitLaunch 把启动 argv 切成 (agent, profile, 透传参数)。
+// splitLaunch splits the launch argv into (agent, profile, passthrough args).
 //
-// 规则（docs/08-operations.md 的落地，唯一放宽：`--profile`/`--preset` 是 newgate 自己的
-// 选项，出现在 agent 之后也照样被我们消费——否则 `newgate claude --profile=ds`
-// 里的 profile 会被透传给 claude）：
+// Rules (docs/08-operations.md applied; the one relaxation: `--profile`/`--preset` are
+// newgate's own options and are consumed even after the agent - else `newgate claude
+// --profile=ds` would pass the profile through to claude):
 //
-//  1. 从左往右扫；
-//  2. `--profile`/`--preset` 按 arity 消费值（`--profile ds` 或 `--profile=ds`）；
-//  3. 第一个既不是 newgate 选项、也不是其值的 token 是 agent；
-//  4. agent 之后、且不是 newgate 选项的 token 一律原样透传；
-//  5. agent 确定之前的未知 `-` 选项按拼错处理（报错）。
+//  1. scan left to right;
+//  2. `--profile`/`--preset` consume a value by arity (`--profile ds` or `--profile=ds`);
+//  3. the first token that is neither a newgate option nor its value is the agent;
+//  4. every token after the agent that is not a newgate option is passed through verbatim;
+//  5. unknown `-` options before the agent is fixed are typos (error).
 func splitLaunch(agents confighookapi.AgentCatalog, args []string) (agent, profile string, passthrough []string, err error) {
 	if len(args) > 0 && args[0] == "run" {
 		args = args[1:]
@@ -151,7 +151,7 @@ func splitLaunch(agents confighookapi.AgentCatalog, args []string) (agent, profi
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 
-		// newgate 自己的 profile 选项（`--preset` 是历史别名，同一件事）。
+		// newgate's own profile option (`--preset` is a historical alias for the same thing).
 		if a == "--profile" || a == "--preset" || strings.HasPrefix(a, "--profile=") || strings.HasPrefix(a, "--preset=") {
 			v := ""
 			if j := strings.Index(a, "="); j >= 0 {
@@ -199,12 +199,12 @@ func splitLaunch(agents confighookapi.AgentCatalog, args []string) (agent, profi
 	return agent, profile, rest, nil
 }
 
-// takeYes 从透传参数里摘掉 `-y` / `--yes`。
+// takeYes strips `-y` / `--yes` from the passthrough args.
 //
-// **只在「这个工具没装」时调用**（见 runLaunch）：命令根本不存在，所以它后面的参数
-// 不可能是给它的——`newgate opencode -y` 里的 `-y` 只可能是「确认安装」。反过来，
-// 装着的工具一律原样透传：那时 `-y` 是**它自己的**参数，摘走等于改用户的命令行。
-// 判据就一条：装没装。
+// **Called only when "this tool is not installed"** (see runLaunch): the command does not
+// exist, so the args after it cannot be for it - `-y` in `newgate opencode -y` can only
+// mean "confirm install". An installed tool gets everything verbatim: then `-y` is
+// **its own** argument, and stripping it changes the user's command line. One criterion: installed.
 func takeYes(args []string) (yes bool, rest []string) {
 	for _, a := range args {
 		if a == "-y" || a == "--yes" {
@@ -216,8 +216,8 @@ func takeYes(args []string) (yes bool, rest []string) {
 	return yes, rest
 }
 
-// confirm 问一句 y/N。读不到输入（没有终端、管道）一律当「不」——
-// 一次没人回答的提问不该被当成同意，那是「静默地跑了用户没批准的事」。
+// confirm asks y/N. Unreadable input (no terminal, a pipe) always means "no" - a question
+// nobody answered must not count as consent; that is "silently did what the user never approved".
 func confirm(prompt string) bool {
 	fmt.Fprint(os.Stderr, prompt)
 	line, err := bufio.NewReader(os.Stdin).ReadString('\n')
@@ -232,13 +232,13 @@ func confirm(prompt string) bool {
 	return false
 }
 
-// offerInstall 在「这个工具没装」时接手这次调用：问一句、装、然后**照常启动**。
+// offerInstall takes over this call when "this tool is not installed": ask, install, launch.
 //
-// 为什么装完接着启动而不是让用户再敲一遍：他敲的那条命令本来就是「跑它」，装上只是
-// 途中的一步。转头让用户重来一次，是把我们自己的实现细节变成了他的操作步骤。
+// Why launch right after installing instead of making the user type it again: the
+// command was "run it", and installing is a step along the way. Sending them back turns
+// our implementation detail into their operating step.
 //
-// 返回 (是否已经处理掉这次调用, 剩下的透传参数)。没有安装器时返回 false——那种
-// 客户端不支持自助安装，落回原来那条路（FindReal 会报一句「PATH 上找不到」）。
+// Returns (handled?, remaining args). No installer = false, back to the old path (FindReal).
 func offerInstall(agents confighookapi.AgentCatalog, a *confighookapi.Agent, passthrough []string) (bool, []string) {
 	inst := agents.Installer(a.ID)
 	if inst == nil {
@@ -256,16 +256,16 @@ func offerInstall(agents confighookapi.AgentCatalog, a *confighookapi.Agent, pas
 	}
 	fmt.Fprintf(os.Stderr, "newgate: %s\n", i18n.T("running: {cmd}", i18n.A{"cmd": cmdline}))
 	if err := inst.Install(os.Stderr); err != nil {
-		// best-effort：装不上不是故障（没有 npm、网络不通、没有权限都正常），
-		// 但**必须说清楚**——「没装成却看着像装成了」会让人在一个不存在的工具上
-		// 排查半天。原样带上命令与它的报错。
+		// best-effort: a failed install is not a fault (no npm, no network, no rights are
+		// normal), but **must be said** - "did not install, looks installed" makes one hunt
+		// for hours on a tool that does not exist. Carry the command and its error verbatim.
 		fmt.Fprintf(os.Stderr, "newgate: %s\n", i18n.T("install failed: {err}", i18n.A{"err": err}))
 		os.Exit(69)
 	}
 	if !agents.Installed(a.ID) {
-		// 装是装完了，但这个进程的 PATH 里还是找不到它（包管理器的 bin 目录不在这
-		// 一次的 PATH 上，或者装到了别处）。**不假装成功**：说清楚，让用户开个新
-		// shell 再跑——那条路一定对，而继续往下走只会在启动时炸得更难懂。
+		// Installed, but this process's PATH still cannot find it (the package manager's bin
+		// dir is not in this PATH, or it went elsewhere). **Do not pretend success**: say so
+		// and let the user open a new shell - that works; going on fails at launch, worse.
 		fmt.Fprintf(os.Stderr, "newgate: %s\n", i18n.T(
 			"{agent} was installed but is still not on PATH — open a new shell and try again",
 			i18n.A{"agent": a.ID}))
@@ -274,5 +274,5 @@ func offerInstall(agents confighookapi.AgentCatalog, a *confighookapi.Agent, pas
 	return true, rest
 }
 
-// joinArgv 把 argv 拼成一行给人看（不做 shell 转义：它是提示文本，不是给 shell 执行的东西）。
+// joinArgv joins argv into one line for display (no shell escaping: it is hint text).
 func joinArgv(argv []string) string { return strings.Join(argv, " ") }

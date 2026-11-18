@@ -16,15 +16,15 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// 本文件是 `newgate verify [profile]`：把一份（或全部）profile 的每条 binding
-// 真打一轮指纹，报出「参考库说这是谁」以及与 binding 上名字的关系。
+// This file is `newgate verify [profile]`: really fingerprint every binding of one (or all)
+// profiles, reporting "who the bank says this is" and the relation to the binding's name.
 //
-// 与 probe 的分工：probe 回答「这家通不通、说哪种方言」，verify 回答「通了之后
-// 对面到底是谁」。两者共用 config/targets 那份 profile 解析（见那边的注释），
-// 所以「哪些 profile、哪些档位、去重之后是哪几个上游」只有一份知识。
+// vs probe: probe answers "reachable? which dialect?", verify answers "who is this".
+// Both share config/targets' profile resolution (see the note there), so "which profiles,
+// which tiers, which deduped upstreams" is known in exactly one place.
 //
-// 版式沿用 probe：进度走 stderr（stdout 留给结果表，`verify > f` 拿到干净的表），
-// `--json` 时 stdout 只有 JSON。
+// Layout follows probe: progress on stderr (stdout holds the result table, so `verify > f`
+// is clean), and with `--json` stdout carries only JSON.
 
 type verifyCommand struct{ svc *service }
 
@@ -52,18 +52,18 @@ func (c verifyCommand) Run(host cliapi.Host, args []string) int {
 	return runVerify(host, c.svc, args)
 }
 
-// rowOut 是一行结果：配置视图 + 它指向的那条指纹。
+// rowOut is one result row: the config view plus the fingerprint it points at.
 //
-// 同一条 binding 被多个 profile 共用时，指纹只打一次、每一行引用同一份结论
-// （与 probe 的 Cached 同一条：省时间也省额度）。
+// When several profiles share one binding the fingerprint runs once and every row cites
+// the same conclusion (same as probe's Cached: saves time and quota).
 type rowOut struct {
 	Profile  string `json:"profile,omitempty"`
 	Role     string `json:"role,omitempty"`
 	Provider string `json:"provider"`
 	Model    string `json:"model"`
-	// ConfigErr 是配置本身的问题（这一档没绑、provider 没声明）。
+	// ConfigErr is a problem in the config itself (tier unbound, provider not declared).
 	ConfigErr string `json:"config_error,omitempty"`
-	// RunErr 是这次请求根本没打成（没有 key、参考库加载失败）。
+	// RunErr means the request never went out (no key, bank failed to load).
 	RunErr string `json:"error,omitempty"`
 	Entry  *Entry `json:"fingerprint,omitempty"`
 }
@@ -74,10 +74,10 @@ type verifyOutcome struct {
 }
 
 func runVerify(host cliapi.Host, svc *service, args []string) int {
-	// `--help` 必须在这里拦住。命令框架只把 `help` 当成一个动词，`verify --help`
-	// 会把 `--help` 当成本命令的一个 flag 交进来——而这个命令的默认行为是
-	// **把全部 profile 真打一遍**（会花 token、几十秒）。2026-10-28 实测：
-	// 敲 `verify --help` 直接开始全局验证，直到被 Ctrl-C 才停。
+	// `--help` must be caught here. The command framework only treats `help` as a verb, so
+	// `verify --help` hands `--help` in as a flag - and this command's default is **really
+	// fingerprinting all profiles** (tokens, tens of seconds). 2026-10-28: `verify --help`
+	// started a full verification and only Ctrl-C stopped it.
 	if cliapi.Flag(args, "--help") || cliapi.Flag(args, "-h") {
 		h := verifyCommand{}.Help()
 		fmt.Println("usage: newgate " + h.Usage)
@@ -163,7 +163,7 @@ func runVerify(host cliapi.Host, svc *service, args []string) int {
 	}
 	wg.Wait()
 
-	// 把每条配置行绑到它的指纹上。
+	// Bind every config row to its fingerprint.
 	out := make([]rowOut, 0, len(rows)+1)
 	if provider != "" {
 		o := rowOut{Provider: provider, Model: model}
@@ -171,9 +171,9 @@ func runVerify(host cliapi.Host, svc *service, args []string) int {
 		out = append(out, o)
 	} else {
 		for _, r := range rows {
-			// 稀疏 profile 里「这一档没绑」是正常形态；这一屏要的是**模型**，
-			// 把一堆 not bound 摊进表里只会让真正要看的行沉下去（与界面
-			// 那边 groupProfiles 同一条）。
+			// "This tier is unbound" is normal in a sparse profile; this screen is about
+			// **models**, so spilling not-bound rows into the table buries the real rows
+			// (same as the UI's groupProfiles).
 			if r.Provider == "" && r.Model == "" {
 				continue
 			}
@@ -225,16 +225,16 @@ func outcomeOf(got map[targets.Target]verifyOutcome, provider, model string) (*E
 	return o.entry, msg
 }
 
-// profileArg 取第一个**真正的**位置参数。
+// profileArg takes the first **real** positional argument.
 //
-// 不能直接用 cliapi.Positional：它只认「以 - 开头的是 flag」，不知道
-// `--provider vendor-model` 里的 `vendor-model` 是那个 flag 的**值**。2026-10-28
-// 实测：`verify --provider vendor-model --model some-model` 被解析成「profile
-// 是 vendor-model」，于是报「档位文件和 --provider/--model 只能给一边」。
-// 同一条也会让 `verify --count 1` 去验证一份叫 `1` 的 profile。
+// cliapi.Positional cannot be used directly: it only knows "starts with - is a flag" and
+// does not know `vendor-model` in `--provider vendor-model` is that flag's **value**.
+// 2026-10-28: `verify --provider vendor-model --model some-model` parsed "the profile is
+// vendor-model" and complained that the tier file and --provider/--model cannot be mixed.
+// The same bug makes `verify --count 1` verify a profile called `1`.
 //
-// 这里只跳过本命令认识的、带值的 flag；`--json` 这类布尔 flag 由「以 - 开头」
-// 自然跳过。`--` 之后一律算位置参数（与 cliapi.Positional 同一条惯例）。
+// So this skips only the value-taking flags this command knows; boolean flags like `--json`
+// fall out on "starts with -". After `--` everything is positional (cliapi.Positional's rule).
 func profileArg(args []string) string {
 	takesValue := map[string]bool{
 		"--provider": true, "--model": true, "--api": true, "--count": true,
@@ -307,8 +307,8 @@ func printVerifyTable(head string, out []rowOut, uniq []targets.Target,
 	}
 	fmt.Print(t.String())
 
-	// 警告：失配/同族/没有排名/请求失败——**每一条只说一次**（同一条 binding
-	// 可能挂在好几个 profile 下，重复四遍只会让人跳过它们）。
+	// Warnings: mismatch/family/no ranking/request failed - **said once each** (one binding
+	// may hang under several profiles, and four repeats just make people skip them).
 	var warnings []string
 	seen := map[targets.Target]bool{}
 	for _, r := range out {
@@ -351,7 +351,7 @@ func printVerifyTable(head string, out []rowOut, uniq []targets.Target,
 		}
 	}
 
-	// 汇总。
+	// Summary.
 	var matched, dated, family, mismatch, unknown, bad int
 	for _, o := range got {
 		switch {

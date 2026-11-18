@@ -7,27 +7,27 @@ import (
 	"time"
 )
 
-// WithLock 拿配置共享的建议锁跑 fn，返回是否真的跑了。
+// WithLock runs fn under the configshare advisory lock, returning whether it really ran.
 //
-// # 为什么需要一把锁
+// # Why a lock is needed
 //
-// 优雅交接时会有几百毫秒新旧两个 daemon 同时活着（socket fd 移交，见
-// cli.Serve 里那段注释）。两个 poller 会同时读改写同一份记账、同时往同一批
-// 文件上 rename——而记账是 last-writer-wins 的，谁都可能把对方的代数和清单
-// 覆盖回去。手动 `config pull` 与后台轮询也会撞。
+// A graceful handoff leaves two daemons alive for a few hundred ms (socket fd handoff,
+// see cli.Serve). Two pollers then read-modify-write the same ledger - last-writer-wins,
+// so either can revert the other's generation and file list. A manual `config pull`
+// collides with the poller the same way.
 //
-// # 为什么用 flock 而不是 pidfile
+// # Why flock instead of a pidfile
 //
-// fd 一关锁就没了。进程被 kill -9 也不会留下一个需要人工清理的陈旧锁——
-// 这个仓库已经有一个 pidfile 陈旧导致「判定没在跑 → 退化成 stop+start」的
-// 现场（CLAUDE.md §3.1），不必再造一个。
+// Closing the fd drops the lock. Even kill -9 leaves no stale lock needing manual
+// cleanup - this repo already has a pidfile staleness incident ("not running ->
+// degrade to stop+start", CLAUDE.md §3.1), and does not need a second.
 //
-// flock 跨进程**也**跨 goroutine：同一个文件的两个 fd 是两个独立的 open file
-// description，所以进程内的 CLI 与 poller 也互斥。
+// flock is cross-process **and** cross-goroutine: two fds on one file are independent
+// open file descriptions, so the in-process CLI and poller exclude each other as well.
 //
-// wait=0 表示拿不到就跳过这一轮——这是后台轮询的正确反应（下一轮再说，用户
-// 什么都没感觉到）。手动命令给一个几秒的等待：用户敲了 config pull，多等两秒
-// 比回一句"正忙"好。
+// wait=0 means skip this round when the lock is taken - right for background polling
+// (next round will do it, the user notices nothing). Manual commands wait a few seconds:
+// having typed config pull, waiting two seconds beats getting "busy" back.
 func WithLock(path string, wait time.Duration, fn func() error) (bool, error) {
 	if path == "" {
 		return true, fn() // 没配锁（测试里常见）：直接跑

@@ -7,41 +7,41 @@ import (
 	"testing"
 )
 
-// 内核声明了哪些 Kind（`core/lib/view`）与前端能渲染哪些（`ConceptCard.svelte`
-// 里那串 `concept.kind === "…"`）必须**对得上**。
+// Which Kinds the kernel declares (`core/lib/view`) and which the front end can render
+// (the `concept.kind === "…"` chain in `ConceptCard.svelte`) must **match up**.
 //
-// 为什么要有这条：`lib/view` 的 Kind 常量是**契约**（「前端只认这几种，加一个
-// 模块的面不需要改前端」），可两半住在两个仓库里——内核声明，发行版的前端实现。
-// 声明了一个却没人渲染时，症状是**静默的**：那个概念落到最后的兜底分支，界面上
-// 出现一坨原始 JSON。2026-09-20 就是这么发现 `table` 的——它被声明了很久，既没有
-// 贡献者也没有渲染器，而没有任何东西会因此变红。
+// Why: `lib/view`'s Kind constants are a **contract** ("the front end knows only these;
+// adding a module's face needs no front-end change"), yet the halves live in two repos -
+// kernel declares, distribution's front end implements. Declared but unrendered: **silent** -
+// the concept hits the fallback branch, the UI shows raw JSON. So `table` surfaced on
+// 2026-09-20: long declared, no contributor, no renderer, and nothing went red.
 //
-// 反方向也查：前端有一个内核不认识的 Kind 时，那个分支是**死代码**（永远走不到），
-// 而它读起来像「这个界面支持 X」。
+// The other direction too: a front-end Kind the kernel does not know is **dead code**
+// (never reached), yet it reads like "this UI supports X".
 //
-// 边界：这是**文本层面**的检查（CI 必须离线，前端测试运行器进不来），它查的是
-// 「有没有这个分支」，查不了「渲染对不对」——那要靠人打开看一眼。同一套取舍见
-// web_test.go（产物进版本控制 + Go 侧看门）与 i18n_test.go（字典走文本比对）。
+// Boundary: a **text-level** check (CI must be offline, no front-end runner): it sees
+// "is the branch there", not "does it render right" - a human must look. Same trade-off
+// as web_test.go (artifacts-in-git + Go gate) and i18n_test.go (dictionary text compare).
 
-// kindConst 抓内核里的 Kind 常量：`KindTable = "table"`。
+// kindConst grabs the Kind constants in the kernel: `KindTable = "table"`.
 //
-// 只认 `Kind` 开头且值是纯小写/连字符的：内核里还有别的 Kind 常量（比如
-// `KindConnError`），但它们的值是大驼峰（`"conn_error"` 之类），是**别的词汇表**
-// （事件/分类），不是渲染方式。用值去区分，比用名字列表去排除稳。
+// Only `Kind`-prefixed ones with purely lowercase/hyphen values count: the kernel has
+// other Kind constants (e.g. `KindConnError`) whose values are camelCase (`"conn_error"`),
+// **another vocabulary** (events/classes), not a render mode. Matching by value beats lists.
 var kindConst = regexp.MustCompile(`(?m)^\s*Kind[A-Za-z]*\s*=\s*"([a-z][a-z-]*)"`)
 
-// kindBranch 抓前端的渲染分支：`{:else if concept.kind === "code"}`。
+// kindBranch grabs a front-end render branch: `{:else if concept.kind === "code"}`.
 var kindBranch = regexp.MustCompile(`concept\.kind === "([a-z][a-z-]*)"`)
 
 func TestEveryDeclaredKindHasARenderer(t *testing.T) {
-	declared := kindsIn(t, "../../lib/view/view.go", kindConst, "内核的 Kind 常量")
-	rendered := kindsIn(t, "web/src/ConceptCard.svelte", kindBranch, "前端的渲染分支")
+	declared := kindsIn(t, "../../lib/view/view.go", kindConst, "the kernel's Kind constants")
+	rendered := kindsIn(t, "web/src/ConceptCard.svelte", kindBranch, "the front end's render branches")
 
 	if len(declared) == 0 {
-		t.Fatal("一个 Kind 都没解析出来——正则与 lib/view 对不上了（改名或换了写法）")
+		t.Fatal("not a single Kind was parsed -- the regex no longer matches lib/view (renamed or written differently)")
 	}
 	if len(rendered) == 0 {
-		t.Fatal("一个渲染分支都没解析出来——正则与 ConceptCard 对不上了")
+		t.Fatal("not a single render branch was parsed -- the regex no longer matches ConceptCard")
 	}
 
 	var missing, dead []string
@@ -59,23 +59,23 @@ func TestEveryDeclaredKindHasARenderer(t *testing.T) {
 	sort.Strings(dead)
 
 	for _, k := range missing {
-		t.Errorf("内核声明了 Kind %q，前端没有渲染分支——那个概念会落到兜底分支，"+
-			"界面上是一坨原始 JSON（2026-09-20 的 table 就是这样）", k)
+		t.Errorf("the kernel declares Kind %q, the front end has no render branch -- that concept falls to the fallback branch,"+
+			"and the UI shows a blob of raw JSON (that is how table looked on 2026-09-20)", k)
 	}
 	for _, k := range dead {
-		t.Errorf("前端有 Kind %q 的渲染分支，可内核没声明这个 Kind——"+
-			"那个分支永远走不到，读起来却像「界面支持 X」", k)
+		t.Errorf("the front end has a render branch for Kind %q, but the kernel does not declare that Kind --"+
+			"that branch is unreachable yet reads like \"the UI supports X\"", k)
 	}
 }
 
-// kindsIn 从一个文件里把集合抓出来。what 用于报错时点名人话（路径写错时，
-// 「读不到文件」比「测试挂了」有用得多）。
+// kindsIn extracts the set from one file. what names things in errors (when a path is
+// wrong, "cannot read file" is far more useful than "test failed").
 func kindsIn(t *testing.T, path string, re *regexp.Regexp, what string) map[string]bool {
 	t.Helper()
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("读不到 %s（%s）：%v\n"+
-			"    core/ 是 submodule，没 checkout 的话这条读不到——CI 用的是 submodules: recursive",
+		t.Fatalf("cannot read %s (%s): %v\n"+
+			"    core/ is a submodule; without checking it out this cannot be read -- CI uses submodules: recursive",
 			path, what, err)
 	}
 	out := map[string]bool{}

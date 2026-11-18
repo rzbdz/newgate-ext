@@ -11,44 +11,45 @@ import (
 func TestValidateSnapshotRejectsUnmanagedPath(t *testing.T) {
 	sandbox(t)
 	files := snapshotFiles()
-	files["state.json"] = []byte("{}") // 机器本地状态，绝不该从网上写下来
+	files["state.json"] = []byte("{}") // machine-local state, never written from the network
 	_, err := ValidateSnapshot(paths.Config(), files)
 	if err == nil || !strings.Contains(err.Error(), "managed set") {
-		t.Fatalf("托管集合之外的文件必须被拒绝，实际: %v", err)
+		t.Fatalf("files outside the managed set must be refused, got: %v", err)
 	}
 }
 
-// TestValidateSnapshotRejectsInlineKey 是密钥纪律的地基：配置通道**不含密**。
+// TestValidateSnapshotRejectsInlineKey is the basis of key discipline: no secrets on the wire.
 //
-// providers.json 在宿主侧是 git 管的，内联一次就永久进历史。宿主上出现这种
-// 情况只有两种可能（版本太旧、有人手改），两种都该被拦下来，而不是让每台副本
-// 安静地把明文密钥写进自己的 providers.json。
+// providers.json is git-managed on the host, so inline once = in history forever. A
+// host in that state is either too old or hand-edited; both must be stopped, not
+// written in cleartext to every replica's providers.json.
 func TestValidateSnapshotRejectsInlineKey(t *testing.T) {
 	sandbox(t)
 	files := snapshotFiles()
 	files[ProvidersName] = []byte(`{"providers":{
-	  "leaky":{"base_url":"https://x","api_key":"sk-明文密钥"},
+	  "leaky":{"base_url":"https://x","api_key":"sk-cleartext-key"},
 	  "ok":{"base_url":"https://y","api_key_env":"OK_KEY"}
 	}}`)
 	_, err := ValidateSnapshot(paths.Config(), files)
 	if err == nil {
-		t.Fatal("内联 api_key 必须被拒绝")
+		t.Fatal("an inline api_key must be rejected")
 	}
 	if !strings.Contains(err.Error(), "leaky") {
-		t.Fatalf("错误文案该点名是哪个 provider: %v", err)
+		t.Fatalf("the error message should name the provider: %v", err)
 	}
 	if !strings.Contains(err.Error(), "secrets channel") {
-		t.Fatalf("错误文案该说清密钥该走哪条路: %v", err)
+		t.Fatalf("the error message should say which path the key must take: %v", err)
 	}
-	// api_key_env 是正当的，不该被误伤。
-	files[ProvidersName] = []byte(`{"providers":{"ok":{"base_url":"https://y","api_key_env":"OK_KEY"}}}`)
+	// api_key_env is legitimate; must not be caught by mistake.
+	files[ProvidersName] = []byte(`{"providers":{
+	  "ok":{"base_url":"https://y","api_key_env":"OK_KEY"}}}`)
 	if _, err := ValidateSnapshot(paths.Config(), files); err != nil {
-		t.Fatalf("api_key_env 不该被误判成内联密钥: %v", err)
+		t.Fatalf("api_key_env must not be mistaken for an inline key: %v", err)
 	}
-	// 完全没有密钥来源（等密钥通道）也是正当的。
+	// No key source at all (waiting for the secrets channel) is legitimate too.
 	files[ProvidersName] = validProviders()
 	if _, err := ValidateSnapshot(paths.Config(), files); err != nil {
-		t.Fatalf("没有密钥来源不该被拒绝: %v", err)
+		t.Fatalf("having no key source must not be rejected: %v", err)
 	}
 }
 
@@ -58,18 +59,20 @@ func TestValidateSnapshotRejectsBrokenFiles(t *testing.T) {
 		rel  string
 		data string
 	}{
-		{"providers 不是 JSON", ProvidersName, `{`},
-		{"档位 json 坏了", "mappings/prod.json", `{"roles":`},
-		{"档位 kv 不是 key=value", "mappings/prod.kv", `这就是一行中文`},
-		{"档位 kv 的未知 key", "mappings/prod.kv", "normal=smt-deepseek/x\n没听说过的键=y\n"},
-		{"meta 坏了", MetaFileName, `{`},
+		{"providers is not JSON", ProvidersName, `{`},
+		{"broken tier json", "mappings/prod.json", `{"roles":`},
+		// This line is deliberately not key=value (and deliberately Chinese: the point is
+		// text the kv parser cannot read at all).
+		{"tier kv is not key=value", "mappings/prod.kv", `这就是一行中文`},
+		{"tier kv with an unknown key", "mappings/prod.kv", "normal=smt-deepseek/x\nunknown-key=y\n"},
+		{"broken meta", MetaFileName, `{`},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			sandbox(t)
 			files := map[string][]byte{tc.rel: []byte(tc.data)}
 			if _, err := ValidateSnapshot(paths.Config(), files); err == nil {
-				t.Fatalf("%s 该被拒绝", tc.name)
+				t.Fatalf("%s should be rejected", tc.name)
 			}
 		})
 	}
@@ -78,50 +81,51 @@ func TestValidateSnapshotRejectsBrokenFiles(t *testing.T) {
 func TestValidateSnapshotAcceptsGoodKV(t *testing.T) {
 	sandbox(t)
 	files := map[string][]byte{
-		ProvidersName:      validProviders(),
-		"mappings/prod.kv": []byte("# 手写友好\nname=prod\nnormal=smt-deepseek/deepseek-chat\n"),
+		ProvidersName: validProviders(),
+		"mappings/prod.kv": []byte(
+			"# easy to hand-edit\nname=prod\nnormal=smt-deepseek/deepseek-chat\n"),
 	}
 	if _, err := ValidateSnapshot(paths.Config(), files); err != nil {
-		t.Fatalf("合法的 kv 该通过: %v", err)
+		t.Fatalf("a legitimate kv should pass: %v", err)
 	}
 }
 
-// TestValidateSnapshotWarnsButAccepts 锁住"语义疑点只警告、不拒绝"这条界限。
+// TestValidateSnapshotWarnsButAccepts pins the line: semantic doubts warn, never reject.
 //
-// 一个 provider 名字打错不该让整个车队收不到配置更新（fail-open）。宿主侧的
-// publish 会**拒绝**这些——那时是发布者当场改，代价为零；副本侧只报。
+// A mistyped provider name must not starve the fleet of config updates (fail-open).
+// Host publish **rejects** these (fixed on the spot, free); replicas only report.
 func TestValidateSnapshotWarnsButAccepts(t *testing.T) {
 	sandbox(t)
 	files := map[string][]byte{
-		// glm 有 api_key_env（正当），bare 两者都没有（密钥该来自密钥通道）。
-		// 只该提醒后者——把有 api_key_env 的也报出来就是假警告，而假警告多了
-		// 真警告就没人看了。
+		// glm has api_key_env (legitimate); bare has neither (key should come via the channel).
+		// Only the latter should be reported - flagging api_key_env too is a false warning,
+		// and enough false warnings means nobody reads the real ones.
 		ProvidersName: []byte(`{"providers":{
 		  "glm":{"base_url":"https://g","api_key_env":"G"},
 		  "bare":{"base_url":"https://b"}
 		}}`),
 		"mappings/prod.json": []byte(`{"name":"prod","roles":{
-		  "normal":[{"provider":"打错的provider","model":"x"}]}}`),
+		  "normal":[{"provider":"typo-provider","model":"x"}]}}`),
 	}
 	warns, err := ValidateSnapshot(paths.Config(), files)
 	if err != nil {
-		t.Fatalf("悬空引用不该拒绝整个快照: %v", err)
+		t.Fatalf("a dangling reference must not reject the whole snapshot: %v", err)
 	}
 	joined := strings.Join(warns, "\n")
-	if !strings.Contains(joined, "打错的provider") {
-		t.Fatalf("该报出悬空的 provider 引用，实际: %v", warns)
+	if !strings.Contains(joined, "typo-provider") {
+		t.Fatalf("the dangling provider reference should be reported, got: %v", warns)
 	}
 	if !strings.Contains(joined, "provider bare has no api_key_env") {
-		t.Fatalf("该提醒 bare 没有密钥来源，实际: %v", warns)
+		t.Fatalf("it should warn that bare has no key source, got: %v", warns)
 	}
 	if strings.Contains(joined, "provider glm") {
-		t.Fatalf("glm 有 api_key_env，不该被提醒（这是假警告）: %v", warns)
+		t.Fatalf("glm has api_key_env and must not be warned about (that is a false warning): %v", warns)
 	}
 }
 
-// TestValidateSnapshotNoFalseWarningForLocalExtends：档位 extends 一个**本机
-// 私有**的档位是正当用法。不把本地档位算进已知集合的话，每轮都会报一条假
-// 警告——假警告多了，真警告就没人看了。
+// TestValidateSnapshotNoFalseWarningForLocalExtends: a tier extending a **machine-private**
+// tier is legitimate. Without local tiers in the known set, every round emits a false
+// warning - and enough false warnings means nobody reads the real ones.
 func TestValidateSnapshotNoFalseWarningForLocalExtends(t *testing.T) {
 	sandbox(t)
 	writeLive(t, "mappings/local-base.json", []byte(`{"name":"local-base","roles":{}}`))
@@ -131,11 +135,11 @@ func TestValidateSnapshotNoFalseWarningForLocalExtends(t *testing.T) {
 	}
 	warns, err := ValidateSnapshot(paths.Config(), files)
 	if err != nil {
-		t.Fatalf("不该拒绝: %v", err)
+		t.Fatalf("it must not be rejected: %v", err)
 	}
 	for _, w := range warns {
 		if strings.Contains(w, "local-base") {
-			t.Fatalf("extends 本机私有的档位是正当的，不该报警告: %v", warns)
+			t.Fatalf("extends a machine-private tier is legitimate and must not warn: %v", warns)
 		}
 	}
 }
@@ -145,75 +149,80 @@ func TestMaterializeWritesSkipsAndRemoves(t *testing.T) {
 	first := snapshotFiles()
 	res, err := Materialize(paths.Config(), first, nil)
 	if err != nil {
-		t.Fatalf("落盘失败: %v", err)
+		t.Fatalf("writing to disk failed: %v", err)
 	}
 	if len(res.Written) != 3 || len(res.Removed) != 0 {
-		t.Fatalf("首次该写 3 个文件，实际 written=%v removed=%v", res.Written, res.Removed)
+		t.Fatalf("the first round should write 3 files, got written=%v removed=%v",
+			res.Written, res.Removed)
 	}
 	for rel := range first {
 		if !existsLive(rel) {
-			t.Fatalf("%s 没落盘", rel)
+			t.Fatalf("%s was not written", rel)
 		}
 	}
 
-	// 第二轮：内容一致 → 一个都不写（不碰 mtime = 不给 watcher 制造假变化）。
+	// Round 2: identical content -> nothing written (no mtime touch, no fake watcher change).
 	res2, err := Materialize(paths.Config(), first, res.Manifest)
 	if err != nil {
-		t.Fatalf("第二次落盘失败: %v", err)
+		t.Fatalf("the second write failed: %v", err)
 	}
 	if len(res2.Written) != 0 || len(res2.Unchanged) != 3 {
-		t.Fatalf("内容一致时该全部跳过，实际 written=%v unchanged=%v", res2.Written, res2.Unchanged)
+		t.Fatalf("identical content should be skipped entirely, got written=%v unchanged=%v",
+			res2.Written, res2.Unchanged)
 	}
 
-	// 第三轮：宿主下线一个档位 + 改一个 provider 表。
+	// Round 3: the host retires one tier and changes one provider table.
 	third := snapshotFiles()
 	delete(third, "mappings/prod.json")
-	third[ProvidersName] = []byte(`{"providers":{"只有这个":{"base_url":"https://only"}}}`)
+	third[ProvidersName] = []byte(`{"providers":{"only this":{"base_url":"https://only"}}}`)
 	res3, err := Materialize(paths.Config(), third, res2.Manifest)
 	if err != nil {
-		t.Fatalf("第三次落盘失败: %v", err)
+		t.Fatalf("the third write failed: %v", err)
 	}
 	if len(res3.Removed) != 1 || res3.Removed[0] != "mappings/prod.json" {
-		t.Fatalf("下线的档位该被删掉，实际 %v", res3.Removed)
+		t.Fatalf("the retired tier should be removed, got %v", res3.Removed)
 	}
 	if existsLive("mappings/prod.json") {
-		t.Fatal("下线的档位还在——只写不删的话，@prod 之类引用会永远解析得到东西")
+		t.Fatal("the retired tier is still there - if we only write and never delete, " +
+			"references like @prod would always resolve to something")
 	}
-	if !strings.Contains(string(readLive(t, ProvidersName)), "只有这个") {
-		t.Fatal("改过的 provider 表没落盘")
+	if !strings.Contains(string(readLive(t, ProvidersName)), "only this") {
+		t.Fatal("the modified provider table was not written")
 	}
 }
 
-// TestMaterializeKeepsLocalFiles：**只删我们写过的**。本地层的文件永远不该被
-// 这个函数碰——那是"两层配置"里属于用户的那一层。
+// TestMaterializeKeepsLocalFiles: **delete only what we wrote**. Local-layer files must
+// never be touched by this function - that is the user's layer of the "two-layer config".
 func TestMaterializeKeepsLocalFiles(t *testing.T) {
 	sandbox(t)
 	writeLive(t, "mappings/local-only.json", []byte(`{"name":"local-only"}`))
 	applied := applyFiles(t, snapshotFiles())
 
+	// Retire the managed tier in the same round, to confirm only our own files go.
 	next := snapshotFiles()
-	delete(next, "mappings/prod.json") // 连托管的下线一起做，确认只删自己的
+	delete(next, "mappings/prod.json")
 	if _, err := Materialize(paths.Config(), next, applied); err != nil {
-		t.Fatalf("落盘失败: %v", err)
+		t.Fatalf("writing to disk failed: %v", err)
 	}
 	if !existsLive("mappings/local-only.json") {
-		t.Fatal("本地层的文件被删了——materialize 只该删自己清单里的东西")
+		t.Fatal("a local-layer file was deleted - materialize must only delete " +
+			"what is in its own manifest")
 	}
 }
 
 func TestMaterializeFileMode(t *testing.T) {
 	sandbox(t)
 	if _, err := Materialize(paths.Config(), snapshotFiles(), nil); err != nil {
-		t.Fatalf("落盘失败: %v", err)
+		t.Fatalf("writing to disk failed: %v", err)
 	}
-	// 0660 而不是靠 umask：CLAUDE.md §3.1 记着这个坑（root 写出的文件被削成 0640，
-	// 之后以 claude 跑的 daemon 就写不了）。
+	// 0660 rather than relying on umask: CLAUDE.md §3.1 records this trap (root-written
+	// files end up 0640, and a daemon running as claude then cannot write them).
 	fi, err := os.Stat(filepath.Join(paths.Config(), ProvidersName))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if fi.Mode().Perm() != 0o660 {
-		t.Fatalf("托管文件权限该是 0660，实际 %v", fi.Mode().Perm())
+		t.Fatalf("managed files should be mode 0660, got %v", fi.Mode().Perm())
 	}
 }
 
@@ -221,38 +230,40 @@ func TestSecretsMaterialize(t *testing.T) {
 	sandbox(t)
 	path := secretsPath()
 
-	// 还没有文件时读出来是空表，不是错误。
+	// With no file yet it reads as an empty table, not an error.
 	sf, err := LoadSecretsFile(path)
 	if err != nil || len(sf.Keys) != 0 {
-		t.Fatalf("缺席该给空表，实际 %+v / %v", sf, err)
+		t.Fatalf("absence should give an empty table, got %+v / %v", sf, err)
 	}
 	if _, ok := LookupSecret(path, "smt-deepseek"); ok {
-		t.Fatal("没有文件时不该查出密钥")
+		t.Fatal("no secrets should be found when there are no files")
 	}
 
 	sum, err := MaterializeSecrets(path, map[string]string{"smt-deepseek": "sk-abc", "glm": "sk-def"})
 	if err != nil {
-		t.Fatalf("落盘失败: %v", err)
+		t.Fatalf("writing to disk failed: %v", err)
 	}
 	if v, ok := LookupSecret(path, "smt-deepseek"); !ok || v != "sk-abc" {
-		t.Fatalf("查不到刚写的密钥: %q %v", v, ok)
+		t.Fatalf("cannot find the secret just written: %q %v", v, ok)
 	}
-	// 0600：谁能读它谁就能直接花掉那份订阅（providers.json 的 0660 是有意的组内
-	// 可见，明文密钥不是）。
+	// 0600: whoever can read it can spend that subscription (providers.json's 0660 is
+	// deliberate group visibility; a cleartext key is not).
 	fi, err := os.Stat(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if fi.Mode().Perm() != 0o600 {
-		t.Fatalf("secrets.json 权限该是 0600，实际 %v", fi.Mode().Perm())
+		t.Fatalf("secrets.json should be mode 0600, got %v", fi.Mode().Perm())
 	}
 
-	// 同样的内容再写一次：哈希不变（幂等），文件不被重写。
-	again, err := MaterializeSecrets(path, map[string]string{"glm": "sk-def", "smt-deepseek": "sk-abc"})
+	// Write the same content again: the hash is unchanged (idempotent), nothing is rewritten.
+	again, err := MaterializeSecrets(path,
+		map[string]string{"glm": "sk-def", "smt-deepseek": "sk-abc"})
 	if err != nil {
-		t.Fatalf("重写失败: %v", err)
+		t.Fatalf("rewrite failed: %v", err)
 	}
 	if again != sum {
-		t.Fatalf("同样内容该给同样的哈希：%s vs %s（顺序不同也必须一样，否则每轮都认为变了）", again, sum)
+		t.Fatalf("the same content should give the same hash: %s vs %s (a different order must "+
+			"not matter, or every round would look changed)", again, sum)
 	}
 }

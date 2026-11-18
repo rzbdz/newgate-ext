@@ -14,45 +14,48 @@ import (
 	"github.com/rzbdz/newgate/lib/i18n"
 )
 
-// 本文件是 **codex 的接管**：改写 `~/.codex/config.toml`，把它指到本地代理。
+// This file is **codex's takeover**: rewriting
+// `~/.codex/config.toml` to point it at the local proxy.
 //
-// # 为什么是 TOML 而不是环境变量
+// # Why TOML rather than environment variables
 //
-// 另外两家客户端都有 env 入口（claude 是 ANTHROPIC_BASE_URL，opencode 是
-// opencode.json），codex 没有：它的 base_url、provider、模型名**只认那份 TOML**
-// （`-c key=value` 是命令行覆盖，不是常驻配置）。所以 codex 走的是 MechConfig
-// 那条路——与 opencode 同机制，而不是 shim。
+// The other two clients both have an env entry point (claude has ANTHROPIC_BASE_URL,
+// opencode has opencode.json), codex has none: its base_url, provider and model names
+// **come only from that TOML** (`-c key=value` is a command-line override, not standing
+// config). So codex takes the MechConfig path -- the same mechanism as opencode, not a shim.
 //
-// # 为什么是字节手术，不是 TOML 往返
+// # Why byte surgery, not a TOML round trip
 //
-// `~/.codex/config.toml` 是**人手写的**，里面有注释、有 `[projects."/root"]` 这种
-// 一路长出来的段、还有 `[notice.model_migrations]` 这种它自己记的账。做一次
-// 解析→序列化的往返，这些全会消失——而「配置里我写的注释没了」正是那种用户会
-// 记很久、我们却不会因此变红的损失（与内核那条「请求体不做 JSON 往返」同源）。
+// `~/.codex/config.toml` is **hand-written**: it has comments, sections that grew over
+// time like `[projects."/root"]`, and its own bookkeeping like `[notice.model_migrations]`. A
+// parse-then-serialize round trip would make all of that disappear -- and "the comments I wrote
+// in my config are gone" is exactly the loss users remember for a long time while nothing turns
+// red for us (the same root cause as the kernel's "the request body does no JSON round trip").
 //
-// 所以这里只做三件事，每件都只碰它该碰的那几行：
+// So there are only three things here, and each touches only the lines it should:
 //
-//	顶层 `model`           → 档位名（语义档位，见 docs/01-product.md）
-//	顶层 `model_provider`  → newgate
-//	`[model_providers.newgate]` 整段 → 指向本地代理
+//	top-level `model`          -> the tier name (semantic tier, see docs/01-product.md)
+//	top-level `model_provider` -> newgate
+//	the whole `[model_providers.newgate]` section -> point at the local proxy
 
-// ProviderID 是我们在 config.toml 里占的那个 provider 名。
+// ProviderID is the provider name we occupy in config.toml.
 //
-// 用 "newgate" 而不是 "openai" 之类的名字：codex 对**内置** provider id 有保留
-// （实测它的报错原文是 `model_providers contains reserved built-in provider IDs`），
-// 而 newgate 不在保留名单里。
+// "newgate" rather than something like "openai": codex reserves **built-in**
+// provider ids (measured, its error text is `model_providers contains
+// reserved built-in provider IDs`), and newgate is not on the reserved list.
 const ProviderID = "newgate"
 
-// providerTable 是那段配置的表头。IsTakenOver 与改写都以它为准——**一处定义**，
-// 免得「判断是否接管过」与「改写哪一段」对不上（那会导致重复接管时反复插入）。
+// providerTable is the header of that config section. IsTakenOver and the rewrite
+// both go by it -- **defined once**, so "is it taken over" and "which section to
+// rewrite" cannot disagree (which would mean repeated insertion on a second takeover).
 const providerTable = "[model_providers." + ProviderID + "]"
 
-// ConfigPath 是 codex 读的那份文件。
+// ConfigPath is the file codex reads.
 //
-// `$CODEX_HOME` 优先，因为那是 codex 自己的规矩（它内部就是
-// `os.environ.get("CODEX_HOME", "~/.codex")`）。写死 `~/.codex` 会让「用
-// CODEX_HOME 隔离一次会话」的人接管到别处去：他改的那份没动，我们动的那份他
-// 没在用——而两边看起来都成功了。
+// `$CODEX_HOME` wins, because that is codex's own rule (internally
+// it is `os.environ.get("CODEX_HOME", "~/.codex")`). Hardcoding `~/.codex` would make anyone
+// who "isolates one session with CODEX_HOME" take over somewhere else: the copy they edited is
+// untouched, and the copy we edited is the one they are not using -- while both look successful.
 func ConfigPath() string {
 	if h := strings.TrimSpace(getenv("CODEX_HOME")); h != "" {
 		return filepath.Join(h, "config.toml")
@@ -60,29 +63,32 @@ func ConfigPath() string {
 	return filepath.Join(paths.Home(), ".codex", "config.toml")
 }
 
-// getenv 是这一层唯一的间接：测试要能把 CODEX_HOME 指到沙箱，而**不能**动真实
-// 用户的 ~/.codex（那是「测试不碰真实配置」那条规矩的落点）。
+// getenv is this layer's only indirection: tests must be able to point
+// CODEX_HOME at a sandbox, and **must not** touch the real user's
+// ~/.codex (the landing point of "tests do not touch real config").
 var getenv = os.Getenv
 
-// Takeover 是交给 confighook 的那份接管。
+// Takeover is the takeover handed to confighook.
 //
-// **它没有字段**，这是刻意的：接管要用到的两个值（档位、窗口声明）都在 Apply
-// 那一刻现算（见 tierOf / contextWindow）。2026-09-21 的第一版把它们做成了两个
-// 函数字段、由 module.go 传闭包进来——那件东西是「DI 的样子，没有 DI 的实质」：
-// 同包内、每个只有一个实现、求值时机与直接调用完全一样。它买到的唯一东西是
-// 「看起来可以替换」，而代价是读的人要多跳一层才知道值从哪来。
+// **It has no fields**, deliberately: the two values takeover needs (tier, window
+// declaration) are computed at the moment of Apply (see tierOf / contextWindow). The first
+// version on 2026-09-21 made them two function fields, with module.go passing closures in --
+// that thing was "the look of DI without the substance of DI": same package, one implementation
+// each, evaluation time exactly the same as a direct call. The only thing it bought was "looks
+// replaceable", at the cost of one extra hop for the reader to find where the value comes from.
 //
-// 真要可替换的东西，判据是**它是不是一条能力缝**：别人提供、别人可以不给
-// （那就是 confighook 的 AgentFacts，走的是注册端口，不是字段）。
+// The real criterion for replaceable is **whether it is a capability seam**:
+// someone else provides it, someone else may not (that is confighook's
+// AgentFacts, which goes through a registration port, not a field).
 type Takeover struct{}
 
 var _ agentapi.ConfigTakeover = Takeover{}
 
 func (Takeover) Targets() []string { return []string{ConfigPath()} }
 
-// IsTakenOver 判据是**那段表头在不在**，不是「文件里出现过 newgate 这个词」：
-// 后者会被用户自己写的一句注释命中，于是 `newgate off codex` 会去还原一份我们从
-// 没改过的文件（覆盖掉他刚写的东西）。
+// IsTakenOver's criterion is **whether that section header is present**, not "the word newgate
+// appears in the file": the latter would be hit by a comment the user wrote himself, and then
+// `newgate off codex` would restore a file we never changed (overwriting what he just wrote).
 func (Takeover) IsTakenOver(target string) bool {
 	b, err := ioutil.ReadFile(target)
 	if err != nil {
@@ -95,12 +101,13 @@ func hasMarker(b []byte) bool {
 	return strings.Contains(string(b), providerTable)
 }
 
-// Apply 改写目标文件。找不到那个文件时**不创建**，报一句让人能行动的话。
+// Apply rewrites the target file. When the file is missing it
+// **does not create** one, but reports a line the user can act on.
 //
-// 为什么不像 opencode 那样「不存在就跳过」：opencode 的目标里有几份是可选的
-// （omo 那份可以没有），而 codex 的 config.toml 是它唯一的位置——一台装了 codex
-// 的机器上它一定在（codex 自己会建）。不在 = 这台机器上根本没有 codex，
-// 那正是该说出来的事，而不是安静地跳过。
+// Why not "skip if absent" like opencode: several of opencode's targets are optional (the omo
+// one may be missing), while codex's config.toml is its only location -- on a machine with
+// codex installed it is always there (codex creates it itself). Absent = there is no codex
+// on this machine at all, and that is exactly what should be said, not silently skipped.
 func (t Takeover) Apply(port int) ([]*agentapi.TakeoverReport, error) {
 	target := ConfigPath()
 	rep := &agentapi.TakeoverReport{File: target}
@@ -121,7 +128,8 @@ func (t Takeover) Apply(port int) ([]*agentapi.TakeoverReport, error) {
 	return []*agentapi.TakeoverReport{rep}, agentapi.WriteAtomic(target, []byte(out), 0o600)
 }
 
-// Restore 从 original/ 还原。逃生舱：还原之后删掉 newgate，codex 照常能用。
+// Restore restores from original/. The escape hatch: after
+// restoring, delete newgate and codex works as usual.
 func (Takeover) Restore() ([]string, error) {
 	target := ConfigPath()
 	done, err := agentapi.RestoreFile(target)
@@ -131,16 +139,17 @@ func (Takeover) Restore() ([]string, error) {
 	return []string{target}, nil
 }
 
-// ---------- TOML 手术 ----------
+// ---------- TOML surgery ----------
 
-// want 是这次接管要写进 config.toml 的那几个值。
+// want is the set of values this takeover writes into config.toml.
 //
-// 为什么是一个结构体而不是一长串参数：codex 的模型**不止一个**（见 agent.go 的
-// 槽位表），以后还可能再多一个；一串位置参数加到第三个就没人记得住顺序了，而
-// 「把 review 的档位写进了主模型」这种错在界面上完全看不出来。
+// Why a struct rather than a long parameter list: codex has **more than one**
+// model (see the slot table in agent.go), and there may be one more later; by
+// the third positional parameter nobody remembers the order, and "the review
+// tier was written into the main model" is completely invisible in the UI.
 //
-// 空串 / 0 = **不写这一行**（不是写一个空值）：codex 自己的缺省行为与我们猜一个
-// 值相比，前者永远更对。
+// Empty string / 0 = **do not write this line** (not write an empty
+// value): codex's own default is always more right than a value we guessed.
 type want struct {
 	Model         string // 主模型走哪一档
 	ReviewModel   string // `codex review` 走哪一档
@@ -148,7 +157,7 @@ type want struct {
 	AutoCompact   int    // 自动压缩阈值（0 = 不声明）
 }
 
-// values 是「键 → 要写进去的字面量」。**只包含要写的那些**。
+// values is "key -> literal to write". **Only the ones to write**.
 func (w want) values() map[string]string {
 	out := map[string]string{"model_provider": quote(ProviderID)}
 	if w.Model != "" {
@@ -166,15 +175,17 @@ func (w want) values() map[string]string {
 	return out
 }
 
-// order 是新键补进文件时的**固定顺序**（理由见 rewrite 里补键那一段）。
+// order is the **fixed order** used when adding new keys to
+// the file (for the why, see the add-key part in rewrite).
 func (w want) order() []string {
 	return []string{"model", "model_provider", "review_model",
 		"model_context_window", "model_auto_compact_token_limit"}
 }
 
-// wanted 问出这一刻该写的全部值。
+// wanted computes every value to write at this moment.
 //
-// 每一格都在**这一刻**现算：槽位映射、活动 profile、以及接管模式都是用户随时能改的。
+// Every cell is computed **at this moment**: the slot mapping, the active
+// profile and the takeover mode can all be changed by the user at any time.
 func wanted() want {
 	return want{
 		Model:         slotValue("model"),
@@ -184,16 +195,18 @@ func wanted() want {
 	}
 }
 
-// slotValue 是这次接管要写进 `<slot>` 的那个值。取值取决于**接管模式**（见 models.go）：
+// slotValue is the value this takeover writes for `<slot>`.
+// It depends on the **takeover mode** (see models.go):
 //
-//	takeover（缺省）  档位名，`model = "normal"`——2026-09-21 之前唯一的行为。
-//	rename            codex 自己的模型名，`model = "gpt-5.6-luna"`，由那张表按档位
-//	                  反查。于是 codex 的选择器里列的是它认识的模型，而每一个名字
-//	                  在请求进来时被认回档位：**在 codex 里换模型 = 换档位**。
+//	takeover (default) -> the tier name, `model = "normal"` (as before 2026-09-21).
+//	rename -> codex's own model name, `model = "gpt-5.6-luna"`, from the table by tier.
+//	  So its picker lists models it knows, and each name is recognized back as a tier:
+//	  **switch models in codex = switch tiers**.
 //
-// 反查不到（表被改窄了、某一档没有对应的 codex 模型）就**回落成档位名**：接管不该
-// 因为一张表配窄了而写不出东西，那只是这一档没有对应名字而已，行为与 takeover 模式
-// 一致——而那是它本来就有的行为。
+// When the reverse lookup fails (the table was narrowed, a tier has no corresponding codex
+// model) it **falls back to the tier name**: takeover should not be unable to write anything
+// because a table was configured too narrowly; it just means this tier has no corresponding
+// name, and the behavior is the same as takeover mode -- which is its behavior anyway.
 func slotValue(slot string) string {
 	tier := tierFor(slot)
 	if Mode() == ModeRename {
@@ -204,18 +217,19 @@ func slotValue(slot string) string {
 	return tier
 }
 
-// rewrite 是**纯函数**：给一份 TOML 原文，还一份改过的 + 一份「改了哪几处」的
-// 账。写成纯函数是为了它能被单测直接钉住——接管这件事最容易坏的地方就是
-// 「改错了行」或「多插了一段」，而这两种错在真机上都要等用户发现。
+// rewrite is a **pure function**: given a TOML source, it returns the changed copy
+// plus an account of "what changed where". Pure so unit tests can pin it directly
+// -- the most breakable things about takeover are "changed the wrong line" and
+// "inserted an extra section", and both are only found by users on a real machine.
 func rewrite(src string, port int, w want) (string, []string) {
 	lines := strings.Split(src, "\n")
 	var reps []string
 
-	// ---- 1. 顶层标量 ----
+	// ---- 1. top-level scalars ----
 	//
-	// 只认**第一个表头之前**的键：`[projects."/root"]` 底下也有 `model` 级别的
-	// 短键（`trust_level` 就是），而 TOML 里同名的键在各表里互不相干——认错了
-	// 表就会去改一个跟模型毫无关系的值。
+	// Only keys **before the first table header** count: `[projects."/root"]` also has short keys at
+	// the `model` level (`trust_level` is one), and in TOML same-named keys in different tables are
+	// unrelated -- pick the wrong table and it changes a value that has nothing to do with models.
 	values := w.values()
 	seen := map[string]bool{}
 	inTable := false
@@ -243,20 +257,23 @@ func rewrite(src string, port int, w want) (string, []string) {
 		lines[i] = k + " = " + v
 	}
 
-	// 缺的键补在**文件最前面**：顶层键写在表头之后就会变成那个表的键（TOML 没有
-	// 「回到顶层」的写法），所以补的位置只有第一个表头之前。插在最前面而不是
-	// 第一个表头之前，是因为后者要处理「前面有没有空行」这类排版细节，而排在最上面
-	// 的代价只是用户的注释往下挪了一行。
+	// Missing keys go at the **very top of the file**: a top-level key written after a
+	// table header becomes that table's key (TOML has no "back to top level" syntax), so the only
+	// place to add one is before the first table header. At the very top rather than just before
+	// the first header, because the latter means handling layout details like "is there a blank
+	// line before it", while the cost of the top is just the user's comment moving down one line.
 	//
-	// 顺序按 `order` 走（不是 map 的迭代序）：这份文件是给人看的，而我们每接管
-	// 一次就可能重排它——同一份配置接管两次排出两种样子，用户会以为我们改了别的东西。
+	// The order follows `order` (not map iteration order): this file is for humans,
+	// and we may reorder it on every takeover -- the same config taken over twice
+	// coming out in two shapes would make the user think we changed something else.
 	var head []string
 	for _, k := range w.order() {
 		v, isWanted := values[k]
-		// `values()` 只给**要写的**那些键，而 order 列的是全部可能写的键——两者
-		// 不一致时以 values 为准。少了这一句，没值的键会被写成 `review_model = `
-		// （一个空值），而 TOML 里那不是「没配」，是一个**空字符串**：codex 会拿它
-		// 当模型名发到上游。实测踩到（幂等那条测试先红的）。
+		// `values()` gives only the keys **to write**, while order lists every key that
+		// could be written -- when the two disagree, values wins. Without this check a
+		// valueless key is written as `review_model = ` (an empty value), and in TOML that
+		// is not "not configured", it is an **empty string**: codex would send it to the
+		// upstream as the model name. Measured hit (the idempotency test went red first).
 		if !isWanted || seen[k] {
 			continue
 		}
@@ -267,7 +284,7 @@ func rewrite(src string, port int, w want) (string, []string) {
 		lines = append(head, lines...)
 	}
 
-	// ---- 2. provider 段 ----
+	// ---- 2. the provider section ----
 	block := providerBlock(port)
 	start, end := -1, -1
 	for i, ln := range lines {
@@ -288,7 +305,8 @@ func rewrite(src string, port int, w want) (string, []string) {
 		lines = out
 		reps = append(reps, i18n.T("{table} rewritten", i18n.A{"table": providerTable}))
 	} else {
-		// 追加到末尾：表头之前先空一行，免得跟上一个表的最后一个键粘在一起。
+		// Append at the end: one blank line before the header, so
+		// it does not stick to the last key of the previous table.
 		if n := len(lines); n > 0 && strings.TrimSpace(lines[n-1]) != "" {
 			lines = append(lines, "")
 		}
@@ -297,20 +315,22 @@ func rewrite(src string, port int, w want) (string, []string) {
 	}
 
 	out := strings.Join(lines, "\n")
-	// 原文以换行结尾时，结果也要（追加那段之后，末尾那个空元素会跑到中间去）。
-	// 少了它，文件在一次接管之后会多出「\ No newline at end of file」这条无谓的
-	// diff——用户 review 我们的改动时会以为我们碰了最后一行。
+	// If the source ends with a newline, the result should too (after appending
+	// that block, the empty last element ends up in the middle). Without this the
+	// file gains a pointless "\ No newline at end of file" diff after one takeover
+	// -- the user reviewing our change would think we touched the last line.
 	if strings.HasSuffix(src, "\n") && !strings.HasSuffix(out, "\n") {
 		out += "\n"
 	}
 	return out, reps
 }
 
-// topLevelKey 从一行里取出 `键 = 值` 的键。
+// topLevelKey pulls the key out of a line of the form `key = value`.
 //
-// 判据刻意挑剔（空行、注释、表头、带空格或引号的键一律不算），因为它唯一的用途
-// 是「顶层标量」——而顶层标量的键一定是裸标识符。宽一点就会把
-// `[projects."/root"]` 里那种带引号的键也认进来。
+// Deliberately picky (blank lines, comments, table headers, keys with spaces
+// or quotes are all rejected), because its only use is "top-level scalars"
+// -- and a top-level scalar's key is always a bare identifier. Looser and
+// it would also accept quoted keys like the ones in `[projects."/root"]`.
 func topLevelKey(line string) (string, bool) {
 	t := strings.TrimSpace(line)
 	if t == "" || strings.HasPrefix(t, "#") || strings.HasPrefix(t, "[") {
@@ -327,24 +347,27 @@ func topLevelKey(line string) (string, bool) {
 	return k, true
 }
 
-// providerBlock 是那段指向本地代理的配置。
+// providerBlock is the config section pointing at the local proxy.
 //
-// 两处值得解释：
+// Two things are worth explaining:
 //
-//   - `wire_api = "responses"`：codex 0.155（2026-09-21 实测）**不再支持**
-//     `wire_api = "chat"`，报错原文是 `wire_api = "chat" is no longer supported`。
-//     它说的是 Responses API，而我们的转发是纯字节直通——上游那份中继实测认
-//     `/v1/responses`（400 缺模型，不是 404），所以这一条不用做协议转换。
-//   - `requires_openai_auth = false`：本地代理根本不校验这个 token（数据面把客户端
-//     的 Authorization 一律丢掉、换成上游真 key），所以没必要让用户去管一个环境变量。
-//     代价写清楚：**别把这份 TOML 当成能保护代理的东西**，它指向的是一个只听
-//     127.0.0.1 的本地端口。
+//   - `wire_api = "responses"`: codex 0.155 (measured 2026-09-21) **no longer supports** `wire_api =
+//     "chat"`; its error text is `wire_api = "chat" is no longer supported`. It means the Responses
+//     API, and our forwarding is pure byte pass-through -- the upstream relay was measured to accept
+//     `/v1/responses` (400 missing model, not 404), so this line needs no protocol conversion.
+//   - `requires_openai_auth = false`: the local proxy never checks
+//     this token anyway (the data plane drops the client's Authorization and replaces
+//     it with the upstream's real key), so there is no reason to make the user manage
+//     an environment variable. The cost, plainly: **do not treat this TOML as something
+//     that protects the proxy**; it points at a local port listening on 127.0.0.1 only.
 //
-// **不要退回 `env_key`**（2026-09-21 实测）：`env_key` 指向一个当时没设的环境变量
-// 时，codex 不是报错而是**卡住**——`codex exec` 跑满 90 秒超时（exit 124），
-// 输出停在 `Reading additional input from stdin...`。那正是「用户绕过 shim 直接敲
-// codex」的常见情形，而症状是一个不说明原因就挂住的 CLI，极难归因。两个都写也救
-// 不了（同时给 `env_key` 与 `requires_openai_auth = false`、env 不给，同样超时）。
+// **Do not go back to `env_key`** (measured 2026-09-21): when `env_key` points at an
+// environment variable that is not set, codex does not error, it **hangs** -- `codex exec`
+// ran the full 90-second timeout (exit 124), with output stopped at `Reading additional
+// input from stdin...`. That is exactly the common case of "the user bypasses the shim
+// and calls codex directly", and the symptom is a CLI that hangs with no explanation,
+// extremely hard to attribute. Writing both does not help either (giving `env_key` and
+// `requires_openai_auth = false` together, with the env var unset, still times out).
 func providerBlock(port int) []string {
 	return []string{
 		providerTable,
@@ -355,37 +378,43 @@ func providerBlock(port int) []string {
 	}
 }
 
-// quote 把值写成 TOML 的基本字符串。
+// quote writes the value as a TOML basic string.
 func quote(s string) string { return `"` + s + `"` }
 
-// contextWindow 取这个客户端此刻该声明的窗口。
+// contextWindow gets the window this client should declare at this moment.
 //
-// 来源是**活动 profile 的 ContextWindow**（`docs/04-configuration.md`）——那正是
-// claude 侧走 CLAUDE_CODE_MAX_CONTEXT_TOKENS 的同一个数。取不到（没配、profile
-// 读不出来）就返回 0，也就是**不写这一行**：codex 会用它的兜底元数据并打一句
-// 警告，而那句警告是诚实的——比我们瞎猜一个数让它按错误的窗口 compact 强。
+// The source is the **active profile's ContextWindow** (`docs/04-configuration.md`) -- the
+// very same number the claude side uses for CLAUDE_CODE_MAX_CONTEXT_TOKENS. When it cannot
+// be obtained (not configured, profile unreadable) it returns 0, i.e. **do not write this
+// line**: codex will use its fallback metadata and print a warning, and that warning is
+// honest -- better than us guessing a number and making it compact by the wrong window.
 //
-// 代价说清楚：profile 换了（档位绑到另一家模型）之后这个数不会自己跟着变，
-// 要重新 `newgate on codex`。这与 docs/03 §3.3 那条「改了注入内容要重新接管一次」
-// 是同一件事，不是新加的坑。
+// The cost, plainly: when the profile changes (a tier bound to another model) this number
+// does not follow by itself; `newgate on codex` has to be run again. This is the same
+// thing as docs/03 §3.3's "changed injected content needs another takeover", not a new pit.
 func contextWindow() int { return profileValue(func(p *domain.Profile) int { return p.ContextWindow }) }
 
-// autoCompactWindow 取这个客户端此刻该声明的自动压缩阈值，取不到返回 0。
+// autoCompactWindow gets the auto-compact threshold this client
+// should declare at this moment; 0 when it cannot be obtained.
 //
-// 它是 claude 那边 `CLAUDE_CODE_AUTO_COMPACT_WINDOW` 的对位物（见 agent.go）：
-// codex 自己会按窗口估算什么时候压缩，而它估的那个数来自**它以为的**模型元数据
-// ——那份元数据对档位名是不存在的（接管时会打一句 `Model metadata for 'X' not
-// found`）。档位映射到真模型这件事只有 newgate 知道，所以这个数也只能由我们给。
+// It is the counterpart of claude's `CLAUDE_CODE_AUTO_COMPACT_WINDOW` (see agent.go):
+// codex estimates by itself when to compact based on the window, and the number it
+// estimates comes from **what it thinks** the model metadata is -- and that metadata
+// does not exist for tier names (takeover prints `Model metadata for 'X' not found`).
+// Only newgate knows which real model a tier maps to, so only we can give this number.
 func autoCompactWindow() int {
 	return profileValue(func(p *domain.Profile) int { return p.AutoCompactWindow })
 }
 
-// profileValue 从**活动 profile** 里取一个数；取不到（没配、profile 读不出来）返回 0。
+// profileValue takes a number from the **active profile**; 0 when
+// it cannot be obtained (not configured, profile unreadable).
 //
-// 0 的含义是「不声明」，不是「声明成 0」——codex 自己的缺省行为比我们猜一个数更对。
+// 0 means "do not declare", not "declare 0" -- codex's
+// own default is more right than a number we guessed.
 //
-// 代价说清楚：profile 换了（档位绑到另一家模型）之后这个数不会自己跟着变，要重新
-// `newgate on codex`。这与 docs 那条「改了注入内容要重新接管一次」是同一件事。
+// The cost, plainly: when the profile changes (a tier bound to another model) this
+// number does not follow by itself; `newgate on codex` has to be run again. This
+// is the same thing as the docs' "changed injected content needs another takeover".
 func profileValue(get func(*domain.Profile) int) int {
 	snap, err := store.Load()
 	if err != nil || snap == nil {
@@ -400,14 +429,17 @@ func profileValue(get func(*domain.Profile) int) int {
 	return 0
 }
 
-// tierFor 取某个槽位此刻该用的档位；没有这个槽位返回空串（= 不写那一行）。
+// tierFor gets the tier a slot should use at this moment; the empty
+// string when there is no such slot (= do not write that line).
 //
-// 走的是**槽位那一套**（与 claude 的档位映射同一份知识、同一张卡）：codex 的槽位
-// 都没有 EnvVar（它们的值要写进 TOML，不是注入 env），而 confighook 的 Slot 允许
-// EnvVar 为空正是为这种情况留的口子。
+// It goes through **the slot machinery** (the same knowledge, the same card
+// as claude's tier mapping): none of codex's slots have an EnvVar (their
+// values are written into the TOML, not injected as env), and confighook's
+// Slot allowing an empty EnvVar is exactly the opening left for this case.
 //
-// 按**名字**找而不是按下标：槽位表是会长的（`model` 之外还有 `review_model`），
-// 而下标一挪就会把 review 的档位写进主模型——那种错在界面上完全看不出来。
+// Find by **name** rather than by index: the slot table grows (`review_model`
+// in addition to `model`), and a shift in indices would write the review
+// tier into the main model -- an error completely invisible in the UI.
 func tierFor(name string) string {
 	for _, s := range Agent().Slots {
 		if s.Name == name {

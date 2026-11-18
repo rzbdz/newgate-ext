@@ -14,18 +14,18 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// tunnelCommand 是 `newgate tunnel …`。
+// tunnelCommand is `newgate tunnel …`.
 //
-// # 它为什么**不报连接状态**
+// # Why it **does not report connection state**
 //
-// 每一条 `newgate …` 都是**另一个进程**：它有自己的连接池，而那个池永远是空的。
-// 在这里打印「snode1 已连接」会是一句彻底的假话（真的连接在守护进程里，这个进程
-// 碰不到它）。所以这个命令只报**配置里的事实**与**它自己现拨的那一次**
-// （`tunnel test`），并且把「谁在连着」这件事明确地推给守护进程那一侧（web 界面
-// 上那张表）。
+// Every `newgate …` is **another process**: it has its own connection pool, always empty.
+// Printing "snode1 connected" here would be a flat lie (the real connection is in the
+// daemon, unreachable from here). So this command reports **config facts** and **its own
+// one dial** (`tunnel test`), leaving "who is connected" explicitly to the daemon side
+// (the table in the web UI).
 //
-// 这条取舍值得写下来，因为「顺手把 CLic 的池也打印出来」看起来完全无害——直到
-// 有人照着它排查一个「明明连着却报断」的问题。
+// Worth writing down, because "just print the CLI's pool too" looks harmless - until
+// someone uses it to debug "says disconnected though it is connected".
 type tunnelCommand struct {
 	m    *manager
 	pool *pool
@@ -67,7 +67,7 @@ func (c *tunnelCommand) Run(host cliapi.Host, args []string) int {
 	}
 }
 
-// list 打印配置里的事实与两条路的地址。
+// list prints the config facts and the two routes' addresses.
 func (c *tunnelCommand) list(host cliapi.Host) int {
 	loaded := Load()
 	fmt.Println(style.Title("newgate tunnel", ""))
@@ -98,7 +98,7 @@ func (c *tunnelCommand) list(host cliapi.Host) int {
 	}
 	fmt.Println(style.Hint(i18n.T("the route lives on the shared port: http://127.0.0.1:{port}{prefix}/<id>/",
 		i18n.A{"port": port, "prefix": Prefix})))
-	// 说清楚为什么这里没有一列「已连接」：那不是这句命令能看到的东西。
+	// Say clearly why there is no "connected" column: that is not something this command can see.
 	fmt.Println(style.Hint(i18n.T("whether a target is currently connected is the daemon's business — "+
 		"this command runs in its own process and cannot see it (the web interface can)", nil)))
 	if !host.DaemonRunning() {
@@ -108,7 +108,7 @@ func (c *tunnelCommand) list(host cliapi.Host) int {
 	return 0
 }
 
-// reach 说清这个 target 怎么用（转发端口、route、还是两个都有）。
+// reach explains how to use this target (forwarded port, route, or both).
 func reach(t Target) string {
 	parts := []string{i18n.T("route {path}", i18n.A{"path": Prefix + "/" + t.ID + "/"})}
 	if t.LocalPort != 0 {
@@ -118,7 +118,7 @@ func reach(t Target) string {
 	return strings.Join(parts, " · ")
 }
 
-// add 加一个 target。
+// add adds a target.
 func (c *tunnelCommand) add(host cliapi.Host, args []string) int {
 	id := cliapi.Positional(args, 1)
 	if id == "" {
@@ -153,8 +153,8 @@ func (c *tunnelCommand) add(host cliapi.Host, args []string) int {
 	replaced := false
 	for _, cur := range loaded.Targets {
 		if cur.ID == t.ID {
-			// 同名 = 改（幂等）。报出来，不然「我明明加了」与「它怎么还是老样子」
-			// 之间没法分辨。
+			// Same name = edit (idempotent). Report it, or "I added it" and "it is still the
+			// old one" cannot be told apart.
 			replaced = true
 			continue
 		}
@@ -180,7 +180,7 @@ func (c *tunnelCommand) add(host cliapi.Host, args []string) int {
 	return 0
 }
 
-// remove 删一个 target。
+// remove deletes one target.
 func (c *tunnelCommand) remove(host cliapi.Host, args []string) int {
 	id := cliapi.Positional(args, 1)
 	if id == "" {
@@ -209,11 +209,11 @@ func (c *tunnelCommand) remove(host cliapi.Host, args []string) int {
 	return 0
 }
 
-// setPersistent 是 up/down：只改配置。
+// setPersistent is up/down: config only.
 //
-// 「只改配置」是这条命令的**全部语义**，不是偷懒：它跑在另一个进程里，够不到守护
-// 进程那条连接。所以这里明说「守护进程会在两秒内跟上」——比起假装自己连上了、
-// 让用户对着一个假的成功去排查，这句话有用得多。
+// "Config only" is this command's **whole semantics**, not laziness: it runs in another
+// process and cannot reach the daemon's connection. So it says "the daemon catches up in
+// two seconds" - far more useful than faking a connection and sending the user debugging a fake.
 func (c *tunnelCommand) setPersistent(host cliapi.Host, args []string, on bool) int {
 	id := cliapi.Positional(args, 1)
 	if id == "" {
@@ -249,11 +249,11 @@ func (c *tunnelCommand) setPersistent(host cliapi.Host, args []string, on bool) 
 	return 0
 }
 
-// test 真的拨一次，并把每一步报出来。
+// test really dials once and reports every step.
 //
-// 它是这一族命令里唯一**不需要守护进程**的：它自己在当前进程里拨号。这也是它最
-// 有用的地方——「连不上」的时候，用户需要一个能立刻跑、能指出卡在哪一步的东西，
-// 而不是一个要去翻日志的 daemon。
+// It is the only command in this family that **needs no daemon**: it dials in-process.
+// That is its value - on "cannot connect" the user needs something to run now that says
+// where it stopped, not a daemon whose logs must be dug through.
 func (c *tunnelCommand) test(host cliapi.Host, args []string) int {
 	id := cliapi.Positional(args, 1)
 	loaded := Load()
@@ -306,12 +306,12 @@ func portText() string {
 	return fmt.Sprintf("%d", domain.ProxyPort)
 }
 
-// ---------- 状态与体检 ----------
+// ---------- status and checks ----------
 
-// tunnelStatus 是 `newgate status` 里那一行。
+// tunnelStatus is the line in `newgate status`.
 //
-// 只报**配置的事实**（几条 target、几条常驻）——见 tunnelCommand 的说明：这个
-// provider 在 CLI 进程里跑，那里看不到守护进程的连接。
+// Reports **config facts** only (how many targets, how many persistent) - see the
+// tunnelCommand note: this provider runs in the CLI process, which cannot see the daemon.
 type tunnelStatus struct{ m *manager }
 
 var _ cliapi.StatusProvider = tunnelStatus{}
@@ -344,10 +344,10 @@ func (s tunnelStatus) Status() []cliapi.StatusLine {
 	return []cliapi.StatusLine{{Rank: 60, Label: i18n.T("ssh tunnels", nil), Value: value}}
 }
 
-// tunnelDiagnostics 是 `newgate doctor` 里那几项。
+// tunnelDiagnostics is the items in `newgate doctor`.
 //
-// 与 status 同一条：报配置里的毛病（读不出来的条目、重复的本地端口），**不报
-// 连接**——doctor 也在自己的进程里跑。
+// Same as status: report config faults (unreadable entries, duplicate local ports),
+// **not connections** - doctor also runs in its own process.
 type tunnelDiagnostics struct{ m *manager }
 
 var _ cliapi.DiagnosticProvider = tunnelDiagnostics{}

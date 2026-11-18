@@ -9,29 +9,29 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// manager 是运行态的全部：连接池、每 target 一个转发端口、以及那个让两者跟着配置
-// 走的循环。
+// manager is all runtime state: the pool, one forwarded port per target, and the loop
+// that keeps both following config.
 //
-// # 它为什么只在 daemon 里活着
+// # Why it only lives in the daemon
 //
-// 这个模块的 `Start` **每一条 `newgate …` 命令都会跑一遍**（内核的装配是单阶段的）。
-// 在 Start 里起监听器或起循环的后果，内核已经用一句话记过：敲一次 `newgate status`
-// 就开一台服务器。所以这里的 Serve 只登记到 `lib/serving` 上，等真正拥有端口的
-// 那位（守护进程）说「我要开始服务了」——与 web-dashboard 的退路是同一条规矩。
+// This module's `Start` **runs on every `newgate ...` command** (assembly is single-phase
+// in the kernel). The kernel already summed up listening inside Start: typing one
+// `newgate status` starts a server. So Serve only registers with `lib/serving` and waits
+// for the owner of the port (the daemon) to say "I am serving" - the web-dashboard rule.
 //
-// # 懒连接为什么不需要这个循环
+// # Why lazy connections need no loop
 //
-// 走 route 的那些请求自己会 Acquire（第一发拨号，之后复用）。所以**没有常驻目标
-// 的配置下，这个循环只做两件小事**：空闲回收与 keepalive。它不是一个「必需」的
-// 部件，这是有意的——少一个「必须有后台循环才能工作」的部件，就少一类「循环挂了
-// 但界面看起来正常」的故障。
+// Route requests Acquire themselves (dial first, then reuse). So **with no persistent
+// targets this loop only does two small things**: idle reap and keepalive. Not
+// "required" on purpose: one less "the loop must run to work" part, and one less
+// class of "loop died but the UI still looks fine".
 type manager struct {
 	pool *pool
-	// proxy 只在停机时用得上：它持有的那些 HTTP 连接池把空闲连接留在那里，
-	// 而那些连接占着 SSH 借约（见 proxy.closeIdle）。
+	// proxy is only used at shutdown: its HTTP pools leave idle connections around, and
+	// those hold SSH leases (see proxy.closeIdle).
 	proxy *proxy
-	// loaded 现读配置。循环每一轮都读一次，所以用户在浏览器里加了一个带
-	// local_port 的 target，最多一轮（2s）之后它的端口就起来了。
+	// loaded reads config live. The loop reads once per round, so a target added in the
+	// browser with a local_port gets its port within one round (2s).
 	loaded func() Loaded
 
 	mu       sync.Mutex
@@ -46,9 +46,9 @@ func newManager(p *pool, loaded func() Loaded) *manager {
 	return &manager{pool: p, loaded: loaded, forwards: map[string]*forwarder{}, done: make(chan struct{})}
 }
 
-// Serve 起转发端口与那个循环，返回一个停机的收尾函数。
+// Serve starts the forwarded ports and the loop, returning a shutdown finalizer.
 //
-// 它是 `serving.OnServe` 的 starter，**只在守护进程里被调用一次**。
+// It is a `serving.OnServe` starter, **called once, only in the daemon**.
 func (m *manager) Serve() (func(), error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancel = cancel
@@ -65,11 +65,11 @@ func (m *manager) Serve() (func(), error) {
 	}, nil
 }
 
-// loop 是那个循环：每 2 秒让运行态追上配置，顺带回收空闲连接。
+// loop is that loop: every 2s make runtime catch up with config, reaping idle connections.
 //
-// 2 秒是个取舍：用户在图里改完一个 target，两秒内看见它生效；而两秒一次遍历几条
-// 配置的成本可以忽略（不碰网络——探活是**只在有连接时**发的一个 SSH 请求，频率
-// 由 reap 的判据挡着）。
+// 2s is a trade: a target edited in the UI takes effect within two seconds; one pass over
+// a few entries is negligible (no network - a liveness check is one SSH request, gated
+// by reap's criterion).
 func (m *manager) loop(ctx context.Context) {
 	defer close(m.done)
 	t := time.NewTicker(2 * time.Second)
@@ -85,7 +85,7 @@ func (m *manager) loop(ctx context.Context) {
 	}
 }
 
-// sync 让运行态追上配置：该有的端口起来、不该有的关掉、常驻的保温。
+// sync makes runtime catch up with config: start needed ports, close unneeded, warm the persistent.
 func (m *manager) sync() {
 	loaded := m.loaded()
 
@@ -97,8 +97,8 @@ func (m *manager) sync() {
 	}
 
 	m.mu.Lock()
-	// 关掉那些配置里已经没有、或者端口变了的转发端口（端口变了 = 旧的那个不该
-	// 再占着）。
+	// Close forwarded ports no longer in config, or whose port changed (a changed port
+	// means the old one should not hold on).
 	for id, f := range m.forwards {
 		t, still := want[id]
 		if still && t.LocalPort == f.target.LocalPort {
@@ -113,7 +113,7 @@ func (m *manager) sync() {
 	}
 	m.mu.Unlock()
 
-	// 起那些还没有的，以及**之前没起来、现在该再试一次**的。
+	// Start those not yet present, and **those that failed before and are due for retry**.
 	now := time.Now()
 	for id, t := range want {
 		m.mu.Lock()
@@ -123,18 +123,18 @@ func (m *manager) sync() {
 			continue
 		}
 		if exists {
-			// 重试：先把那一条失败记录丢掉（它没有监听器，close 是空操作）。
+			// Retry: drop the failure record first (it has no listener, close is a no-op).
 			m.mu.Lock()
 			delete(m.forwards, id)
 			m.mu.Unlock()
 		}
 		f, err := startForward(t, m.pool)
 		if err != nil {
-			// **不静默**：这条错误说的是「你配的那个端口没生效」，而它唯一的
-			// 出口就是日志与界面上的状态（见 view.go 那一行）。其余 target 照常。
-			// 记下来并**排下一次重试**：不重试的话，优雅交接那一刻的失败会
-			// 一直留着——而「升级完之后转发端口是死的、route 却是好的」正是
-			// 那个样子（实机踩过）。
+			// **Not silent**: this error says "your port did not take effect", and its only
+			// outlet is the log and the UI status (see view.go). Other targets proceed.
+			// Record it and **schedule the next retry**: without that, the graceful-handover
+			// failure stays forever - the "forwarded port dead after upgrade, route fine"
+			// shape (seen live).
 			log.Printf("[tunnel] %s", err.Error())
 			m.mu.Lock()
 			m.forwards[id] = failedForward(t, err.Error())
@@ -146,17 +146,17 @@ func (m *manager) sync() {
 		m.mu.Unlock()
 	}
 
-	// 常驻的保温。放最后，因为它是唯一会花时间的一步（真的去拨号）。
+	// Warm the persistent ones. Last, because it is the only step that takes time (real dialing).
 	for _, t := range loaded.Targets {
 		if t.Persistent {
 			m.pool.Warm(context.Background(), t)
 		}
 	}
-	// 配置里已经删掉的 target：忘掉它的连接。
+	// Targets removed from config: forget their connections.
 	m.pool.Retain(loaded.Targets)
 }
 
-// shutdown 关掉一切：先转发端口（它们上面的连接归池管），再池。
+// shutdown closes everything: forwarded ports first (their connections are pooled), then the pool.
 func (m *manager) shutdown() {
 	m.mu.Lock()
 	fws := make([]*forwarder, 0, len(m.forwards))
@@ -166,8 +166,8 @@ func (m *manager) shutdown() {
 	m.forwards = map[string]*forwarder{}
 	m.mu.Unlock()
 
-	// 先放掉 HTTP 连接池里的空闲连接：它们占着借约，不还回去的话 pool.Close
-	// 要一直等到 IdleConnTimeout（30s）——看起来就是「停不干净」。
+	// First release the HTTP pool's idle connections: they hold leases, and without
+	// returning them pool.Close waits for IdleConnTimeout (30s) - "does not stop cleanly".
 	if m.proxy != nil {
 		m.proxy.closeIdle()
 	}
@@ -188,16 +188,16 @@ func (m *manager) shutdown() {
 	}
 }
 
-// TargetStatus 是一个 target 此刻的全部事实（CLI 与 web 那张表都读它）。
+// TargetStatus is all of one target's facts right now (read by CLI and the web table).
 type TargetStatus struct {
 	Target  Target
 	Conn    Snapshot
 	Forward forwardStatus
-	// ForwardErr 是转发端口没起来的原因（空 = 起来了，或者本来就没要）。
+	// ForwardErr is why the forwarded port did not start (empty = started, or not wanted).
 	ForwardErr string
 }
 
-// Status 是给界面/CLI 的快照。
+// Status is the snapshot for UI/CLI.
 func (m *manager) Status() []TargetStatus {
 	loaded := m.loaded()
 	m.mu.Lock()
@@ -220,5 +220,5 @@ func (m *manager) Status() []TargetStatus {
 	return out
 }
 
-// Rejected 是那份读不出来的配置（界面要把它画出来，见 config.go 的 Problem）。
+// Rejected is the unreadable config (the UI draws it, see config.go's Problem).
 func (m *manager) Rejected() []Problem { return m.loaded().Rejected }

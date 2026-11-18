@@ -15,8 +15,9 @@ type port struct{ roles *roleprov.Registry }
 
 var _ Config = (*port)(nil)
 
-// New 声明配置组件：它提供唯一 Config 端口，并在生命周期内安装动态档位注册表。
-// Stop 恢复旧默认值，使测试和重复组装不会遗留进程级兼容状态。
+// New declares the config component: it provides the one Config port and installs
+// the dynamic tier registry during its lifetime. Stop restores the old defaults,
+// so tests and repeated assembly leave no process-level compatibility state behind.
 func New() modules.Component {
 	port := &port{roles: roleprov.NewRegistry()}
 	var restore func()
@@ -28,11 +29,13 @@ func New() modules.Component {
 		},
 		Type: "infra",
 		Requires: []modules.Requirement{
-			// ui 是**弱依赖**（见 component.Optional）：装着界面就把本模块自己的
-			// 命令与展示面挂上去；没装就跳过，配置照常工作，只是没有命令行入口。
+			// ui is a **weak dependency** (see component.Optional): with the UI
+			// installed, mount this module's own commands and display surfaces; without
+			// it, skip -- config works as usual, just with no command-line entry point.
 			modules.Optional(cliapi.Capability),
-			// web 界面同样是**弱依赖**，理由一字不差：装着 web-dashboard 就把本模块
-			// 的控制面挂上去，没装就跳过。两个界面各注册各的，可以同时存在。
+			// The web UI is equally a **weak dependency**, for exactly the same reason:
+			// with web-dashboard installed, mount this module's control surface;
+			// without it, skip. The two UIs register their own, and can coexist.
 			modules.Optional(viewapi.Capability),
 		},
 		Provides: []modules.Provision{
@@ -41,12 +44,13 @@ func New() modules.Component {
 		Start: func(_ context.Context, ctx modules.Context) error {
 			restore = roleprov.InstallDefault(port.roles)
 
-			// web 界面那一份展示面：**与 cli 各注册各的**（两个界面可以在同一个
-			// 进程里并存）。所以这一段的先后与下面那段无关，也不能被
-			// 「没装 cli 就 return」跳过——那正是「只装 dashboard」那一档。
+			// The web UI's copy of the display surfaces: **registered separately from
+			// cli** (two UIs can coexist in one process). So the order of this block
+			// has nothing to do with the next one, and must not be skipped by "return
+			// if no cli" -- that is exactly the "dashboard only" configuration.
 			//
-			// 这里只登记产出函数，一个文件都不读：每条 `newgate …` 命令都会跑到
-			// 这里，而绝大多数进程没有人会打开界面（见 lib/view 的包注释）。
+			// Only producer functions are registered here; not one file is read: every `newgate ...` command
+			// runs to here, and in most processes nobody will open the UI (see lib/view's package comment).
 			if v, ok := modules.Get(ctx, viewapi.Capability); ok {
 				rel, err := registerView(v)
 				if err != nil {
@@ -55,9 +59,9 @@ func New() modules.Component {
 				releases = append(releases, rel)
 			}
 
-			// 配置**自己**的命令与展示面（tier / profiles / profile / --set-profile /
-			// init / reload，体检的文件与链路两项，status 的「配置」一行与两张表）
-			// 由本模块注入界面：界面不认识 profile，也不认识链。
+			// The config's **own** commands and display surfaces (tier / profiles / profile / --set-profile
+			// / init / reload, the files and chain-path checks, the "config" line and the two tables in
+			// status) are injected into the UI by this module: the UI knows neither profile nor chain.
 			ui, ok := modules.Get(ctx, cliapi.Capability)
 			if !ok {
 				return nil
@@ -94,7 +98,8 @@ func New() modules.Component {
 	}
 }
 
-// RegisterRoleProvider 把扩展所有权委托给 role registry，并原样返回 Release。
+// RegisterRoleProvider delegates ownership of extensions
+// to the role registry, and returns Release as is.
 func (p *port) RegisterRoleProvider(provider RoleProvider) (modules.Release, error) {
 	return p.roles.Register(provider)
 }

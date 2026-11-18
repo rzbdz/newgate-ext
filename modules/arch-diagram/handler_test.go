@@ -7,9 +7,10 @@ import (
 	"testing"
 )
 
-// 这张图把内部结构整个摊开（模块名、包路径、谁依赖谁），所以它的两道判据值得
-// 各来一条：**只答本机**、**只读**。第三件要锁的是降级——没有源码树时它该照常
-// 出图（装配那一半），而不是白屏或者 500。
+// This diagram lays out the whole internal structure (module names, package paths,
+// who depends on whom), so each of its two tests deserves one: **answer only to this
+// machine**, **read only**. The third thing to pin is degradation -- with no source tree
+// it should still draw the diagram (the assembly half), not a blank screen or a 500.
 
 func fetch(t *testing.T, h http.Handler, method, host string) *httptest.ResponseRecorder {
 	t.Helper()
@@ -23,22 +24,22 @@ func fetch(t *testing.T, h http.Handler, method, host string) *httptest.Response
 }
 
 func TestHandlerDrawsWithoutASourceTree(t *testing.T) {
-	// root 为空 = 没有源码树（部署出去的二进制就是这样）。装配图照画，
-	// import 那半张写成一句解释。
+	// root empty = no source tree (that is how a deployed binary looks). The assembly
+	// diagram is still drawn, and the import half is written as an explanation.
 	h := NewHandler(&service{})
 	rec := fetch(t, h, http.MethodGet, "127.0.0.1:8899")
 	if rec.Code != http.StatusOK {
-		t.Fatalf("没有源码树也该出图，实际 %d: %s", rec.Code, rec.Body.String())
+		t.Fatalf("the diagram should still render without a source tree, got %d: %s", rec.Code, rec.Body.String())
 	}
 	body := rec.Body.String()
 	if !strings.Contains(body, "<svg") && !strings.Contains(body, "const DATA") {
-		t.Error("回的好像不是那张图")
+		t.Error("the response does not look like the diagram")
 	}
 	if !strings.Contains(body, "not scanned") {
-		t.Error("import 那半张该写明「没扫」，而不是画一张空图（空图看着像没有依赖）")
+		t.Error("the import half should say 'not scanned' instead of drawing an empty graph (an empty graph looks like there are no dependencies)")
 	}
 	if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "text/html") {
-		t.Errorf("Content-Type 不对: %q", ct)
+		t.Errorf("wrong Content-Type: %q", ct)
 	}
 }
 
@@ -46,18 +47,19 @@ func TestHandlerAnswersLoopbackOnly(t *testing.T) {
 	h := NewHandler(&service{})
 	for _, host := range []string{"127.0.0.1:8899", "localhost:8899", "[::1]:8899"} {
 		if rec := fetch(t, h, http.MethodGet, host); rec.Code != http.StatusOK {
-			t.Errorf("Host %q 该被接受，实际 %d", host, rec.Code)
+			t.Errorf("Host %q should be accepted, got %d", host, rec.Code)
 		}
 	}
 	for _, host := range []string{"evil.com:8899", "10.0.50.11:8899", ""} {
 		rec := fetch(t, h, http.MethodGet, host)
 		if rec.Code != http.StatusForbidden {
-			t.Errorf("Host %q 该被拒（实际 %d）", host, rec.Code)
+			t.Errorf("Host %q should be rejected (got %d)", host, rec.Code)
 		}
-		// 空 Host 单独说一句：HTTP/1.0 的请求可以没有 Host，而那是脚本工具的
-		// 常见形状——它绝不能因为「空串看着像本机」被放行。
+		// Say the empty Host case separately: an HTTP/1.0 request may have no
+		// Host, and that is the usual shape for script tools -- it must never
+		// be let through because "an empty string looks like this machine".
 		if strings.Contains(rec.Body.String(), "const DATA") {
-			t.Errorf("Host %q 被拒了，却还是把图发出去了", host)
+			t.Errorf("Host %q was rejected, yet the diagram was still sent out", host)
 		}
 	}
 }
@@ -66,9 +68,9 @@ func TestHandlerIsReadOnly(t *testing.T) {
 	h := NewHandler(&service{})
 	rec := fetch(t, h, http.MethodPost, "127.0.0.1:8899")
 	if rec.Code != http.StatusMethodNotAllowed {
-		t.Errorf("POST 该 405（放行等于给「随手 POST 一下」留一个真跑 go list 的入口），实际 %d", rec.Code)
+		t.Errorf("POST should get 405 (allowing it leaves a way to trigger a real go list with a casual POST), got %d", rec.Code)
 	}
 	if allow := rec.Header().Get("Allow"); !strings.Contains(allow, "GET") {
-		t.Errorf("405 该说明允许什么，实际 Allow=%q", allow)
+		t.Errorf("405 should state what is allowed, got Allow=%q", allow)
 	}
 }

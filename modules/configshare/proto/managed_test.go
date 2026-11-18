@@ -5,61 +5,61 @@ import (
 	"testing"
 )
 
-// TestManagedPathAllowlist 锁住"唯一契约"这张表。
+// TestManagedPathAllowlist pins the "single contract" table.
 //
-// 它是三处共用的判据（宿主生成快照、副本校验快照、漂移检测枚举本地文件），
-// 所以这里的每一条都有具体来历，不是随手列的。
+// It is the criterion shared by three places (host snapshot, replica validation, drift
+// enumeration), so every entry here has a provenance, none is arbitrary.
 func TestManagedPathAllowlist(t *testing.T) {
 	tests := []struct {
 		rel  string
 		want bool
 		why  string
 	}{
-		{"providers.json", true, "托管集合的核心"},
-		{"newgate-config.json", true, "schema/版本声明，副本也要留一份"},
-		{"mappings/prod.json", true, "档位"},
-		{"mappings/prod.kv", true, "手写友好的档位形态，同样托管"},
-		{"mappings/a-b_c.1.json", true, "档位名里可以有连字符/下划线/点"},
+		{"providers.json", true, "the core of the managed set"},
+		{"newgate-config.json", true, "schema/version declaration, keep a copy too"},
+		{"mappings/prod.json", true, "tier"},
+		{"mappings/prod.kv", true, "the hand-editable tier form, also managed"},
+		{"mappings/a-b_c.1.json", true, "tier names may contain hyphens/underscores/dots"},
 
-		// 坑 1：profile kv --write 会把旧 json 改名成 .bak。它在托管集合之外，
-		// 否则就是每台机器上一堆既不被读、又会被当成"本地改动"的垃圾。
-		{"mappings/prod.json.bak", false, "kv 转换留下的备份，不是配置"},
+		// Pitfall 1: profile kv --write renames the old json to .bak. Outside the managed
+		// set, or every machine accumulates junk that is unread and counts as a local edit.
+		{"mappings/prod.json.bak", false, "a backup left by the kv conversion, not config"},
 
-		// 坑 2：omo-slots.json 被 roleprov 盯着、按本机生成，进共享会和本机接管打架。
-		{"omo-slots.json", false, "本机接管产物"},
-		{"state.json", false, "机器本地状态（进它会和 watcher 打架）"},
-		{"health.json", false, "熔断健康表是运行时数据"},
-		{"secrets.json", false, "另走密钥通道（独立的记账/代数/权限）"},
-		{"thinkcache.bin", false, "推理缓存"},
-		{"probe-capabilities.json", false, "本机探活结果"},
-		{"dump/x.json", false, "报文证据，永不外传"},
-		{"backups/20260917/providers.json", false, "备份目录"},
+		// Pitfall 2: omo-slots.json is watched by roleprov and machine-generated; don't share.
+		{"omo-slots.json", false, "a local takeover artifact"},
+		{"state.json", false, "machine-local state (including it fights with the watcher)"},
+		{"health.json", false, "the breaker health table is runtime data"},
+		{"secrets.json", false, "goes over the secrets channel (separate bookkeeping/generation/permissions)"},
+		{"thinkcache.bin", false, "reasoning cache"},
+		{"probe-capabilities.json", false, "local probe results"},
+		{"dump/x.json", false, "wire evidence, never leaves the machine"},
+		{"backups/20260917/providers.json", false, "backup directory"},
 
-		// 原子写的临时文件（我们自己造的，也可能有别人留下的）。
-		{"providers.json.tmp", false, "写临时文件"},
-		{".providers.json.tmp", false, "写临时文件"},
-		{"mappings/.prod.json.tmp", false, "写临时文件"},
-		{"mappings/.hidden.json", false, "点开头的不碰"},
+		// Temp files from atomic writes (ours, or left by others).
+		{"providers.json.tmp", false, "write temp files"},
+		{".providers.json.tmp", false, "write temp files"},
+		{"mappings/.prod.json.tmp", false, "write temp files"},
+		{"mappings/.hidden.json", false, "dotfiles are left alone"},
 
-		// 路径安全：payload 来自网络，文件名不该有能力把写入引到配置目录之外。
-		{"../providers.json", false, "跑出配置目录"},
-		{"mappings/../../etc/passwd", false, "跑出配置目录"},
-		{"/etc/passwd", false, "绝对路径"},
-		{"mappings/sub/x.json", false, "mappings 下不再有子目录"},
-		{"mappings//prod.json", false, "// 会让清单里出现两条看着一样的记录"},
-		{"mappings/", false, "空名字"},
-		{"", false, "空路径"},
-		{`mappings\prod.json`, false, "反斜杠在 Linux 上不是分隔符"},
-		{"providers.json/", false, "结尾斜杠"},
+		// Path safety: the payload is from the network; names must not escape the config dir.
+		{"../providers.json", false, "escapes the config directory"},
+		{"mappings/../../etc/passwd", false, "escapes the config directory"},
+		{"/etc/passwd", false, "absolute path"},
+		{"mappings/sub/x.json", false, "no more subdirectories under mappings"},
+		{"mappings//prod.json", false, "// makes two records look alike in the list"},
+		{"mappings/", false, "empty name"},
+		{"", false, "empty path"},
+		{`mappings\prod.json`, false, "backslash is not a separator on Linux"},
+		{"providers.json/", false, "trailing slash"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.rel, func(t *testing.T) {
 			got, ok := ManagedPath(tc.rel)
 			if ok != tc.want {
-				t.Fatalf("ManagedPath(%q) = %v，想要 %v（%s）", tc.rel, ok, tc.want, tc.why)
+				t.Fatalf("ManagedPath(%q) = %v, want %v (%s)", tc.rel, ok, tc.want, tc.why)
 			}
 			if ok && got != tc.rel {
-				t.Fatalf("ManagedPath(%q) 规范化成了 %q——契约是斜杠相对路径，不该改写", tc.rel, got)
+				t.Fatalf("ManagedPath(%q) normalized to %q - the contract is a slash-relative path, it must not be rewritten", tc.rel, got)
 			}
 		})
 	}
@@ -67,7 +67,7 @@ func TestManagedPathAllowlist(t *testing.T) {
 
 func TestListManagedFiles(t *testing.T) {
 	sandbox(t)
-	// 造一批文件，其中一半该被列出来、一半不该。
+	// Make a batch of files, half should be listed, half not.
 	for _, rel := range []string{
 		"providers.json",
 		"state.json",     // 不该
@@ -82,15 +82,15 @@ func TestListManagedFiles(t *testing.T) {
 
 	got, err := ListManagedFiles(paths.Config())
 	if err != nil {
-		t.Fatalf("枚举失败: %v", err)
+		t.Fatalf("enumeration failed: %v", err)
 	}
 	want := []string{"mappings/other.kv", "mappings/prod.json", "providers.json"}
 	if len(got) != len(want) {
-		t.Fatalf("枚举结果 %v，想要 %v", got, want)
+		t.Fatalf("enumeration gave %v, want %v", got, want)
 	}
 	for i := range want {
 		if got[i] != want[i] {
-			t.Fatalf("枚举结果 %v，想要 %v（必须已排序，报告才稳定）", got, want)
+			t.Fatalf("enumeration gave %v, want %v (must be sorted so the report is stable)", got, want)
 		}
 	}
 }

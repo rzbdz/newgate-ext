@@ -20,7 +20,7 @@ func mustPull(t *testing.T, c *Client, force bool) Outcome {
 	t.Helper()
 	out, err := c.Pull(context.Background(), force)
 	if err != nil {
-		t.Fatalf("Pull 报错: %v", err)
+		t.Fatalf("Pull failed: %v", err)
 	}
 	return out
 }
@@ -34,7 +34,7 @@ func anyContains(ss []string, sub string) bool {
 	return false
 }
 
-// backupCount 数 backups/configshare-* 的个数（归档只该在 --force 时出现）。
+// backupCount counts backups/configshare-* entries (archiving should only happen on --force).
 func backupCount(t *testing.T) int {
 	t.Helper()
 	m, err := filepath.Glob(filepath.Join(paths.BackupDir(), "configshare-*"))
@@ -54,21 +54,22 @@ func TestPullAppliesSnapshot(t *testing.T) {
 
 	out := mustPull(t, c, false)
 	if out.Failed {
-		t.Fatalf("首轮不该失败: %s", out.ErrText)
+		t.Fatalf("the first round must not fail: %s", out.ErrText)
 	}
 	if !out.Config.Changed || len(out.Config.Written) != 3 {
-		t.Fatalf("首轮该落盘 3 个文件，实际 changed=%v written=%v", out.Config.Changed, out.Config.Written)
+		t.Fatalf("the first round should write 3 files, got changed=%v written=%v",
+			out.Config.Changed, out.Config.Written)
 	}
 	for rel := range snapshotFiles() {
 		if !existsLive(rel) {
-			t.Fatalf("%s 没落盘", rel)
+			t.Fatalf("%s was not written", rel)
 		}
 	}
 	if !out.Secrets.Changed {
-		t.Fatal("密钥首轮该落盘")
+		t.Fatal("the secrets should be written on the first round")
 	}
 	if v, ok := LookupSecret(secretsPath(), "smt-deepseek"); !ok || v != "sk-1" {
-		t.Fatalf("密钥没落盘: %q %v", v, ok)
+		t.Fatalf("secrets were not written: %q %v", v, ok)
 	}
 
 	st, err := LoadState()
@@ -76,24 +77,25 @@ func TestPullAppliesSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	if st.Generation != 1 || st.HostID != h.hostID() {
-		t.Fatalf("记账不对: gen=%d host=%q", st.Generation, st.HostID)
+		t.Fatalf("wrong bookkeeping: gen=%d host=%q", st.Generation, st.HostID)
 	}
 	if st.SecretsGen != 1 {
-		t.Fatalf("密钥代数没记: %d", st.SecretsGen)
+		t.Fatalf("secrets generation not recorded: %d", st.SecretsGen)
 	}
 	if len(st.Applied) != 3 {
-		t.Fatalf("applied 清单该有 3 条（漂移守卫的基准），实际 %v", st.Applied)
+		t.Fatalf("the applied manifest should have 3 entries (the baseline for the "+
+			"drift guard), got %v", st.Applied)
 	}
 	if st.FailCount != 0 || st.LastError != "" {
-		t.Fatalf("成功的一轮不该留失败记账: %+v", st)
+		t.Fatalf("a successful round must not leave failure bookkeeping: %+v", st)
 	}
 }
 
-// TestPullFastPathDoesNotDecrypt 把"空转完全静默"变成可测的东西。
+// TestPullFastPathDoesNotDecrypt makes "idle is fully silent" testable.
 //
-// 手法：第二轮把端点换成一封**根本解不开**的信封，但代数与权威保持不变。
-// 快路径（代数没变 → 连解密都不做）应当因此完全无感。如果我们偷偷解密了，
-// 这里就会报 ErrTampered——所以这个测试同时锁住了"静默"和"代数比较在解密之前"。
+// Trick: round 2 serves an envelope that **cannot be decrypted at all**, with generation
+// and authority unchanged, so the fast path (no decrypt when generation matches) is
+// unaffected; a secret decrypt would raise ErrTampered - locking both properties.
 func TestPullFastPathDoesNotDecrypt(t *testing.T) {
 	sandbox(t)
 	root := rootKey(1)
@@ -104,96 +106,98 @@ func TestPullFastPathDoesNotDecrypt(t *testing.T) {
 
 	garbage, _ := json.Marshal(Envelope{
 		V: ProtocolVersion, Kind: KindConfig, Host: h.hostID(), Gen: 2,
-		Nonce: make([]byte, 12), CT: []byte("这不是密文"),
+		Nonce: make([]byte, 12), CT: []byte("this is not ciphertext"),
 	})
 	h.setRawConfig(garbage)
 
 	out := mustPull(t, c, false)
 	if out.Config.Err != nil || out.Failed {
-		t.Fatalf("代数没变时不该解密，也就不该出错: %v / %s", out.Config.Err, out.ErrText)
+		t.Fatalf("an unchanged generation must not decrypt, and so must not error: "+
+			"%v / %s", out.Config.Err, out.ErrText)
 	}
 	if out.Config.Changed {
-		t.Fatal("代数没变就不该写盘")
+		t.Fatal("an unchanged generation must not write to disk")
 	}
 }
 
-// TestPullRejectsOlderGeneration 是单调性守卫：迟到的、乱序的、被中间人重放的
-// 旧快照不能把车队回滚。
+// TestPullRejectsOlderGeneration is the monotonicity guard: a late, reordered or
+// man-in-the-middle-replayed old snapshot must not roll the fleet back.
 //
-// 代价（有意接受）是宿主侧的**故意回滚**不会传播——要回滚得在宿主上重新
-// publish 一个更高的代数。一个能悄悄让整个车队降级的通道，比一个"回滚要重新
-// 发布一次"的通道危险得多。
+// The price (accepted on purpose) is that a **deliberate rollback** on the host does
+// not propagate - rolling back means publishing a higher generation on the host. A
+// channel that can silently downgrade the fleet is far more dangerous than that.
 func TestPullRejectsOlderGeneration(t *testing.T) {
 	sandbox(t)
 	root := rootKey(1)
 	h := newFakeHost(t, root)
 	newer := snapshotFiles()
-	newer[ProvidersName] = []byte(`{"providers":{"第五代":{"base_url":"https://five"}}}`)
+	newer[ProvidersName] = []byte(`{"providers":{"fifth generation":{"base_url":"https://five"}}}`)
 	h.setConfig(5, newer)
 	c := newTestClient(t, h, root)
 	mustPull(t, c, false)
 
 	older := snapshotFiles()
-	older[ProvidersName] = []byte(`{"providers":{"第三代":{"base_url":"https://three"}}}`)
+	older[ProvidersName] = []byte(`{"providers":{"third generation":{"base_url":"https://three"}}}`)
 	h.setConfig(3, older)
 
 	out := mustPull(t, c, false)
 	if out.Config.Changed {
-		t.Fatal("旧代不该被应用")
+		t.Fatal("an older generation must not be applied")
 	}
-	if strings.Contains(string(readLive(t, ProvidersName)), "第三代") {
-		t.Fatal("旧内容被写下去了——车队被回滚了")
+	if strings.Contains(string(readLive(t, ProvidersName)), "third generation") {
+		t.Fatal("old content was written - the fleet was rolled back")
 	}
-	if !strings.Contains(string(readLive(t, ProvidersName)), "第五代") {
-		t.Fatal("原内容该原样保留")
+	if !strings.Contains(string(readLive(t, ProvidersName)), "fifth generation") {
+		t.Fatal("the original content should be kept as is")
 	}
 	if st, _ := LoadState(); st.Generation != 5 {
-		t.Fatalf("记账里的代数被回退了: %d", st.Generation)
+		t.Fatalf("the recorded generation went backwards: %d", st.Generation)
 	}
 }
 
-// TestPullHostChangeResetsBaseline 锁住 HostID 存在的理由。
+// TestPullHostChangeResetsBaseline pins why HostID exists.
 //
-// 宿主的记账文件丢了（重装、换机、误删 host.json）时，generation 会从 0 重来。
-// 只看代数的话，副本会认为"所有新快照都比我已经应用的旧"而**永久拒绝更新**——
-// 一个静默的、只有重装宿主才能修的故障。
+// When the host's ledger file is lost (reinstall, new machine, deleted host.json) the
+// generation restarts at 0. Comparing generations alone, a replica would consider every
+// new snapshot older and **refuse updates forever** - a silent, reinstall-only failure.
 func TestPullHostChangeResetsBaseline(t *testing.T) {
 	sandbox(t)
 	root := rootKey(1)
 	h := newFakeHost(t, root)
 	first := snapshotFiles()
-	first[ProvidersName] = []byte(`{"providers":{"老宿主":{"base_url":"https://old"}}}`)
+	first[ProvidersName] = []byte(`{"providers":{"old host":{"base_url":"https://old"}}}`)
 	h.setConfig(5, first)
 	c := newTestClient(t, h, root)
 	mustPull(t, c, false)
 
-	// 换了权威，新宿主的计数从 2 开始（比 5 小）。
+	// The authority changed; the new host's count starts at 2 (below 5).
 	h.setHostID("ffffffffffffffffffffffffffffffff")
 	second := snapshotFiles()
-	second[ProvidersName] = []byte(`{"providers":{"新宿主":{"base_url":"https://new"}}}`)
+	second[ProvidersName] = []byte(`{"providers":{"new host":{"base_url":"https://new"}}}`)
 	h.setConfig(2, second)
 
 	out := mustPull(t, c, false)
 	if !out.Config.Changed {
-		t.Fatalf("换成新权威时该应用，哪怕代数更小。实际 %+v", out.Config)
+		t.Fatalf("a new authority should be applied even with a smaller generation. got %+v", out.Config)
 	}
-	if !strings.Contains(string(readLive(t, ProvidersName)), "新宿主") {
-		t.Fatal("新权威的内容没落盘")
+	if !strings.Contains(string(readLive(t, ProvidersName)), "new host") {
+		t.Fatal("the new authority content was not written")
 	}
 	if !anyContains(out.Config.Warnings, "authority changed") {
-		t.Fatalf("权威变更必须说出来（否则代数的突然重置没人看得懂）: %v", out.Config.Warnings)
+		t.Fatalf("an authority change must be announced (otherwise a sudden "+
+			"generation reset makes no sense): %v", out.Config.Warnings)
 	}
 	st, _ := LoadState()
 	if st.Generation != 2 || !strings.HasPrefix(st.HostID, "ffff") {
-		t.Fatalf("记账没跟上新权威: gen=%d host=%q", st.Generation, st.HostID)
+		t.Fatalf("bookkeeping did not follow the new authority: gen=%d host=%q", st.Generation, st.HostID)
 	}
 }
 
-// TestPullSchemaTooNewRefusedAndKeepsPrevious 是两级门里有牙的那一级。
+// TestPullSchemaTooNewRefusedAndKeepsPrevious is the toothy level of the two gates.
 //
-// schema 更高 = 字段含义可能已经变了，而**误读不会响亮报错**（会路由到错的
-// 上游、或报"provider 没有 api_key"然后 404，看起来像上游故障）。所以拒绝应用、
-// 保留上一份——仍然 fail-open：机器继续服务。
+// A higher schema = field meanings may have changed, and **misreading is not loud**
+// (wrong upstream, or "provider has no api_key" then 404, looking like an outage). So
+// refuse to apply, keep the previous one - still fail-open: the machine keeps serving.
 func TestPullSchemaTooNewRefusedAndKeepsPrevious(t *testing.T) {
 	sandbox(t)
 	root := rootKey(1)
@@ -203,64 +207,65 @@ func TestPullSchemaTooNewRefusedAndKeepsPrevious(t *testing.T) {
 	mustPull(t, c, false)
 
 	next := snapshotFiles()
-	next[ProvidersName] = []byte(`{"providers":{"未来格式":{"base_url":"https://future"}}}`)
+	next[ProvidersName] = []byte(`{"providers":{"future format":{"base_url":"https://future"}}}`)
 	next[MetaFileName] = metaFile(SupportedSchema+1, "")
 	h.setConfig(2, next)
 
 	out := mustPull(t, c, false)
 	if !out.Config.Refused {
-		t.Fatalf("schema 更高必须拒绝，实际 %+v", out.Config)
+		t.Fatalf("a higher schema must be rejected, got %+v", out.Config)
 	}
 	if !strings.Contains(out.Config.Reason, "schema_version") {
-		t.Fatalf("拒绝理由该点名 schema_version: %q", out.Config.Reason)
+		t.Fatalf("the refusal reason should name schema_version: %q", out.Config.Reason)
 	}
-	if strings.Contains(string(readLive(t, ProvidersName)), "未来格式") {
-		t.Fatal("被拒绝了却写了盘")
+	if strings.Contains(string(readLive(t, ProvidersName)), "future format") {
+		t.Fatal("it was refused, yet it wrote to disk")
 	}
 	if !strings.Contains(string(readLive(t, ProvidersName)), "smt-deepseek") {
-		t.Fatal("上一份配置该原样保留（fail-open：机器继续服务）")
+		t.Fatal("the previous config should be kept as is (fail-open: the machine keeps serving)")
 	}
-	// 代数**不推进**：升完级之后同一份快照会被重新应用，而不是被当成"已经处理过"。
+	// The generation **does not advance**: after upgrade the snapshot is reapplied, not "handled".
 	if st, _ := LoadState(); st.Generation != 1 {
-		t.Fatalf("被拒绝时代数不该推进，否则升级后就永远收不到这份配置了: %d", st.Generation)
+		t.Fatalf("the generation must not advance on refusal, or after the upgrade this "+
+			"config would never arrive again: %d", st.Generation)
 	}
-	// 这是一次失败（要退避、要显示），但不是"故障"：Err 该是空的。
+	// This is a failure (back off, show it), but not a "fault": Err should be empty.
 	if out.Config.Err != nil {
-		t.Fatalf("schema 拒绝是明确判定，不是故障: %v", out.Config.Err)
+		t.Fatalf("a schema refusal is a definite verdict, not a fault: %v", out.Config.Err)
 	}
 	if !out.Failed {
-		t.Fatal("拒绝应用该算作没收敛（要进退避、status 要显示）")
+		t.Fatal("refusing to apply must count as not converged (it backs off, and status must show it)")
 	}
 }
 
-// TestPullVersionMismatchWarnsButApplies 是另一级：构建串不匹配 ⇒ 放行 + 警告。
-// 硬拒绝会让一台还能用的机器收不到 provider 更新，把装饰性不匹配升级成事故。
+// TestPullVersionMismatchWarnsButApplies is the other level: build string mismatch =>
+// allow + warn. Hard refusal would starve a working machine of provider updates.
 func TestPullVersionMismatchWarnsButApplies(t *testing.T) {
 	sandbox(t)
 	root := rootKey(1)
 	h := newFakeHost(t, root)
 	next := snapshotFiles()
-	next[MetaFileName] = metaFile(SupportedSchema, "build-99-别的构建")
+	next[MetaFileName] = metaFile(SupportedSchema, "build-99-other-build")
 	h.setConfig(1, next)
 	c := newTestClient(t, h, root)
 
 	out := mustPull(t, c, false)
 	if out.Config.Refused {
-		t.Fatalf("构建串不匹配不该拒绝: %s", out.Config.Reason)
+		t.Fatalf("a build string mismatch must not be refused: %s", out.Config.Reason)
 	}
 	if !out.Config.Changed {
-		t.Fatal("该照常应用")
+		t.Fatal("it should be applied as usual")
 	}
-	if !anyContains(out.Config.Warnings, "build-99-别的构建") {
-		t.Fatalf("该提醒构建串不匹配: %v", out.Config.Warnings)
+	if !anyContains(out.Config.Warnings, "build-99-other-build") {
+		t.Fatalf("the build string mismatch must be warned about: %v", out.Config.Warnings)
 	}
 }
 
-// TestPullDriftRefusedThenForced 是提交 1 里最重要的一条：漂移守卫。
+// TestPullDriftRefusedThenForced is the most important one in commit 1: the drift guard.
 //
-// 要堵的失效模式是"副本上有人手改了 providers.json，以为生效了，下一个轮询
-// 周期把它**静默**覆盖"。这条测试同时锁住三个动作：拒绝（非零退出、不写盘、
-// 不归档）、记账里留下漂移（status 要显示）、--force 时先归档再覆盖。
+// The failure mode to stop: someone hand-edits providers.json on a replica, believes it
+// took effect, and the next poll **silently** overwrites it. This test pins three
+// actions: refuse (no write, no archive); drift left in the ledger; --force archives first.
 func TestPullDriftRefusedThenForced(t *testing.T) {
 	sandbox(t)
 	root := rootKey(1)
@@ -269,55 +274,57 @@ func TestPullDriftRefusedThenForced(t *testing.T) {
 	c := newTestClient(t, h, root)
 	mustPull(t, c, false)
 
-	local := []byte(`{"providers":{"本地私有的":{"base_url":"http://127.0.0.1:1234"}}}`)
+	local := []byte(`{"providers":{"local-private":{"base_url":"http://127.0.0.1:1234"}}}`)
 	writeLive(t, ProvidersName, local)
 	remote := snapshotFiles()
-	remote[ProvidersName] = []byte(`{"providers":{"远端的":{"base_url":"https://remote"}}}`)
+	remote[ProvidersName] = []byte(`{"providers":{"remote":{"base_url":"https://remote"}}}`)
 	h.setConfig(2, remote)
 
-	// ---- 第一轮：拒绝 ----
+	// ---- round 1: refuse ----
 	out := mustPull(t, c, false)
 	if !out.Config.Refused {
-		t.Fatalf("有本地改动时必须拒绝应用，实际 %+v", out.Config)
+		t.Fatalf("with local edits it must refuse to apply, got %+v", out.Config)
 	}
 	if out.Config.Drift == nil || !out.Config.Drift.Blocking() {
-		t.Fatal("该带出阻断性的漂移报告")
+		t.Fatal("it should report blocking drift")
 	}
 	if !bytes.Equal(readLive(t, ProvidersName), local) {
-		t.Fatal("被拒绝了却动了盘")
+		t.Fatal("it was refused, yet it touched the disk")
 	}
 	if n := backupCount(t); n != 0 {
-		t.Fatalf("拒绝时不该产生归档目录（还没动用户的文件），实际 %d 个", n)
+		t.Fatalf("a refusal must not create an archive directory (the user's files "+
+			"are untouched), got %d", n)
 	}
 	st, _ := LoadState()
 	if st.Generation != 1 {
-		t.Fatalf("被拒绝时代数不该推进（否则用户改回去后这份就再也不会被应用）: %d", st.Generation)
+		t.Fatalf("the generation must not advance on refusal (otherwise this one is never applied "+
+			"again once the user reverts): %d", st.Generation)
 	}
 	if st.Drift == nil || !st.Drift.Blocking() {
-		t.Fatal("漂移是持续状态，必须留在记账里供 status 显示")
+		t.Fatal("drift is persistent state and must stay in the ledger for status to show")
 	}
 
-	// ---- 第二轮：--force ----
+	// ---- round 2: --force ----
 	out = mustPull(t, c, true)
 	if !out.Config.Changed {
-		t.Fatalf("--force 该应用，实际 %+v", out.Config)
+		t.Fatalf("--force must apply, got %+v", out.Config)
 	}
-	if !bytes.Contains(readLive(t, ProvidersName), []byte("远端的")) {
-		t.Fatal("没写成远端内容")
+	if !bytes.Contains(readLive(t, ProvidersName), []byte("remote")) {
+		t.Fatal("the remote content was not written")
 	}
 	if out.Config.Archive == "" {
-		t.Fatal("--force 必须先归档：否则这条命令就是不可恢复的")
+		t.Fatal("--force must archive first: otherwise this command is unrecoverable")
 	}
 	got, err := os.ReadFile(filepath.Join(out.Config.Archive, ProvidersName))
 	if err != nil || !bytes.Equal(got, local) {
-		t.Fatalf("归档里该有用户那份原稿: %q / %v", got, err)
+		t.Fatalf("the archive should hold the user's original: %q / %v", got, err)
 	}
 	st, _ = LoadState()
 	if st.Drift != nil {
-		t.Fatal("应用成功之后漂移该清掉")
+		t.Fatal("drift must be cleared after a successful apply")
 	}
 	if st.Generation != 2 {
-		t.Fatalf("应用成功了代数该推进到 2，实际 %d", st.Generation)
+		t.Fatalf("a successful apply should advance the generation to 2, got %d", st.Generation)
 	}
 }
 
@@ -330,29 +337,29 @@ func TestPullSecretsRotation(t *testing.T) {
 	c := newTestClient(t, h, root)
 	mustPull(t, c, false)
 
-	// 轮换：改一个、加一个。
+	// Rotation: change one, add one.
 	h.setSecrets(2, map[string]string{"smt-deepseek": "sk-2", "glm": "sk-3"})
 	out := mustPull(t, c, false)
 	if !out.Secrets.Changed {
-		t.Fatalf("密钥变了该落盘，实际 %+v", out.Secrets)
+		t.Fatalf("changed secrets must be written, got %+v", out.Secrets)
 	}
-	// 配置没变 → 配置通道该完全静默（两个通道独立的核心价值：改个 provider
-	// 不该重新传一遍全部密钥，反之亦然）。
+	// Config unchanged -> the config channel must be fully silent (the core value of two
+	// independent channels: changing a provider must not resend all secrets, and vice versa).
 	if out.Config.Changed {
-		t.Fatal("配置没变却被写了一遍——两个通道的代数必须各走各的")
+		t.Fatal("the config did not change yet was written again: the two channels must count separately")
 	}
 	for prov, want := range map[string]string{"smt-deepseek": "sk-2", "glm": "sk-3"} {
 		if v, ok := LookupSecret(secretsPath(), prov); !ok || v != want {
-			t.Fatalf("%s 的密钥不对: %q %v", prov, v, ok)
+			t.Fatalf("wrong secret for %s: %q %v", prov, v, ok)
 		}
 	}
 	if st, _ := LoadState(); st.SecretsGen != 2 {
-		t.Fatalf("密钥代数没推进: %d", st.SecretsGen)
+		t.Fatalf("the secrets generation did not advance: %d", st.SecretsGen)
 	}
 }
 
-// TestPullSecretsDriftRefused：密钥"只由宿主分发"是它的契约，但契约不构成
-// "可以静默覆盖本机改动"的理由。同一条守卫。
+// TestPullSecretsDriftRefused: "secrets come only from the host" is its contract, but
+// a contract is no reason to silently overwrite local edits. Same guard.
 func TestPullSecretsDriftRefused(t *testing.T) {
 	sandbox(t)
 	root := rootKey(1)
@@ -362,20 +369,21 @@ func TestPullSecretsDriftRefused(t *testing.T) {
 	c := newTestClient(t, h, root)
 	mustPull(t, c, false)
 
-	if _, err := MaterializeSecrets(secretsPath(), map[string]string{"smt-deepseek": "sk-本地手改的"}); err != nil {
+	edited := map[string]string{"smt-deepseek": "sk-locally-edited"}
+	if _, err := MaterializeSecrets(secretsPath(), edited); err != nil {
 		t.Fatal(err)
 	}
-	h.setSecrets(2, map[string]string{"smt-deepseek": "sk-新的"})
+	h.setSecrets(2, map[string]string{"smt-deepseek": "sk-new"})
 
 	out := mustPull(t, c, false)
 	if !out.Secrets.Refused {
-		t.Fatalf("本机 secrets.json 被改过时必须拒绝，实际 %+v", out.Secrets)
+		t.Fatalf("a hand-edited local secrets.json must be refused, got %+v", out.Secrets)
 	}
-	if v, _ := LookupSecret(secretsPath(), "smt-deepseek"); v != "sk-本地手改的" {
-		t.Fatalf("被拒绝了却覆盖了本地改动: %q", v)
+	if v, _ := LookupSecret(secretsPath(), "smt-deepseek"); v != "sk-locally-edited" {
+		t.Fatalf("it was refused, yet it overwrote the local edit: %q", v)
 	}
 	if out.Failed != true {
-		t.Fatal("拒绝应用该算作没收敛")
+		t.Fatal("refusing to apply must count as not converged")
 	}
 }
 
@@ -383,31 +391,31 @@ func TestPullErrors(t *testing.T) {
 	sandbox(t)
 	root := rootKey(1)
 
-	t.Run("对端不是宿主", func(t *testing.T) {
+	t.Run("the peer is not the host", func(t *testing.T) {
 		h := newFakeHost(t, root)
 		h.setConfig(1, snapshotFiles())
 		h.setNotFound(true)
 		out := mustPull(t, newTestClient(t, h, root), false)
 		if !errors.Is(out.Config.Err, ErrNotHost) {
-			t.Fatalf("该给 ErrNotHost，实际 %v", out.Config.Err)
+			t.Fatalf("expected ErrNotHost, got %v", out.Config.Err)
 		}
 	})
 
-	t.Run("根密钥不同（blob 拷错）", func(t *testing.T) {
+	t.Run("a different root key (wrong blob copied)", func(t *testing.T) {
 		h := newFakeHost(t, root)
 		h.setConfig(1, snapshotFiles())
-		// 客户端 trust 了另一个 blob：bearer 令牌对不上 → 401。
-		// 文案必须指向根密钥，否则用户会去怀疑网络。
+		// The client trusted another blob: the bearer token does not match -> 401.
+		// The text must point at the root key, else users will suspect the network.
 		out := mustPull(t, newTestClient(t, h, rootKey(2)), false)
 		if !errors.Is(out.Config.Err, ErrAuth) {
-			t.Fatalf("该给 ErrAuth，实际 %v", out.Config.Err)
+			t.Fatalf("expected ErrAuth, got %v", out.Config.Err)
 		}
 		if !strings.Contains(i18n.ID(ErrAuth), "root key") {
-			t.Fatalf("ErrAuth 文案该提到根密钥: %v", ErrAuth)
+			t.Fatalf("the ErrAuth text must mention the root key: %v", ErrAuth)
 		}
 	})
 
-	t.Run("信封被篡改", func(t *testing.T) {
+	t.Run("the envelope was tampered with", func(t *testing.T) {
 		h := newFakeHost(t, root)
 		encKey, _, _ := DeriveKeys(root)
 		plain, _ := json.Marshal(Snapshot{HostID: h.hostID(), Generation: 1, Files: snapshotFiles()})
@@ -421,44 +429,44 @@ func TestPullErrors(t *testing.T) {
 
 		out := mustPull(t, newTestClient(t, h, root), false)
 		if !errors.Is(out.Config.Err, ErrTampered) {
-			t.Fatalf("篡改必须被发现，实际 %v", out.Config.Err)
+			t.Fatalf("tampering must be detected, got %v", out.Config.Err)
 		}
 		if existsLive(ProvidersName) {
-			t.Fatal("验不过的内容绝不该落盘")
+			t.Fatal("content that fails verification must never be written")
 		}
 	})
 
-	t.Run("响应不是信封", func(t *testing.T) {
+	t.Run("the response is not an envelope", func(t *testing.T) {
 		h := newFakeHost(t, root)
-		h.setRawConfig([]byte("<html>这不是 JSON</html>"))
+		h.setRawConfig([]byte("<html>this is not JSON</html>"))
 		out := mustPull(t, newTestClient(t, h, root), false)
 		if out.Config.Err == nil {
-			t.Fatal("不是信封的响应必须报错")
+			t.Fatal("a response that is not an envelope must error")
 		}
 	})
 }
 
-// TestPullRefusesUnmanagedFileInSnapshot：payload 来自网络，一台被控的（或写坏了
-// 的）宿主不该有能力往 state.json、dump/、甚至配置目录之外写东西。
+// TestPullRefusesUnmanagedFileInSnapshot: the payload comes from the network, so a
+// compromised (or broken) host must not be able to write state.json, dump/ or beyond.
 func TestPullRefusesUnmanagedFileInSnapshot(t *testing.T) {
 	sandbox(t)
 	root := rootKey(1)
 	h := newFakeHost(t, root)
 	files := snapshotFiles()
-	files["state.json"] = []byte(`{"default_profile":"被劫持"}`)
-	files["../逃逸.json"] = []byte("{}")
+	files["state.json"] = []byte(`{"default_profile":"hijacked"}`)
+	files["../escape.json"] = []byte("{}")
 	h.setConfig(1, files)
 	c := newTestClient(t, h, root)
 
 	out := mustPull(t, c, false)
 	if !out.Config.Refused {
-		t.Fatalf("托管集合之外的文件必须被拒绝，实际 %+v", out.Config)
+		t.Fatalf("a file outside the managed set must be refused, got %+v", out.Config)
 	}
 	if existsLive("state.json") {
-		t.Fatal("state.json 被写下来了（那是机器本地状态）")
+		t.Fatal("state.json was written (that is machine-local state)")
 	}
-	if _, err := os.Stat(filepath.Join(filepath.Dir(paths.Config()), "逃逸.json")); err == nil {
-		t.Fatal("写到配置目录之外去了")
+	if _, err := os.Stat(filepath.Join(filepath.Dir(paths.Config()), "escape.json")); err == nil {
+		t.Fatal("it wrote outside the config directory")
 	}
 }
 
@@ -467,20 +475,21 @@ func TestPullInlineKeyRefused(t *testing.T) {
 	root := rootKey(1)
 	h := newFakeHost(t, root)
 	files := snapshotFiles()
-	files[ProvidersName] = []byte(`{"providers":{"x":{"base_url":"https://x","api_key":"sk-明文"}}}`)
+	files[ProvidersName] = []byte(`{"providers":{"x":` +
+		`{"base_url":"https://x","api_key":"sk-cleartext"}}}`)
 	h.setConfig(1, files)
 
 	out := mustPull(t, newTestClient(t, h, root), false)
 	if !out.Config.Refused {
-		t.Fatalf("内联密钥必须被拒绝: %+v", out.Config)
+		t.Fatalf("an inline key must be rejected: %+v", out.Config)
 	}
 	if !strings.Contains(out.Config.Reason, "secrets channel") {
-		t.Fatalf("拒绝理由该说清密钥该走哪条路: %q", out.Config.Reason)
+		t.Fatalf("the refusal reason should say which path the key must take: %q", out.Config.Reason)
 	}
 }
 
-// TestPullRemovesRetiredFiles 是"只写不删"那个坑的反面：宿主下线一个档位之后，
-// 副本上不能永远留着它（否则 @那个档位 之类的引用会一直解析得到东西）。
+// TestPullRemovesRetiredFiles is the flip side of "write-only, never delete": after the
+// host retires a tier, the replica must not keep it (or @that-tier refs would resolve).
 func TestPullRemovesRetiredFiles(t *testing.T) {
 	sandbox(t)
 	root := rootKey(1)
@@ -489,7 +498,7 @@ func TestPullRemovesRetiredFiles(t *testing.T) {
 	c := newTestClient(t, h, root)
 	mustPull(t, c, false)
 	if !existsLive("mappings/prod.json") {
-		t.Fatal("前置条件不对")
+		t.Fatal("wrong precondition")
 	}
 
 	next := snapshotFiles()
@@ -497,9 +506,9 @@ func TestPullRemovesRetiredFiles(t *testing.T) {
 	h.setConfig(2, next)
 	out := mustPull(t, c, false)
 	if len(out.Config.Removed) != 1 || out.Config.Removed[0] != "mappings/prod.json" {
-		t.Fatalf("该删掉下线的档位，实际 %v", out.Config.Removed)
+		t.Fatalf("the retired tier should be removed, got %v", out.Config.Removed)
 	}
 	if existsLive("mappings/prod.json") {
-		t.Fatal("下线的档位还在")
+		t.Fatal("the retired tier is still there")
 	}
 }

@@ -1,3 +1,4 @@
-# 依赖不进版本控制；**产物（dist/）进**——Go 的 go:embed 读它，构建才能离线。
+# Dependencies stay out of version control; the **output (dist/) goes in** -- Go's go:embed
+# reads it, which is what makes the build work offline.
 node_modules/
 .vite/

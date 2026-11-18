@@ -11,11 +11,13 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// UseFile 让 daemon 的健康表跨优雅重启存活。只有 daemon 写这个文件；
-// 探活结论由 CLI 通过控制端点提交，避免多进程并发覆盖。
+// UseFile lets the daemon's health table survive a graceful restart. Only
+// the daemon writes this file; probe conclusions are submitted by the CLI
+// through the control endpoint, avoiding multi-process concurrent overwrites.
 //
-// 文件名保持 `health.json`（paths.HealthFile）**刻意不改**：降级回滚用的
-// known-good 二进制读的就是这个名字，改名等于回滚即丢状态。
+// The file name stays `health.json` (paths.HealthFile) **deliberately
+// unchanged**: the known-good binary used for downgrade rollback reads
+// exactly this name, and renaming it means a rollback loses state.
 func (b *table) UseFile(path string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -25,9 +27,9 @@ func (b *table) UseFile(path string) error {
 		return nil
 	}
 	if err != nil {
-		// `{err}` 不能省：Ef 把底层错误塞进实参，但**只有消息里写了 {err}
-		// 才会显示出来**——省掉它，那些「读不了 health.json」的现场就只剩
-		// 一句「读不了」，底层原因当场丢掉。
+		// `{err}` cannot be omitted: Ef puts the underlying error into the args, but **it
+		// only shows if the message contains {err}** -- omit it and those "cannot read health.json"
+		// scenes degrade to one sentence "cannot read", with the underlying cause lost on the spot.
 		b.loadErr = i18n.Ef(err, "cannot read {path}: {err}", i18n.A{"path": path})
 		return b.loadErr
 	}
@@ -46,7 +48,7 @@ func (b *table) UseFile(path string) error {
 			cooldown:   time.Duration(s.CooldownMs) * time.Millisecond,
 		}
 		if s.Fails > 0 && r.bucket == BucketNone {
-			// 旧文件没有 Rule 字段：那时候只有一条账本，就是可用性。
+			// Old files have no Rule field: back then there was only one ledger, availability.
 			r.bucket = BucketAvailability
 		}
 		switch {
@@ -57,8 +59,8 @@ func (b *table) UseFile(path string) error {
 			}
 			r.openUntil = s.OpenUntil
 			if r.openUntil.IsZero() {
-				// 旧文件没存到期时刻：按当时的冷却推一次。推不出来就当
-				// 冷却已过——半开会在下一次 Available 时放行试探。
+				// Old files did not store the expiry: infer one from the cooldown of that time. If it cannot be
+				// inferred, treat the cooldown as over -- half-open lets a trial through on the next Available.
 				r.openUntil = r.openedAt.Add(b.policy.rule(bucketOr(r.bucket)).Cooldown)
 			}
 			r.reason = s.Reason
@@ -66,8 +68,8 @@ func (b *table) UseFile(path string) error {
 				r.fails = 1
 			}
 		case s.Fails > 0:
-			// 之前只有「已摘牌」的计数会被恢复；连锁未开的失败计数丢了，
-			// 于是重启等于偷偷给每条 binding 一次免死金牌。
+			// Previously only the "delisted" count was restored; the failure count below
+			// the threshold was lost, so a restart quietly gave every binding one free pass.
 			r.reason = s.Reason
 		}
 		if r.fails > 0 || r.shapeSkips > 0 || !r.openedAt.IsZero() {
@@ -84,7 +86,7 @@ func (b *table) UseFile(path string) error {
 				score.EWMA[i], score.Samples[i] = float64(s.Scores[i]), n
 			}
 		}
-		// 兼容旧 health.json：当时只保存 ≤4KB 的一个分数。
+		// Compatible with old health.json: back then only one score of <=4KB was saved.
 		if score.Samples[0] == 0 && s.ScoreMs > 0 {
 			score.EWMA[0], score.Samples[0] = float64(s.ScoreMs), 1
 		}
@@ -95,7 +97,7 @@ func (b *table) UseFile(path string) error {
 	return nil
 }
 
-// bucketOr 把 BucketNone 折成可用性，用于取「旧文件的冷却基准」。
+// bucketOr folds BucketNone into availability, used to get "the old file's cooldown base".
 func bucketOr(b Bucket) Bucket {
 	if b == BucketNone {
 		return BucketAvailability

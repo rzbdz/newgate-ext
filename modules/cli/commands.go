@@ -6,23 +6,27 @@ import (
 	"github.com/rzbdz/newgate/lib/i18n"
 )
 
-// 本文件把界面**自己的**那批命令也做成 Command，注册进同一个账本。
+// This file also makes the UI's **own** batch of
+// commands into Commands, registered in the same ledger.
 //
-// 为什么（2026-09-18）：这些命令还住在界面里（它们要读配置、接管状态、守护进程
-// 生命周期，而那些依赖还没从界面搬走），但它们的**声明**没必要和界面绑在一起。
-// 做成 Command 之后：
+// Why (2026-09-18): these commands still live in the UI (they need to read config,
+// takeover state, and daemon lifecycle, and those dependencies have not moved out
+// of the UI yet), but their **declaration** need not be tied to the UI. As Commands:
 //
-//   - `run()` 里那个巨大的 switch 消失了，只剩编排（argv0 分发、包装启动、账本
-//     查表、未知命令兜底）；
-//   - `--help` 自动补全——每个命令自己声明 HelpLine，不必再在 usageText 里维护
-//     一张并列的清单（那两张表错开过一次：命令搬走了、help 还留着）；
-//   - 每条命令都变成了一个**可以整体搬走**的单元：哪天它的依赖也离开了界面，
-//     把这个类型连同它的 cmdXxx 一起挪到拥有它的模块即可。
+// - the giant switch in `run()` is gone, leaving only orchestration (argv0
+//   dispatch, wrapped launch, ledger lookup, unknown-command fallback);
+// - `--help` fills in automatically -- each command declares its own
+//   HelpLine, and there is no longer a separate list to maintain in usageText
+//   (the two tables got out of sync once: the command moved and help stayed);
+// - every command became a unit that **can be moved as a whole**: the day its dependencies
+//   also leave the UI, move this type along with its cmdXxx into the module that owns it.
 //
-// 留在这里的判断标准写在 CLAUDE.md §4：把它删掉，业务模块还成立吗？成立就不该
-// 留在界面——反过来说，这些命令**此刻**留在界面是因为它们依赖的东西还在界面手上。
+// The test for keeping them here is in CLAUDE.md §4: delete it, does the business module
+// still stand? If it does, it should not stay in the UI -- conversely, these commands
+// stay in the UI **right now** because what they depend on is still in the UI's hands.
 
-// 帮助行的位置。数字留出空档，方便插队；节内按 Rank 再按 Usage 排。
+// Help line positions. The numbers leave gaps so others
+// can jump in; within a section sorted by Rank then Usage.
 const (
 	rankTakeover = 10 // 接管
 	rankRunOnce  = 20 // 跑一次
@@ -41,7 +45,7 @@ func (statusCommand) Help() HelpLine {
 }
 func (c statusCommand) Run(_ Host, _ []string) int { return cmdStatus(c.s) }
 
-// ---------- 探测与观测 ----------
+// ---------- Probing and observation ----------
 
 type doctorCommand struct{ s *service }
 
@@ -56,7 +60,8 @@ type allLogsCommand struct{ s *service }
 
 func (allLogsCommand) Names() []string { return []string{"alllogs", "all-logs"} }
 
-// Unstyled：诊断包是**原始转储**（日志原文 + 配置原文），不是给人扫的版式。
+// Unstyled: the diagnostic bundle is a **raw dump** (raw log
+// text + raw config text), not a layout for human scanning.
 func (allLogsCommand) Unstyled([]string) bool { return true }
 func (allLogsCommand) Help() HelpLine {
 	return HelpLine{Section: SectionObserve, Rank: rankObserve,
@@ -64,7 +69,7 @@ func (allLogsCommand) Help() HelpLine {
 }
 func (c allLogsCommand) Run(_ Host, _ []string) int { return cmdAllLogs(c.s) }
 
-// ---------- 界面自身 ----------
+// ---------- The UI itself ----------
 
 type versionCommand struct{}
 
@@ -92,11 +97,12 @@ func (c helpCommand) Run(_ Host, _ []string) int {
 	return 0
 }
 
-// ownCommands 是界面自己的命令。
+// ownCommands are the UI's own commands.
 //
-// 注册进同一个账本（而不是留在 run() 的 switch 里）：查重、分派、help 组装走
-// 同一条路，run() 于是只剩编排。哪天某条命令的依赖离开了界面，把它从这里删掉、
-// 挪到拥有它的模块即可——见文件头的说明。
+// Registered into the same ledger (rather than left in run()'s switch): duplicate
+// checking, dispatch, and help assembly take the same path, so run() is left with
+// only orchestration. The day some command's dependencies leave the UI, delete it from
+// here and move it to the module that owns it -- see the note at the top of the file.
 func ownCommands(s *service) []Command {
 	return []Command{
 		statusCommand{s},
@@ -106,8 +112,9 @@ func ownCommands(s *service) []Command {
 	}
 }
 
-// registerOwnCommands 把界面自己的命令挂进账本。撞名即装配期错误——两个模块
-// 抢同一个命令名必须是当场报错，而不是先到先得。
+// registerOwnCommands hangs the UI's own commands in the ledger. A
+// name clash is an assembly-time error -- two modules claiming the same
+// command name must error on the spot, not first-come-first- served.
 func (s *service) registerOwnCommands() error {
 	for _, c := range ownCommands(s) {
 		if _, err := s.RegisterCommand(c); err != nil {

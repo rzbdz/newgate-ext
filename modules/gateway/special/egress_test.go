@@ -12,7 +12,7 @@ type claimer struct {
 }
 
 func (c *claimer) Name() string        { return c.name }
-func (c *claimer) Why() string         { return "测试用" }
+func (c *claimer) Why() string         { return "for testing" }
 func (c *claimer) Match(*Request) bool { return true }
 func (c *claimer) Apply(b []byte, r *Request) ([]byte, []string, error) {
 	return b, nil, nil

@@ -1,7 +1,9 @@
-// Package claudecode_glm 只处理 Claude Code 与 GLM 同时出现时的兼容行为。
+// Package claudecode_glm handles only the compatibility
+// behavior when Claude Code and GLM appear together.
 //
-// 交叉组件同时依赖客户端身份、模型身份和 Gateway 端口。只有三者均存在，
-// 插件才进入请求链；这比在 gateway 热路径里判断品牌名更容易删除和测试。
+// The cross-cutting component depends on the client identity, the model identity, and the
+// Gateway port at once. Only when all three exist does the plugin enter the request chain;
+// that is easier to remove and test than checking brand names in gateway's hot path.
 package claudecode_glm
 
 import (
@@ -15,8 +17,8 @@ import (
 	modules "github.com/rzbdz/newgate/component"
 )
 
-// New 声明 Claude Code × GLM 交叉组件，
-// 把跨模块怪癖留在组合边界，避免污染任一模块的单方实现。
+// New declares the Claude Code x GLM cross-cutting component, keeping cross-module
+// quirks at the composition boundary so neither module's own implementation is polluted.
 func New() modules.Component {
 	var releases []modules.Release
 	return modules.Component{

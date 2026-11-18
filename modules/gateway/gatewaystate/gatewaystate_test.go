@@ -32,18 +32,18 @@ func TestParseFallsBackToFactory(t *testing.T) {
 		st   *domain.State
 	}{
 		{"nil state", nil},
-		{"空 ModuleConfig", st(nil)},
-		{"这一段的 JSON 是坏的", st(map[string][]byte{Key: []byte("{不是 json")})},
+		{"empty ModuleConfig", st(nil)},
+		{"the JSON of this section is broken", st(map[string][]byte{Key: []byte("{not json")})},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			if !RepairEnabled(c.st) {
-				t.Fatal("schema 修补该默认开")
+				t.Fatal("schema repair should default to on")
 			}
 			if !SpecialEnabled(c.st) {
-				t.Fatal("special 层该默认开")
+				t.Fatal("the special layer should default to on")
 			}
 			if PluginOff(c.st, "deepseek") {
-				t.Fatal("没配过就不该有插件被关")
+				t.Fatal("nothing configured means no plugin disabled")
 			}
 		})
 	}
@@ -61,13 +61,13 @@ func TestFallbackDefaultsOn(t *testing.T) {
 		st   *domain.State
 	}{
 		{"nil state", nil},
-		{"空 ModuleConfig", st(nil)},
-		{"这一段的 JSON 是坏的", st(map[string][]byte{Key: []byte("{不是 json")})},
-		{"这一段在，但没写过 fallback", st(map[string][]byte{Key: raw(t, Config{SchemaRepair: boolp(true)})})},
+		{"empty ModuleConfig", st(nil)},
+		{"the JSON of this section is broken", st(map[string][]byte{Key: []byte("{not json")})},
+		{"this section exists, but fallback was never written", st(map[string][]byte{Key: raw(t, Config{SchemaRepair: boolp(true)})})},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			if FallbackOff(c.st) {
-				t.Fatal("没表过态就该是「照旧换人」——读不出来时尤其不能把 fallback 关掉")
+				t.Fatal("with no stated preference it should be 'switch as before' - especially when it cannot be read, fallback must not be turned off")
 			}
 		})
 	}
@@ -87,7 +87,7 @@ func TestFallbackRoundTrip(t *testing.T) {
 		t.Fatalf("Init: %v", err)
 	}
 	if FallbackOff(store.LoadState()) {
-		t.Fatal("出厂态该是「照旧换人」")
+		t.Fatal("the factory state should be 'switch as before'")
 	}
 
 	if err := SetFallback(false); err != nil {
@@ -95,29 +95,29 @@ func TestFallbackRoundTrip(t *testing.T) {
 	}
 	after := store.LoadState()
 	if !FallbackOff(after) {
-		t.Fatal("关掉之后读到的还是开——CLI 与守护进程会分家")
+		t.Fatal("after disabling it still reads as on - the CLI and the daemon would diverge")
 	}
 	var got struct {
 		Fallback *bool `json:"fallback"`
 	}
 	if err := json.Unmarshal(after.ModuleConfig[Key], &got); err != nil {
-		t.Fatalf("gateway 段解不开: %v（原文 %s）", err, after.ModuleConfig[Key])
+		t.Fatalf("cannot decode the gateway section: %v (raw %s)", err, after.ModuleConfig[Key])
 	}
 	if got.Fallback == nil || *got.Fallback {
-		t.Fatalf("落盘形状不对：gateway 段 = %s, want fallback:false", after.ModuleConfig[Key])
+		t.Fatalf("wrong on-disk shape: gateway section = %s, want fallback:false", after.ModuleConfig[Key])
 	}
 	// 顺带守一条：写这个开关不该碰到同一段里的别的指针字段。Config 里三个 *bool
 	// 长得一样，`c.Fallback = &on` 抄错成别人是很容易发生、且**只在下次读的时候**
 	// 才显形的那种错（症状是「我关的是 fallback，schema 修补怎么没了」）。
 	if !RepairEnabled(after) || !SpecialEnabled(after) {
-		t.Fatal("写 fallback 把同一段里别的开关带翻了")
+		t.Fatal("writing fallback flipped other switches in the same section")
 	}
 
 	if err := SetFallback(true); err != nil {
 		t.Fatalf("SetFallback(true): %v", err)
 	}
 	if FallbackOff(store.LoadState()) {
-		t.Fatal("拨回 on 之后还关着")
+		t.Fatal("after setting it back to on it is still off")
 	}
 }
 
@@ -143,22 +143,22 @@ func TestParseReadsLegacyKeys(t *testing.T) {
 		legacy.DebugUntil:       raw(t, "2099-01-01T00:00:00Z"),
 	})
 	if RepairEnabled(old) {
-		t.Fatal("老键 schema_repair=false 没被读到")
+		t.Fatal("the old key schema_repair=false was not read")
 	}
 	if SpecialEnabled(old) {
-		t.Fatal("老键 special_treatment=false 没被读到")
+		t.Fatal("the old key special_treatment=false was not read")
 	}
 	if !PluginOff(old, "deepseek") || !PluginOff(old, "glm") {
-		t.Fatal("老键 special_treatment_off 没被读到")
+		t.Fatal("the old key special_treatment_off was not read")
 	}
 	if PluginOff(old, "thinking") {
-		t.Fatal("没关过的插件被误判成关了")
+		t.Fatal("a plugin that was never disabled was judged disabled")
 	}
 	if !DebugActive(old) {
-		t.Fatal("老键 debug=true + 未到期的 debug_until 没被读到")
+		t.Fatal("the old key debug=true plus an unexpired debug_until was not read")
 	}
 	if got := DebugUntilDisplay(old); got != "2099-01-01T00:00:00Z" {
-		t.Fatalf("老键 debug_until 没被读到: %q", got)
+		t.Fatalf("the old key debug_until was not read: %q", got)
 	}
 }
 
@@ -177,9 +177,9 @@ func TestLegacyKeysAreNotTypedFields(t *testing.T) {
 		for i := 0; i < typ.NumField(); i++ {
 			tag := strings.SplitN(typ.Field(i).Tag.Get("json"), ",", 2)[0]
 			if tag == key {
-				t.Fatalf("domain.State 上还有 typed 字段 %q：store 会把它结构化解析掉，"+
-					"老键迁移**静默失效**（读不到、也不留在 ModuleConfig 里）。"+
-					"字段必须先删掉，本包才能读到它。", key)
+				t.Fatalf("domain.State still has the typed field %q: store parses it structurally, "+
+					"so the old-key migration silently fails (unreadable, and not left in ModuleConfig)."+
+					"the field must be deleted first for this package to read it.", key)
 			}
 		}
 	}
@@ -192,17 +192,17 @@ func TestLegacyKeysAreNotTypedFields(t *testing.T) {
 //   - 没设过 → 读老键。否则分两步搬（新段先建好、老键后搬）时那一步会静默丢设置。
 //   - 设过 → 不理老键。否则用户把开关拨回出厂态之后，老值会把它翻回去。
 func TestLegacyFillsOnlyUnsetFields(t *testing.T) {
-	t.Run("新段设过的字段胜出", func(t *testing.T) {
+	t.Run("a field set in the new section wins", func(t *testing.T) {
 		on := true
 		s := st(map[string][]byte{
 			Key:                     raw(t, Config{SpecialTreatment: &on}),
 			legacy.SpecialTreatment: raw(t, false),
 		})
 		if !SpecialEnabled(s) {
-			t.Fatal("新段显式写了 true，却被老键的 false 翻回去了")
+			t.Fatal("the new section explicitly wrote true, but the old key's false flipped it back")
 		}
 	})
-	t.Run("新段没设过的字段回退到老键", func(t *testing.T) {
+	t.Run("a field not set in the new section falls back to the old key", func(t *testing.T) {
 		// 新段只写了 schema_repair（这正是分两步搬时的真实形态）。
 		s := st(map[string][]byte{
 			Key:                     raw(t, Config{SchemaRepair: boolp(true)}),
@@ -211,10 +211,10 @@ func TestLegacyFillsOnlyUnsetFields(t *testing.T) {
 			legacy.SpecialTreatment: raw(t, false),
 		})
 		if !DebugActive(s) {
-			t.Fatal("新段没设过 debug，该回退读老键——否则老设置静默丢了")
+			t.Fatal("the new section never set debug, so it should fall back to the old key - otherwise the old setting is silently lost")
 		}
 		if SpecialEnabled(s) {
-			t.Fatal("新段没设过 special_treatment，该回退读老键")
+			t.Fatal("the new section never set special_treatment, so it should fall back to the old key")
 		}
 	})
 }
@@ -236,7 +236,7 @@ func TestUpdateWritesNewAndDropsLegacy(t *testing.T) {
 	}
 	// 迁移期读得到老值。
 	if SpecialEnabled(store.LoadState()) {
-		t.Fatal("写之前该读到老键的 false")
+		t.Fatal("before the write the old key's false should be read")
 	}
 
 	if err := SetSpecialPlugin("deepseek", false); err != nil {
@@ -245,16 +245,16 @@ func TestUpdateWritesNewAndDropsLegacy(t *testing.T) {
 
 	after := store.LoadState()
 	if _, still := after.ModuleConfig[legacy.SpecialTreatment]; still {
-		t.Fatal("老键没被删掉——它会永远躺在 state.json 里让人以为还生效")
+		t.Fatal("the old key was not removed - it would sit in state.json forever and make people think it still applies")
 	}
 	if _, still := after.ModuleConfig[legacy.SchemaRepair]; still {
-		t.Fatal("老键 schema_repair 没被删掉")
+		t.Fatal("the old key schema_repair was not removed")
 	}
 	if PluginOff(after, "deepseek") != true {
-		t.Fatal("新段没写进去")
+		t.Fatal("the new section was not written")
 	}
 	// 老值被带进了新段：写的那一刻先读到了 false，所以它必须活下来。
 	if SpecialEnabled(after) {
-		t.Fatal("老键的 false 在迁移时被丢了——用户关掉的东西自己回来了")
+		t.Fatal("the old key's false was dropped during migration - something the user turned off came back")
 	}
 }

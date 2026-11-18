@@ -16,24 +16,26 @@ import (
 	"github.com/rzbdz/newgate-ext/modules/gateway/special"
 )
 
-// specialCommand 是 `newgate st`：special_treatment 插件层的清单与开关。
+// specialCommand is `newgate st`: the special_treatment plugin layer's list and switches.
 //
-// **它住在这里而不是 modules/cli**：这一层的插件是网关数据面的一部分，插件名、
-// Why、开关语义全是 gateway 自己的知识。2026-09-18 之前它写在 cli 里，于是 cli
-// 要 import gateway/special 并**直接读那个包的级注册表**（`special.Plugins()`）——
-// 绕过 capability 去读别人的 owner 状态，正是 everything is module 要消灭的那种
-// 依赖（同一条也适用于 `probe` / `metrics` / `schema-repair`）。搬回来之后 cli
-// 不必认识 special 这个包，gateway 也能自己决定这些命令长什么样。
+// **Why it lives here and not in modules/cli**: this layer's plugins are part of the
+// gateway data plane; plugin names, Why and switch semantics are all gateway's own
+// knowledge. Before 2026-09-18 it lived in cli, so cli imported gateway/special and **read
+// that package's global registry directly** (`special.Plugins()`) - bypassing a capability
+// to read someone else's owner state, exactly the dependency everything is module wants
+// to eliminate (the same applies to `probe` / `metrics` / `schema-repair`). After the move
+// cli need not know the special package, and gateway decides what these commands look like.
 //
-// 用法：
+// Usage:
 //
-//	newgate st                 插件清单：一行一个，为什么存在
-//	newgate st <插件>          单个插件的完整说明
-//	newgate st on|off          整层开关
-//	newgate st on|off <插件>   单独开关一个
+//	newgate st list plugins: one per line, why
+//	it exists newgate st <plugin> a single plugin's full
+//	description newgate st on|off the whole layer's switch
+//	newgate st on|off <plugin> switch one plugin on or off
 //
-// 为什么值得有这个命令：这一层会**改用户的请求**。用户排查「上游报错是不是
-// newgate 改坏的」时，必须能一眼看到有哪些补丁在生效、并且能逐个关掉验证。
+// Why the command is worth having: this layer **changes the user's request**.
+// When checking "did newgate break this upstream error", the user must see at
+// a glance which patches are in effect and be able to turn them off one by one.
 type specialCommand struct{}
 
 var (
@@ -53,7 +55,7 @@ func (specialCommand) Help() cliapi.HelpLine {
 	}
 }
 
-// Run 收到的 args **不含 "st" 这个动词**（见 cliapi.Command 的契约）。
+// The args Run receives **do not include the verb "st"** (see cliapi.Command's contract).
 func (specialCommand) Run(host cliapi.Host, args []string) int {
 	st := store.LoadState()
 	sub := cliapi.Positional(args, 0)
@@ -62,7 +64,8 @@ func (specialCommand) Run(host cliapi.Host, args []string) int {
 	if sub == "" || sub == "status" || sub == "ls" {
 		return specialList(host, st)
 	}
-	// 直接给插件名 = 看它的完整说明（Why 常常是好几行，铺在清单里会淹掉）
+	// giving a plugin name directly = see its full description
+	// (Why is often several lines, which would drown the list)
 	if p := findPlugin(sub); p != nil {
 		return specialExplain(host, st, sub)
 	}
@@ -115,10 +118,11 @@ func findPlugin(name string) special.Plugin {
 	return nil
 }
 
-// specialState 单个插件此刻的状态：层开关 + 单插件开关。
+// specialState is one plugin's state right now: the layer switch + the plugin's switch.
 //
-// 两个界面共用它：CLI 印那个 mark，web 卡片把同一个 mark 翻成颜色（specialTone）。
-// 判据只有这一处——「什么算生效」不该在两张界面上各写一遍，那迟早会各说各话。
+// Both UIs share it: the CLI prints that mark, the web card turns the same mark into
+// a color (specialTone). The criterion lives in this one place - "what counts as
+// active" should not be written twice in two UIs, or they will eventually disagree.
 func specialState(st *domain.State, name string) (mark, word string) {
 	switch {
 	case !gatewaystate.SpecialEnabled(st):
@@ -129,17 +133,18 @@ func specialState(st *domain.State, name string) (mark, word string) {
 	return style.OK, i18n.T("active", nil)
 }
 
-// specialTone 把 CLI 那个 mark 翻成 web 卡片的颜色。
+// specialTone turns the CLI's mark into the web card's color.
 //
-// **一对一，不重新判断严重度**：生效 → ok，整层关掉 → warn，单独关掉一个 → bad，
-// 与终端上那个 mark 说的是同一件事。这条不是审美：`runtime/view.go` 写着「两个
-// 界面对同一份磁盘状态给出不同答案，比其中一个不显示更糟」——把 CLI 的 ✗ 在网页上
-// 画成黄色，就是那个「不同答案」，而且是**最坏的一种**：两边的文字一样，只有严重度
-// 不一样，看的人先信了颜色，再看文字时已经晚了。
+// **One-to-one, no re-judging of severity**: active → ok, whole layer off → warn, one plugin
+// off → bad, saying the same thing as the mark in the terminal. This is not aesthetics:
+// `runtime/view.go` says "two UIs giving different answers about the same on-disk state
+// is worse than one of them not showing it" - painting the CLI's ✗ yellow on the web page
+// is that "different answer", and the **worst kind**: the words are the same, only the
+// severity differs, so the reader trusts the color first and notices the text too late.
 //
-// tone 的词表只有三个（ok/warn/bad，见 lib/view），而 mark 有四个：style.Skip
-// （整层关掉的 `·`）没有对应的 tone，落到 warn 上——「这些补丁现在都不在」该被看见，
-// 但它不是 bad：那一档已经被「单独关掉」占着了。
+// tone has only three words (ok/warn/bad, see lib/view) while mark has four: style.Skip
+// (the `·` of a whole layer off) has no tone, so it lands on warn - "none of these patches
+// is on now" should be seen, but it is not bad: that slot is taken by "individually off".
 func specialTone(mark string) string {
 	switch mark {
 	case style.OK:
@@ -173,9 +178,9 @@ func specialList(host cliapi.Host, st *domain.State) int {
 	fmt.Print(t.String())
 	fmt.Println(style.Hint(i18n.T("Upstream quirk patches: they apply only to the upstream that claimed the request, and every change is logged", nil)))
 	fmt.Println(style.Hint(i18n.T("Full description: newgate st <plugin> · disable one: newgate st off <plugin> · disable the layer: newgate st off", nil)))
-	// 推理缓存的计数也归本模块报（见 thinkcache_status.go）：以前它经
-	// cliapi.Host 的口子绕一圈回界面渲染，那条口子的名字（PrintThinkCache）
-	// 本身就是「界面认识了一个模块概念」的证据。
+	// Reasoning cache counters are also reported by this module (see thinkcache_status.go):
+	// they used to go back to the UI for rendering through a cliapi.Host port, and that
+	// port's name (PrintThinkCache) was itself evidence that "the UI knows a module concept".
 	printThinkCache()
 	return 0
 }

@@ -13,11 +13,11 @@ func init() {
 	special.Register(ToolsLift{})
 }
 
-// reqToolsLift 构造一个最小可用的 special.Request；ToolsLift.Apply 只读 Agent。
+// reqToolsLift builds a minimal usable special.Request; ToolsLift.Apply only reads Agent.
 func reqToolsLift() *special.Request { return &special.Request{Agent: ID} }
 
-// toolFactory 造一条工具声明——形状照 Codex 0.155.1 实际发出来的写。
-// 三种 type 各一条，用来钉叶子与容器的分别。
+// toolFactory builds one tool declaration -- the shape follows what Codex 0.155.1 actually
+// sends. One each of the three types, to pin the difference between leaves and containers.
 func toolFactory(kind, name string) []byte {
 	switch kind {
 	case "function":
@@ -31,7 +31,7 @@ func toolFactory(kind, name string) []byte {
 	}
 }
 
-// nestTools 造一份 `input[0].additional_tools` 数组（裸数组，给 FlattenToolTree 测）。
+// nestTools builds an `input[0].additional_tools` array (a bare array, for FlattenToolTree tests).
 func nestTools(tools [][]byte) []byte {
 	var buf bytes.Buffer
 	buf.WriteByte('[')
@@ -45,7 +45,7 @@ func nestTools(tools [][]byte) []byte {
 	return buf.Bytes()
 }
 
-// nestInsideNamespace 把若干工具包进一个 `namespace` 容器，用来钉住递归。
+// nestInsideNamespace wraps several tools in a `namespace` container, to pin the recursion.
 func nestInsideNamespace(name string, tools [][]byte) []byte {
 	var buf bytes.Buffer
 	buf.WriteString(`{"type":"namespace","name":"`)
@@ -56,10 +56,11 @@ func nestInsideNamespace(name string, tools [][]byte) []byte {
 	return buf.Bytes()
 }
 
-// TestFlattenToolTreeNamespaceFlattened 钉「namespace 拍平」的核心。
+// TestFlattenToolTreeNamespaceFlattened pins the core of "namespace flattening".
 //
-// `namespace` 是 Codex 客户端的分组（functions / collaboration），上游没有对
-// 应概念——拍平成一个 tools 数组，叶子字节不动。这条规矩的来由见 lift.go。
+// `namespace` is the Codex client's grouping (functions / collaboration),
+// with no corresponding concept upstream -- flatten it into one tools array,
+// leaves untouched byte for byte. For where this rule comes from, see lift.go.
 func TestFlattenToolTreeNamespaceFlattened(t *testing.T) {
 	leaves := [][]byte{
 		toolFactory("function", "get_weather"),
@@ -74,8 +75,9 @@ func TestFlattenToolTreeNamespaceFlattened(t *testing.T) {
 	if n != len(leaves) {
 		t.Fatalf("leaf count: got %d, want %d", n, len(leaves))
 	}
-	// 叶子字节必须逐字保留——这是「请求体不做 JSON 往返」在 lift 上的落点。
-	// 用 string.Contains 而不是 JSON 解析，因为目的是验证**字节保真**。
+	// Leaf bytes must be preserved verbatim -- this is where "the request body
+	// does not do a JSON round trip" lands on lift. string.Contains rather
+	// than JSON parsing, because the point is to verify **byte fidelity**.
 	got := string(out)
 	for _, want := range leaves {
 		if !strings.Contains(got, string(want)) {
@@ -84,10 +86,10 @@ func TestFlattenToolTreeNamespaceFlattened(t *testing.T) {
 	}
 }
 
-// TestFlattenToolTreeUnknownKindPassThrough 钉「未知 type 不动手」。
+// TestFlattenToolTreeUnknownKindPassThrough pins "do not touch an unknown type".
 //
-// Codex 哪天加一种新的工具 type，抬上去的是它写的字节原文，不是我们猜的形
-// 状。把 function/custom/web_search 之外的 `type` 当叶子、字节不动。
+// The day Codex adds a new tool type, what is lifted is the raw bytes it wrote, not a shape we
+// guessed. Any `type` other than function/custom/web_search is treated as a leaf, bytes untouched.
 func TestFlattenToolTreeUnknownKindPassThrough(t *testing.T) {
 	custom := []byte(`{"type":"future_thing","name":"x","custom_field":[1,2,3]}`)
 	out, n := FlattenToolTree(nestTools([][]byte{custom}))
@@ -99,7 +101,7 @@ func TestFlattenToolTreeUnknownKindPassThrough(t *testing.T) {
 	}
 }
 
-// TestFlattenToolTreeEmptyInput 不算「已抬」——与 leafCount=0 的契约配套。
+// TestFlattenToolTreeEmptyInput is not "already lifted" -- paired with the leafCount=0 contract.
 func TestFlattenToolTreeEmptyInput(t *testing.T) {
 	out, n := FlattenToolTree([]byte(`[]`))
 	if n != 0 || out != nil {
@@ -107,10 +109,10 @@ func TestFlattenToolTreeEmptyInput(t *testing.T) {
 	}
 }
 
-// TestToolsInInputFindsItem 钉「input[].additional_tools 项是哪一个」。
+// TestToolsInInputFindsItem pins "which item is the input[].additional_tools one".
 //
-// 顺序：Codex 的 `input[]` 不一定把 additional_tools 放在 index 0；它可能跟
-// 在一条 user 消息后面。该当按 type 字段去找，不按 index 猜。
+// Order: Codex's `input[]` does not necessarily put additional_tools at index 0; it
+// may follow a user message. Find it by the type field, not by guessing the index.
 func TestToolsInInputFindsItem(t *testing.T) {
 	body := []byte(`{"model":"x","input":[
 		{"type":"message","role":"user","content":"hi"},
@@ -127,7 +129,7 @@ func TestToolsInInputFindsItem(t *testing.T) {
 	}
 }
 
-// TestToolsInInputNoItem 钉「找不到就是 false，不算错误」。
+// TestToolsInInputNoItem pins "not found means false, not an error".
 func TestToolsInInputNoItem(t *testing.T) {
 	body := []byte(`{"model":"x","input":[{"type":"message","role":"user"}],"tools":[{"type":"function","name":"f"}]}`)
 	if arr, ok := ToolsInInput(body); ok || arr != nil {
@@ -135,11 +137,12 @@ func TestToolsInInputNoItem(t *testing.T) {
 	}
 }
 
-// TestHasUsableTopLevelTools 钉「顶 tools 是新版的非空数组」与「空/null/缺席
-// 都视为可抬」之间的界线。
+// TestHasUsableTopLevelTools pins the dividing line between "the top tools is
+// the new-shape non-empty array" and "empty/null/absent all count as liftable".
 //
-// 真值表的来由（lift.go 注释里有说）：Codex 0.155 在带 additional_tools 项的请求
-// 里把 `tools` 写成 `null` 或 `[]`，那种情况应当按"我要用嵌套那份"处理。
+// Where the truth table comes from (explained in the lift.go comment): Codex
+// 0.155 writes `tools` as `null` or `[]` on requests carrying an additional_tools
+// item, and that case should be handled as "I want to use the nested one".
 func TestHasUsableTopLevelTools(t *testing.T) {
 	cases := []struct {
 		body string
@@ -158,7 +161,7 @@ func TestHasUsableTopLevelTools(t *testing.T) {
 	}
 }
 
-// TestSetTopLevelTools 三态区分：缺席/空 → Insert；非空 → Replace。
+// TestSetTopLevelTools distinguishes three states: absent/empty -> Insert; non-empty -> Replace.
 func TestSetTopLevelTools(t *testing.T) {
 	body := []byte(`{"model":"x"}`)
 	tools := []byte(`[{"type":"function","name":"f"}]`)
@@ -169,23 +172,23 @@ func TestSetTopLevelTools(t *testing.T) {
 	if !strings.Contains(string(out), `"tools":[`) {
 		t.Fatalf("missing top-level tools: %s", string(out))
 	}
-	// 再设一次——此时 `tools` 已是数组，应当走 Replace 而不是再 Insert。
+	// Set it once more -- `tools` is now an array, so it should go Replace rather than Insert again.
 	out2, err := SetTopLevelTools(out, tools)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var m map[string]interface{}
 	_ = json.Unmarshal(out2, &m)
-	// tools 字段必须是**一个**数组，不是两个
+	// The tools field must be **one** array, not two
 	if bytes.Count(out2, []byte(`"tools"`)) != 1 {
 		t.Fatalf("`tools` appears more than once — Insert didn't detect existing value\n%s", string(out2))
 	}
 }
 
-// TestApplyLiftFromInput0 钉「Apply 的完整路径」——这是真对外测接口。
+// TestApplyLiftFromInput0 pins "Apply's full path" -- this is the real outward-facing interface.
 //
-// 输入有 `additional_tools`、顶层 `tools` 是 null → Apply 应抬；输入是新版形状
-// （顶层非空数组）→ Apply 不动。
+// Input has `additional_tools` and the top-level `tools` is null -> Apply should
+// lift; input is the new shape (top-level non-empty array) -> Apply does nothing.
 func TestApplyLiftFromInput0(t *testing.T) {
 	body := []byte(`{"model":"x","input":[
 		{"type":"additional_tools","tools":[
@@ -202,27 +205,27 @@ func TestApplyLiftFromInput0(t *testing.T) {
 	if !strings.Contains(string(out), `"tools":[{"type":"function","name":"f"`) {
 		t.Fatalf("must have written top-level tools\n%s", string(out))
 	}
-	// input[0] 那一项必须原样保留——实测上游对额外的 additional_tools 项不
-	// 反对，删它就是无依据的改动。
+	// The input[0] item must be preserved as is -- measured, the upstream does not object
+	// to an extra additional_tools item, so deleting it would be a change with no basis.
 	if !strings.Contains(string(out), `"additional_tools"`) {
 		t.Fatalf("must preserve input[0] (the additional_tools item)\n%s", string(out))
 	}
 
-	// 新版形状：顶层非空 tools → Apply 不动。
+	// New shape: top-level non-empty tools -> Apply does nothing.
 	new := []byte(`{"model":"x","tools":[{"type":"function","name":"f"}]}`)
 	out2, notes2, err := ToolsLift{}.Apply(new, reqToolsLift())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(out2) != string(new) || len(notes2) != 0 {
-		t.Fatalf("新版形状必须不动: out=%s notes=%v", string(out2), notes2)
+		t.Fatalf("the new-style shape must stay untouched: out=%s notes=%v", string(out2), notes2)
 	}
 }
 
-// TestApplyEmptyArrayCountsNoLeaves 钉「空数组 → 原样转发」。
+// TestApplyEmptyArrayCountsNoLeaves pins "empty array -> forward as is".
 //
-// `additional_tools.tools` 是 `[]` 也是「找不到可抬的」——叶子数 0 就当
-// nothing，notes 不报、不替换顶层 tools。
+// `additional_tools.tools` being `[]` also means "nothing to lift" -- a leaf count of 0
+// is treated as nothing, notes are not reported, and the top-level tools is not replaced.
 func TestApplyEmptyArrayCountsNoLeaves(t *testing.T) {
 	body := []byte(`{"model":"x","input":[
 		{"type":"additional_tools","tools":[]}
@@ -236,11 +239,12 @@ func TestApplyEmptyArrayCountsNoLeaves(t *testing.T) {
 	}
 }
 
-// TestApplyWrongAgent 是防回归——Match 只对 codex 客户端生效。
+// TestApplyWrongAgent is a regression guard -- Match only applies to the codex client.
 //
-// 顺手验 Apply 的失败模式：错客户端时 Match 应当 return false，但 Apply 本身
-// 是幂等的——调用者（special.Apply）在 Match 不通过时根本不会叫 Apply；这里
-// 是直接测 Apply 在错的 Agent 下也安全（不会越权去抬一份非 codex 的嵌套形状）。
+// It also checks Apply's failure mode: with the wrong client Match should return
+// false, but Apply itself is idempotent -- the caller (special.Apply) never calls
+// Apply at all when Match does not pass; here we test directly that Apply is also
+// safe under the wrong Agent (it will not overstep and lift a non-codex nested shape).
 func TestApplyWrongAgent(t *testing.T) {
 	body := []byte(`{"model":"x","input":[{"type":"additional_tools","tools":[]}]}`)
 	r := &special.Request{Agent: "claude"} // 别的客户端

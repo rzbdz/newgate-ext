@@ -7,25 +7,25 @@ import (
 	"strings"
 )
 
-// pkgPrefixes 是「我们自己写的」包的两条前缀。
+// pkgPrefixes are the two prefixes of "our own" packages.
 //
-// 判据是**仓库归属**，不是路径好看：内核（github.com/rzbdz/newgate/…）与发行版
-// （github.com/rzbdz/newgate-ext/…）。标准库与第三方一律不进图，否则一张图几百
-// 个点，什么都看不出来。
+// The criterion is **repo ownership**, not a nice path: the kernel (github.com/rzbdz/newgate/...)
+// and the distribution (github.com/rzbdz/newgate-ext/...). Stdlib and third-party never
+// enter the map, or it is hundreds of points and nothing reads.
 var pkgPrefixes = []string{
 	"github.com/rzbdz/newgate-ext/",
 	"github.com/rzbdz/newgate/",
 }
 
-// groupDirs 是**聚合到哪一层**的判据。
+// groupDirs is the criterion for **which level to aggregate at**.
 //
-// 图的元素是 **import 包（目录）**，不是每个 Go 文件包：`modules/gateway/forward`
-// 与 `modules/gateway/rewrite` 之间的边画出来没有信息量——它们本来就属于同一个
-// 模块，那个模块才是「一个东西」。所以同一目录下的包合成一个圆角矩形，边只在
-// 目录之间画。
+// Map elements are **import packages (directories)**, not each Go file package: an
+// edge between `modules/gateway/forward` and `modules/gateway/rewrite` carries no
+// information - they belong to the same module, and the module is the "one thing".
+// So packages in one directory become one rounded rectangle; edges only between dirs.
 //
-// 这一层也是 review 时唯一问得出口的问题所在的层：「gateway 依赖谁」「谁依赖
-// config」，而不是「forward 的 rewrite 用不用 i18n」。
+// This is also the level where the only review question worth asking lives: "who
+// does gateway depend on" and "who depends on config", not "does rewrite use i18n".
 var groupDirs = map[string]bool{
 	"modules": true, "lib": true, "tools": true, "testing": true, "cmd": true,
 }
@@ -36,15 +36,15 @@ type listedPkg struct {
 	Imports    []string
 }
 
-// ImportGraph 扫一遍两个仓库里所有包的 import，聚合到目录层画成图。
+// ImportGraph scans every package's imports in both repos, aggregates to directory level.
 //
-// 为什么用 `go list` 而不是自己解析 import 语句：解析源码要自己处理构建约束、
-// 生成文件、`_test.go`、以及「这个包到底属不属于这个 module」；而 `go list` 给出
-// 的就是**编译器眼里的那份事实**。代价是要能跑 go 命令（开发机上有，CI 上也有
-// ——这条通路本来就只在开发时用）。
+// Why `go list` instead of parsing import statements: parsing source means handling
+// build constraints, generated files, `_test.go`, and "is this package even in this
+// module"; `go list` gives **the compiler's own facts**. The price is running go
+// (on dev machines and CI - this path is only used in development anyway).
 //
-// 两个 module 分别列：`./...` 只列当前 module 的包，内核是另一个 module（虽然
-// 被 replace 到了 ./core），得按它的 import 前缀点名列。
+// The two modules are listed separately: `./...` lists only the current module's
+// packages, and the kernel is another module (replaced to ./core), so name its prefix.
 func ImportGraph(root string) (Graph, error) {
 	pkgs, err := goList(root, "./...")
 	if err != nil {
@@ -56,7 +56,7 @@ func ImportGraph(root string) (Graph, error) {
 	}
 	pkgs = append(pkgs, core...)
 
-	// 先把「哪些包属于我们」定下来，再把它们归到目录。
+	// First pin down "which packages are ours", then fold them into directories.
 	members := map[string][]string{} // 节点 id → 目录里的包
 	for _, p := range pkgs {
 		if !isOurs(p.ImportPath) {
@@ -87,7 +87,7 @@ func ImportGraph(root string) (Graph, error) {
 		})
 	}
 
-	// 边：包 → 包，聚合成 目录 → 目录；自己到自己不画。
+	// Edges: package -> package, aggregated to directory -> directory; self-edges not drawn.
 	seen := map[string]bool{}
 	for _, p := range pkgs {
 		if !isOurs(p.ImportPath) {
@@ -118,10 +118,10 @@ func ImportGraph(root string) (Graph, error) {
 	return g, nil
 }
 
-// goList 跑一次 `go list -json`，返回解析出来的包。
+// goList runs `go list -json` once and returns the parsed packages.
 //
-// -e 让「有包编不过」不至于把整张图弄没：拿得到的照样画（坏掉的那个包会在
-// 图上少几条边，而少的那几条正好是线索）。
+// -e keeps "a package does not compile" from losing the whole map: what can be obtained
+// is still drawn (the broken package loses a few edges, and those are exactly the clue).
 func goList(dir, pattern string) ([]listedPkg, error) {
 	cmd := exec.Command("go", "list", "-e", "-json", pattern)
 	cmd.Dir = dir
@@ -150,11 +150,11 @@ func isOurs(path string) bool {
 	return false
 }
 
-// nodeOf 把一个包归到它的 import 包：`<repo>/modules/gateway/forward` →
-// `core:modules/gateway`。
+// nodeOf folds a package into its import package: `<repo>/modules/gateway/forward` ->
+// `core:modules/gateway`.
 //
-// 顶层的包（app、component、entry…）与 lib/tools/testing/cmd 下的**直接子目录**
-// 保持原样——它们本来就是最小的「一个东西」。
+// Top-level packages (app, component, entry...) and the **direct subdirectories** of
+// lib/tools/testing/cmd stay as they are - they are already the smallest "one thing".
 func nodeOf(pkgPath string) string {
 	repo, rest := splitRepo(pkgPath)
 	segs := strings.Split(rest, "/")
@@ -164,7 +164,7 @@ func nodeOf(pkgPath string) string {
 	return repo + ":" + segs[0]
 }
 
-// splitRepo 拆出仓库归属与去掉前缀的路径。
+// splitRepo splits out repo ownership and the prefix-stripped path.
 func splitRepo(path string) (repo, rest string) {
 	if strings.HasPrefix(path, "github.com/rzbdz/newgate-ext/") {
 		return "ext", strings.TrimPrefix(path, "github.com/rzbdz/newgate-ext/")
@@ -172,7 +172,7 @@ func splitRepo(path string) (repo, rest string) {
 	return "core", strings.TrimPrefix(path, "github.com/rzbdz/newgate/")
 }
 
-// labelOf 是图上印的名字（去掉仓库前缀：一长串 github.com 没人看）。
+// labelOf is the name printed on the map (repo prefix stripped: a long github.com is unreadable).
 func labelOf(id string) string {
 	if i := strings.Index(id, ":"); i >= 0 {
 		return id[i+1:]

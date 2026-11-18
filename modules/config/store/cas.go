@@ -14,42 +14,50 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// 带基线的写（compare-and-swap）：**读的时候是哪一份，写的时候就还得是哪一份**。
+// Baseline-carrying writes (compare-and-swap): **whichever
+// copy you read, that is the copy you must still be writing**.
 //
-// # 为什么需要它
+// # Why it is needed
 //
-// 同一份配置文件有两个写者：命令行，和 web 界面。用户在浏览器里改档位的这几分钟
-// 里，完全可能在另一个终端敲了 `newgate tier`——两边都写，后写的赢，前一个人的
-// 改动**静默消失**。这不是理论：writeJSON 的注释里自己写着「当前没有跨进程写锁，
-// 多个写者并发更新同一文件时仍是最后写入者生效」。
+// One config file has two writers: the command line, and the web UI. During the few minutes the
+// user edits a tier in the browser, he may well have typed `newgate tier` in another terminal --
+// both write, the later one wins, and the earlier person's change **vanishes silently**. This is
+// not theoretical: writeJSON's own comment says "there is currently no cross-process write lock,
+// and with several writers updating the same file concurrently the last writer still wins".
 //
-// # 为什么是检测而不是阻止
+// # Why detect rather than prevent
 //
-// 让写配置的每条路径都走锁，等于要求内核所有模块改写入方式（它们今天直接在
-// 自己的 Start 里读-改-写）。而**检测**给出的东西更值钱：它能把冲突的两份内容
-// 都摆给用户看，让他自己决定——「你的改动和被人的改动撞在同一段上了」比
-// 「保存失败，请重试」有用得多。
+// Making every config-writing path take a lock amounts to requiring every kernel module
+// to change how it writes (today they read-modify-write directly in their own Start).
+// And **detecting** gives something more valuable: it can put both conflicting copies
+// in front of the user and let him decide -- "your change and someone else's change
+// collided on the same passage" is far more useful than "save failed, please retry".
 //
-// 所以判据是：**基线比对管正确性（发现冲突），flock 管原子性（同一瞬间只有一个
-// 写者在读-比对-写）**。锁只对同样走这把锁的写者有效；命令行不拿它，命令行造成
-// 的冲突由基线发现。检查与 rename 之间那个极小的窗口是承认的代价。
+// So the criterion is: **baseline comparison handles correctness (finding the conflict), flock
+// handles atomicity (only one writer is reading-comparing-writing at any instant)**. The lock only
+// works for writers that take the same lock; the command line does not, and conflicts it causes are
+// found by the baseline. The tiny window between the check and the rename is an acknowledged cost.
 
-// revPrefix 让基线在人眼前一眼能认出是内容哈希（也是以后换算法时的版本位）。
+// revPrefix makes the baseline recognizable at a glance as a
+// content hash (and a version slot for a future algorithm change).
 const revPrefix = "sha256:"
 
-// lockName 是写锁文件，放在配置根下。
+// lockName is the write lock file, under the config root.
 //
-// 与 daemon 的 pid/lock 分开：那是「谁在服务这个端口」，这是「谁在改这份配置」，
-// 共用一个文件会互相拖住（而且 daemon 的锁在 runtime 目录，语义完全不同）。
+// Separate from the daemon's pid/lock: that one is "who is serving this port", this one
+// is "who is changing this config"; sharing one file would drag on each other (and the
+// daemon's lock lives in the runtime directory, with completely different semantics).
 const lockName = ".write.lock"
 
-// ErrStale 是「基线对不上」。调用方用 errors.As 取 *StaleError 拿两边的原文。
+// ErrStale is "the baseline does not match". Callers use
+// errors.As to get a *StaleError with both source texts.
 var ErrStale = errors.New("store: the file changed on disk since it was loaded")
 
-// StaleError 带**两边的原文**。
+// StaleError carries **both source texts**.
 //
-// 只有把两份内容都摆出来，用户才能决定怎么办：他的改动与别人的改动可能只是碰巧
-// 撞在同一段，也可能南辕北辙。只回一句「过期了」，等于把这件事交给用户去猜。
+// Only by laying both copies out can the user decide what to do: his change
+// and the other person's may have just happened to collide on the same passage, or may be
+// completely different. Replying with just "it is stale" leaves that to the user's guess.
 type StaleError struct {
 	Path    string
 	Base    string // 你加载时那份
@@ -72,7 +80,8 @@ func shortRev(rev string) string {
 	return rev
 }
 
-// Revision 是文件内容哈希；文件不存在时返回空串（「基线 = 什么都没有」）。
+// Revision is the file content hash; the empty string when
+// the file does not exist ("baseline = nothing at all").
 func Revision(path string) string {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -81,17 +90,20 @@ func Revision(path string) string {
 	return RevisionOf(b)
 }
 
-// RevisionOf 是一段内容的身份（调用方已经读过内容时用，省一次读盘）。
+// RevisionOf is one piece of content's identity (for when the
+// caller has already read the content, saving one disk read).
 func RevisionOf(b []byte) string {
 	sum := sha256.Sum256(b)
 	return revPrefix + hex.EncodeToString(sum[:])
 }
 
-// WriteIfUnchanged 在 base 仍然等于磁盘现状时写入 data，返回新基线。
+// WriteIfUnchanged writes data when base still equals
+// the current disk state, returning the new baseline.
 //
-// 不一致时**什么都不写**，回 *StaleError（带磁盘原文）。读取、比对、写入三步在
-// 同一把 flock 里完成——不然两个写者会各自读到旧内容、各自通过比对、后一个
-// rename 把前一个的改动盖掉。
+// On a mismatch it **writes nothing** and returns a *StaleError (with the
+// disk source text). The read, compare and write steps complete inside one
+// flock -- otherwise two writers would each read the old content, each pass
+// the comparison, and the later rename would overwrite the earlier change.
 func WriteIfUnchanged(path, base string, data []byte) (string, error) {
 	var newRev string
 	_, err := WithLock(func() error {
@@ -119,13 +131,15 @@ func WriteIfUnchanged(path, base string, data []byte) (string, error) {
 	return newRev, err
 }
 
-// RemoveIfUnchanged 删一个文件，前提是它还是**加载时那一版**（base 即快照报的
-// 基线；空串 = 预期它不存在——那正好就是「还没建」，删成即为幂等成功）。
+// RemoveIfUnchanged deletes a file, provided it is still **the version at load**
+// (base is the baseline the snapshot reported; the empty string = it is expected not
+// to exist -- which is exactly "not created yet", so deleting is idempotent success).
 //
-// 为什么删文件也要 CAS：界面按下「删除某个档位」时，命令行可能刚改了或刚删了
-// 同一个文件。没有基线比对，界面以为自己在删一份它看过的东西，实际可能已经是
-// 别的内容——一次删除把别人刚写的配置抹掉。报 StaleError，让界面走冲突，把两
-// 边摆出来。
+// Why deleting a file needs CAS too: when the UI presses "delete this
+// tier", the command line may have just changed or deleted the same file. Without
+// baseline comparison the UI thinks it is deleting something it saw, while it may
+// already be other content -- one delete wipes config someone just wrote. Report
+// StaleError, and let the UI go through the conflict path that lays both sides out.
 func RemoveIfUnchanged(path, base string) error {
 	_, err := WithLock(func() error {
 		disk, err := os.ReadFile(path)
@@ -151,14 +165,16 @@ func RemoveIfUnchanged(path, base string) error {
 	return err
 }
 
-// WithLock 拿配置目录的写锁跑 fn。
+// WithLock takes the config directory's write lock and runs fn.
 //
-// flock 而不是 pidfile：fd 一关锁就没了，进程被 kill -9 也不会留下需要人工清理的
-// 陈旧锁——这个仓库已经有一个 pidfile 陈旧导致「判定没在跑」的现场，不必再造一个。
-// flock 跨进程也跨 goroutine（同一个文件的两个 fd 是两份独立的 open file
-// description），所以一个进程里的界面与命令行也互斥。
+// flock rather than a pidfile: the lock is gone as soon as the fd closes, and a process killed
+// with kill -9 leaves no stale lock needing manual cleanup -- this repository already had one
+// scene where a stale pidfile made it judge "not running", no need to create another. flock
+// is cross-process and cross-goroutine (two fds of the same file are two independent open
+// file descriptions), so a UI and a command line inside one process exclude each other too.
 //
-// 拿不到就等一会儿（wait）——用户敲了保存，多等两秒比回一句「正忙」好。
+// If it cannot get it, wait a while -- the user pressed save,
+// and waiting two seconds is better than replying "busy".
 func WithLock(fn func() error) (bool, error) {
 	path := filepath.Join(paths.Root(), lockName)
 	if err := os.MkdirAll(filepath.Dir(path), 0o2770); err != nil {
@@ -189,16 +205,19 @@ func WithLock(fn func() error) (bool, error) {
 	}
 }
 
-// writeFileAtomic 同目录临时文件 + rename：读者只会看到完整旧版或新版。
+// writeFileAtomic: a temporary file in the same directory +
+// rename, so readers only ever see a complete old or new version.
 //
-// 临时名带随机后缀，**不是固定名**：固定名会让两个并发写者撞在同一个 inode 上，
-// 一个 rename 走了，另一个 rename 的是一份被对方写了一半的内容。
+// The temporary name carries a random suffix, **not a fixed name**: a
+// fixed name would make two concurrent writers collide on the same inode -- one
+// renames away, and the other renames a copy the first one had written halfway.
 func writeFileAtomic(path string, data []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o2770); err != nil {
 		return err
 	}
-	// 先把**当前这份**抄进历史环（见 history.go）。放在替换之前，且不因它失败而
-	// 拒绝写盘——为了留备份让用户的保存失败，是把安全网变成了路障。
+	// First copy **the current copy** into the history ring (see history.go). Before
+	// the replacement, and it does not refuse the write when it fails -- making
+	// the user's save fail to keep a backup turns the safety net into a roadblock.
 	snapshotBeforeWrite(path)
 	f, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*.tmp")
 	if err != nil {
@@ -210,7 +229,8 @@ func writeFileAtomic(path string, data []byte) error {
 		_ = os.Remove(tmp)
 		return err
 	}
-	// 0600 太严（配置目录是多人共享读的），落 0660 再 rename。
+	// 0600 is too strict (the config directory is shared
+	// for group reading); land 0660 and then rename.
 	if err := f.Chmod(0o660); err != nil {
 		_ = f.Close()
 		_ = os.Remove(tmp)

@@ -8,8 +8,9 @@ import (
 	"testing"
 )
 
-// TestEnsureControlToken 控制令牌的生成与存活：
-// 幂等（不换令牌）、普通 SaveState 冲不掉它（cmdStart 写回 state 的路径）。
+// TestEnsureControlToken the generation and survival of the control
+// token: idempotent (the token is not swapped), an ordinary SaveState
+// does not wash it away (the path where cmdStart writes state back).
 func TestEnsureControlToken(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("NEWGATE_HOME", dir)
@@ -20,7 +21,7 @@ func TestEnsureControlToken(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(s.ControlToken) < 32 {
-		t.Fatalf("令牌太短（%d 字符），熵不够: %q", len(s.ControlToken), s.ControlToken)
+		t.Fatalf("the token is too short (%d chars), not enough entropy: %q", len(s.ControlToken), s.ControlToken)
 	}
 
 	again, err := EnsureControlToken()
@@ -28,25 +29,26 @@ func TestEnsureControlToken(t *testing.T) {
 		t.Fatal(err)
 	}
 	if again.ControlToken != s.ControlToken {
-		t.Fatalf("第二次调用换了令牌: %s → %s", s.ControlToken, again.ControlToken)
+		t.Fatalf("the second call changed the token: %s -> %s", s.ControlToken, again.ControlToken)
 	}
 
-	// 普通的 Load→改→Save（--set-profile 等命令的形态）必须原样带回落盘
+	// An ordinary Load -> change -> Save (the shape of --set-profile
+	// and similar commands) must carry it back to disk as is
 	s2 := LoadState()
 	s2.DefaultProfile = "other"
 	if err := SaveState(s2); err != nil {
 		t.Fatal(err)
 	}
 	if got := LoadState().ControlToken; got != s.ControlToken {
-		t.Fatalf("普通 SaveState 把令牌冲掉了: %q → %q", s.ControlToken, got)
+		t.Fatalf("a normal SaveState clobbered the token: %q -> %q", s.ControlToken, got)
 	}
 
-	// 落盘形态：令牌在 state.json 里（供 daemon 的 watcher 读到）
+	// On-disk form: the token is in state.json (so the daemon's watcher can read it)
 	b, err := ioutil.ReadFile(filepath.Join(dir, "state.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(b), s.ControlToken) {
-		t.Fatal("令牌没落盘")
+		t.Fatal("the token was not written to disk")
 	}
 }

@@ -21,7 +21,7 @@ func seed(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, model := range map[string]string{"one": "same-model", "two": "other-model"} {
-		// two 的 normal 与 one 共用同一条 binding：去重之后只应出现一次。
+		// two's normal shares a binding with one: after dedup it should appear only once.
 		roles := map[string]domain.Candidates{
 			"normal": {{Provider: "relay", Model: model}},
 			"mid":    {{Provider: "relay", Model: "same-model"}},
@@ -53,7 +53,7 @@ func TestEnumerateDedupesAndSorts(t *testing.T) {
 			t.Errorf("uniq[%d] = %v, want %v", i, uniq[i], want[i])
 		}
 	}
-	// 排序：profile 名字序，然后档位顺序（heavy 在 light 前）。
+	// Sorting: profile name order, then tier order (heavy before light).
 	if rows[0].Profile != "one" || rows[0].Role != "heavy" {
 		t.Errorf("first row = %s/%s, want one/heavy", rows[0].Profile, rows[0].Role)
 	}

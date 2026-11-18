@@ -9,36 +9,36 @@ import (
 	"github.com/rzbdz/newgate-ext/testing/system"
 )
 
-// anthropicBody 造一发 anthropic 方言的最小请求。model 填档位名（heavy/normal/
-// …）——这正是客户端被接管后实际发出来的东西：注入的是档位名，怎么解析由代理
-// 按请求时的当前配置决定。
+// anthropicBody builds a minimal anthropic-dialect request. model is the tier name
+// (heavy/normal/ ...) - exactly what a taken-over client sends: the tier name is injected,
+// and the proxy resolves it from the config current at request time.
 func anthropicBody(model string) string {
 	return `{"model":"` + model + `","max_tokens":16,` +
 		`"messages":[{"role":"user","content":"hi"}]}`
 }
 
-// lastUpstreamModel 取假上游收到的最新一发请求里的 model 字段。
+// lastUpstreamModel takes the model field of the latest request the fake upstream got.
 func lastUpstreamModel(t *testing.T, h *system.Harness) string {
 	t.Helper()
 	records := h.Upstream.Requests()
 	if len(records) == 0 {
-		t.Fatal("假上游一发请求都没收到")
+		t.Fatal("the fake upstream received no requests at all")
 	}
 	var payload struct {
 		Model string `json:"model"`
 	}
 	if err := json.Unmarshal(records[len(records)-1].Body, &payload); err != nil {
-		t.Fatalf("解析上游收到的请求体: %v（原文 %s）", err, records[len(records)-1].Body)
+		t.Fatalf("parsing the request body the upstream received: %v (raw %s)", err, records[len(records)-1].Body)
 	}
 	return payload.Model
 }
 
-// TestRoutesTierToProfileChainHead 是这一层最核心的一条：档位名进来，真实模型名
-// 出去，而且响应头把「这次走了谁」告诉调用方。
+// TestRoutesTierToProfileChainHead is this layer's core test: a tier name in, a real
+// model name out, and a response header telling the caller who served it.
 //
-// 期望值来自 app 里铺的默认配置（seed.go）：默认 profile 是 cheap，
-// cheap.normal 没定义，由 CandidatesFor 用 mid 顶上 → upstream-a/model-medium。
-// 这条链把三件事串起来了：档位回退、profile 解析、绑定选provider。
+// Expectations come from the default config app seeds (seed.go): the default profile is
+// cheap, cheap.normal is undefined, so CandidatesFor fills in mid -> upstream-a/model-medium.
+// The chain ties three things: tier fallback, profile resolution, binding picks the provider.
 func TestRoutesTierToProfileChainHead(t *testing.T) {
 	h := system.Start(t)
 
@@ -46,27 +46,27 @@ func TestRoutesTierToProfileChainHead(t *testing.T) {
 	body := system.ReadBody(t, resp)
 
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("状态 = %d, want 200；body=%s", resp.StatusCode, body)
+		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, body)
 	}
 	if got := lastUpstreamModel(t, h); got != "model-medium" {
-		t.Errorf("上游收到的 model = %q, want model-medium（cheap.normal 回退到 mid）", got)
+		t.Errorf("model the upstream received = %q, want model-medium (cheap.normal falls back to mid)", got)
 	}
 	route := resp.Header.Get("X-Newgate-Route")
 	if !strings.Contains(route, "upstream-a/model-medium") {
-		t.Errorf("X-Newgate-Route = %q, 期望含 upstream-a/model-medium", route)
+		t.Errorf("X-Newgate-Route = %q, expected to contain upstream-a/model-medium", route)
 	}
 	if got := resp.Header.Get("X-Newgate-Profile"); got != "cheap" {
-		t.Errorf("X-Newgate-Profile = %q, want cheap（默认 profile）", got)
+		t.Errorf("X-Newgate-Profile = %q, want cheap (default profile)", got)
 	}
 }
 
-// TestPathProfileOverrideIsScopedToThisCall 锁住「单次 profile 覆盖不改全局状态」。
+// TestPathProfileOverrideIsScopedToThisCall pins "a per-call profile leaves no global state".
 //
-// 注入时把 profile 编码进 base URL 路径（/p/<profile>），代理从路径读出来做
-// 本次调用的链头，完全不碰 state。所以先打一发覆盖的、再打一发不覆盖的，第二
-// 发必须回到默认——如果实现是「改了全局再转发」，第二发就会跟着变，而用户根本
-// 没下过这个命令。（这条路径目前**没有写进 docs**，行为只在这里和
-// TestUnknownProfileDoesNotLieAboutWhatServedIt 里有描述。）
+// Injection encodes the profile into the base URL path (/p/<profile>); the proxy reads it
+// for this call's chain head and never touches state. So send one with an override, then
+// one without: the second must return to default - if it were "change global, then
+// forward", the second follows, though the user never ran such a command.
+// (This path is **not in docs**; behaviour is described only here and in the test below.)
 func TestPathProfileOverrideIsScopedToThisCall(t *testing.T) {
 	h := system.Start(t)
 
@@ -74,15 +74,15 @@ func TestPathProfileOverrideIsScopedToThisCall(t *testing.T) {
 	system.ReadBody(t, overridden)
 
 	if overridden.StatusCode != http.StatusOK {
-		t.Fatalf("覆盖 profile 的发请求状态 = %d, want 200", overridden.StatusCode)
+		t.Fatalf("override profile request status = %d, want 200", overridden.StatusCode)
 	}
 	if got := overridden.Header.Get("X-Newgate-Profile"); got != "expensive" {
-		t.Errorf("覆盖发 X-Newgate-Profile = %q, want expensive", got)
+		t.Errorf("override request X-Newgate-Profile = %q, want expensive", got)
 	}
-	// expensive.mid = upstream-b/model-large。跟默认的 upstream-a/model-medium
-	// 不同，所以能区分出覆盖真的生效了。
+	// expensive.mid = upstream-b/model-large. Different from the default
+	// upstream-a/model-medium, so it tells that the override really took effect.
 	if got := lastUpstreamModel(t, h); got != "model-large" {
-		t.Errorf("覆盖发上游 model = %q, want model-large（expensive.mid）", got)
+		t.Errorf("override request upstream model = %q, want model-large (expensive.mid)", got)
 	}
 
 	h.Upstream.Reset()
@@ -90,28 +90,28 @@ func TestPathProfileOverrideIsScopedToThisCall(t *testing.T) {
 	system.ReadBody(t, plain)
 
 	if got := plain.Header.Get("X-Newgate-Profile"); got != "cheap" {
-		t.Errorf("紧接着的普通发 X-Newgate-Profile = %q, want cheap（覆盖不该泄漏成全局）", got)
+		t.Errorf("the next normal request X-Newgate-Profile = %q, want cheap (the override must not leak globally)", got)
 	}
 	if got := lastUpstreamModel(t, h); got != "model-medium" {
-		t.Errorf("紧接着的普通发上游 model = %q, want model-medium", got)
+		t.Errorf("the next normal request upstream model = %q, want model-medium", got)
 	}
 }
 
-// TestUnknownProfileDoesNotLieAboutWhatServedIt 锁住「响应头绝不回显一个
-// 不存在的 profile」。
+// TestUnknownProfileDoesNotLieAboutWhatServedIt pins "headers never echo a
+// nonexistent profile".
 //
-// 为什么不是断言 404：路径覆盖 `/p/<profile>` 目前**没有**校验 profile 存不
-// 存在——未知名字会被当成链头传下去，而 orderProfiles 找不到它，链就按
-// priority 顺序解析（top-only → cheap → …），最后一发 200，`X-Newgate-Profile`
-// 如实报出真正服务的那个。这一层能锁的是其中无可争议的一半：**它必须如实
-// 报告**，不能把客户端点名的 "no-such-profile" 原样回显——那才是真正会误导人
-// 的静默（用户以为钉住了某个模型，实际走的是别的，而计费和输出都对不上）。
+// Why not assert 404: path override `/p/<profile>` currently **does not** validate
+// whether the profile exists - an unknown name is passed down as chain head, orderProfiles
+// misses it, the chain resolves by priority (top-only -> cheap -> ...), the last one 200s,
+// and `X-Newgate-Profile` honestly reports what really served. What this layer can pin is
+// the undisputed half: **it must report honestly**, not echo the client's
+// "no-such-profile" verbatim - that is the genuinely misleading silence (the user thinks
+// a model is pinned, another serves, and billing and output disagree).
 //
-// 已知不一致（2026-09-17 记，**未修**）：CLI 侧 `newgate claude --profile=nope`
-// 是拒绝的（退出码 65，见 mock/e2e_claude.sh 第 5 节），HTTP 侧却静默降级。
-// 同一个概念两条路两种态度，与「不猜」的原则不符。修它要给 handleProxy 加一段
-// 校验并改线上行为，不在本次重构范围内；这里先把现状钉住，免得它悄悄变成别
-// 的样子。
+// Known inconsistency (noted 2026-09-17, **unfixed**): CLI `newgate claude --profile=nope`
+// refuses (exit 65, see mock/e2e_claude.sh section 5), while HTTP silently degrades.
+// One concept, two attitudes, against "no guessing". Fixing it adds validation to
+// handleProxy and changes live behaviour, out of scope here; pin today's behaviour first.
 func TestUnknownProfileDoesNotLieAboutWhatServedIt(t *testing.T) {
 	h := system.Start(t)
 
@@ -119,31 +119,31 @@ func TestUnknownProfileDoesNotLieAboutWhatServedIt(t *testing.T) {
 	body := system.ReadBody(t, resp)
 
 	if got := resp.Header.Get("X-Newgate-Profile"); got == "no-such-profile" {
-		t.Fatalf("X-Newgate-Profile 回显了不存在的 profile %q；body=%s", got, body)
+		t.Fatalf("X-Newgate-Profile echoed a nonexistent profile %q; body=%s", got, body)
 	}
 	if resp.StatusCode == http.StatusOK {
 		if got := resp.Header.Get("X-Newgate-Profile"); got == "" {
-			t.Errorf("200 但没报 X-Newgate-Profile，调用方无从知道实际用了谁；headers=%v",
+			t.Errorf("200 but no X-Newgate-Profile reported, the caller cannot tell who was actually used; headers=%v",
 				resp.Header)
 		}
 	}
 }
 
-// TestFailoverMovesToNextCandidate 验 fallback 链真的会走。
+// TestFailoverMovesToNextCandidate verifies the fallback chain actually moves.
 //
-// 假上游武装下一发返回 429（真实世界里上游限流就是这样），代理应该换到链上
-// 下一个候选而不是把 429 直接甩给客户端——客户端看到 429 会自己重试，那等于
-// 把上游的限流放大成两倍请求量。
+// The fake upstream arms the next response as 429 (real-world rate limiting), and the
+// proxy should move to the next candidate rather than hand the 429 to the client - a
+// client seeing 429 retries itself, doubling the load on the rate-limited upstream.
 //
-// 判据分工（这是实测出来的，不是设计出来的）：
-//   - X-Newgate-Chain 说「试过谁、结果如何」，形如
-//     `upstream-a/model-large(429) -> upstream-b/model-large(ok)`——**认候选**看它。
-//   - X-Newgate-Failover 只说「发生过转移」，形如
-//     `<链头 profile> -> <最终 profile> (upstream 429; see: newgate logs)`。
-//     同一个 profile 内部换候选时两头是同一个名字（这里就是 `cheap -> cheap`），
-//     所以它证明不了换过谁——只证明「换过」。
+// Who judges what (measured, not designed):
+//   - X-Newgate-Chain says "who tried, what happened", like
+//     `upstream-a/model-large(429) -> upstream-b/model-large(ok)` - **who** is read here.
+//   - X-Newgate-Failover only says "a failover happened", like
+//     `<head profile> -> <final profile> (upstream 429; see: newgate logs)`.
+//     Within one profile both ends are the same name (`cheap -> cheap`), so it cannot
+//     prove who was swapped - only that a swap happened.
 //
-// 只有状态码 200 是不够的：万一第一次就没失败呢。
+// A 200 alone is not enough: maybe the first try never failed.
 func TestFailoverMovesToNextCandidate(t *testing.T) {
 	h := system.Start(t)
 
@@ -153,29 +153,29 @@ func TestFailoverMovesToNextCandidate(t *testing.T) {
 	body := system.ReadBody(t, resp)
 
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("链路头被 429 打掉后状态 = %d, want 200（应转移到下一个候选）；body=%s",
+		t.Fatalf("after the 429 took out a chain step, status = %d, want 200 (should move to the next candidate); body=%s",
 			resp.StatusCode, body)
 	}
 	if resp.Header.Get("X-Newgate-Failover") == "" {
-		t.Fatalf("发生了转移但没报 X-Newgate-Failover（不静默是硬要求）；headers=%v",
+		t.Fatalf("failover happened but X-Newgate-Failover was not reported (never silent is a hard requirement); headers=%v",
 			resp.Header)
 	}
 	chain := resp.Header.Get("X-Newgate-Chain")
 	if !strings.Contains(chain, "upstream-a/model-large(429)") {
-		t.Errorf("X-Newgate-Chain = %q, 期望含 upstream-a/model-large(429)（被打掉的那一步）", chain)
+		t.Errorf("X-Newgate-Chain = %q, expected to contain upstream-a/model-large(429) (the step that was taken out)", chain)
 	}
 	if !strings.Contains(chain, "upstream-b/model-large(ok)") {
-		t.Errorf("X-Newgate-Chain = %q, 期望含 upstream-b/model-large(ok)（接住的那一步）", chain)
+		t.Errorf("X-Newgate-Chain = %q, expected to contain upstream-b/model-large(ok) (the step that caught it)", chain)
 	}
 }
 
-// TestRequestsAreNotJSONRoundTripped 锁住纯字节手术这条硬规则。
+// TestRequestsAreNotJSONRoundTripped pins the byte-surgery rule.
 //
-// 请求体里有大整数 9007199254740993（2^53+1）和未知字段。走一遍 JSON 往返
-// 的话前者会被浮点化变成 …92，后者会被丢掉——两者都是静默的，客户端永远
-// 不知道自己的请求被动过。所以断言代理发出去的字节里这两样原样还在。
+// The request body has a big integer 9007199254740993 (2^53+1) and an unknown field. A
+// JSON round-trip would float-convert the former to ...92 and drop the latter - both
+// silent; the client never learns its request was touched. So assert both survive in bytes.
 //
-// 用 up 的请求记录而不是响应，是因为要验的正是「我们发出去的那一发」。
+// It uses the request the upstream recorded, because what must be verified is what we sent.
 func TestRequestsAreNotJSONRoundTripped(t *testing.T) {
 	h := system.Start(t)
 
@@ -188,22 +188,22 @@ func TestRequestsAreNotJSONRoundTripped(t *testing.T) {
 	system.ReadBody(t, resp)
 
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("状态 = %d, want 200", resp.StatusCode)
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
 	sent := string(h.Upstream.Requests()[len(h.Upstream.Requests())-1].Body)
 	if !strings.Contains(sent, bigInt) {
-		t.Errorf("上游收到的请求里大整数被改坏了（JSON 往返的典型症状）：\n%s", sent)
+		t.Errorf("a big integer in the request the upstream received got corrupted (typical symptom of a JSON round trip):\n%s", sent)
 	}
 	if !strings.Contains(sent, "x_unknown_field") {
-		t.Errorf("上游收到的请求里未知字段丢了（JSON 往返的典型症状）：\n%s", sent)
+		t.Errorf("an unknown field in the request the upstream received was lost (typical symptom of a JSON round trip):\n%s", sent)
 	}
 }
 
-// TestCountTokensIsForwardedToUpstream 验 count_tokens 拿的是上游真值而不是
-// 本地粗估。
+// TestCountTokensIsForwardedToUpstream verifies count_tokens takes the upstream's real
+// value, not a local estimate.
 //
-// 假上游对它回 {"input_tokens":42}——一个本地估算绝不会凑巧给出的数（估算走
-// 字节数/4，我们的 body 远不止 168 字节）。所以 42 是「转发成功」的指纹。
+// The fake upstream answers {"input_tokens":42} - a number no local estimate happens to
+// give (bytes/4; our body is far more than 168 bytes). So 42 is the "forwarded" fingerprint.
 func TestCountTokensIsForwardedToUpstream(t *testing.T) {
 	h := system.Start(t)
 
@@ -211,26 +211,26 @@ func TestCountTokensIsForwardedToUpstream(t *testing.T) {
 	body := system.ReadBody(t, resp)
 
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("状态 = %d, want 200；body=%s", resp.StatusCode, body)
+		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, body)
 	}
 	var payload struct {
 		InputTokens int `json:"input_tokens"`
 	}
 	if err := json.Unmarshal([]byte(body), &payload); err != nil {
-		t.Fatalf("解析响应: %v（原文 %s）", err, body)
+		t.Fatalf("parsing the response: %v (raw %s)", err, body)
 	}
 	if payload.InputTokens != 42 {
-		t.Errorf("input_tokens = %d, want 42（假上游的真值；本地粗估不会凑巧是它）",
+		t.Errorf("input_tokens = %d, want 42 (the fake upstream's real value; a local rough estimate would not happen to match)",
 			payload.InputTokens)
 	}
 }
 
-// TestStreamingPassesThrough 验流式请求真的逐块透传而不是被缓冲成一坨。
+// TestStreamingPassesThrough verifies streaming really passes chunk by chunk, unbuffered.
 //
-// 判据不是「响应里有 SSE 帧」（缓冲后也会有），而是**客户端能读到和上游一样
-// 的帧序列**。这里断言首帧、尾帧和 [DONE] 都在。上游的块间延迟让缓冲实现在
-// 实测上会露馅，但作为回归测试，帧序列的完整性已经能挡住「把流式当非流式处理」
-// 这类改动。
+// The criterion is not "the response has SSE frames" (buffering has them too), but
+// **the client reads the same frame sequence as the upstream**. Here: first, last, [DONE].
+// Upstream chunk delays expose buffering in practice, but for a regression test the frame
+// sequence already stops "treat streaming as non-streaming".
 func TestStreamingPassesThrough(t *testing.T) {
 	h := system.Start(t)
 
@@ -240,11 +240,11 @@ func TestStreamingPassesThrough(t *testing.T) {
 	got := system.ReadBody(t, resp)
 
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("状态 = %d, want 200；body=%s", resp.StatusCode, got)
+		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, got)
 	}
 	for _, want := range []string{"message_start", "content_block_delta", "message_stop"} {
 		if !strings.Contains(got, want) {
-			t.Errorf("流式响应里缺 %s：\n%s", want, got)
+			t.Errorf("the streaming response is missing %s:\n%s", want, got)
 		}
 	}
 }

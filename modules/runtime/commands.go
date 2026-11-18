@@ -1,15 +1,15 @@
 package runtime
 
-// 本文件是**接管自己的**那批命令：start / stop / on / off / restart / shim。
-// 2026-09-18 从 modules/cli/{lifecycle,shim}.go 整体搬来。
+// This file holds the commands **takeover owns**: start / stop / on / off / restart / shim.
+// Moved wholesale from modules/cli/{lifecycle,shim}.go on 2026-09-18.
 //
-// 为什么搬：接管是 runtime 的语义——插上 shim、改写客户端配置、备份原文件、
-// 释放回去，全是本模块在做的事。它们留在界面时，界面得认识 takeover / injection
-// / confighook 三套东西才写得出来，而它真正该做的只有「把 argv 交给对的人」。
+// Why: takeover is runtime's semantics - installing the shim, rewriting client config,
+// backing up the original, releasing it back, are all this module's work. Left in the UI,
+// the UI needed takeover / injection / confighook, when all it should do is hand argv over.
 //
-// 命令由本模块在 Start 里注册进界面：本模块对 ui 声明一条**弱依赖**
-// （Optional(cli)，见 component.Optional），于是它排在界面之后——Start 跑到这里
-// 时界面的账本已经就绪；没装界面就跳过，接管照常工作。
+// This module registers the commands into the UI in Start: it declares a **weak dependency**
+// on ui (Optional(cli), see component.Optional), so it starts after the UI - by the time
+// Start gets here the UI's ledger is ready; without a UI it skips, takeover still works.
 
 import (
 	"encoding/json"
@@ -37,23 +37,23 @@ import (
 	"github.com/rzbdz/newgate/lib/i18n"
 )
 
-// die 是统一的报错出口（版式在 lib/style）。
+// die is the single error exit (layout lives in lib/style).
 func die(code int, msg string) int { return style.Die(code, msg) }
 
-// pingProxy 端口上的控制面活着吗。
+// pingProxy asks whether the control plane on the port is alive.
 func pingProxy(port int) bool { return controlplane.Ping(port) }
 
-// cmdShim 是**底层逃生口**，不是日常命令。
+// cmdShim is the **low-level escape hatch**, not a daily command.
 //
-// 日常接管请用 newgate on/off <agent>：用户不该被迫知道自己的工具是靠
-// PATH shim 接管还是靠改配置文件接管——那是 runtime/takeover 的事
-// （docs/08-operations.md：逃生口是一等功能，但它得摆在逃生口的位置上）。
+// For daily takeover use newgate on/off <agent>: users should not have to know whether
+// their tool is taken over via a PATH shim or a config rewrite - that is runtime/takeover's
+// business (docs/08-operations.md: an escape hatch is first-class, but sits where it should).
 //
-// 这里只留三件 takeover 层不做的事：
-//   - status：把 shim 目录的真实情况摊开，排查「装了却没生效」
-//   - uninstall：连 rc 里那行 PATH 一起删干净（takeover 只摘链接，
-//     留着空目录在 PATH 里是无害的，也让下次 on 不用再动 rc）
-//   - install/off：老命令的别名，直接转给 on/off，免得肌肉记忆报错
+// Only three things the takeover layer does not do remain here:
+//   - status: lay out the real state of the shim dir, for "installed but not working"
+//   - uninstall: delete the PATH line in rc too (takeover only pulls links; an empty dir
+//     in PATH is harmless, and it spares the next on from touching rc again)
+//   - install/off: aliases of the old commands, forwarded to on/off for muscle memory
 func cmdShim(agents confighookapi.AgentCatalog, sub, which string) int {
 	switch sub {
 	case "install", "add", "on":
@@ -94,9 +94,9 @@ func cmdShim(agents confighookapi.AgentCatalog, sub, which string) int {
 			}
 		}
 		if fg := injection.Foreign(); len(fg) > 0 {
-			// 只在我们**认得这个 agent 名**时才出声：那种情况是外来同名文件
-			// 会遮住我们的 shim，值得看一眼；目录里躺着 claude-bak 这种
-			// 无关文件是用户自己的事，报出来只是噪音。
+			// Speak only when we **recognize this agent name**: then a foreign file of the
+			// same name would shadow our shim and is worth a look; a claude-bak lying in the
+			// directory is the user's own business, reporting it is just noise.
 			var shadow []string
 			for _, n := range fg {
 				if _, known := agents.Get(n); known {
@@ -118,7 +118,7 @@ func cmdShim(agents confighookapi.AgentCatalog, sub, which string) int {
 	}
 }
 
-// shimStatus 摊开 shim 目录的真实情况，用于排查「装了却没生效」。
+// shimStatus lays out the shim directory's real state, for "installed but not working".
 func shimStatus(agents confighookapi.AgentCatalog) int {
 	fmt.Println(style.Title("newgate shim", injection.Dir()))
 	fmt.Println(style.Rule(72))
@@ -162,7 +162,7 @@ func shimStatus(agents confighookapi.AgentCatalog) int {
 	}
 	fmt.Print(t.String())
 
-	// 期望态 vs 现实态：只列走 shim 机制的 agent，其余与 shim 无关。
+	// Desired vs actual: only agents using the shim mechanism; the rest is unrelated to shim.
 	var rows [][2]string
 	for _, s := range takeover.List() {
 		if s.Mechanism != takeover.MechShim {
@@ -194,9 +194,9 @@ func shimStatus(agents confighookapi.AgentCatalog) int {
 }
 
 func cmdStart(agents confighookapi.AgentCatalog, force bool) int {
-	// 实现在 control.go 的 Start 里：命令行与 `newgate config` 那个向导走**同一份**
-	// 代码，因为「起代理 + 全面接管」只有一种正确行为（令牌先落盘、没 key 不接管、
-	// 接管后写回 TakenOver）。这里只负责把结局翻成退出码与那句 shell 环境提醒。
+	// Implemented in control.go's Start: the command and the `newgate config` wizard run
+	// **one copy** of the code, since "start the proxy + take over all" has one correct
+	// behavior (token first, no key no takeover, write back TakenOver). Here: exit code + hint.
 	rep, err := (&service{}).Start(StartOptions{Force: force})
 	if err != nil {
 		switch {
@@ -215,10 +215,10 @@ func cmdStart(agents confighookapi.AgentCatalog, force bool) int {
 	return 0
 }
 
-// printResults 把接管/释放结果打成人话。
+// printResults prints takeover/release results as plain language.
 //
-// 三种标记不能混：✓ 真的接管上了，· 有意跳过，✗ 出错了。agent 名补到固定
-// 宽度，续行对齐到说明列——一次接管多个 agent 时才扫得动。
+// Three markers must not be mixed: ✓ taken over, · skipped on purpose, ✗ failed. Names are
+// padded to a fixed width - only then can one scan a multi-agent takeover at a glance.
 func printResults(rs []takeover.Result) {
 	const nameW = 10
 	for _, r := range rs {
@@ -243,10 +243,10 @@ func printResults(rs []takeover.Result) {
 	}
 }
 
-// cmdTakeover / cmdRelease 单独接管或释放一个 agent。
+// cmdTakeover / cmdRelease take over or release a single agent.
 //
-// 用户不该关心机制：claude 靠 PATH shim、opencode 靠改配置文件，这是我们的
-// 实现细节。对外只有「接管」和「释放」，机制由 runtime/takeover 挑。
+// The user should not care about mechanism (claude via PATH shim, opencode via config
+// rewrite); outside there is only take over/release, and runtime/takeover picks the rest.
 func cmdTakeover(agents confighookapi.AgentCatalog, agent string) int {
 	if agent == "" {
 		return die(64, i18n.T("Which agent to take over? e.g. newgate on claude", nil))
@@ -288,11 +288,11 @@ func cmdRelease(agent string) int {
 }
 
 func cmdStop() int {
-	// 顺序很重要：先把 PATH shim 摘掉。否则 `claude` 这类命令仍会命中
-	// ~/.config/newgate/bin/claude → newgate，而 wrapper 会**懒启动代理**，
-	// stop 等于没停——这是「stop 了还在走 newgate」的直接原因。
+	// Order matters: pull the PATH shim first. Otherwise `claude` still hits
+	// ~/.config/newgate/bin/claude -> newgate, the wrapper **lazily starts the proxy**, and
+	// stop means nothing - the direct cause of "stopped but still going through newgate".
 	//
-	// OffAll 不改接管意愿：下次 start 会把这些原样插回去。
+	// OffAll does not change takeover intent: the next start plugs them back in as they were.
 	printResults(takeover.OffAll())
 
 	pid, err := daemon.Stop()
@@ -307,7 +307,7 @@ func cmdStop() int {
 
 	st := store.LoadState()
 	st.TakenOver = false
-	// 同上：这一步写不出去，下次 start 会以为「用户从没放手过」。
+	// Same: if this write fails, the next start thinks "the user never let go".
 	if err := store.SaveState(st); err != nil {
 		return style.Die(70, i18n.T("Cannot write the takeover state back to state.json: {err}",
 			i18n.A{"err": err.Error()}))
@@ -319,13 +319,13 @@ func cmdStop() int {
 	return 0
 }
 
-// cmdRestart 重启代理并保留接管现场。
+// cmdRestart restarts the proxy and keeps the takeover scene.
 //
-// 优先走优雅交接（nginx upgrade 语义）：旧 daemon 把监听 socket 移交给
-// 新二进制，在途请求流完为止——正穿行在代理里的会话（比如正在开发
-// newgate 的 Claude Code）完全不受影响，接管状态也不动。
-// 运行中的是旧版 daemon（没有交接能力）时退回 stop+start：有短暂断流
-// 窗口，会提示一句。
+// Prefers graceful handoff (nginx upgrade semantics): the old daemon hands the listening
+// socket to the new binary and drains in-flight requests - sessions crossing the proxy
+// (a Claude Code developing newgate, say) are untouched, and takeover state stays.
+// When the running daemon is an old version (no handoff), it falls back to stop+start:
+// a short gap, with one line telling the user.
 func cmdRestart(agents confighookapi.AgentCatalog, force bool) int {
 	if tryHandoff() {
 		return 0
@@ -335,9 +335,9 @@ func cmdRestart(agents confighookapi.AgentCatalog, force bool) int {
 	return cmdStart(agents, force)
 }
 
-// tryHandoff 让运行中的 daemon 把监听 socket 交接给磁盘上的新二进制。
-// 成功（已完全就位）返回 true；不可行时打印原因并返回 false，由调用方
-// 退回 stop+start。
+// tryHandoff makes the running daemon hand the listening socket to the new binary on disk.
+// Returns true when it succeeded (fully in place); otherwise prints why and returns false,
+// and the caller falls back to stop+start.
 func tryHandoff() bool {
 	i := daemon.Running()
 	if i == nil {
@@ -352,8 +352,8 @@ func tryHandoff() bool {
 	if port <= 0 {
 		port = st.Port
 	}
-	// 先探能力再动手：旧版 daemon 没注册 /__newgate/upgrade，盲发会被
-	// catch-all 转发给上游。status 的 handoff 字段是无副作用的探针。
+	// Probe capability first: old daemons never registered /__newgate/upgrade, and a blind
+	// post goes to the upstream via catch-all. status's handoff field is a side-effect-free probe.
 	supports, err := handoffSupported(port)
 	if err != nil || !supports {
 		if err != nil {
@@ -370,7 +370,7 @@ func tryHandoff() bool {
 		return false
 	}
 	req.Header.Set("Authorization", "Bearer "+st.ControlToken)
-	// 旧 daemon 要等新进程 ready 才回 200，给足时间
+	// The old daemon answers 200 only once the new process is ready; allow enough time
 	resp, err := httpx.LocalClient(20 * time.Second).Do(req)
 	if err != nil {
 		fmt.Println(style.Item(style.Skip, i18n.T("Cannot send the handoff request ({err}), falling back to stop+start",
@@ -384,7 +384,7 @@ func tryHandoff() bool {
 			i18n.A{"code": resp.StatusCode, "body": string(b)})))
 		return false
 	}
-	// 200 = 新进程已接上 socket、pid/lock 已改写。这里只确认它完全就位。
+	// 200 = new process on the socket, pid/lock rewritten. Here we only confirm it is fully in place.
 	for k := 0; k < 100; k++ { // 最多 5s
 		if j := daemon.Running(); j != nil && j.PID != i.PID && pingProxy(j.Port) {
 			fmt.Println(style.Item(style.OK, i18n.T("Proxy gracefully restarted   pid {old} → {new} · 127.0.0.1:{port}",
@@ -399,7 +399,7 @@ func tryHandoff() bool {
 	return false
 }
 
-// handoffSupported 问 daemon 的 status 端点：支持优雅交接吗。
+// handoffSupported asks the daemon's status endpoint: does it support graceful handoff?
 func handoffSupported(port int) (bool, error) {
 	resp, err := httpx.LocalClient(3 * time.Second).
 		Get(fmt.Sprintf("http://127.0.0.1:%d%s", port, controlpath.Status))
@@ -416,8 +416,8 @@ func handoffSupported(port int) (bool, error) {
 	return out.Handoff, nil
 }
 
-// activeProblems 只检查**实际会被用到**的 provider，别因为某个用不到的
-// profile 缺 key 就挡住启动。
+// activeProblems checks only providers that **will actually be used** - don't block
+// startup because some unused profile lacks a key.
 func activeProblems(st *domain.State) []string {
 	snap, err := store.Load()
 	if err != nil {
@@ -476,12 +476,12 @@ func warnShellEnvConflict(agents confighookapi.AgentCatalog, toolID string) {
 	fmt.Println(style.Hint(i18n.T("Takeover overrides it inside the child process, without affecting newgate; it applies again after off (i.e. back to a direct connection)", nil)))
 }
 
-// ---------- 命令声明 ----------
+// ---------- command declarations ----------
 //
-// 每一条都只做「解析 argv → 调上面的实现」。帮助行、槽位、位置是给界面看的
-// 元数据，由拥有这条命令的模块声明（见 cliapi.Documented）。
+// Each one only does "parse argv -> call the implementation above". Help line and slots
+// are UI metadata, declared by the module that owns the command (see cliapi.Documented).
 
-// 接管那一节的位置：与原来写在界面里时一致，用户的肌肉记忆不会变。
+// Position of the takeover section: as it was in the UI, so the user's muscle memory holds.
 const rankTakeover = 10
 
 type startCommand struct{ agents confighookapi.AgentCatalog }
@@ -598,11 +598,11 @@ func (shimCommand) Help() cliapi.HelpLine {
 }
 
 func (c shimCommand) Run(_ cliapi.Host, args []string) int {
-	// 不给默认 agent：客户端 id 是**各客户端模块自己的键**，界面不该知道任何一个。
+	// No default agent: client ids are **each client module's own keys**; the UI should know none.
 	return cmdShim(c.agents, cliapi.Positional(args, 0), cliapi.Positional(args, 1))
 }
 
-// commands 是本模块注入界面的全部命令。
+// commands is every command this module injects into the UI.
 func commands(agents confighookapi.AgentCatalog) []cliapi.Command {
 	return []cliapi.Command{
 		startCommand{agents}, stopCommand{agents}, takeoverCommand{agents},

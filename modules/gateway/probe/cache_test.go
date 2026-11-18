@@ -26,7 +26,7 @@ func TestCapabilityCacheSurvivesProcessStateReset(t *testing.T) {
 
 	cache, err := loadCapabilityCache()
 	if err != nil {
-		t.Fatalf("空环境读缓存应当无错: %v", err)
+		t.Fatalf("reading the cache in an empty environment should not error: %v", err)
 	}
 	cache.capture(target)
 	if err := cache.save(); err != nil {
@@ -36,16 +36,16 @@ func TestCapabilityCacheSurvivesProcessStateReset(t *testing.T) {
 	quirk.Default.Reset()
 
 	if err := LoadCachedCapabilities(); err != nil {
-		t.Fatalf("装载缓存不应当报错: %v", err)
+		t.Fatalf("loading the cache should not error: %v", err)
 	}
 	if ok, known := dialect.Supports(target.Provider, target.Model, dialect.CapOpenAI); !ok || !known {
-		t.Fatal("支持的方言没有从缓存恢复")
+		t.Fatal("a supported dialect was not restored from the cache")
 	}
 	if ok, known := dialect.Supports(target.Provider, target.Model, dialect.CapAnthropic); ok || !known {
-		t.Fatal("不支持的方言没有从缓存恢复")
+		t.Fatal("an unsupported dialect was not restored from the cache")
 	}
 	if !quirk.Default.Has(target.Provider, target.Model, quirk.NoThinkingDisable) {
-		t.Fatal("quirk 没有从缓存恢复")
+		t.Fatal("a quirk was not restored from the cache")
 	}
 }
 
@@ -90,13 +90,13 @@ func TestSummarizeCountsUniqueModels(t *testing.T) {
 	}
 	summary := Summarize(results)
 	if len(summary) != 1 || summary[0].OK != 2 || summary[0].Bad != 1 {
-		t.Fatalf("重复档位不应重复计数: %+v", summary)
+		t.Fatalf("a repeated tier must not be counted twice: %+v", summary)
 	}
 	if got := UniqueCount(results); got != 3 {
-		t.Fatalf("UniqueCount = %d，想要 3", got)
+		t.Fatalf("UniqueCount = %d, want 3", got)
 	}
 	if got := FailedCount(results); got != 1 {
-		t.Fatalf("FailedCount = %d，想要 1", got)
+		t.Fatalf("FailedCount = %d, want 1", got)
 	}
 }
 
@@ -145,27 +145,27 @@ func TestPendingQuirksSurviveARestart(t *testing.T) {
 	learned := quirk.Default.Learn(target.Provider, target.Model, 400,
 		[]byte(`{"error":{"message":"该模型始终思考，不支持关闭思考；请使用 low、high 或 max。"}}`))
 	if len(learned) == 0 {
-		t.Fatal("这句报错应当被认出（判据见 modules/thinking/signatures.go）")
+		t.Fatal("this message should be recognized (criterion in modules/thinking/signatures.go)")
 	}
 	var pending PendingQuirks
 	if !pending.Record(target, QuirksOf(target)) {
-		t.Fatal("刚学到的毛病应当被记进待落盘的那一份")
+		t.Fatal("a quirk just learned should be recorded in the copy waiting to be written")
 	}
 	if err := pending.Flush(); err != nil {
-		t.Fatalf("停机落盘失败: %v", err)
+		t.Fatalf("writing on shutdown failed: %v", err)
 	}
 
 	// 重启：内存里那一位清掉。
 	quirk.Default.Reset()
 	if quirk.Default.Has(target.Provider, target.Model, quirk.NoThinkingDisable) {
-		t.Fatal("清空之后内存表该是空的（不然这个测试什么都没测）")
+		t.Fatal("after clearing, the in-memory table should be empty (otherwise this test tests nothing)")
 	}
 
 	if err := LoadCachedCapabilities(); err != nil {
-		t.Fatalf("装载缓存不应当报错: %v", err)
+		t.Fatalf("loading the cache should not error: %v", err)
 	}
 	if !quirk.Default.Has(target.Provider, target.Model, quirk.NoThinkingDisable) {
-		t.Fatal("重启后内存表里没有这一位——第一发请求会重新撞一次 400，正是要修的那个窗口")
+		t.Fatal("the bit is missing from the in-memory table after a restart - the first request would hit the 400 again, which is exactly the window to fix")
 	}
 }
 
@@ -196,10 +196,10 @@ func TestMergeQuirksIsAUnion(t *testing.T) {
 	after, _ := loadCapabilityCache()
 	e := after.Targets[target.String()]
 	if e.Known == 0 || e.Supports == 0 {
-		t.Fatalf("方言那两位被抹掉了（%+v）——探活学到的结论不该被一次转发覆盖", e)
+		t.Fatalf("the two dialect bits were wiped (%+v) - a conclusion learned by probing must not be overwritten by a single forward", e)
 	}
 	if quirk.Flag(e.Quirks) != quirk.NoThinkingDisable {
-		t.Fatalf("毛病位没并进去: %+v", e)
+		t.Fatalf("the quirk bit was not merged in: %+v", e)
 	}
 }
 
@@ -222,6 +222,6 @@ func TestDiskQuirksReportsWhatIsWorthReloading(t *testing.T) {
 
 	got := DiskQuirks()
 	if len(got) != 1 || got[0] != withQuirk {
-		t.Fatalf("DiskQuirks = %+v，只该报带毛病位的那一个", got)
+		t.Fatalf("DiskQuirks = %+v, only the one with the quirk bit should be reported", got)
 	}
 }

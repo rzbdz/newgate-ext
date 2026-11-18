@@ -9,13 +9,13 @@ import (
 	"time"
 )
 
-// 这一族假件把「SSH」换成一个**真的 TCP 连接**，只是它连的不是远端那台机器，
-// 而是测试里的一个 httptest.Server。
+// This family of fakes swaps "SSH" for a **real TCP connection** that connects not to
+// the remote machine but to an httptest.Server in the test.
 //
-// 为什么值得这样一个接缝：这个模块自己的行为（懒拨、复用、空闲回收、改写、门）
-// 全都可以在没有 sshd 的情况下验干净，而它们是**每次提交都要跑的**。真实的
-// OpenSSH 互操作是另一件事，由 mock/e2e_tunnel.sh 那条（真 sshd、真密钥）锁住
-// ——两层各管各的，谁也不替谁。
+// Why the seam is worth it: this module's own behavior (lazy dial, reuse, idle reap,
+// rewrite, gate) is fully verifiable without sshd, and it **runs on every commit**. Real
+// OpenSSH interop is another thing, locked by mock/e2e_tunnel.sh (real sshd, real keys)
+// - two layers, each minding its own.
 type fakeSession struct {
 	addr    string
 	closed  atomic.Bool
@@ -23,8 +23,8 @@ type fakeSession struct {
 }
 
 func (s *fakeSession) Dial(network, addr string) (net.Conn, error) {
-	// 刻意**无视 addr**：假件活着的时候，远端那个地址就在测试自己手里。
-	// 这也是真实现的行为（DialContext 恒拨配置里那一对）。
+	// Deliberately **ignores addr**: while the fake is alive, the remote address is the test's.
+	// That is also the real behavior (DialContext always dials the configured pair).
 	return net.Dial("tcp", s.addr)
 }
 
@@ -44,7 +44,7 @@ func (s *fakeSession) Close() error {
 
 var errFakeClosed = net.ErrClosed
 
-// fakeDialer 记下拨了几次、失败几次，并交出到 `addr` 的假会话。
+// fakeDialer records dials and failures, and hands out a fake session to `addr`.
 type fakeDialer struct {
 	addr string
 
@@ -52,9 +52,9 @@ type fakeDialer struct {
 	dials  int
 	fail   error
 	failed int
-	// hold 让拨号卡住（测「有人正在拨时别人等待」那条路）。
+	// hold blocks dialing (to test "others wait while one dials").
 	hold chan struct{}
-	// sessions 是拨出去的那些，测停机时能检查它们真的被关了。
+	// sessions are the dials out; shutdown tests check they really were closed.
 	sessions []*fakeSession
 }
 
@@ -110,8 +110,8 @@ func (d *fakeDialer) setFail(err error) {
 	d.fail = err
 }
 
-// waitFor 等一个条件成立（或者超时）。用于等后台循环那一侧的效果——**不睡固定
-// 时长**：睡固定的那种测试在慢机器上会偶发地红，而偶发地红的测试最后会被无视。
+// waitFor waits for a condition (or times out). For background-loop effects - **never
+// sleep a fixed time**: fixed sleeps are flaky on slow machines, and flaky tests end up ignored.
 func waitFor(t *testing.T, what string, cond func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)
@@ -121,5 +121,5 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	t.Fatalf("等 %s 超时", what)
+	t.Fatalf("timed out waiting for %s", what)
 }

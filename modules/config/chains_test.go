@@ -12,25 +12,29 @@ import (
 	"github.com/rzbdz/newgate-ext/testing/testkit"
 )
 
-// 这一对锁的是 Config 端口上那个**读**（Chains），因为它是「一屏看全部链」这件事
-// 唯一的数据来源，而它的正确性不体现在画面上——画面上链少一站、跳过少一类，看起来
-// 都像「这台机器就是这么配的」。所以这里逐条断言那几个**只有读端口知道**的事实：
-// 顺序是调用方给的、profile 不存在要报错、maxAttempts 不许剪链、一次快照一个时刻。
+// This pair pins the **read** on the Config port (Chains), because it is the only
+// data source for "all chains on one screen", and its correctness does not show in
+// the picture -- a chain one stop short, a skip category missing, all look like "that
+// is how this machine is configured". So the assertions here go item by item through
+// those facts **only the read port knows**: the order is the caller's, a missing
+// profile is an error, maxAttempts must not cut the chain, one snapshot is one moment.
 
-// chainsFor 是唯一一处允许这么取端口的地方：这里测的正是那个方法本身。
+// chainsFor is the only place allowed to get the port
+// this way: what is tested here is that very method.
 func chainsFor(t *testing.T, profile string, keys ...string) *Chains {
 	t.Helper()
 	out, err := (&port{}).Chains(profile, keys...)
 	if err != nil {
-		t.Fatalf("Chains(%q, %v) 失败: %v", profile, keys, err)
+		t.Fatalf("Chains(%q, %v) failed: %v", profile, keys, err)
 	}
 	return out
 }
 
-// seedProvidersIn **不重复开沙箱**：testkit.Sandbox 每次调用都换一个新的临时目录
-// （`t.TempDir()` 每次给一个唯一路径），所以在同一个测试里再开一次会把前面 seed 的
-// 那几个文件全落在上一份目录里——症状是「明明写了 demo.kv 却说没有这份档位」。
-// providers_test.go 里那个 seedProviders 自带 Sandbox，是因为它的每个测试都从零开始。
+// seedProvidersIn **does not open a sandbox twice**: testkit.Sandbox gives a new temporary
+// directory on every call (`t.TempDir()` gives a unique path each time), so opening one more
+// time inside the same test drops all the files seeded earlier into the previous directory -- the
+// symptom is "demo.kv was plainly written but it says there is no such tier". The seedProviders
+// in providers_test.go carries its own Sandbox because each of its tests starts from zero.
 func seedProvidersIn(t *testing.T, body string) {
 	t.Helper()
 	if err := os.MkdirAll(paths.Root(), 0o770); err != nil {
@@ -41,10 +45,11 @@ func seedProvidersIn(t *testing.T, body string) {
 	}
 }
 
-// 布局：一份 demo 打头（它是默认，所以是链头），一份 alt 挂在后面。
+// Layout: a demo first (it is the default, hence the chain head), an alt hung after it.
 //
-// demo 自己把 heavy 绑到 ark，别的档位靠 @heavy 引用；alt 补一个 demo 没有的
-// light。这样一次就能同时看到「链头是 demo」「跨 profile 的链」「引用展开」。
+// demo itself binds heavy to ark, other tiers go through the @heavy reference;
+// alt adds a light that demo does not have. This way one run shows "the chain
+// head is demo", "a cross-profile chain" and "reference expansion" at once.
 func seedChains(t *testing.T) {
 	t.Helper()
 	testkit.Sandbox(t)
@@ -67,44 +72,47 @@ func seedChains(t *testing.T) {
 		"",
 	}, "\n"))
 	if err := store.SetDefaultProfile("demo", false); err != nil {
-		t.Fatalf("设默认档位失败: %v", err)
+		t.Fatalf("setting the default tier failed: %v", err)
 	}
 }
 
-// 空 profile = 此刻全局生效的那一份，且要**自报**它是不是生效的那一份。
+// An empty profile = the one globally in effect right now, and
+// it must **report itself** whether it is the effective one.
 //
-// 这一格是界面上「当前配置」那个绿色标记的唯一来源（与 profileConcept 的 Note
-// 同一件事）。读端口不报的话，界面只能自己拿 state.json 里的默认名去比——那又是
-// 把配置的知识抄进界面。
+// This cell is the only source of the green marker for "current config" in the UI (the same thing
+// as profileConcept's Note). If the read port did not report it, the UI could only compare against
+// the default name in state.json itself -- which again copies the config's knowledge into the UI.
 func TestChainsWithoutAProfileMeansTheDefaultOne(t *testing.T) {
 	seedChains(t)
 
 	out := chainsFor(t, "", "heavy")
 	if out.Profile != "demo" {
-		t.Fatalf("没给 profile 时应当落在默认的那一份（demo），实际 %q", out.Profile)
+		t.Fatalf("with no profile given it should land on the default one (demo), actual %q", out.Profile)
 	}
 	if !out.Default {
-		t.Error("demo 就是此刻生效的那一份，Default 应当是 true")
+		t.Error("demo is the one in effect right now, so Default should be true")
 	}
 	if got := out.Keys[0].Steps[0].Binding.String(); got != "ark/deepseek-v3" {
-		t.Errorf("链头应当是 ark/deepseek-v3，实际 %q", got)
+		t.Errorf("the chain head should be ark/deepseek-v3, actual %q", got)
 	}
 
-	// 点名另一份：链头跟着换，而 Default 必须翻成 false（它不是生效的那一份）。
+	// Name another one: the chain head follows, and Default
+	// must flip to false (it is not the effective one).
 	alt := chainsFor(t, "alt", "heavy")
 	if alt.Default {
-		t.Error("alt 不是生效的那一份，Default 应当是 false")
+		t.Error("alt is not the one in effect, so Default should be false")
 	}
 	if got := alt.Keys[0].Steps[0].Binding.String(); got != "zhipu/glm-4" {
-		t.Errorf("点名 alt 之后链头应当是 zhipu/glm-4，实际 %q", got)
+		t.Errorf("after naming alt the chain head should be zhipu/glm-4, actual %q", got)
 	}
 }
 
-// 档位顺序**原样还回去**：谁在前谁在后是产品取舍（`domain.Roles` 是能力从高到低），
-// 读端口不重排。
+// The tier order is **returned as is**: who comes first is a product trade-off
+// (`domain.Roles` is most capable first), and the read port does not reorder.
 //
-// 这条断言防的是「顺手按字母序排一下」——那会让界面上的档位次序变成 h/l/m/n，
-// 而 `newgate status` 那边仍是能力序，同一份配置两个屏幕两种排法。
+// This assertion guards against "sorting alphabetically while at it" -- which
+// would turn the tier order in the UI into h/l/m/n, while `newgate status`
+// still uses capability order, the same config sorted two ways on two screens.
 func TestChainsKeepsTheCallersKeyOrder(t *testing.T) {
 	seedChains(t)
 
@@ -114,96 +122,100 @@ func TestChainsKeepsTheCallersKeyOrder(t *testing.T) {
 		got = append(got, k.Key)
 	}
 	if strings.Join(got, ",") != "light,heavy" {
-		t.Errorf("键的次序应当是调用方给的 light,heavy，实际 %v", got)
+		t.Errorf("key order should be the caller's light,heavy, actual %v", got)
 	}
 
-	// 没给键 = 跟着 domain.Roles（框架那五档）。
+	// No keys given = follow domain.Roles (the framework's five tiers).
 	all := chainsFor(t, "alt")
 	if len(all.Keys) != len(domain.Roles) {
-		t.Fatalf("没给键时应当列出全部 %d 档，实际 %d 档", len(domain.Roles), len(all.Keys))
+		t.Fatalf("with no keys given it should list all %d tiers, actual %d", len(domain.Roles), len(all.Keys))
 	}
 	for i, k := range all.Keys {
 		if k.Key != domain.Roles[i] {
-			t.Errorf("第 %d 档应当是 %q，实际 %q", i, domain.Roles[i], k.Key)
+			t.Errorf("tier %d should be %q, actual %q", i, domain.Roles[i], k.Key)
 		}
 	}
 }
 
-// 不存在的 profile **报错**，不给一份空链。
+// A profile that does not exist is **an error**, not an empty chain.
 //
-// 空链的形状是「这份档位什么都没配」，而事实是「没有这份档位」。静默的话界面上
-// 会画出一张空卡，读的人以为自己的配置丢了——而真正的原因（名字打错、文件被删）
-// 一个字都看不到。
+// The shape of an empty chain is "this tier has nothing configured", while the fact
+// is "there is no such tier". Quietly and the UI draws an empty card, the reader thinks his
+// config was lost -- and not a word of the real cause (a typo, the file deleted) is visible.
 func TestChainsRejectsAnUnknownProfile(t *testing.T) {
 	seedChains(t)
 
 	_, err := (&port{}).Chains("nope", "heavy")
 	if err == nil {
-		t.Fatal("问一份不存在的档位应当报错，实际给了答案")
+		t.Fatal("asking for a tier that does not exist should error, but it gave an answer")
 	}
 	if !strings.Contains(err.Error(), "nope") {
-		t.Errorf("报错里应当带上问的那个名字，实际 %q", err.Error())
+		t.Errorf("the error should carry the name that was asked for, actual %q", err.Error())
 	}
 }
 
-// 链**不截断**：maxAttempts 是单次请求的执行上限，不是链的 membership。
+// The chain is **not truncated**: maxAttempts is the
+// execution limit of one request, not the chain's membership.
 //
-// 这条锁的是一个真实踩过的观感 bug（2026-09-17）：`newgate status` 传了 Attempts()
-// 之后第 4 站被静默裁掉，于是「normal 档里怎么没有 ark」查了半天——ark 一直在链上，
-// 只是屏幕上看不见。读端口要是也这么传，界面会把同一句话再说一遍。
+// This pins a real perception bug that was hit (2026-09-17): after `newgate status`
+// passed Attempts(), the 4th stop was silently trimmed, and "why is there no ark in
+// the normal tier" took half a day -- ark was on the chain all along, just invisible on
+// screen. If the read port passed it the same way, the UI would repeat the same sentence.
 func TestChainsDoesNotTruncateAtMaxAttempts(t *testing.T) {
 	seedChains(t)
 
-	// 把执行上限压到 1 再读：链必须还是完整的那几条。
+	// Squeeze the execution limit down to 1 and read again: the chain must still be the complete ones.
 	st := store.LoadState()
 	st.Chain.MaxAttempts = 1
 	if err := store.SaveState(st); err != nil {
-		t.Fatalf("写 state 失败: %v", err)
+		t.Fatalf("writing state failed: %v", err)
 	}
 
 	out := chainsFor(t, "demo", "heavy")
 	steps := out.Keys[0].Steps
 	if len(steps) < 2 {
-		t.Fatalf("heavy 该有 2 站（ark/deepseek-v3, ark/deepseek-lite），"+
-			"实际 %d 站：maxAttempts 不该剪链", len(steps))
+		t.Fatalf("heavy should have 2 steps (ark/deepseek-v3, ark/deepseek-lite),"+
+			"actual %d steps: maxAttempts must not trim the chain", len(steps))
 	}
 	for _, s := range out.Keys[0].Skips {
 		if s.Kind == resolve.SkipMaxSteps {
-			t.Errorf("出现了 %q 这类跳过：读端口不该按 maxAttempts 截断", resolve.SkipMaxSteps)
+			t.Errorf("a skip like %q appeared: reading the port must not truncate by maxAttempts", resolve.SkipMaxSteps)
 		}
 	}
 }
 
-// 引用的链**跨 profile**，而且 Step 自己报来源。
+// A reference's chain is **cross-profile**, and Step reports its own origin.
 //
-// demo 的 normal 写成 `@heavy`，展开出来两站都属于 demo——这是引用；而
-// `newgate tier` 那边的链头之后会接上别的 profile（按 priority 排）。两种都要
-// 写出来源：不写的话用户会去自己正看着的那份文件里找一个不存在的候选。
+// demo's normal is written as `@heavy`, and both expanded stops belong to demo --
+// that is a reference; while the chain head on `newgate tier` then continues with
+// other profiles (sorted by priority). Both must state the origin: without it
+// the user goes looking for a nonexistent candidate in the file he is looking at.
 func TestChainsReportsWhereEachStepCameFrom(t *testing.T) {
 	seedChains(t)
 
 	out := chainsFor(t, "demo", "normal")
 	steps := out.Keys[0].Steps
 	if len(steps) == 0 {
-		t.Fatal("normal 档解析出来是空的：@heavy 的引用没有展开")
+		t.Fatal("the normal tier resolved to empty: the @heavy reference was not expanded")
 	}
 	for i, s := range steps {
 		if s.Profile == "" {
-			t.Errorf("第 %d 站没写来自哪份 profile（%s）", i, s.Binding.String())
+			t.Errorf("step %d does not say which profile it came from (%s)", i, s.Binding.String())
 		}
 	}
-	// 引用就地展开：demo 的 normal 与 heavy 是同一条链。
+	// The reference expands in place: demo's normal and heavy are the same chain.
 	heavy := chainsFor(t, "demo", "heavy")
 	if len(steps) != len(heavy.Keys[0].Steps) {
-		t.Errorf("normal=@heavy 展开出 %d 站，而 heavy 自己是 %d 站——引用没有原地展开",
+		t.Errorf("normal=@heavy expanded to %d steps while heavy itself is %d -- the reference was not expanded in place",
 			len(steps), len(heavy.Keys[0].Steps))
 	}
 }
 
-// 被排除的那一份在 Skips 里出现，而不是从屏幕上消失。
+// An excluded profile appears in Skips rather than vanishing from the screen.
 //
-// 它与 Steps 是两件事：被跳过的候选常常一步都不在链上（这一条就是），所以只报
-// Steps 的话「我明明配了这一份」与「它为什么没进链」都无处可说。
+// It and Steps are two things: a skipped candidate often is not on the
+// chain at all (this one is), so reporting only Steps leaves nowhere to
+// say "I plainly configured this one" and "why did it not make the chain".
 func TestChainsReportsSkippedProfiles(t *testing.T) {
 	seedChains(t)
 	seedFile(t, "side.kv", "prio=90\nexcluded=true\nheavy=side/model\n")
@@ -216,36 +228,39 @@ func TestChainsReportsSkippedProfiles(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Errorf("被排除的 side 应当出现在 Skips 里（kind=%q），实际 %+v",
+		t.Errorf("the excluded side should appear in Skips (kind=%q), actual %+v",
 			resolve.SkipExcluded, out.Keys[0].Skips)
 	}
 	for _, s := range out.Keys[0].Steps {
 		if s.Binding.Provider == "side" {
-			t.Error("被排除的 side 不该出现在链上")
+			t.Error("the excluded side must not appear in the chain")
 		}
 	}
 }
 
-// 写坏的那一份不许把整次查询弄挂——它被 store.Load 跳过，其余照常。
+// A broken profile must not take down the whole query
+// -- store.Load skips it, the rest proceeds as usual.
 //
-// 这一条是「一个手改坏的文件不该让所有 agent 停摆」那条规矩在读端口上的样子：
-// 读端口要是把 Load 的错误直接透出去，界面会白屏，而磁盘上别的配置是好的。
+// This is the "one hand-broken file must not stall every agent" rule as
+// it looks on the read port: if the read port passed Load's error straight
+// out, the UI would go blank, while the other config on disk is fine.
 func TestChainsSurvivesABrokenProfileFile(t *testing.T) {
 	seedChains(t)
-	// 冒号不是 `=`：kv 解析器会拒（见 ParseProfileKV 的 unknown key 分支）。
+	// A colon is not `=`: the kv parser rejects it (see the unknown key branch of ParseProfileKV).
 	seedFile(t, "broken.kv", "normal: ark/deepseek-v3\n")
 
 	out := chainsFor(t, "demo", "heavy")
 	if len(out.Keys[0].Steps) == 0 {
-		t.Error("一个坏文件把整次查询弄空了：好的那些档位应当照常报出来")
+		t.Error("one bad file emptied the whole query: the good tiers should be reported as usual")
 	}
 }
 
-// 端口的**读**与**写**是同一条路：面板上那个 `Chains` 拿到的，必须就是
-// 命令行 `newgate tier` 拿到的（同一次快照、同一个 resolve）。
+// The port's **read** and **write** are the same path: what the panel's `Chains` gets must
+// be exactly what the command-line `newgate tier` gets (the same snapshot, the same resolve).
 //
-// 这条断言防的是「面板自己拼一份」——那种实现今天看起来对，等 resolve 改了
-// （多一种 Skip、排序规则变了）就会悄悄和 CLI 分叉。
+// This assertion guards against "the panel assembles its own" -- that
+// implementation looks right today, and once resolve changes (one
+// more Skip kind, different sorting) it quietly forks from the CLI.
 func TestChainsAgreesWithTheCommandLine(t *testing.T) {
 	seedChains(t)
 
@@ -258,202 +273,213 @@ func TestChainsAgreesWithTheCommandLine(t *testing.T) {
 
 	got := chainsFor(t, "", "heavy").Keys[0].Steps
 	if len(got) != len(want) {
-		t.Fatalf("端口给了 %d 站，resolve 直接算出来是 %d 站", len(got), len(want))
+		t.Fatalf("the port gave %d steps, resolve computed %d directly", len(got), len(want))
 	}
 	for i := range got {
 		if got[i].String() != want[i].String() {
-			t.Errorf("第 %d 站：端口 %q，resolve %q", i, got[i].String(), want[i].String())
+			t.Errorf("step %d: port %q, resolve %q", i, got[i].String(), want[i].String())
 		}
 	}
 }
 
-// 主目录那份 state 里 Chain 的字段名只有一种拼法，读端口不该顺手给它起别名。
-// （`store.LoadState` 会在缺省时补上值，所以这里只确认写进去的能读回来。）
+// In the main directory's state, Chain's field names have only one spelling; the
+// read port should not give them aliases while at it. (`store.LoadState` fills in
+// values when missing, so this only confirms what was written can be read back.)
 func TestChainsReadsTheSameSnapshotAsEverythingElse(t *testing.T) {
 	seedChains(t)
 
 	if _, err := os.Stat(paths.StateFile()); err != nil {
-		t.Fatalf("state.json 没落盘：%v", err)
+		t.Fatalf("state.json was not written: %v", err)
 	}
 	if got := chainsFor(t, "", "heavy").Profile; got != store.LoadState().DefaultProfile {
-		t.Errorf("端口说链头是 %q，而 state 里默认是 %q——两者读的不是同一份快照",
+		t.Errorf("the port says the chain head is %q while state has %q as default -- the two are not reading the same snapshot",
 			got, store.LoadState().DefaultProfile)
 	}
 }
 
-// allChains 同上：这里测的就是那个方法。
+// allChains is the same: what is tested here is that method.
 func allChains(t *testing.T, keys ...string) []*Chains {
 	t.Helper()
 	out, err := (&port{}).AllChains(keys...)
 	if err != nil {
-		t.Fatalf("AllChains(%v) 失败: %v", keys, err)
+		t.Fatalf("AllChains(%v) failed: %v", keys, err)
 	}
 	return out
 }
 
-// 生效的那一份**排在最前**，其余按名字。
+// The effective one is **first**, the rest by name.
 //
-// 这一条锁的是「一屏」那一屏的读法：第一眼要找的是「我现在站在哪一份上」，
-// 而它要是按名字夹在十几个档位中间，那一屏就白搭了。
+// This pins how the "one screen" screen is read: the first thing the eye
+// looks for is "which one am I standing on now", and if it were tucked in
+// the middle of a dozen profiles by name, that screen would be useless.
 func TestAllChainsPutsTheActiveOneFirst(t *testing.T) {
 	seedChains(t)
-	// 一份名字排在 demo 前面的，用来证明第一格不是靠名字来的。
+	// One whose name sorts before demo's, to prove the first cell does not come from the name.
 	seedFile(t, "aaa.kv", "heavy=ark/deepseek-v3\n")
 
 	got := allChains(t, "heavy")
 	if len(got) != 3 {
-		t.Fatalf("三份档位文件该报三份，实际 %d 份", len(got))
+		t.Fatalf("three tier files should report three, actual %d", len(got))
 	}
 	if got[0].Profile != "demo" || !got[0].Default {
-		t.Errorf("生效的 demo 该在最前且自报 Default，实际首格是 %q（Default=%v）",
+		t.Errorf("the effective demo should be first and report Default itself, actual first slot is %q (Default=%v)",
 			got[0].Profile, got[0].Default)
 	}
 	if got[1].Profile != "aaa" || got[2].Profile != "alt" {
-		t.Errorf("其余该按名字排（aaa, alt），实际 %q, %q", got[1].Profile, got[2].Profile)
+		t.Errorf("the rest should be sorted by name (aaa, alt), actual %q, %q", got[1].Profile, got[2].Profile)
 	}
 	for _, c := range got[1:] {
 		if c.Default {
-			t.Errorf("%q 不是生效的那一份，不该自报 Default", c.Profile)
+			t.Errorf("%q is not the one in effect, it should not report Default", c.Profile)
 		}
 	}
 }
 
-// 一次调用与逐份问出来的是**同一个答案**。
+// One call and asking one by one give **the same answer**.
 //
-// 「一次快照」那条性质（这一屏上没有两个时刻）在这里**测不出来**：要看见它得让两次
-// 读盘之间有人写一笔，而那是并发时序，不是断言。所以这一条只锁能锁的那半——聚合
-// 出来的每一份卡，与单独问那一份拿到的**逐字段相同**，也就是聚合没有自己另算一份。
-// 剩下的那条性质写在 AllChains 的注释里，是它的设计理由，不是这里假装验过的东西。
+// The "one snapshot" property (no two moments on this screen) **cannot be tested** here:
+// to see it someone would have to write between two disk reads, and that is concurrency
+// timing, not an assertion. So this only pins the half that can be pinned -- every
+// card aggregated is **field for field identical** to what asking that one alone gives,
+// i.e. the aggregate does not compute its own copy. The remaining property is written in
+// AllChains' comment; it is its design reason, not something pretended to be verified here.
 func TestAllChainsAgreesWithAskingEachProfile(t *testing.T) {
 	seedChains(t)
 
 	for _, c := range allChains(t, "heavy") {
 		one := chainsFor(t, c.Profile, "heavy")
 		if c.Default != one.Default {
-			t.Errorf("%q 的 Default 对不上：聚合 %v，单独问 %v", c.Profile, c.Default, one.Default)
+			t.Errorf("%q Default does not match: aggregate %v, asked individually %v", c.Profile, c.Default, one.Default)
 		}
 		if len(c.Keys) != len(one.Keys) || len(c.Keys[0].Steps) != len(one.Keys[0].Steps) {
-			t.Fatalf("%q 的链对不上：聚合 %d 档/%d 站，单独问 %d 档/%d 站",
+			t.Fatalf("%q chain does not match: aggregate %d tiers/%d steps, asked individually %d tiers/%d steps",
 				c.Profile, len(c.Keys), len(c.Keys[0].Steps), len(one.Keys), len(one.Keys[0].Steps))
 		}
 		for i := range c.Keys[0].Steps {
 			if c.Keys[0].Steps[i].String() != one.Keys[0].Steps[i].String() {
-				t.Errorf("%q 第 %d 站：聚合 %q，单独问 %q", c.Profile, i,
+				t.Errorf("%q step %d: aggregate %q, asked individually %q", c.Profile, i,
 					c.Keys[0].Steps[i].String(), one.Keys[0].Steps[i].String())
 			}
 		}
-		// 动作也得一致：它是按这一份的原文长出来的，聚合那条路不能拿到别人的。
+		// Actions must agree too: they grow from this one's source
+		// text, and the aggregate path must not get someone else's.
 		if len(c.Keys[0].Actions) != len(one.Keys[0].Actions) {
-			t.Errorf("%q 的动作数对不上：聚合 %d，单独问 %d",
+			t.Errorf("%q action count does not match: aggregate %d, asked individually %d",
 				c.Profile, len(c.Keys[0].Actions), len(one.Keys[0].Actions))
 		}
 	}
 }
 
-// 每一档的链**换得到**：动作是这一档那几个候选长出来的，标签就是绑定本身。
+// Every tier's chain **can be swapped**: actions grow from
+// that tier's candidates, and the label is the binding itself.
 func TestChainActionsOfferEveryOtherCandidate(t *testing.T) {
 	seedChains(t)
 
 	out := chainsFor(t, "demo", "heavy")
 	acts := out.Keys[0].Actions
 	if len(acts) != 1 {
-		t.Fatalf("heavy 有两个候选（ark/deepseek-v3, ark/deepseek-lite），"+
-			"该给 1 个「换成另一个」的按钮，实际 %d 个", len(acts))
+		t.Fatalf("heavy has two candidates (ark/deepseek-v3, ark/deepseek-lite),"+
+			"there should be 1 \"switch to the other one\" button, actual %d", len(acts))
 	}
 	if got := acts[0].Label(); got != "ark/deepseek-lite" {
-		t.Errorf("按钮的字该是那个绑定本身，实际 %q", got)
+		t.Errorf("the button label should be that binding itself, actual %q", got)
 	}
-	// 第一个候选（此刻的链头）不给按钮：点了不改变任何事。
+	// The first candidate (the chain head right now) gets no button: clicking it changes nothing.
 	for _, a := range acts {
 		if a.ID == "head:ark/deepseek-v3" {
-			t.Error("第一个候选是此刻的链头，不该有一个「换成它」的按钮")
+			t.Error("the first candidate is the current chain head, it should not have a \"switch to it\" button")
 		}
 	}
-	// 只有一个候选、或者候选是别的 profile 顶上来的，都不给动作。
+	// With only one candidate, or the candidate supplied by another profile, there are no actions.
 	alt := chainsFor(t, "alt", "heavy")
 	if len(alt.Keys[0].Actions) != 0 {
-		t.Errorf("alt 的 heavy 只写了一个候选，不该给动作，实际 %d 个", len(alt.Keys[0].Actions))
+		t.Errorf("the heavy of alt writes only one candidate, so it should offer no action, actual %d", len(alt.Keys[0].Actions))
 	}
-	// demo 的 normal 是 `@heavy`（引用）：它自己那一行只写了这一个，所以没有可换的
-	// ——按链上那几站去排是错的，那些字面写在 heavy 那一行下面。
+	// demo's normal is `@heavy` (a reference): its own line writes only
+	// this one, so there is nothing to swap -- ordering by the stops on
+	// the chain is wrong, those are written literally under the heavy line.
 	normal := chainsFor(t, "demo", "normal")
 	if len(normal.Keys[0].Actions) != 0 {
-		t.Errorf("normal=@heavy 自己没有第二个候选，不该给动作，实际 %d 个", len(normal.Keys[0].Actions))
+		t.Errorf("normal=@heavy itself has no second candidate, so it should offer no action, actual %d", len(normal.Keys[0].Actions))
 	}
 }
 
-// 点一下那个按钮：**盘上那一档的次序真的换了**，而且换的是这一份文件、这一档。
+// Click that button: **the order of that tier on disk
+// really changes**, and it changes this file and this tier.
 func TestSwitchHeadRewritesTheFile(t *testing.T) {
 	seedChains(t)
 
 	out := chainsFor(t, "demo", "heavy")
 	acts := out.Keys[0].Actions
 	if len(acts) == 0 {
-		t.Fatal("没有动作可跑：上面那条的前提取不到")
+		t.Fatal("nothing to run: the precondition of the case above cannot be met")
 	}
 	if _, err := acts[0].Run(); err != nil {
-		t.Fatalf("换链头失败: %v", err)
+		t.Fatalf("switching the chain head failed: %v", err)
 	}
 
-	// 文件里：ark/deepseek-lite 该在最前，ark/deepseek-v3 还在（是重排不是替换）。
+	// In the file: ark/deepseek-lite should be first,
+	// ark/deepseek-v3 is still there (a reorder, not a replacement).
 	raw, err := store.LoadProfileRaw("demo")
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := raw.Roles["heavy"]
 	if len(got) != 2 {
-		t.Fatalf("重排之后该还是 2 个候选，实际 %d 个：%v", len(got), got)
+		t.Fatalf("after reordering there should still be 2 candidates, actual %d: %v", len(got), got)
 	}
 	if got[0].String() != "ark/deepseek-lite" {
-		t.Errorf("文件里 heavy 的第一个候选该换成 ark/deepseek-lite，实际 %q", got[0].String())
+		t.Errorf("the first candidate of heavy in the file should be ark/deepseek-lite, actual %q", got[0].String())
 	}
 	if got[1].String() != "ark/deepseek-v3" {
-		t.Errorf("被顶下去的那个该还在链上（第二），实际 %q", got[1].String())
+		t.Errorf("the one pushed down should still be in the chain (second), actual %q", got[1].String())
 	}
-	// 解析出来也跟着换：这一档此刻走的是新链头。
+	// Resolution follows too: this tier now takes the new chain head.
 	if head := chainsFor(t, "demo", "heavy").Keys[0].Steps[0].Binding.String(); head != "ark/deepseek-lite" {
-		t.Errorf("换完之后 heavy 的链头该是 ark/deepseek-lite，实际 %q", head)
+		t.Errorf("after switching, the chain head of heavy should be ark/deepseek-lite, actual %q", head)
 	}
-	// 别的档位、别的文件**一个字节都不该动**。
+	// Other tiers and other files **must not be touched by one byte**.
 	if n := len(chainsFor(t, "demo", "normal").Keys[0].Steps); n == 0 {
-		t.Error("normal（@heavy）在换链头之后解析成空了——那一档的文件被改坏了")
+		t.Error("normal (@heavy) resolved to empty after the head switch -- that tier's file was corrupted")
 	}
 	if got := chainsFor(t, "alt", "heavy").Keys[0].Steps[0].Binding.String(); got != "zhipu/glm-4" {
-		t.Errorf("换 demo 的链头不该碰到 alt，它的 heavy 该还是 zhipu/glm-4，实际 %q", got)
+		t.Errorf("switching the head of demo must not touch alt; its heavy should still be zhipu/glm-4, actual %q", got)
 	}
 }
 
-// 换链头之前**先看盘**：这一档要是已经被别人改过（动作手里那个候选没了），
-// 就报错，而不是照着一个过期的快照写。
+// **Look at the disk** before swapping the chain head: if someone
+// else already changed this tier (the candidate the action holds is
+// gone), report an error rather than write against a stale snapshot.
 //
-// 这条是「两个写者」那条规矩在行内动作上的样子。行上的动作按设计不接参数（见
-// lib/view 的 Action.Run），所以它拿不到界面手里那份基线，只能在下笔前自己读一次
-// ——这一次读就是判据：候选不在了，说明盘上已经不是这一屏看到的那份配置。
+// This is the "two writers" rule as it looks on an inline row action. By design row
+// actions take no parameters (see Action.Run in lib/view), so they cannot get the baseline
+// the UI holds, and can only read once before writing -- and that read is the criterion:
+// the candidate is gone, meaning the disk is no longer the config this screen saw.
 //
-// 判据是**一个字节都不写**：文件里还是别人写的那份。
+// The criterion is **not one byte written**: the file still holds what the other person wrote.
 //
-// （这条锁的是「读到写之间」的前半段。真正的并发窗口——读完到写之间那一瞬——由
-// store.WriteIfUnchanged 的 flock + 基线比对兜住，那个已经由 store 自己的测试
-// 锁着，这里不重复。）
+// (This pins the first half of "between read and write". The real concurrency window -- the
+// moment between finishing the read and writing -- is covered by store.WriteIfUnchanged's
+// flock + baseline comparison, which store's own tests already pin; not repeated here.)
 func TestSwitchHeadRefusesWhenTheFileMovedOn(t *testing.T) {
 	seedChains(t)
 
 	acts := chainsFor(t, "demo", "heavy").Keys[0].Actions
 	if len(acts) == 0 {
-		t.Skip("seedChains 里 demo 的 heavy 只有一个候选？上面的用例前提变了")
+		t.Skip("does heavy of demo have only one candidate in seedChains? the premise of the case above changed")
 	}
-	// 别人（命令行、另一个标签页）把这一档改成了别的候选。
+	// Someone else (the command line, another tab) changed this tier to another candidate.
 	seedFile(t, "demo.kv", "desc=demo base\nheavy=zhipu/glm-4\n")
 
 	_, err := acts[0].Run()
 	if err == nil {
-		t.Fatal("候选已经不在文件里了，这一次该报错而不是照写")
+		t.Fatal("the candidate is no longer in the file, this time it should error instead of writing anyway")
 	}
 	raw, err := store.LoadProfileRaw("demo")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := raw.Roles["heavy"]; len(got) != 1 || got[0].String() != "zhipu/glm-4" {
-		t.Errorf("报错时一个字节都不该写，实际文件里是 %v", got)
+		t.Errorf("on error not a single byte should be written, actual file content is %v", got)
 	}
 }

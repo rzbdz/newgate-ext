@@ -22,29 +22,29 @@ func TestServeEntryClaims(t *testing.T) {
 		args     []string
 		want     bool
 	}{
-		{"有界面：显式 __serve 认领", false, []string{"__serve", "--port", "8899"}, true},
-		{"有界面：无参数不认领（那是给界面回答的）", false, nil, false},
-		{"有界面：只带 --port 也不认领", false, []string{"--port", "8899"}, false},
-		{"有界面：子命令不认领", false, []string{"status"}, false},
+		{"with a UI: an explicit __serve claims", false, []string{"__serve", "--port", "8899"}, true},
+		{"with a UI: no args does not claim (that is for the UI to answer)", false, nil, false},
+		{"with a UI: --port alone does not claim", false, []string{"--port", "8899"}, false},
+		{"with a UI: subcommands do not claim", false, []string{"status"}, false},
 
-		{"无界面：无参数认领（这个进程就是守护进程）", true, nil, true},
-		{"无界面：只带 --port 认领", true, []string{"--port", "8899"}, true},
-		{"无界面：--port=N 认领", true, []string{"--port=8899"}, true},
-		{"无界面：显式 __serve 照常认领", true, []string{"__serve", "--port", "8899"}, true},
+		{"headless: no args claims (this process is the daemon)", true, nil, true},
+		{"headless: --port alone claims", true, []string{"--port", "8899"}, true},
+		{"headless: --port=N claims", true, []string{"--port=8899"}, true},
+		{"headless: an explicit __serve still claims", true, []string{"__serve", "--port", "8899"}, true},
 
 		// 下面三条是「不许认」：没有界面时，敲了别的东西该得到「没人认领这次
 		// 调用」这句人话，而不是悄悄起一个守护进程。
-		{"无界面：未知子命令不认领", true, []string{"frobnicate"}, false},
-		{"无界面：--help 不认领（别把它吞成起服务）", true, []string{"--help"}, false},
-		{"无界面：别人的 flag 不认领", true, []string{"--json"}, false},
-		{"无界面：子命令夹在自己的 flag 里也不认领", true, []string{"--port", "8899", "status"}, false},
+		{"headless: unknown subcommands do not claim", true, []string{"frobnicate"}, false},
+		{"headless: --help does not claim (do not swallow it into starting the service)", true, []string{"--help"}, false},
+		{"headless: flags belonging to others do not claim", true, []string{"--json"}, false},
+		{"headless: a subcommand among its own flags does not claim", true, []string{"--port", "8899", "status"}, false},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			e := serveEntry{headless: c.headless}
 			if got := e.Claims(entryapi.Process{Argv0: "newgate", Args: c.args}); got != c.want {
-				t.Errorf("Claims(%v) headless=%v = %v，期望 %v", c.args, c.headless, got, c.want)
+				t.Errorf("Claims(%v) headless=%v = %v, want %v", c.args, c.headless, got, c.want)
 			}
 		})
 	}
@@ -54,6 +54,6 @@ func TestServeEntryClaims(t *testing.T) {
 // 也是诊断时唯一能认出它的东西，所以别跟着文案走。
 func TestServeEntryNameIsStable(t *testing.T) {
 	if got := (serveEntry{}).Name(); got != "__serve" {
-		t.Errorf("入口名该是 __serve（与 daemon.Spawn 拼出来的参数一致），实际 %q", got)
+		t.Errorf("the entry name should be __serve (matching the args daemon.Spawn builds), got %q", got)
 	}
 }

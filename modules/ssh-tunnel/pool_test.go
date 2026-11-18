@@ -12,11 +12,11 @@ import (
 	"time"
 )
 
-// 这一族验的是**这个模块自己**的行为：什么时候拨、拨几次、什么时候断、断了之后
-// 下一个请求怎么办。全部用一个假的 Dialer，所以它们在每次提交里都跑，而且不依赖
-// 这台机器上有没有 sshd、有没有密钥、网络通不通。
+// This family verifies **this module's own** behavior: when it dials, how often, when it
+// closes, what the next request does after a close. All with a fake Dialer, so they run
+// on every commit and need no sshd, keys or network on this machine.
 
-// ---------- 借用与复用 ----------
+// ---------- borrow and reuse ----------
 
 func TestAcquireDialsOnceAndHandsOutLeases(t *testing.T) {
 	d := newFakeDialer("127.0.0.1:1")
@@ -33,22 +33,22 @@ func TestAcquireDialsOnceAndHandsOutLeases(t *testing.T) {
 		t.Fatal(err)
 	}
 	if dials, _ := d.counts(); dials != 1 {
-		t.Errorf("拨了 %d 次，想要 1 次", dials)
+		t.Errorf("dialed %d times, want 1", dials)
 	}
 	if snap, _ := p.Snapshot("ds"); snap.Refs != 2 {
-		t.Errorf("两次借用之后 refs = %d，想要 2", snap.Refs)
+		t.Errorf("after two loans refs = %d, want 2", snap.Refs)
 	}
 	first.Release()
 	second.Release()
 	first.Release() // 幂等：多放一次不该把计数放到负数去
 	if snap, _ := p.Snapshot("ds"); snap.Refs != 0 {
-		t.Errorf("放完之后 refs = %d，想要 0（多放一次不该变成 -1）", snap.Refs)
+		t.Errorf("after releasing refs = %d, want 0 (one extra release must not become -1)", snap.Refs)
 	}
 }
 
 func TestConcurrentAcquiresShareOneDial(t *testing.T) {
-	// 两个人同时打进来时只能有一次握手。不挡的话，一个页面加载时发的十几个请求
-	// 会各自拨一次——而 SSH 握手是公钥运算，不是一次 TCP 往返。
+	// Two simultaneous requests share one handshake. Otherwise a page load's dozen requests
+	// each dial - and an SSH handshake is public-key math, not one TCP round trip.
 	d := newFakeDialer("127.0.0.1:1")
 	d.hold = make(chan struct{})
 	p := newPool(d)
@@ -65,8 +65,8 @@ func TestConcurrentAcquiresShareOneDial(t *testing.T) {
 			errs <- err
 		}()
 	}
-	// 等它们都进到「有人在拨」那一格，再放行。
-	waitFor(t, "所有请求都开始等", func() bool {
+	// Wait until both reach "someone is dialing", then let go.
+	waitFor(t, "all requests started waiting", func() bool {
 		snap, _ := p.Snapshot("ds")
 		return snap.State == StateConnecting
 	})
@@ -77,11 +77,11 @@ func TestConcurrentAcquiresShareOneDial(t *testing.T) {
 		}
 	}
 	if dials, _ := d.counts(); dials != 1 {
-		t.Errorf("%d 个并发请求拨了 %d 次，想要 1 次", n, dials)
+		t.Errorf("%d concurrent requests dialed %d times, want 1", n, dials)
 	}
 }
 
-// ---------- 出错 ----------
+// ---------- errors ----------
 
 func TestAFailedAcquireLeavesNothingBehind(t *testing.T) {
 	d := newFakeDialer("127.0.0.1:1")
@@ -90,20 +90,20 @@ func TestAFailedAcquireLeavesNothingBehind(t *testing.T) {
 	defer closePool(t, p)
 
 	if _, err := p.Acquire(context.Background(), target("ds")); err == nil {
-		t.Fatal("该失败")
+		t.Fatal("it should fail")
 	}
 	snap, _ := p.Snapshot("ds")
 	if snap.State != StateDown {
-		t.Errorf("状态 %q，想要 down", snap.State)
+		t.Errorf("status %q, want down", snap.State)
 	}
 	if !strings.Contains(snap.LastErr, "no route to host") {
-		t.Errorf("LastErr = %q（原因要留着，界面上那一格靠它说话）", snap.LastErr)
+		t.Errorf("LastErr = %q (the reason must be kept; the cell in the UI relies on it)", snap.LastErr)
 	}
 	if snap.Refs != 0 {
-		t.Errorf("失败之后 refs = %d，想要 0", snap.Refs)
+		t.Errorf("after the failure refs = %d, want 0", snap.Refs)
 	}
 
-	// 再试一次会**真的再拨**（失败不进缓存）。
+	// Retrying **really dials again** (failures are not cached).
 	d.setFail(nil)
 	l, err := p.Acquire(context.Background(), target("ds"))
 	if err != nil {
@@ -111,15 +111,15 @@ func TestAFailedAcquireLeavesNothingBehind(t *testing.T) {
 	}
 	l.Release()
 	if dials, _ := d.counts(); dials != 2 {
-		t.Errorf("拨了 %d 次，想要 2", dials)
+		t.Errorf("dialed %d times, want 2", dials)
 	}
 }
 
-// ---------- 空闲回收 ----------
+// ---------- idle reap ----------
 
 func TestIdleConnectionsAreLetGo(t *testing.T) {
-	// 一条 SSH 连接挂在那里是有成本的（服务端一个进程、本机一个 goroutine、
-	// 中间设备一条 conntrack）。懒连接的全部意义就是它该自己断掉。
+	// An idle SSH connection costs (a server process, a local goroutine, a conntrack entry).
+	// The whole point of a lazy connection is that it closes itself.
 	d := newFakeDialer("127.0.0.1:1")
 	p := newPool(d)
 	defer closePool(t, p)
@@ -134,20 +134,20 @@ func TestIdleConnectionsAreLetGo(t *testing.T) {
 
 	p.reap(time.Now()) // 刚用完：不该断
 	if d.openSessions() != 1 {
-		t.Fatal("刚借完就断了")
+		t.Fatal("it broke right after being loaned")
 	}
 	p.reap(time.Now().Add(2 * time.Second)) // 超过空闲：该断
 	if got := d.openSessions(); got != 0 {
-		t.Errorf("空闲超时之后还剩 %d 条连接", got)
+		t.Errorf("%d connections remain after the idle timeout", got)
 	}
 	if snap, _ := p.Snapshot("ds"); snap.State != StateIdle {
-		t.Errorf("断开之后状态 %q，想要 idle", snap.State)
+		t.Errorf("after disconnect status %q, want idle", snap.State)
 	}
 }
 
 func TestPersistentTargetsSurviveIdle(t *testing.T) {
-	// 「常驻」的意思就是它**不**按空闲断。断了的话，用户下次打开界面要重新等一次
-	// 握手——而那个等待正是他配置常驻想避免的东西。
+	// "Persistent" means it is **not** closed for idleness. Closed, the next page open waits
+	// for a handshake again - the very wait persistence was configured to avoid.
 	d := newFakeDialer("127.0.0.1:1")
 	p := newPool(d)
 	defer closePool(t, p)
@@ -159,14 +159,14 @@ func TestPersistentTargetsSurviveIdle(t *testing.T) {
 	l.Release()
 	p.reap(time.Now().Add(time.Hour))
 	if got := d.openSessions(); got != 1 {
-		t.Errorf("常驻连接被空闲回收掉了（剩 %d 条）", got)
+		t.Errorf("the persistent connection was reclaimed by idle timeout (%d remain)", got)
 	}
 }
 
 func TestADeadConnectionIsDroppedByTheKeepalive(t *testing.T) {
-	// 一条 SSH 连接可能已经被对端（或中间的 NAT）悄悄掐掉了，而我们这边的 socket
-	// 还开着。不探的话，用户点开界面看到的是**第一个请求卡住**，而不是
-	// 「自动重连之后再成功」。
+	// An SSH connection may already be silently dropped by the peer (or a NAT in between),
+	// while our socket stays open. Unprobed, the user's first request **hangs** instead
+	// of "reconnected automatically, then succeeded".
 	d := newFakeDialer("127.0.0.1:1")
 	p := newPool(d)
 	defer closePool(t, p)
@@ -174,31 +174,31 @@ func TestADeadConnectionIsDroppedByTheKeepalive(t *testing.T) {
 
 	l, _ := p.Acquire(context.Background(), tt)
 	l.Release()
-	// 把底层那条假会话标记成「对端已经走了」。
+	// Mark the underlying fake session as "the peer is gone".
 	d.mu.Lock()
 	d.sessions[0].closed.Store(true)
 	d.mu.Unlock()
 
 	p.reap(time.Now())
 	if got := d.openSessions(); got != 0 {
-		t.Errorf("探活没发现它已经死了（还剩 %d 条）", got)
+		t.Errorf("the probe did not notice it was already dead (%d remain)", got)
 	}
-	// 下一个请求会重新拨——这才是用户看到的效果（重连，而不是卡住）。
+	// The next request redials - that is what users see (a reconnect, not a hang).
 	l2, err := p.Acquire(context.Background(), tt)
 	if err != nil {
 		t.Fatal(err)
 	}
 	l2.Release()
 	if dials, _ := d.counts(); dials != 2 {
-		t.Errorf("拨了 %d 次，想要 2（一次原始的 + 一次重连）", dials)
+		t.Errorf("dialed %d times, want 2 (one original + one reconnect)", dials)
 	}
 }
 
-// ---------- 配置变了 ----------
+// ---------- config changed ----------
 
 func TestChangingTheAddressDropsTheOldConnection(t *testing.T) {
-	// 用户在界面上把 host 改了，而旧连接指向的是**原来那台机器**。留着它的话，
-	// 症状是「我明明改了地址，打开的却还是旧那台」——而那个界面看起来是对的。
+	// The user changed host in the UI, and the old connection points at the **old machine**.
+	// Kept, the symptom is "I changed the address but still get the old one".
 	d := newFakeDialer("127.0.0.1:1")
 	p := newPool(d)
 	defer closePool(t, p)
@@ -214,13 +214,13 @@ func TestChangingTheAddressDropsTheOldConnection(t *testing.T) {
 	}
 	l2.Release()
 	if dials, _ := d.counts(); dials != 2 {
-		t.Errorf("换了地址之后拨了 %d 次，想要 2", dials)
+		t.Errorf("after the address changed it dialed %d times, want 2", dials)
 	}
 }
 
 func TestRetainForgetsTargetsThatAreGone(t *testing.T) {
-	// 配置里删掉的 target 没有任何一条路径会再碰它，而它占着一条 SSH 连接。
-	// 不回收的症状是「删了之后 ss 里还挂着一条到那台机器的连接」，离案发现场很远。
+	// A target removed from config is touched by no path and holds an SSH connection.
+	// Not reaped, the symptom is "after deleting, ss still shows a connection", far from the scene.
 	d := newFakeDialer("127.0.0.1:1")
 	p := newPool(d)
 	defer closePool(t, p)
@@ -232,14 +232,14 @@ func TestRetainForgetsTargetsThatAreGone(t *testing.T) {
 
 	p.Retain([]Target{target("ark")})
 	if _, ok := p.Snapshot("ds"); ok {
-		t.Error("ds 已经不在配置里了，池子里还留着它")
+		t.Error("ds is no longer in the config, yet it is still in the pool")
 	}
 	if got := d.openSessions(); got != 1 {
-		t.Errorf("还剩 %d 条连接，想要 1", got)
+		t.Errorf("%d connections remain, want 1", got)
 	}
 }
 
-// ---------- 停机 ----------
+// ---------- shutdown ----------
 
 func TestCloseReleasesEverything(t *testing.T) {
 	d := newFakeDialer("127.0.0.1:1")
@@ -250,16 +250,16 @@ func TestCloseReleasesEverything(t *testing.T) {
 	closePool(t, p)
 
 	if got := d.openSessions(); got != 0 {
-		t.Errorf("停机之后还剩 %d 条连接没关", got)
+		t.Errorf("%d connections were left open after shutdown", got)
 	}
 	if _, err := p.Acquire(context.Background(), target("ds")); !errors.Is(err, errShuttingDown) {
-		t.Errorf("停机之后还能借到连接：%v", err)
+		t.Errorf("a connection can still be borrowed after shutdown: %v", err)
 	}
 }
 
 func TestCloseWaitsForInFlightWork(t *testing.T) {
-	// 不等的话，一条正在写的响应会被从底下抽掉连接——用户看到的是一个没有正文的
-	// 502，而它离「我刚才停了一下服务」很远。
+	// Without waiting, a response being written loses its connection underneath - a
+	// bodyless 502, far from "I just restarted the service".
 	d := newFakeDialer("127.0.0.1:1")
 	p := newPool(d)
 
@@ -273,22 +273,22 @@ func TestCloseWaitsForInFlightWork(t *testing.T) {
 	}()
 	select {
 	case <-done:
-		t.Fatal("在途的借用还没还回去，停机就完成了")
+		t.Fatal("shutdown finished while a loan was still out")
 	case <-time.After(50 * time.Millisecond):
 	}
 	l.Release()
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
-		t.Fatal("借用还回去之后停机还是没完成")
+		t.Fatal("after the loan was returned, shutdown is still not done")
 	}
 }
 
-// ---------- 转发端口 ----------
+// ---------- forwarded port ----------
 
-// freePort 要一个此刻空闲的端口号。
+// freePort asks for a currently free port number.
 //
-// 关掉再返回它，所以两次调用可能拿到同一个——测试里够用（同一时刻只有一个在用）。
+// It closes before returning, so two calls may get the same one - fine in tests (one at a time).
 func freePort(t *testing.T) int {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -300,8 +300,8 @@ func freePort(t *testing.T) int {
 }
 
 func TestTheForwardingPortMovesBytesUntouched(t *testing.T) {
-	// 这条路的全部价值就在「原样」：远端界面里那些写死的绝对地址
-	// （/ui/assets/…）必须一个字节都不被动。这是保真那条路存在的理由。
+	// The whole value of this route is "verbatim": hardcoded absolute addresses in the
+	// remote UI (/ui/assets/...) must not change one byte. That is why the faithful route exists.
 	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, "path="+r.URL.Path)
 	}))
@@ -317,7 +317,7 @@ func TestTheForwardingPortMovesBytesUntouched(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 一个**不带 /ui 前缀**的路径：转发那条路完全不碰路径，远端的 /x/y 就是 /x/y。
+	// A path **without the /ui prefix**: forwarding never touches paths; /x/y is /x/y remotely.
 	resp, err := http.Get("http://127.0.0.1:" + itoa(tt.LocalPort) + "/x/y")
 	if err != nil {
 		t.Fatal(err)
@@ -325,25 +325,25 @@ func TestTheForwardingPortMovesBytesUntouched(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
 	if string(body) != "path=/x/y" {
-		t.Errorf("远端收到的是 %q，想要 path=/x/y（转发这条路不改路径）", body)
+		t.Errorf("the remote received %q, want path=/x/y (the forward path does not rewrite paths)", body)
 	}
 
-	// 停机：那条连接是 HTTP keep-alive 的，**它自己不会结束**，所以宽限期一到必须
-	// 被强制关掉。不给它这一手的话，停机要挂满整个超时（实测过），而日志里只有
-	// 一句「放弃了 N 条在途连接」。给一个短的宽限期，断言它在宽限期之后就回来。
+	// Shutdown: that connection is HTTP keep-alive, **it never ends by itself**, so after the
+	// grace period it must be force-closed. Without that, shutdown hangs the whole timeout
+	// (measured) with one log line "gave up on N in-flight". Assert it returns after a short grace.
 	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
 	defer cancel()
 	start := time.Now()
 	if err := f.close(ctx); err != nil {
-		t.Errorf("关转发端口报错：%v", err)
+		t.Errorf("closing the forward port failed: %v", err)
 	}
 	if elapsed := time.Since(start); elapsed > 2*time.Second {
-		t.Errorf("关一次花了 %v——keep-alive 的连接没被强制关掉", elapsed)
+		t.Errorf("closing once took %v - the keep-alive connections were not forcibly closed", elapsed)
 	}
 }
 
 func TestABusyForwardingPortIsReportedNotHidden(t *testing.T) {
-	// 用户配的那个端口没生效，是他**唯一**能在这条命令之外发现的地方。
+	// The port the user configured did not take effect - the **only** way to see it outside it.
 	busy, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -358,16 +358,16 @@ func TestABusyForwardingPortIsReportedNotHidden(t *testing.T) {
 	tt.LocalPort = busy.Addr().(*net.TCPAddr).Port
 	_, err = startForward(tt, p)
 	if err == nil {
-		t.Fatal("端口被占时该报错")
+		t.Fatal("an occupied port should error")
 	}
 	if !strings.Contains(err.Error(), "cannot listen on") {
-		t.Errorf("错误没说清是端口的事：%v", err)
+		t.Errorf("the error does not make clear it is about the port: %v", err)
 	}
 }
 
 func TestForwardingOnlyListensOnLoopback(t *testing.T) {
-	// 这个端口背后是一台**没有 Host 门**的远端界面，而本机这一侧没有任何一道门
-	// 能挡。绑到别的地址等于把它对局域网敞开——所以这件事必须是不可配的。
+	// Behind this port is a remote UI **without a Host gate**, and this side has no gate
+	// either. Binding elsewhere opens it to the LAN - so this must not be configurable.
 	d := newFakeDialer("127.0.0.1:1")
 	p := newPool(d)
 	defer closePool(t, p)
@@ -386,16 +386,16 @@ func TestForwardingOnlyListensOnLoopback(t *testing.T) {
 
 	addr := f.ln.Addr().(*net.TCPAddr)
 	if !addr.IP.IsLoopback() {
-		t.Errorf("监听在 %s 上，必须只绑回环", addr)
+		t.Errorf("listening on %s, it must bind loopback only", addr)
 	}
 	if got := f.status().Addr; !strings.HasPrefix(got, "127.0.0.1:") {
-		t.Errorf("报告的地址是 %q，想要 127.0.0.1:…", got)
+		t.Errorf("the reported address is %q, want 127.0.0.1:...", got)
 	}
 }
 
 func TestAFailedForwardingPortDoesNotStopTheOthers(t *testing.T) {
-	// 一个端口没起来（被占）不该让别的 target 一起失效——那看起来像「整个 tunnel
-	// 坏了」，而实际上只有那一条配置有问题。
+	// One port failing (taken) must not break other targets - that looks like "the whole
+	// tunnel is broken", while only one config entry is at fault.
 	busy, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -417,22 +417,22 @@ func TestAFailedForwardingPortDoesNotStopTheOthers(t *testing.T) {
 
 	st := m.Status()
 	if len(st) != 2 {
-		t.Fatalf("状态里有 %d 条，想要 2", len(st))
+		t.Fatalf("status has %d entries, want 2", len(st))
 	}
 	byID := map[string]TargetStatus{}
 	for _, s := range st {
 		byID[s.Target.ID] = s
 	}
 	if byID["bad"].ForwardErr == "" {
-		t.Error("起不来的那条没有报出原因")
+		t.Error("the one that could not start did not report a reason")
 	}
 	if byID["good"].Forward.Addr == "" {
-		t.Error("好的那条被带坏了")
+		t.Error("the good one was dragged down with it")
 	}
 	m.shutdown()
 }
 
-// ---------- 索引页 ----------
+// ---------- index page ----------
 
 func closePool(t *testing.T, p *pool) {
 	t.Helper()
@@ -442,10 +442,10 @@ func closePool(t *testing.T, p *pool) {
 }
 
 func TestABusyForwardingPortIsRetried(t *testing.T) {
-	// 最常见的那次 `net.Listen` 失败恰好发生在**优雅交接**之后：老进程还占着那个
-	// 端口在排空，新进程一上来绑当然绑不上。老进程几秒后就走了，所以一次失败必须
-	// 是**可恢复**的——不重试的话，症状是「升级完之后转发端口一直是死的，而 route
-	// 那条好好的」，看起来像只有那一条配置坏了（实机踩过）。
+	// The most common `net.Listen` failure comes right after a **graceful handover**: the
+	// old process still holds the port draining, so the new one cannot bind. It leaves in
+	// seconds, so a failure must be **recoverable** - unretried, the forwarded port stays
+	// dead after an upgrade while the route is fine, as if only that entry broke.
 	busy, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -464,25 +464,25 @@ func TestABusyForwardingPortIsRetried(t *testing.T) {
 
 	m.sync()
 	if got := m.Status()[0].ForwardErr; got == "" {
-		t.Fatal("端口被占时该报出来")
+		t.Fatal("an occupied port should be reported")
 	}
 
-	// 「老进程走了」：端口空出来了，而重试的窗口还没到——这一步必须**还是**失败，
-	// 否则下面的断言等于没验到重试（它只是碰巧成功了）。
+	// "The old process left": the port is free but the retry window is not here yet - this
+	// step must **still** fail, or the assertion does not test the retry (only luck).
 	_ = busy.Close()
 	m.sync()
 	if got := m.Status()[0].ForwardErr; got == "" {
-		t.Fatal("重试得太急：端口刚空出来就又绑上了（退避没生效）")
+		t.Fatal("retried too fast: it bound again the instant the port freed up (backoff not in effect)")
 	}
 
-	// 等过退避窗口，下一次 sync 该把它接上。
+	// Past the backoff window, the next sync should pick it up.
 	time.Sleep(forwardRetry + 100*time.Millisecond)
 	m.sync()
 	st := m.Status()[0]
 	if st.ForwardErr != "" {
-		t.Fatalf("退避之后还是没绑上：%s", st.ForwardErr)
+		t.Fatalf("it still did not bind after the backoff: %s", st.ForwardErr)
 	}
 	if st.Forward.Addr == "" {
-		t.Fatal("绑上了但地址是空的")
+		t.Fatal("it bound, but the address is empty")
 	}
 }

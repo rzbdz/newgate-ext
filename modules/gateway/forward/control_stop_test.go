@@ -12,13 +12,14 @@ import (
 	"time"
 )
 
-// TestControlStop 跨用户停机端点：方法、令牌、触发三件事都不能含糊。
-// 错一个就把停机触发了，等于任何本地进程都能把 daemon 弄死。
+// TestControlStop covers the cross-user stop endpoint: method, token
+// and trigger, none of which may be fuzzy. Get one wrong and the
+// stop triggers anyway - any local process could kill the daemon.
 func TestControlStop(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("NEWGATE_HOME", dir)
 	_ = os.MkdirAll(filepath.Join(dir, "mappings"), 0o755)
-	// snap()（无 watcher）走 store.Load：providers + state 都得能读
+	// snap() (no watcher) goes through store.Load: both providers + state must be readable
 	_ = ioutil.WriteFile(filepath.Join(dir, "providers.json"),
 		[]byte(`{"providers":{}}`), 0o600)
 	const tok = "ctrl-tok-0123456789abcdef0123456789abcdef"
@@ -45,44 +46,44 @@ func TestControlStop(t *testing.T) {
 		return resp.StatusCode
 	}
 
-	// GET 一律拒绝（浏览器/预检误触不至于停机）
+	// GET is always rejected (so a browser / preflight mistake does not stop the daemon)
 	resp, err := http.Get(front.URL + "/__newgate/stop")
 	if err != nil {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
 	if resp.StatusCode != 405 {
-		t.Fatalf("GET 应 405，实际 %d", resp.StatusCode)
+		t.Fatalf("GET should be 405, got %d", resp.StatusCode)
 	}
 
 	for _, auth := range []string{"", "Bearer wrong-token", "Bearer " + tok + "x"} {
 		if code := post(auth); code != 403 {
-			t.Fatalf("Authorization %q 应 403，实际 %d", auth, code)
+			t.Fatalf("Authorization %q should be 403, got %d", auth, code)
 		}
 	}
 	select {
 	case <-srv.StopRequested():
-		t.Fatal("没验过令牌就把停机触发了")
+		t.Fatal("the stop was triggered without verifying the token")
 	default:
 	}
 
-	// 对的令牌：200 + 触发停机（handler 异步触发，稍等）
+	// right token: 200 + stop triggered (the handler triggers asynchronously, wait a bit)
 	if code := post("Bearer " + tok); code != 200 {
-		t.Fatalf("带对令牌应 200，实际 %d", code)
+		t.Fatalf("with the right token it should be 200, got %d", code)
 	}
 	select {
 	case <-srv.StopRequested():
 	case <-time.After(2 * time.Second):
-		t.Fatal("令牌验过后没有触发停机")
+		t.Fatal("after the token verified, the stop was not triggered")
 	}
 
-	// 幂等：重复调用不 panic、channel 不二次 close
+	// idempotent: repeated calls do not panic, the channel is not closed twice
 	srv.RequestStop()
 	srv.RequestStop()
 }
 
-// TestControlStopNoToken state.json 没有令牌时（老版本升级前的窗口期）
-// 端点必须一律 403，而不是裸奔放行。
+// TestControlStopNoToken: when state.json has no token (the window before an old-version
+// upgrade), the endpoint must always answer 403, not let requests through unprotected.
 func TestControlStopNoToken(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("NEWGATE_HOME", dir)
@@ -110,10 +111,10 @@ func TestControlStopNoToken(t *testing.T) {
 		b, _ := ioutil.ReadAll(resp.Body)
 		resp.Body.Close()
 		if resp.StatusCode != 403 {
-			t.Fatalf("无令牌状态下 %q 应 403，实际 %d: %s", auth, resp.StatusCode, b)
+			t.Fatalf("without a token %q should be 403, got %d: %s", auth, resp.StatusCode, b)
 		}
 		if !strings.Contains(string(b), "token") {
-			t.Fatalf("403 应说明是令牌问题: %s", b)
+			t.Fatalf("the 403 should say it is a token problem: %s", b)
 		}
 	}
 }

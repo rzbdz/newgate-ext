@@ -7,24 +7,24 @@ import (
 	"github.com/rzbdz/newgate/tools/ciyaml"
 )
 
-// TestWorkflowsAreStructurallyValid 是发行版这一侧的 CI 配置棘轮。
+// TestWorkflowsAreStructurallyValid is the distribution-side CI config ratchet.
 //
-// 判据只有一份实现（core/tools/ciyaml，发行版通过 replace 用的是同一把尺子），
-// 与内核那条（core/app/ci_test.go）是同一个包的两个入口。为什么发行版也要有：
-// 内核的棘轮只看自己那棵树，而**发行版的 workflow 是发行版自己的**——三个 job
-// （core-test / dist-test / 零 token 端到端）里任何一个写坏，症状都一样：GitHub
-// 0 秒拒掉整个 run，一个 job 都不起，看着像测试挂了，实际是测试根本没跑。
+// The criterion has one implementation (core/tools/ciyaml, same yardstick via replace),
+// the same package's second entrance as the kernel's (core/app/ci_test.go). Why the
+// distribution needs it: the kernel's ratchet sees only its own tree, and **the
+// distribution's workflows are its own** - break any of three jobs (core-test / dist-test /
+// zero-token e2e) and GitHub rejects the whole run at 0s: no job starts, nothing ran.
 //
-// core/ 一起查：它是 submodule，CI 里 checkout 得到，坏了同样是整轮哑火。
+// core/ is checked too: a submodule, checked out in CI, and broken there mutes the round.
 func TestWorkflowsAreStructurallyValid(t *testing.T) {
 	root, err := filepath.Abs("..")
 	if err != nil {
-		t.Fatalf("算仓库根: %v", err)
+		t.Fatalf("locating the repo root: %v", err)
 	}
 	for _, sub := range []string{root, filepath.Join(root, "core")} {
 		findings, err := ciyaml.Check(sub)
 		if err != nil {
-			t.Fatalf("CI 配置检查跑不起来——判据退化了（%s 的 workflow 目录挪了？）: %v", sub, err)
+			t.Fatalf("cannot run the CI config check -- the check has degraded (did %s's workflow directory move?): %v", sub, err)
 		}
 		for _, f := range findings {
 			t.Errorf("%s/%s", filepath.Base(sub), f)

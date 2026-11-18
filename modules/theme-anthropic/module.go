@@ -1,24 +1,24 @@
-// Package themeanthropic 是 anthropic 那套配色：暖米底 + 陶土色强调。
+// Package themeanthropic is the anthropic palette: warm off-white ground + terracotta accent.
 //
-// # 它从哪来（2026-09-29 换过一次）
+// # Where it came from (changed once, 2026-09-29)
 //
-// 这一套**原本是出厂那套令牌**（web/src/app.css 的 `:root` 与它的浅色分支），
-// 抄自 cc-switch 的参考界面：底色是暖米/暖棕，强调是暖橙，边框、静默底、次要
-// 文字全都带同一条橙黄色相（H≈30–38）。
+// This set **used to be the factory token set** (web/src/app.css's `:root` and its light
+// branch), copied from cc-switch's reference UI: warm beige/brown ground, warm orange accent,
+// and borders, quiet ground and secondary text all on one orange-yellow hue (H≈30-38).
 //
-// 用户的原话是「跟随系统这个主题才是 anthropic 主题吧，跟随系统默认应该是黑白
-// 主题」——那套暖色的语气确实是 Anthropic 式的，而不是一个界面该有的**出厂**样子
-// （出厂那套的语义是「不要给我指定一套」）。所以它搬到这里来，出厂换成中性黑白。
+// The user said: "the follow-system theme is the anthropic one; the follow-system default
+// should be black and white" - that warm tone is Anthropic's, not a UI's **factory** look
+// (factory means "do not pick one for me"). So it moved here; the factory went neutral b/w.
 //
-// 上一版这里是我照着 Anthropic 的品牌色值编的一套十六进制（`#faf9f5` / `#d97757`），
-// 用户看过之后说「颜色不对，应该不要了」。留下的教训是：**「某家的品牌色」与
-// 「这个界面一直在用的那套暖色」不是一回事**，而后者才是用户认的那一个。
+// The earlier version here was a hex set I made up from Anthropic brand values (`#faf9f5` /
+// `#d97757`); after seeing it the user said "wrong colors, drop it". The lesson: **"a
+// vendor's brand color" is not "the warm set this UI has always used"** - and the latter counts.
 //
-// # 为什么只有浅色那一半
+// # Why only the light half
 //
-// 一套皮肤只声明**一个**变体（见 webapi.Theme.CSS），所以那一套**暖深色**
-// （原 `:root`，暖棕底）没有搬过来——它没有地方可去。要留它得先把协议改成
-// 「一套皮肤给深浅两份」，那是一件单独的事。
+// A skin declares **one** variant (see webapi.Theme.CSS), so that **warm dark** set (the
+// original `:root`, warm brown ground) did not come along - it has nowhere to go. Keeping
+// it needs the protocol changed to "one skin, two halves", which is a separate job.
 package themeanthropic
 
 import (
@@ -29,16 +29,16 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// Name 是这个模块在装配表与 `newgate plugin` 里的名字（= 目录名）。
+// Name is this module's name in the assembly table and in `newgate plugin` (= the dir name).
 const Name = "theme-anthropic"
 
-// ID 是这套皮肤的机器标记（存进 state.json 的就是它）。
+// ID is this skin's machine tag (it is what gets stored in state.json).
 //
-// 它是品牌名，所以**不翻译**（与 Theme.Name 的分工：那个是给人看的字，这个是键）。
+// It is a brand name, so **not translated** (vs Theme.Name: humans vs a key).
 const ID = "anthropic"
 
-// New 声明这个组件：界面在时把自己这套皮肤登记进去，不在时什么都不做。
-// Optional 而不是 Requires 的理由见 modules/theme-dark 的同一段。
+// New declares this component: register this skin when the UI is there, do nothing when not.
+// Why Optional rather than Requires: see the same passage in modules/theme-dark.
 func New() modules.Component {
 	return modules.Component{
 		Name:     Name,
@@ -60,8 +60,8 @@ func start(_ context.Context, ctx modules.Context) error {
 	rel, err := port.RegisterTheme(webapi.Theme{
 		ID:   ID,
 		Name: func() string { return i18n.T("Anthropic", nil) },
-		// 米白底 = 浅色。界面据此把 `color-scheme` 设成 light，于是滚动条、复选框、
-		// 自动填充的底色跟着走——那几样不归 CSS 变量管（见 webapi.Theme.Dark）。
+		// Off-white ground = light. The UI sets `color-scheme` to light from it, so scrollbars,
+		// checkboxes and autofill follow - those are not CSS variables (see webapi.Theme.Dark).
 		Dark: false,
 		CSS: `
   --bg: hsl(38 28% 91%);

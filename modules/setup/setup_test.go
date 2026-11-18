@@ -17,15 +17,15 @@ import (
 	"github.com/rzbdz/newgate-ext/testing/testkit"
 )
 
-// 本文件用一台**假终端**驱动整个向导：脚本化的按键进来，屏幕画到 buffer 里。
-// 它锁的是那些「用户看不见、但决定这台机器变成什么样」的判断：
+// This file drives the whole wizard with a **fake terminal**: scripted keys in, screen to buffer.
+// It pins the decisions the user never sees but that decide what the machine becomes:
 //
-//	已经配好的人跑第二遍   → 不问上游，只装/接管他选的那几家
-//	没勾的客户端           → 一个都不碰（多选那一屏写着的话必须是真的）
-//	装不上                 → 说清楚，别把那一步算成成功
-//	没有终端               → 什么都不写，逐条告诉人敲什么
+//	already-configured second run   -> no upstream question, only install/take over selected
+//	unchecked clients               -> not touched at all (that screen's words must be true)
+//	install fails                   -> say so, do not count that step as success
+//	no terminal                     -> write nothing, list what to type
 
-// fakeScreen 按脚本吐按键与整行输入。
+// fakeScreen emits keys and whole lines from a script.
 type fakeScreen struct {
 	events []term.Event
 	lines  []string
@@ -80,7 +80,7 @@ func runes(rs ...rune) []term.Event {
 	return out
 }
 
-// fakeCatalog 是最小的代理目录：说清「谁在、谁能被装上」。
+// fakeCatalog is the smallest proxy catalog: who is here, who can be installed.
 type fakeCatalog struct {
 	agents       map[string]*agentapi.Agent
 	installed    map[string]bool
@@ -122,7 +122,7 @@ func (f fakeInstaller) Install(out io.Writer) error {
 	return nil
 }
 
-// fakeControl 记下每一次接管/起代理的调用。
+// fakeControl records every takeover/start-proxy call.
 type fakeControl struct {
 	status      []runtimeapi.Status
 	takenOver   []string
@@ -149,7 +149,7 @@ func (c *fakeControl) Start(opts runtimeapi.StartOptions) (runtimeapi.StartRepor
 	return runtimeapi.StartReport{Running: true, PID: 1, Port: 8899, Profile: "default"}, nil
 }
 
-// stubModels 把「问上游清单」换成一个固定答案，测试因而不出网。
+// stubModels swaps "ask upstream for the list" for a fixed answer, so the test stays offline.
 func stubModels(t *testing.T, models []string, why string) {
 	t.Helper()
 	old := probeModels
@@ -168,22 +168,22 @@ func sandbox(t *testing.T) {
 func catalogWith(ids ...string) fakeCatalog {
 	c := fakeCatalog{agents: map[string]*agentapi.Agent{}, installed: map[string]bool{}}
 	for _, id := range ids {
-		// 只带一个 Bin，够 pick/EnsureAgents 用它；接管走的是 fakeControl。
+		// Only a Bin, enough for pick/EnsureAgents; takeover goes through fakeControl.
 		c.agents[id] = &agentapi.Agent{ID: id, Bin: []string{id}}
 		c.installed[id] = true
 	}
 	return c
 }
 
-// TestSecondRunDoesNotAskForUpstream 是「已经能跑的人重跑向导」那条路：他们多半
-// 只是想装一个新的客户端。被问到 base URL 时最可能的结果是直接 Ctrl-C——而他想要
-// 的那件事一件都没做。
+// TestSecondRunDoesNotAskForUpstream is "an already-working user reruns the wizard":
+// they mostly just want to install a new client. Asked for a base URL they most likely
+// Ctrl-C - and what they wanted went undone.
 func TestSecondRunDoesNotAskForUpstream(t *testing.T) {
 	sandbox(t)
 	if _, err := store.Init(false); err != nil {
 		t.Fatal(err)
 	}
-	// 让它「可用」：占位 provider 全部配上 key。
+	// Make it "usable": give every placeholder provider a key.
 	provs, _ := store.LoadProviders()
 	for name, p := range provs.Providers {
 		p.APIKey, p.APIKeyEnv = "sk-real", ""
@@ -193,10 +193,10 @@ func TestSecondRunDoesNotAskForUpstream(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !Inspect().HasUsable {
-		t.Fatal("前置条件没成立：这份配置本该被判成可用")
+		t.Fatal("precondition not met: this config should have been judged usable")
 	}
 
-	// 一行都不许被问：脚本里不给任何输入，走到上游那一屏就会取消。
+	// Not one line may be asked: the script gives no input, so the upstream screen cancels.
 	scr := &fakeScreen{events: keys(term.KeyEnter)}
 	cat := catalogWith("claude")
 	ctl := &fakeControl{}
@@ -204,52 +204,52 @@ func TestSecondRunDoesNotAskForUpstream(t *testing.T) {
 
 	code := runWithScreen(&out, Deps{Agents: cat, Control: ctl, Out: &out}, Options{NoStart: true}, scr)
 	if code != 0 {
-		t.Fatalf("退出码 %d，想要 0", code)
+		t.Fatalf("exit code %d, want 0", code)
 	}
 	if len(ctl.takenOver) != 1 || ctl.takenOver[0] != "claude" {
-		t.Fatalf("接管了 %v，想要 [claude]", ctl.takenOver)
+		t.Fatalf("took over %v, want [claude]", ctl.takenOver)
 	}
 	if got := store.LoadState().DefaultProfile; got == ProfileName {
-		t.Fatal("第二次运行把全局默认改成了 default（它不该碰配置）")
+		t.Fatal("the second run changed the global default to default (it must not touch config)")
 	}
 }
 
-// TestUncheckedClientsAreNotTouched：多选那一屏的话是「跳过它们就不变」。这一条
-// 把它钉住——`Start` 必须带着 SkipTakeover 被调用，而且接管只发生在勾了的那几家。
+// TestUncheckedClientsAreNotTouched: that screen's words are "skip them and nothing changes".
+// This pins it - `Start` must be called with SkipTakeover, and takeover only for checked ones.
 func TestUncheckedClientsAreNotTouched(t *testing.T) {
 	sandbox(t)
-	// 没有可用配置 → 会问上游（脚本里给现成的答案）。
+	// No usable config -> the upstream is asked (the script has the answers ready).
 	cat := catalogWith("claude", "codex")
-	// codex 没装、claude 已接管 → 默认只勾 codex；把它取消、勾上 claude。
+	// codex absent, claude taken over -> only codex is checked by default; uncheck it, check claude.
 	cat.installed["codex"] = false
 	ctl := &fakeControl{status: []runtimeapi.Status{{Agent: "claude", Active: true}}}
 	var out bytes.Buffer
 
 	stubModels(t, []string{"demo-model"}, "")
 	scr := &fakeScreen{
-		// 列表顺序 claude, codex：光标在 codex（默认勾着），取消它，跳到 claude 勾上。
+		// List order claude, codex: cursor on codex (checked), uncheck it, move to claude, check.
 		events: concat(keys(term.KeyUp), runes(' '), keys(term.KeyDown, term.KeyEnter, term.KeyEnter)),
 		lines:  []string{"https://api.example.com/v1", "sk-test", "demo"},
 	}
 	code := runWithScreen(&out, Deps{Agents: cat, Control: ctl, Out: &out}, Options{NoStart: true, Yes: false}, scr)
 	if code != 0 {
-		t.Fatalf("退出码 %d（输出：%s）", code, out.String())
+		t.Fatalf("exit code %d (output: %s)", code, out.String())
 	}
 	for _, id := range ctl.takenOver {
 		if id == "codex" {
-			t.Fatalf("没勾的 codex 被接管了（输出：%s）", out.String())
+			t.Fatalf("the unchecked codex was taken over (output: %s)", out.String())
 		}
 	}
 	if len(ctl.takenOver) != 1 || ctl.takenOver[0] != "claude" {
-		t.Fatalf("接管了 %v，想要 [claude]", ctl.takenOver)
+		t.Fatalf("took over %v, want [claude]", ctl.takenOver)
 	}
 	if !strings.Contains(out.String(), "Next") {
-		t.Fatalf("收尾那一屏没画出来：%s", out.String())
+		t.Fatalf("the closing screen was not drawn: %s", out.String())
 	}
 }
 
-// TestNotTakenOverYetIsSaidOutLoud：配置型客户端第一次接管会「跳过（没有配置文件）」，
-// 那不是接管成功。汇总里必须写明——否则用户在它里面发请求走的是直连，而他以为配好了。
+// TestNotTakenOverYetIsSaidOutLoud: a config-type client's first takeover says "skipped
+// (no config file)" - that is not success. The summary must say so, or requests go direct.
 func TestNotTakenOverYetIsSaidOutLoud(t *testing.T) {
 	sandbox(t)
 	step := Step{Agent: "codex", Installed: true, TakenOver: false,
@@ -257,30 +257,30 @@ func TestNotTakenOverYetIsSaidOutLoud(t *testing.T) {
 	var b bytes.Buffer
 	Report(&b, []Step{step})
 	if !strings.Contains(b.String(), "not taken over yet") {
-		t.Fatalf("跳过的接管被报成了成功：%s", b.String())
+		t.Fatalf("a skipped takeover was reported as success: %s", b.String())
 	}
 
 	var out strings.Builder
 	printOutcome(&out, ApplyResult{}, []Step{step}, StartReporter{Next: nextSteps([]Step{step})})
 	if !strings.Contains(out.String(), "not taken over yet") {
-		t.Fatalf("收尾那一屏把跳过的接管报成了成功：%s", out.String())
+		t.Fatalf("the closing screen reported a skipped takeover as success: %s", out.String())
 	}
 	if !strings.Contains(out.String(), "then: newgate on codex") {
-		t.Fatalf("收尾没给出「先跑一次再接管」那条路：%s", out.String())
+		t.Fatalf("the closing screen did not offer the \"run once first, then take over\" path: %s", out.String())
 	}
 }
 
-// TestNoTTYWritesNothing：非交互环境里绝不静默改配置。
+// TestNoTTYWritesNothing: never silently change config in a non-interactive environment.
 func TestNoTTYWritesNothing(t *testing.T) {
 	sandbox(t)
 	before := snapshot(t)
 	var out bytes.Buffer
 	code := noTTY(Deps{Out: &out}, Options{}, term.ErrNotATTY)
 	if code == 0 {
-		t.Fatal("没有终端却报了成功")
+		t.Fatal("reported success without a terminal")
 	}
 	if after := snapshot(t); after != before {
-		t.Fatal("没有终端时改动了配置目录")
+		t.Fatal("changed the config directory without a terminal")
 	}
 }
 

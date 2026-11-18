@@ -15,14 +15,14 @@ import (
 
 const debugDefaultMinutes = 30
 
-// debugCommand 是 `newgate debug on|off [分钟] [--forever]`：全量请求日志。
+// debugCommand is `newgate debug on|off [minutes] [--forever]`: full request logging.
 //
-// **它住在这里而不是 modules/cli**：被打开的是网关转发侧逐条 dump 请求与响应
-// （见 forward 里的 dump 闸门），所以「有没有开」是 gateway 的语义。搬过来之后
-// cli 的 switch 与 --help 都不再需要认识这个动词——理由与 specialCommand 同一条。
+// **Why it lives here and not in modules/cli**: what gets turned on is the gateway's
+// forwarding side dumping each request and response (see forward's dump gate), so "is
+// it on" is gateway semantics; cli need not know the verb, as with specialCommand.
 //
-// 默认**限时**：一发请求的 body 可以到 8KB 以上（opencode 的 system prompt
-// 单独就 ~97KB），忘了关会把磁盘写满。
+// **Time-limited** by default: one request body can exceed 8KB (opencode's system prompt
+// alone is ~97KB), and forgetting to turn it off fills the disk.
 type debugCommand struct{}
 
 var (
@@ -42,15 +42,15 @@ func (debugCommand) Help() cliapi.HelpLine {
 
 func (debugCommand) Run(host cliapi.Host, args []string) int {
 	arg := cliapi.Positional(args, 0)
-	// 同 schema-repair：不带参数要报用法，不能默认成 off。这条命令的代价更大
-	// ——它会在你只想看一眼的时候把全量日志关掉，而「日志怎么没了」的排查
-	// 成本远高于多敲一个 on/off。
+	// Same as schema-repair: no argument must print usage, not default to off. This
+	// command costs more - it would disable full logging when you just meant to peek,
+	// and "where did the logs go" costs far more to debug than typing an on/off.
 	switch arg {
 	case "":
 		return host.Die(64, i18n.T("Usage: newgate debug on [minutes] [--forever] | off (no argument changes anything)", nil))
 	case "on", "off":
 	default:
-		// `newgate debug 30` 是「开 30 分钟」的简写，保留。
+		// `newgate debug 30` means "on for 30 minutes" - kept.
 		if _, err := durarg.Parse(arg); err != nil {
 			return host.Die(64, i18n.T("debug: unrecognized argument {arg} (on / off / a number of minutes, e.g. 30)",
 				i18n.A{"arg": strconv.Quote(arg)}))

@@ -34,10 +34,10 @@ func TestTailLinesReturnsTheLastOnesOldestFirst(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := strings.Join(lines, "|"); got != "a|b|c|d|e" {
-		t.Errorf("整个文件都读得下，该原样给出: %q", got)
+		t.Errorf("the whole file fits, so it should be given as is: %q", got)
 	}
 	if truncated {
-		t.Error("一条都没丢，不该说 truncated")
+		t.Error("nothing was dropped, so it must not say truncated")
 	}
 
 	// 只要最后 3 行：上面那两行**确实**没给出去，所以 truncated 该是 true——
@@ -47,10 +47,10 @@ func TestTailLinesReturnsTheLastOnesOldestFirst(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := strings.Join(lines, "|"); got != "c|d|e" {
-		t.Errorf("尾巴取错了: %q", got)
+		t.Errorf("wrong tail: %q", got)
 	}
 	if !truncated {
-		t.Error("上面还有两行没给出来，该说 truncated")
+		t.Error("two more lines above were not given, so it should say truncated")
 	}
 }
 
@@ -71,22 +71,22 @@ func TestTailLinesStopsAtTheByteLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !truncated {
-		t.Error("被字节上限切过，该说 truncated——不说的话用户以为日志只有这么长")
+		t.Error("cut by the byte limit, so it should say truncated - otherwise the user thinks the log is only this long")
 	}
 	if len(lines) == 0 || lines[len(lines)-1] != "last line" {
-		t.Errorf("尾巴的最后一行该是最新的那条，实际 %q", lines[len(lines)-1:])
+		t.Errorf("the last line of the tail should be the newest one, got %q", lines[len(lines)-1:])
 	}
 	// 第一行多半是半截的（被 limit 切开），必须丢掉——留下它，读的人会拿一段
 	// 没有开头的输出当证据。
 	if strings.Contains(lines[0], "x") && len(lines[0]) != 100 {
-		t.Errorf("第一行是半截的: %q", lines[0])
+		t.Errorf("the first line is cut in half: %q", lines[0])
 	}
 }
 
 func TestTailLinesOnMissingFile(t *testing.T) {
 	_, _, err := tailLines(filepath.Join(t.TempDir(), "nope.log"), 10, 1024)
 	if err == nil {
-		t.Error("文件不存在该报错——调用方据此说「还没有日志」而不是「日志是空的」")
+		t.Error("a missing file should error - the caller uses that to say 'no log yet' rather than 'the log is empty'")
 	}
 }
 
@@ -102,7 +102,7 @@ func TestRedactLine(t *testing.T) {
 	}
 	for in, want := range cases {
 		if got := redactLine(in); got != want {
-			t.Errorf("redactLine(%q) = %q，想要 %q", in, got, want)
+			t.Errorf("redactLine(%q) = %q, want %q", in, got, want)
 		}
 	}
 }
@@ -129,7 +129,7 @@ func installFakePlugins(t *testing.T, ps ...special.Plugin) {
 	reg := special.NewRegistry()
 	for _, p := range ps {
 		if _, err := reg.Register(p); err != nil {
-			t.Fatalf("装假插件 %q: %v", p.Name(), err)
+			t.Fatalf("installing fake plugin %q: %v", p.Name(), err)
 		}
 	}
 	t.Cleanup(special.InstallDefault(reg))
@@ -147,11 +147,11 @@ func TestEverythingGatewayShowsDeclaresItselfLive(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(cs) == 0 {
-		t.Fatal("网关一张卡都没有——这条断言等于没跑")
+		t.Fatal("the gateway has no cards at all - this assertion is a no-op")
 	}
 	for _, c := range cs {
 		if !c.Live {
-			t.Errorf("%s 没有声明 Live：它读的是内存里的一把，而内容会自己变", c.ID)
+			t.Errorf("%s does not declare Live: it reads a snapshot in memory, and the content changes on its own", c.ID)
 		}
 	}
 }
@@ -162,11 +162,11 @@ func specialTableOf(t *testing.T) view.Table {
 	t.Helper()
 	c := specialConcept()
 	if c.ID != "gateway.special" || c.Kind != view.KindTable {
-		t.Fatalf("这张卡的身份变了: id=%q kind=%q", c.ID, c.Kind)
+		t.Fatalf("the identity of this card changed: id=%q kind=%q", c.ID, c.Kind)
 	}
 	tb, ok := c.Data.(view.Table)
 	if !ok {
-		t.Fatalf("Data 不是 view.Table，是 %T", c.Data)
+		t.Fatalf("Data is not a view.Table, it is %T", c.Data)
 	}
 	return tb
 }
@@ -189,7 +189,7 @@ func TestTheSpecialTableListsEveryPluginAndItsState(t *testing.T) {
 
 	ps := special.Plugins()
 	if len(ps) != 2 {
-		t.Fatalf("这本注册表该有两枚插件，实际 %d", len(ps))
+		t.Fatalf("this registry should hold two plugins, got %d", len(ps))
 	}
 	stateOf := func(tb view.Table, name string) view.Cell {
 		t.Helper()
@@ -198,19 +198,19 @@ func TestTheSpecialTableListsEveryPluginAndItsState(t *testing.T) {
 				return r.Cells["state"]
 			}
 		}
-		t.Fatalf("表里没有插件 %q", name)
+		t.Fatalf("the table has no plugin %q", name)
 		return view.Cell{}
 	}
 
 	// —— 默认：层开着、没有单独关掉的 → 每一行都生效 ——
 	tb := specialTableOf(t)
 	if len(tb.Rows) != len(ps) {
-		t.Errorf("表里有 %d 行，注册了 %d 个插件——少的那几个用户在界面上看不见",
+		t.Errorf("the table has %d rows for %d registered plugins - the missing ones are invisible in the UI",
 			len(tb.Rows), len(ps))
 	}
 	for _, p := range ps {
 		if got := stateOf(tb, p.Name()); got.Text != i18n.T("active", nil) || got.Tone != view.ToneOK {
-			t.Errorf("默认状态下 %q 该是生效(ok)，实际 %q/%q", p.Name(), got.Text, got.Tone)
+			t.Errorf("in the default state %q should be in effect (ok), got %q/%q", p.Name(), got.Text, got.Tone)
 		}
 		for _, r := range tb.Rows {
 			if r.Cells["plugin"].Text != p.Name() {
@@ -218,7 +218,7 @@ func TestTheSpecialTableListsEveryPluginAndItsState(t *testing.T) {
 			}
 			// Why 只给第一行：完整说明有好几行，铺进表里会把表淹掉。
 			if w := r.Cells["why"].Text; w == "" || strings.Contains(w, "\n") {
-				t.Errorf("%q 的 why 该是单行非空，实际 %q", p.Name(), w)
+				t.Errorf("the why of %q should be a non-empty single line, got %q", p.Name(), w)
 			}
 		}
 	}
@@ -234,11 +234,11 @@ func TestTheSpecialTableListsEveryPluginAndItsState(t *testing.T) {
 	}
 	tb = specialTableOf(t)
 	if got := stateOf(tb, off); got.Text != i18n.T("disabled individually", nil) || got.Tone != view.ToneBad {
-		t.Errorf("单独关掉 %q 之后该说「disabled individually」(bad)，实际 %q/%q", off, got.Text, got.Tone)
+		t.Errorf("with %q disabled individually it should say 'disabled individually' (bad), got %q/%q", off, got.Text, got.Tone)
 	}
 	for _, p := range ps[1:] {
 		if got := stateOf(tb, p.Name()); got.Text != i18n.T("active", nil) {
-			t.Errorf("只关了 %q，%q 却也变成了 %q", off, p.Name(), got.Text)
+			t.Errorf("only %q was disabled, yet %q also became %q", off, p.Name(), got.Text)
 		}
 	}
 
@@ -249,8 +249,8 @@ func TestTheSpecialTableListsEveryPluginAndItsState(t *testing.T) {
 	tb = specialTableOf(t)
 	for _, p := range ps {
 		if got := stateOf(tb, p.Name()); got.Text != i18n.T("layer off", nil) || got.Tone != view.ToneWarn {
-			t.Errorf("整层关掉之后 %q 该说「layer off」(warn)，实际 %q/%q——"+
-				"画成生效是「全部补丁都在」的谎", p.Name(), got.Text, got.Tone)
+			t.Errorf("with the whole layer off %q should say 'layer off' (warn), got %q/%q - "+
+				"showing it as in effect is the lie of 'all patches are on'", p.Name(), got.Text, got.Tone)
 		}
 	}
 }

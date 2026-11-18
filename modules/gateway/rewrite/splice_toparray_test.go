@@ -20,10 +20,10 @@ func TestAppendTopLevelArrayItemNonEmpty(t *testing.T) {
 		t.Fatalf("err: %v", err)
 	}
 	if !changed {
-		t.Fatalf("该插的地方没插")
+		t.Fatalf("the place to insert was not touched")
 	}
 	if !json.Valid(out) {
-		t.Fatalf("结果不是合法 JSON:\n%s", out)
+		t.Fatalf("the result is not valid JSON:\n%s", out)
 	}
 	var parsed struct {
 		Model string            `json:"model"`
@@ -31,26 +31,26 @@ func TestAppendTopLevelArrayItemNonEmpty(t *testing.T) {
 		Max   json.RawMessage   `json:"max_output_tokens"`
 	}
 	if err := json.Unmarshal(out, &parsed); err != nil {
-		t.Fatalf("解析失败: %v\n%s", err, out)
+		t.Fatalf("parse failed: %v\n%s", err, out)
 	}
 	if len(parsed.Input) != 2 {
-		t.Fatalf("input 应该有 2 项，得到 %d:\n%s", len(parsed.Input), out)
+		t.Fatalf("input should have 2 items, got %d:\n%s", len(parsed.Input), out)
 	}
 	if string(parsed.Input[1]) != probeUserItem {
-		t.Fatalf("补进去的不是那条 item:\n%s", parsed.Input[1])
+		t.Fatalf("what was added is not that item:\n%s", parsed.Input[1])
 	}
 	// 逐字保留：原有 item、缩进、1e10 的字面量、顶层 key 顺序
 	if !strings.Contains(string(out), `{"type": "function_call_output", "call_id": "call_faedac", "output": "x"}`) {
-		t.Fatalf("原有 item 被动了:\n%s", out)
+		t.Fatalf("the existing items were touched:\n%s", out)
 	}
 	if !strings.Contains(string(out), "\n    {") && !strings.Contains(string(out), "    {") {
-		t.Fatalf("原来的缩进丢了:\n%s", out)
+		t.Fatalf("the original indentation was lost:\n%s", out)
 	}
 	if !strings.Contains(string(out), `"max_output_tokens": 1e10`) {
-		t.Fatalf("数字字面量被改写了:\n%s", out)
+		t.Fatalf("a numeric literal was rewritten:\n%s", out)
 	}
 	if strings.Index(string(out), `"model"`) > strings.Index(string(out), `"input"`) {
-		t.Fatalf("顶层 key 顺序变了:\n%s", out)
+		t.Fatalf("the top-level key order changed:\n%s", out)
 	}
 }
 
@@ -63,41 +63,41 @@ func TestAppendTopLevelArrayItemEdges(t *testing.T) {
 		wantErr  bool
 		wantMove bool
 	}{
-		{"空数组", `{"input":[]}`, false, true},
-		{"只有空白", `{"input":[  ]}`, false, true},
-		{"不是数组", `{"input":{}}`, true, false},
-		{"缺这个 key", `{"input2":[]}`, true, false},
-		{"顶层不是对象", `[]`, true, false},
+		{"empty array", `{"input":[]}`, false, true},
+		{"whitespace only", `{"input":[  ]}`, false, true},
+		{"not an array", `{"input":{}}`, true, false},
+		{"missing this key", `{"input2":[]}`, true, false},
+		{"top level is not an object", `[]`, true, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			out, changed, err := AppendTopLevelArrayItem([]byte(tc.body), "input", []byte(probeUserItem))
 			if tc.wantErr && err == nil {
-				t.Fatalf("该报错没报")
+				t.Fatalf("an error was expected but none was raised")
 			}
 			if !tc.wantErr && err != nil {
-				t.Fatalf("不该报错: %v", err)
+				t.Fatalf("should not error: %v", err)
 			}
 			if changed != tc.wantMove {
-				t.Fatalf("changed=%v，想要 %v", changed, tc.wantMove)
+				t.Fatalf("changed=%v, want %v", changed, tc.wantMove)
 			}
 			if !changed {
 				if string(out) != tc.body {
-					t.Fatalf("不动的时候必须原样返回:\n%s", out)
+					t.Fatalf("when nothing changes the input must come back as is:\n%s", out)
 				}
 				return
 			}
 			if !json.Valid(out) {
-				t.Fatalf("结果不是合法 JSON:\n%s", out)
+				t.Fatalf("the result is not valid JSON:\n%s", out)
 			}
 			var parsed struct {
 				Input []json.RawMessage `json:"input"`
 			}
 			if err := json.Unmarshal(out, &parsed); err != nil {
-				t.Fatalf("解析失败: %v\n%s", err, out)
+				t.Fatalf("parse failed: %v\n%s", err, out)
 			}
 			if len(parsed.Input) != 1 || string(parsed.Input[0]) != probeUserItem {
-				t.Fatalf("空数组该只补出新那一项:\n%s", out)
+				t.Fatalf("an empty array should get only the new item:\n%s", out)
 			}
 		})
 	}

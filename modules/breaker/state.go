@@ -13,22 +13,24 @@ type probeResult struct {
 	CheckedAt time.Time
 }
 
-// record 是一个 binding 的全部健康状态。
+// record is one binding's entire health state.
 //
-// 状态的四个形态：
+// The four forms of the state:
 //
-//	closed      openedAt 为零。正常参与建链。
-//	open        openedAt 非零、now < openUntil。摘牌中，不进候选链。
-//	half-open   open 且 now >= openUntil。Available 会放行**一次**真实请求
-//	            做试探（halfOpenAt 是这次试探的失效时刻）；其它并发请求仍然
-//	            被挡在外面。
-//	closed(回)  试探成功 → openedAt 清零、退避归位。
+//	closed      openedAt is zero. Participates in chain building normally.
+//	open        openedAt non-zero, now < openUntil. Delisted, not in the candidate chain.
+//	half-open   open and now >= openUntil. Available lets **one** real request through as a
+//	            trial (halfOpenAt is this trial's expiry); other concurrent requests are still
+//	            kept out.
+//	closed(again) trial succeeded -> openedAt cleared, backoff reset.
 //
-// 为什么要有 half-open：「摘了只能靠手动 probe 放回来」是 2026-09-17 之前的
-// 硬伤——ark 被真实连接超时摘掉后卡了 16 分钟，直到用户手敲 `newgate probe`。
-// 半开让真实流量自己证明恢复。安全性由三点保住：只在冷却期满放行、半开期严格
-// 一次、试探失败立刻回闸并把冷却翻倍（60s → 120s → 240s …，10 分钟封顶），
-// 所以坏上游不会每分钟回来撞一次。
+// Why half-open: "once delisted, it can only come back by a manual probe" was the hard
+// flaw before 2026-09-17 -- ark was delisted by a real connection timeout and was stuck
+// for 16 minutes, until the user typed `newgate probe` by hand. Half-open lets real
+// traffic prove recovery itself. Safety is kept by three things: only let through after
+// the cooldown expires, strictly once during the half-open period, and on a failed
+// trial close the breaker immediately and double the cooldown (60s -> 120s -> 240s …,
+// capped at 10 minutes), so a bad upstream does not come back to hit once a minute.
 type record struct {
 	fails      int       // 当前这本账的连续失败数
 	bucket     Bucket    // fails 记的是哪本账（换账本要清零重数）
@@ -39,8 +41,8 @@ type record struct {
 	reason     string
 	shapeSkips int // 请求形状错误的次数（永不摘牌，只计数）
 	spared     int // 上闸前诊断探活把它救回来的次数
-	// verifying 这一刻有一个「上闸前诊断」在飞。它挡的是并发重复诊断：
-	// 同一个 binding 同时来两条失败，只该探活一次。
+	// verifying: a "pre-trip diagnostic" is in flight right now. What it blocks is concurrent
+	// duplicate diagnostics: two failures arriving at the same binding at once should probe only once.
 	verifying bool
 }
 
@@ -55,8 +57,8 @@ func (r *record) state(now time.Time) string {
 	}
 }
 
-// table 是健康表本体。**一个 binding 一行**（provider + model），不是一
-// provider 一行——同一家上游的不同模型经常一个通一个不通。
+// table is the health table itself. **One row per binding** (provider + model), not one row
+// per provider -- different models from the same upstream often have one working and one not.
 type table struct {
 	mu      sync.Mutex
 	records map[string]*record
@@ -84,23 +86,25 @@ func newTable() *table {
 	}
 }
 
-// SetPolicy 整份替换策略；零值项按 DefaultPolicy 补齐。
+// SetPolicy replaces the whole policy; zero items are filled from DefaultPolicy.
 //
-// 今天**没有生产调用者**（零值策略就是 DefaultPolicy），也**不在公开的 Breaker
-// 接口上**——理由见 api.go 那段收窄说明。
+// Today there is **no production caller** (the zero-value policy is DefaultPolicy), and
+// it is **not on the public Breaker interface** -- see the narrowing note in api.go.
 func (b *table) SetPolicy(p Policy) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.policy = p.normalized()
 }
 
-// SetErrorHandler 注入持久化错误出口；健康状态不能因后台写盘失败而静默丢失。
+// SetErrorHandler injects the persistence error outlet; health
+// state must not be silently lost because a background write failed.
 //
-// 与 SetVerifier 一样，它不在公开的 Breaker 接口上：唯一的调用者是 BindEnv
-// （见 api.go 的收窄说明）。
+// Like SetVerifier, it is not on the public Breaker interface:
+// the only caller is BindEnv (see the narrowing note in api.go).
 //
-// 装载期的错误（health.json 坏了）也走这里：那一刻还没有出口，所以先存着，
-// 出口一装上就立刻补报——「不静默」是这个仓库的硬要求。
+// Load-time errors (a corrupt health.json) go here too: at that moment there
+// is no outlet yet, so they are stored first and reported as soon as the
+// outlet is installed -- "never silent" is a hard requirement of this repo.
 func (b *table) SetErrorHandler(fn func(error)) {
 	b.mu.Lock()
 	b.onError = fn
@@ -112,23 +116,27 @@ func (b *table) SetErrorHandler(fn func(error)) {
 	}
 }
 
-// SetVerifier 注入「上闸前的最后一次诊断」。
+// SetVerifier injects "the last diagnostic before tripping".
 //
-// 连续失败数到达阈值时先别摘：调这个函数做几次主动探活，探活说它还通就不摘、
-// 计数清零。理由是真实现场（2026-09-17）：smt-deepseek 被摘了很多次，每次
-// `newgate probe` 都是 fluent——因为真实流量失败的是**第一字节超时**（分类器
-// 那条链把 126KB 的 system 塞进 12s 的紧预算），而探活发的是最小请求，永远探
-// 不到这个边界。两者的结论不一致时，谁的证据更硬？探活是**主动、可控、可重复**
-// 的，被动流量则是单点、受上下文尺寸和排队影响的。摘牌会让用户被悄悄换给别的
-// 模型，代价不对称，所以上闸前必须再要一次主动证据。
+// When consecutive failures reach the threshold, do not delist yet: call this function
+// for a few active probes, and if the probe says it still works, do not delist and reset
+// the count. The reason is a real scene (2026-09-17): smt-deepseek was delisted many times,
+// and every `newgate probe` came back fluent -- because what failed in real traffic was the
+// **time to first byte** (the classifier chain stuffed a 126KB system prompt into a tight
+// 12s budget), while a probe sends a minimal request and can never hit that boundary. When
+// the two conclusions disagree, whose evidence is harder? A probe is **active, controllable,
+// repeatable**, while passive traffic is a single data point affected by context size
+// and queueing. Delisting silently hands the user to another model, and the costs are
+// asymmetric, so one more piece of active evidence must be demanded before tripping.
 //
-// 返回 true = 这条 binding 仍然可用（不摘）；false = 确认不可用（照摘）。
-// nil（默认）＝不做这一步，行为与以前完全一致。
+// Returns true = this binding is still usable (do not delist); false = confirmed unusable
+// (delist as usual). nil (the default) = skip this step, behaving exactly as before.
 //
-// **它不在公开的 Breaker 接口上**（2026-09-21 收窄）：全仓库唯一的调用者是下面
-// BindEnv 那一处，而把它摆在接口上意味着任何拿到健康表 capability 的模块都能
-// 一句 `SetVerifier(nil)` 把这道安全诊断**静默**卸掉——不报错、依赖图上没有边、
-// 改动时也看不出来。一个能力只该有一扇门，门开在拥有它的模块上。
+// **It is not on the public Breaker interface** (narrowed 2026-09-21): the only
+// caller in the whole repo is the BindEnv below, and putting it on the interface would mean any
+// module holding the health-table capability could **silently** remove this safety diagnostic
+// with one `SetVerifier(nil)` -- no error, no edge on the dependency graph, and invisible on a
+// change. One capability should have one door, and the door belongs to the module that owns it.
 func (b *table) SetVerifier(fn func(provider, model string) bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -147,10 +155,11 @@ func (b *table) recordLocked(provider, model string) *record {
 	return r
 }
 
-// Available 回答这个 binding 现在能不能进候选链。
+// Available answers whether this binding can enter the candidate chain right now.
 //
-// 它是**唯一**会推进状态机的读路径：冷却期满时顺手把 binding 推进半开，并发放
-// 这一轮的试探名额。建链期每个候选只问一次，所以「放行一次」在这里天然成立。
+// It is the **only** read path that advances the state machine: when the cooldown expires
+// it moves the binding to half-open along the way and issues this round's trial slot. During
+// chain building each candidate is asked once, so "let one through" holds naturally here.
 func (b *table) Available(provider, model string) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -169,20 +178,21 @@ func (b *table) Available(provider, model string) bool {
 	return true
 }
 
-// Report 回报一次上游交互的结局，并返回判决。
+// Report reports the outcome of one upstream interaction and returns the verdict.
 //
-// 这是数据面唯一需要的记账入口：分类（Classify）与状态迁移都在这里，调用方
-// 只负责把「实际发生了什么」如实描述出来。2026-09-17 之前数据面自己在两处
-// 分支里各判断一次 4xx 的语义，两处判据不一致，形状错误在链中间会摘牌、在
-// 链尾不会。
+// This is the only recording entry point the data plane needs: classification
+// (Classify) and state transitions are both here, and the caller only has to
+// describe "what actually happened" truthfully. Before 2026-09-17 the data plane
+// decided the semantics of 4xx itself in two separate branches, the two tests
+// disagreed, and a shape error delisted mid-chain but not at the chain tail.
 func (b *table) Report(provider, model string, in Input) Result {
 	detector, shape := b.shapeOf(in.Status, in.Body)
 	in.Shape = shape
 	v := Classify(in)
 	if in.Kind != KindUpstreamSuccess && v.Bucket == BucketNone {
-		// 客户端取消、"换谁都一样"的 4xx：什么都不改，也**不要**在账本里
-		// 造一行空记录——不然每次取消都会往 `newgate breaker` 里塞一行
-		// 全零的 binding。
+		// Client cancel, the 4xx of "equally wrong anywhere": change nothing, and
+		// **do not** create an empty row in the ledger -- otherwise every cancel
+		// would stuff a row of all zeros for that binding into `newgate breaker`.
 		return Result{Verdict: v}
 	}
 
@@ -191,8 +201,9 @@ func (b *table) Report(provider, model string, in Input) Result {
 
 	switch {
 	case in.Kind == KindUpstreamSuccess:
-		// 只碰已经存在的记录：成功的 binding 不需要为它凭空造一行，它的
-		// 延迟样本另有落处（ranker），而状态迁移只可能发生在已有记录上。
+		// Touch only existing records: a successful binding does not need
+		// a row conjured out of nowhere, its latency sample lands elsewhere
+		// (ranker), and state transitions can only happen on existing records.
 		if r := b.records[bindingKey(provider, model)]; r != nil {
 			b.succeedLocked(r, now)
 		}
@@ -203,8 +214,9 @@ func (b *table) Report(provider, model string, in Input) Result {
 		r.shapeSkips++
 		b.persistLocked()
 		b.mu.Unlock()
-		// Shape 带上认领的判据名：数据面据此打专属日志并存证据，而它不需要
-		// 认识任何上游专有字符串——名字是检测器自己起的。
+		// Shape carries the claiming test's name: the data plane
+		// uses it for dedicated logging and evidence saving, and needs to know no
+		// upstream-proprietary string -- the name is chosen by the detector itself.
 		return Result{Verdict: v, Shape: detector}
 	}
 
@@ -216,16 +228,17 @@ func (b *table) Report(provider, model string, in Input) Result {
 		return Result{Verdict: v, Opened: opened}
 	}
 	if verify == nil {
-		// 没装诊断：照旧直接开闸。行为与 2026-09-17 之前完全一致，
-		// 装配里没接探活能力时不会因此少摘一条坏 binding。
+		// No diagnostic installed: open the breaker as before. Behavior is exactly as before 2026-09-17,
+		// and an assembly without a probe capability will not delist one fewer bad binding because of it.
 		b.openLocked(r, b.policy.rule(v.Bucket), now,
 			i18n.T("consecutive real-traffic failures ({bucket})",
 				i18n.A{"bucket": v.Bucket.ruleName()}))
 		b.mu.Unlock()
 		return Result{Verdict: v, Opened: true}
 	}
-	// 到阈值了，但**先别摘**：到锁外去做一次主动诊断（探活要发网络请求，
-	// 不能拿着状态机的锁做）。只让一个 goroutine 诊断，其余失败照常计数。
+	// Threshold reached, but **do not delist yet**: go outside the lock to run one active
+	// diagnostic (probing makes a network request and must not be done holding the state
+	// machine's lock). Only one goroutine diagnoses; other failures keep counting as usual.
 	r.verifying = true
 	b.mu.Unlock()
 
@@ -239,8 +252,9 @@ func (b *table) Report(provider, model string, in Input) Result {
 	}
 	r.verifying = false
 	if healthy {
-		// 诊断说它还通：这次连续失败是单点/上下文相关的（首字节超时、排队、
-		// 大 prefill），不是这家不行。计数清零，不摘牌。
+		// The diagnostic says it still works: this consecutive failure was
+		// single-point or context-related (time to first byte, queueing, large
+		// prefill), not "this one is down". Reset the count, do not delist.
 		r.fails = 0
 		r.bucket = BucketNone
 		r.spared++
@@ -255,11 +269,13 @@ func (b *table) Report(provider, model string, in Input) Result {
 	return Result{Verdict: v, Opened: true}
 }
 
-// succeedLocked 记一次真实成功。
+// succeedLocked records one real success.
 //
-// 「成功」并不总是能解封：冷却期内的成功可能来自更早建链的请求（链是每个请求
-// 开始时建的），它不能当作恢复的证据——否则一个坏上游只要偶尔漏一个成功就能
-// 一直赖在链上。冷却期满之后的成功才是半开试探的结论，那才解封。
+// A "success" does not always unseal: a success during the cooldown may come from a
+// request whose chain was built earlier (the chain is built when each request starts),
+// and it cannot count as evidence of recovery -- otherwise a bad upstream that
+// occasionally leaks one success could stay on the chain forever. Only a success after
+// the cooldown expires is the half-open trial's conclusion, and only that unseals.
 func (b *table) succeedLocked(r *record, now time.Time) {
 	r.fails = 0
 	if r.openedAt.IsZero() || now.Before(r.openUntil) {
@@ -268,8 +284,8 @@ func (b *table) succeedLocked(r *record, now time.Time) {
 	b.unsealLocked(r)
 }
 
-// unsealLocked 立刻合闸并把退避归位。给**主动探活**的权威结论用：
-// 它不受隔离期约束（见 RecordProbe）。
+// unsealLocked closes the breaker immediately and resets the backoff. For the authoritative
+// conclusion of an **active probe**: it is not subject to the quarantine (see RecordProbe).
 func (b *table) unsealLocked(r *record) {
 	r.openedAt = time.Time{}
 	r.openUntil = time.Time{}
@@ -280,11 +296,12 @@ func (b *table) unsealLocked(r *record) {
 	b.persistLocked()
 }
 
-// failLocked 记一次失败，返回 (这次把闸打开了吗, 要不要先做上闸前诊断)。
+// failLocked records one failure and returns (did this trip
+// the breaker, should a pre-trip diagnostic run first).
 //
-// 半开试探的失败是**当场定案**的，不走诊断：那一次试探本身就是主动证据，
-// 再要一次只是拖长坏上游的隔离。诊断只服务于「被动流量把一条可能还活着的
-// binding 数到阈值」这一种情形。
+// A failed half-open trial is **settled on the spot**, without the diagnostic: that trial is itself
+// active evidence, and asking again only prolongs a bad upstream's quarantine. The diagnostic
+// only serves the one case "passive traffic counted a possibly-alive binding up to the threshold".
 func (b *table) failLocked(r *record, bucket Bucket, now time.Time) (bool, bool) {
 	rule := b.policy.rule(bucket)
 	if rule.Threshold <= 0 {
@@ -292,21 +309,21 @@ func (b *table) failLocked(r *record, bucket Bucket, now time.Time) (bool, bool)
 	}
 	if !r.openedAt.IsZero() {
 		if now.Before(r.openUntil) {
-			// 隔离期内的失败来自更早建链的请求，不构成新证据：既不再数
-			// 阈值，也不延长隔离。
+			// A failure during quarantine comes from a request whose chain was built earlier
+			// and does not count as new evidence: count no threshold and extend no quarantine.
 			return false, false
 		}
-		// 冷却已过（半开）：这一次失败就是试探的结论，立刻回闸并退避。
-		// 不重新数阈值——试探本身就是那一票。
+		// Cooldown over (half-open): this failure is the trial's conclusion; close the breaker
+		// immediately and back off. Do not recount the threshold -- the trial was the vote.
 		r.halfOpenAt = time.Time{}
 		b.openLocked(r, rule, now,
 			i18n.T("half-open trial failed ({bucket})", i18n.A{"bucket": bucket.ruleName()}))
 		return true, false
 	}
 	if r.bucket != bucket {
-		// 换账本了：连续失败的定义是「同一类问题连着来」，不是「各种问题
-		// 凑够两次」。一条 binding 连吃 429 和连接超时，两边各一次，还不
-		// 足以说明它坏了。
+		// Ledger changed: "consecutive failures" means "the same class of problem
+		// in a row", not "various problems adding up to two". A binding taking 429
+		// and a connection timeout, one each, is not yet enough to say it is broken.
 		r.bucket, r.fails = bucket, 0
 	}
 	r.fails++
@@ -315,8 +332,8 @@ func (b *table) failLocked(r *record, bucket Bucket, now time.Time) (bool, bool)
 		return false, false
 	}
 	if r.verifying {
-		// 已经有一个诊断在飞：这一条只计数，等它的结论。两个并发失败同时
-		// 去探活是白花两倍的钱买同一个答案。
+		// A diagnostic is already in flight: count this one only and wait for its conclusion.
+		// Two concurrent failures probing at once is paying twice for the same answer.
 		b.persistLocked()
 		return false, false
 	}
@@ -343,11 +360,13 @@ func (b *table) openLocked(r *record, rule Rule, now time.Time, reason string) {
 	b.persistLocked()
 }
 
-// RecordProbe 记录主动探活的四档结论，并返回评级和是否仍然熔断。
+// RecordProbe records the four-tier conclusion of an active
+// probe and returns the grade and whether it is still tripped.
 //
-// probe 是主动、独立的健康请求，所以它**不受阈值约束**：结论差就当场摘，
-// 结论好就当场放（隔离期内也一样，见下面那段）。这与真实流量那条路不同——
-// 那条路上单次成功不足以证明什么，单次失败也不足以定案。
+// A probe is an active, independent health request, so it is **not subject to
+// the threshold**: a bad conclusion delists on the spot, a good one unseals on the
+// spot (even during quarantine, see below). This differs from the real-traffic path
+// -- there a single success proves nothing and a single failure settles nothing.
 func (b *table) RecordProbe(provider, model string, status, contextBytes int,
 	latency, slowAfter time.Duration, probeErr string) (ProbeGrade, bool) {
 	b.mu.Lock()
@@ -384,28 +403,30 @@ func (b *table) RecordProbe(provider, model string, status, contextBytes int,
 		r.fails = rule.Threshold
 		return grade, true
 	}
-	// 成功的主动探活是**权威证据**：它刚刚真的把这条 binding 打通了，所以
-	// 当场合闸——**不等隔离期满**。
+	// A successful active probe is **authoritative evidence**: it just really got through to this
+	// binding, so close the breaker on the spot -- **without waiting for the quarantine to end**.
 	//
-	// 2026-11-04 现场：用户在熔断期间手敲 probe，结论是 fluent，请求却继续
-	// 404 到 60s 隔离期结束。最短隔离那层硬下限（2026-09-17 加的）防的是
-	// 「上游抖一下就被 probe 立刻放回来」，但今天 probe **只有人发起**
-	// （`newgate probe` / 界面上的测试按钮），不存在自动 probe 抖动的问题；
-	// 真实流量那条路仍然走半开试探，短时间的抖动照样不会突破隔离。
-	// 把用户唯一能做的恢复动作变成安慰剂，代价远大于那点抖动风险。
+	// The scene on 2026-11-04: the user typed probe by hand while tripped, the conclusion was fluent,
+	// yet requests kept getting 404 until the 60s quarantine ended. The minimum-quarantine floor
+	// (added 2026-09-17) guards against "the upstream hiccups and a probe releases it immediately",
+	// but today probes are **only user-initiated** (`newgate probe` / the test button in the UI),
+	// so there is no automatic-probe jitter to worry about; the real-traffic path still goes through
+	// the half-open trial, so short-term jitter still cannot break the quarantine. Turning the
+	// only recovery action the user has into a placebo costs far more than that bit of jitter risk.
 	r.fails = 0
 	b.unsealLocked(r)
 	return grade, false
 }
 
-// ObserveSuccess 把真实请求的首响应延迟写进对应上下文桶。EWMA 让近期表现
-// 权重大，同时避免单次抖动把顺序永久改变。
+// ObserveSuccess writes a real request's first-response latency into
+// the corresponding context bucket. EWMA gives recent performance more
+// weight while avoiding a single jitter permanently changing the order.
 func (b *table) ObserveSuccess(provider, model string, contextBytes int, ttft time.Duration) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.ranker.observe(bindingKey(provider, model), contextBytes, ttft)
-	// 延迟样本来自热路径，不能每发请求都落盘；最多每 5 秒写一次。
-	// breaker/probe 状态变化仍会立即调用 persistLocked。
+	// Latency samples come from the hot path, so they cannot be persisted on every request; write at
+	// most once every 5 seconds. breaker/probe state changes still call persistLocked immediately.
 	const interval = 5 * time.Second
 	if time.Since(b.persistedAt) >= interval {
 		b.persistLocked()
@@ -420,7 +441,8 @@ func (b *table) ObserveSuccess(provider, model string, contextBytes int, ttft ti
 	}
 }
 
-// Flush 把节流窗口内尚未落盘的延迟样本同步写出，供 daemon 优雅退出使用。
+// Flush writes out synchronously the latency samples not yet
+// persisted in the throttling window, for the daemon's graceful exit.
 func (b *table) Flush() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -431,8 +453,8 @@ func (b *table) Flush() {
 	b.persistLocked()
 }
 
-// Score 返回当前上下文桶的预测 TTFT（毫秒）。完全未观测用 6s 中性值，
-// 排在流畅之后、可用档中部。
+// Score returns the predicted TTFT (milliseconds) for the current context bucket.
+// Fully unobserved uses a neutral 6s, sorting after fluent and in the middle of usable.
 func (b *table) Score(provider, model string, contextBytes int) int {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -442,14 +464,15 @@ func (b *table) Score(provider, model string, contextBytes int) int {
 	return 6000
 }
 
-// Rank 把延迟档位编码进排序键：流畅最前，未观测居中，可用最后。
+// Rank encodes the latency tier into the sort key:
+// fluent first, unobserved in the middle, usable last.
 func (b *table) Rank(provider, model string, contextBytes int) int {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.ranker.rank(bindingKey(provider, model), contextBytes)
 }
 
-// Snapshot 冻结一份现状，按 provider/model 排序，便于人读和 diff。
+// Snapshot freezes the current state, sorted by provider/model, easy to read and diff.
 func (b *table) Snapshot() []Status {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -489,11 +512,12 @@ func (b *table) Snapshot() []Status {
 	return out
 }
 
-// entryKeysLocked 是「哪些 binding 值得出现在快照/落盘里」的唯一判据。
+// entryKeysLocked is the only test for "which bindings deserve to appear in the snapshot/on disk".
 //
-// 曾经是 openedAt ∪ scores ∪ probes——漏掉了「失败过但还没被摘」的 binding，
-// 于是 `newgate breaker` 看不见「失败 1 次、闸还没开」，重启也把这个计数丢了。
-// 现在整张 records 都在：只要发生过任何一件事，这一行就存在。
+// It used to be openedAt ∪ scores ∪ probes -- which missed bindings
+// that "failed but were not yet delisted", so `newgate breaker` could not see
+// "failed once, breaker not open yet", and a restart lost that count too. Now
+// the whole records table is in: as long as anything happened, the row exists.
 func (b *table) entryKeysLocked() map[string]bool {
 	keys := map[string]bool{}
 	for key := range b.records {

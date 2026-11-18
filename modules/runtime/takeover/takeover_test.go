@@ -9,12 +9,12 @@ import (
 	"github.com/rzbdz/newgate-ext/modules/runtime/injection"
 )
 
-// isolate 把 newgate 的配置目录、目标配置文件目录和 HOME 全部指到临时目录。
+// isolate points newgate's config dir, the target config dir and HOME at a temp dir.
 //
-// 三个都必须隔离，缺一个就会动到用户的真实文件：
-//   - NEWGATE_HOME       state.json / shim 目录
-//   - NEWGATE_TARGET_DIR 被改写的 opencode 配置（**不受 NEWGATE_HOME 影响**）
-//   - HOME               injection.RCFiles() 走 os.UserHomeDir()
+// All three must be isolated, or one missing touches real user files:
+//   - NEWGATE_HOME       state.json / shim dir
+//   - NEWGATE_TARGET_DIR the rewritten opencode config (**unaffected by NEWGATE_HOME**)
+//   - HOME               injection.RCFiles() goes through os.UserHomeDir()
 func isolate(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -38,46 +38,46 @@ func installed(t *testing.T, agent string) bool {
 	return false
 }
 
-// TestPlugUnplugCycle 是用户报的那个 bug 的回归测试。
+// TestPlugUnplugCycle is the regression test for the bug the user reported.
 //
-// 原始症状：newgate stop 之后 claude 还在走 newgate。根因是 stop 没摘 PATH
-// shim，wrapper 又会懒启动代理，等于没停。修了这一半之后立刻出现镜像故障：
-// start 不把 shim 装回去，claude 静默直连。
+// Original symptom: after newgate stop, claude still went through newgate. Root cause:
+// stop did not pull the PATH shim, and the wrapper lazily starts the proxy - same as not
+// stopping. Fixing it at once produced the mirror fault: start did not plug it back.
 //
-// 所以这个测试必须走完整个来回，两个方向都验。
+// So this test must run the whole round trip and verify both directions.
 func TestPlugUnplugCycle(t *testing.T) {
 	isolate(t)
 
 	if installed(t, "claude") {
-		t.Fatal("干净环境里就有 shim？隔离没生效")
+		t.Fatal("there is already a shim in a clean environment? isolation did not take effect")
 	}
 
-	// 接管
+	// Take over
 	if r := On("claude", 8899); r.Err != nil {
 		t.Fatalf("On: %v", r.Err)
 	}
 	if !installed(t, "claude") {
-		t.Fatal("On 之后 shim 不在——接管没落地")
+		t.Fatal("after On the shim is missing - takeover did not land")
 	}
 
-	// stop：必须摘掉 shim，否则 `claude` 仍命中 shim → wrapper 懒启动代理
+	// stop: must pull the shim, else `claude` still hits the wrapper's lazy proxy
 	OffAll()
 	if installed(t, "claude") {
-		t.Fatal("stop 没摘掉 shim —— 这就是「stop 了还在走 newgate」")
+		t.Fatal("stop did not remove the shim - that is 'still going through newgate after stop'")
 	}
 
-	// 但 stop 不该改变意愿，所以下次 start 必须原样插回去
+	// But stop must not change intent, so the next start must plug it back in as it was
 	if st := store.LoadState(); !st.TakeoverWanted("claude") {
-		t.Fatal("stop 改掉了接管意愿，start 就不会再接管了")
+		t.Fatal("stop changed the takeover wish, so start would never take over again")
 	}
 	OnAll(8899)
 	if !installed(t, "claude") {
-		t.Fatal("start 没把 shim 装回去 —— claude 会静默直连")
+		t.Fatal("start did not put the shim back - claude would silently go direct")
 	}
 }
 
-// TestOffPersistsIntent 显式 off 过的 agent，全面接管时必须跳过。
-// 否则用户「我不要 newgate 管 claude」的决定会被下一次 start 悄悄推翻。
+// TestOffPersistsIntent: an agent explicitly off'd must be skipped by OnAll.
+// Else the user's "I don't want newgate managing claude" is quietly overturned by the next start.
 func TestOffPersistsIntent(t *testing.T) {
 	isolate(t)
 
@@ -88,42 +88,42 @@ func TestOffPersistsIntent(t *testing.T) {
 		t.Fatalf("Off: %v", r.Err)
 	}
 	if installed(t, "claude") {
-		t.Fatal("Off 之后 shim 还在")
+		t.Fatal("after Off the shim is still there")
 	}
 	if st := store.LoadState(); st.TakeoverWanted("claude") {
-		t.Fatal("Off 没记住意愿")
+		t.Fatal("Off did not remember the wish")
 	}
 
 	OnAll(8899)
 	if installed(t, "claude") {
-		t.Fatal("全面接管无视了用户显式 off —— 用户的决定被推翻了")
+		t.Fatal("take-over-all ignored the user's explicit off - the user's decision was overruled")
 	}
 
-	// 再 on 回来，意愿要恢复
+	// Back on: intent must be restored
 	if r := On("claude", 8899); r.Err != nil {
-		t.Fatalf("重新 On: %v", r.Err)
+		t.Fatalf("On again: %v", r.Err)
 	}
 	if !installed(t, "claude") {
-		t.Fatal("重新 On 没装上")
+		t.Fatal("On again did not install it")
 	}
 	OffAll()
 	OnAll(8899)
 	if !installed(t, "claude") {
-		t.Fatal("意愿恢复后，start 应该重新接管")
+		t.Fatal("once the wish is restored, start should take over again")
 	}
 }
 
-// TestOffAllLeavesForeignEntriesAlone shim 目录里用户自己放的东西一律不动。
+// TestOffAllLeavesForeignEntriesAlone: whatever the user put in the shim dir stays.
 //
-// 具体现场：用户为了绕过这个 bug，手工把 shim 重命名成 claude-bak 留着。
-// 修 bug 的过程中如果 stop 把它删了，等于我们替用户销毁了他的应急手段。
+// The scene: to work around this bug, a user hand-renamed the shim to claude-bak and
+// kept it. If fixing the bug deleted it, we would have destroyed his emergency tool.
 func TestOffAllLeavesForeignEntriesAlone(t *testing.T) {
 	isolate(t)
 
 	if r := On("claude", 8899); r.Err != nil {
 		t.Fatalf("On: %v", r.Err)
 	}
-	// 用户手工留的备份链接，以及一个自己写的脚本
+	// A backup link the user kept by hand, and a script of his own
 	bak := filepath.Join(injection.Dir(), "claude-bak")
 	self, _ := os.Executable()
 	if err := os.Symlink(self, bak); err != nil {
@@ -134,45 +134,45 @@ func TestOffAllLeavesForeignEntriesAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 名字不是已知 agent → 不算我们装的
+	// The name is not a known agent -> not ours
 	if installed(t, "claude-bak") || installed(t, "my-wrapper") {
-		t.Fatal("Installed() 把用户自己的东西算成了我们的 shim")
+		t.Fatal("Installed() counted the user's own file as our shim")
 	}
 	fg := injection.Foreign()
 	if len(fg) != 2 {
-		t.Fatalf("Foreign() = %v，想要 claude-bak 和 my-wrapper", fg)
+		t.Fatalf("Foreign() = %v, want claude-bak and my-wrapper", fg)
 	}
 
 	OffAll()
 	for _, p := range []string{bak, script} {
 		if _, err := os.Lstat(p); err != nil {
-			t.Fatalf("stop 删掉了用户自己的 %s：%v", filepath.Base(p), err)
+			t.Fatalf("stop deleted the user's own %s: %v", filepath.Base(p), err)
 		}
 	}
 	if err := injection.Uninstall("claude-bak"); err == nil {
-		t.Fatal("Uninstall 愿意删非已知 agent 名的条目")
+		t.Fatal("Uninstall is willing to delete entries whose agent name it does not know")
 	}
 }
 
-// TestUnknownAgent 打错名字要给出可用列表，不能静默成功。
+// TestUnknownAgent: a typo must list what is available, never succeed silently.
 func TestUnknownAgent(t *testing.T) {
 	isolate(t)
 
 	r := On("claud", 8899) // 少个 e
 	if r.Err == nil {
-		t.Fatal("接管了一个不存在的 agent")
+		t.Fatal("it took over a nonexistent agent")
 	}
 	if r := Off("claud"); r.Err == nil {
-		t.Fatal("释放了一个不存在的 agent")
+		t.Fatal("it released a nonexistent agent")
 	}
-	// 拼错不该在 state.json 里留下垃圾条目
+	// A typo must not leave garbage in state.json
 	if st := store.LoadState(); len(st.Takeover) != 0 {
-		t.Fatalf("打错的名字被写进了 state：%v", st.Takeover)
+		t.Fatalf("a misspelled name was written into state: %v", st.Takeover)
 	}
 }
 
-// TestListReportsWantedVsActual status 要能看出「想接管」和「真接管了」的差异
-// ——两者不一致正是故障现场，藏起来就没法排查了。
+// TestListReportsWantedVsActual: status must show "wanted" vs "really taken over"
+// - they disagreeing is the fault scene, and hiding it kills troubleshooting.
 func TestListReportsWantedVsActual(t *testing.T) {
 	isolate(t)
 
@@ -183,26 +183,26 @@ func TestListReportsWantedVsActual(t *testing.T) {
 				return s
 			}
 		}
-		t.Fatalf("List() 里没有 %s", agent)
+		t.Fatalf("%s is missing from List()", agent)
 		return Status{}
 	}
 
 	s := find("claude")
 	if s.Mechanism != MechShim {
-		t.Fatalf("claude 的机制应该是 shim，得到 %q", s.Mechanism)
+		t.Fatalf("the mechanism of claude should be a shim, got %q", s.Mechanism)
 	}
 	if !s.Wanted || s.Active {
-		t.Fatalf("初始应该是 想要=true 实际=false，得到 %+v", s)
+		t.Fatalf("initially it should be want=true actual=false, got %+v", s)
 	}
 
 	On("claude", 8899)
 	if s := find("claude"); !s.Active {
-		t.Fatal("装了 shim，List 却说没接管")
+		t.Fatal("the shim is installed, yet List says not taken over")
 	}
 
-	// stop 之后：想要仍为 true、实际为 false —— 正是「该补齐」的现场
+	// After stop: wanted still true, actual false - exactly the "should be refilled" scene
 	OffAll()
 	if s := find("claude"); !s.Wanted || s.Active {
-		t.Fatalf("stop 后应该是 想要=true 实际=false，得到 %+v", s)
+		t.Fatalf("after stop it should be want=true actual=false, got %+v", s)
 	}
 }

@@ -11,16 +11,16 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// New 声明这个组件。
+// New declares this component.
 //
-// 三条依赖全是 Optional，判据是同一条：**界面/终端不在，功能还在吗？**
+// All three dependencies are Optional for one criterion: **is it still there without the UI?**
 //
-//   - view 不在：没有那一节网页，`newgate verify` 照常；
-//   - web 扩展端点不在：没有按钮，命令照常；
-//   - cli 不在（`dist-dashboard.json` 那种只有网页的装配）：没有命令，网页上的
-//     「验一下」照常，扩展端点直接调 service。
+//   - no view: no web section, `newgate verify` as usual;
+//   - no web extension endpoint: no button, the command as usual;
+//   - no cli (`dist-dashboard.json`, web only): no command, the web "verify" works, the
+//     endpoint calls the service directly.
 //
-// 所以它装进任何一份规格书都不会因为缺一个界面而装不起来。
+// So it installs into any spec without failing for a missing UI.
 func New() modules.Component {
 	svc := newService()
 	var releases []modules.Release
@@ -29,14 +29,14 @@ func New() modules.Component {
 		Desc: func() string {
 			return i18n.T("verify which model an upstream really serves, by fingerprint (newgate verify)", nil)
 		},
-		// 与 modellist 同一层：它是诊断/基础设施，不是客户端、不是上游补丁。
+		// Same layer as modellist: diagnostics/infrastructure, not a client, not an upstream patch.
 		Type: "infra",
 		Requires: []modules.Requirement{
 			modules.Optional(viewapi.Capability),
 			modules.Optional(webapi.ExtensionCapability),
 			modules.Optional(cliapi.Capability),
-			// 升级登记处：在就挂一个「刷新参考库」的动作，不在就只靠 TTL
-			// 自动更新（见 detect.go 的 memoryTTL）。
+			// The upgrade registry: with it, mount a "refresh reference bank" action; without
+			// it, auto-update by TTL only (see detect.go's memoryTTL).
 			modules.Optional(upgradeapi.Capability),
 		},
 		Start: func(_ context.Context, ctx modules.Context) error {
@@ -60,8 +60,8 @@ func New() modules.Component {
 					return err
 				}
 				releases = append(releases, rel)
-				// 「指纹」是这一版新增的词；帮助屏的术语表归它的拥有者报
-				// （与 config 报 profile、confighook 报 agent 同一条）。
+				// "Fingerprint" is a term this version added; the help glossary is reported by
+				// its owner (same as config reporting profile, confighook reporting agent).
 				rel, err = ui.RegisterGlossary(verifyGlossary{})
 				if err != nil {
 					return err

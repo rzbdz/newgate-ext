@@ -6,26 +6,31 @@ import (
 	"testing"
 )
 
-// 这两条锁的是**端口的形状**，不是行为：健康表借给外面的能力，与它自己内部怎么
-// 接线，是两件事；把它们混在一个接口上，就是「谁都能悄悄改」的开始。
+// These two pin **the shape of the port**, not behavior: what the health
+// table lends outside is one thing, and how it wires itself internally is another;
+// mixing them on one interface is the beginning of "anyone can quietly change it".
 //
-// 起因是一次真实的 review（2026-09-21）。`Breaker` 上曾经挂着三个 setter——
-// `SetPolicy` / `SetErrorHandler` / `SetVerifier`——而全仓库**没有任何一处**透过
-// 这个接口调它们（调用点全在包内，作用于具体的 `*table`）。多出来的部分不是中性的：
-// `SetVerifier` 是上闸前那道主动诊断的开关，一句 `SetVerifier(nil)` 就能把它卸掉，
-// 不报错、依赖图上没有边、review 也看不出有人碰过它。而 `SetPolicy` **零调用者**，
-// 是为一个还没做的功能预留的 API。
+// It came out of a real review (2026-09-21). `Breaker` once hung three setters
+// -- `SetPolicy` / `SetErrorHandler` / `SetVerifier` -- and **not one place** in the
+// repo called them through this interface (the call sites were all in the package, on a
+// concrete `*table`). The extra part was not neutral: `SetVerifier` is the switch for the
+// active diagnostic added before tripping, and one `SetVerifier(nil)` removes it, with
+// no error, no edge on the dependency graph, and nothing in review showing anyone touched
+// it. And `SetPolicy` has **zero callers**, an API reserved for a feature not yet built.
 //
-// 判据是「一个能力只该有一扇门，门开在拥有它的模块上」：数据面借给策略的运行期
-// 能力走 `policy.EnvBinder.BindEnv`（那条缝有主、有向、时机明确），而不是从端口上
-// 开一个谁都能推的写门。
+// The test is "one capability should have one door, and the door belongs to the
+// module that owns it": the data plane's runtime capability lent to policy goes
+// through `policy.EnvBinder.BindEnv` (that seam is owned and directed, with
+// clear timing), not through a write door on the port that anyone can push.
 
-// TestThePortCarriesNoUnownedSetters 断言公开端口上一个 setter 都没有。
+// TestThePortCarriesNoUnownedSetters asserts there is not one setter on the public port.
 //
-// 按名字前缀判，而不是拿一张白名单比对：白名单每加一个正当的方法就要改一次，
-// 改的次数多了就变成「看见这条红就顺手加一行」——那时它已经不是棘轮了。前缀是
-// 命名约定、不是证明，所以真正的判据写在上面那段注释里；这条测试守的是**形状**
-// （一个能被外面改的动词），而形状恰恰是这个反模式唯一稳定的特征。
+// It tests by name prefix rather than comparing against a whitelist: a whitelist
+// needs an edit every time a legitimate method is added, and after enough edits it
+// turns into "add a line when this goes red" -- by then it is no longer a ratchet.
+// The prefix is a naming convention, not a proof, so the real test is written
+// in the comment above; this test pins **the shape** (a verb that outsiders can
+// change), and the shape is exactly the only stable feature of this anti-pattern.
 func TestThePortCarriesNoUnownedSetters(t *testing.T) {
 	typ := reflect.TypeOf((*Breaker)(nil)).Elem()
 	names := make([]string, 0, typ.NumMethod())
@@ -34,29 +39,32 @@ func TestThePortCarriesNoUnownedSetters(t *testing.T) {
 	}
 	for _, n := range names {
 		if strings.HasPrefix(n, "Set") {
-			t.Errorf("公开端口上有 %s：它是一扇谁都能推的写门。\n"+
-				"往里接线请走 BindEnv（policy.EnvBinder），或者把方法留在 *table 上——\n"+
-				"理由见 api.go 那段「这个接口为什么是读多写少」。", n)
+			t.Errorf("%s is on the public port: it is a write door anyone can push.\n"+
+				"to wire into it, use BindEnv (policy.EnvBinder), or leave the method on *table -\n"+
+				"for the reason see the 'why this interface is read-mostly' passage in api.go.", n)
 		}
 	}
-	// 一条会让上面那个循环空转成绿的空表守卫：端口不可能一个方法都没有。
+	// A guard against an empty table making the loop above
+	// vacuously green: the port cannot have zero methods.
 	if len(names) == 0 {
-		t.Fatal("反射没读到任何方法——上面那个循环是空转的")
+		t.Fatal("reflection read no methods - the loop above is a no-op")
 	}
 }
 
-// TestTheWiringMethodsStillExistOnTheTable 是上一条的另一半。
+// TestTheWiringMethodsStillExistOnTheTable is the other half of the previous test.
 //
-// 砍端口**不是**砍能力：那三个方法照旧在，`BindEnv` 靠它们把日志出口与上闸前
-// 诊断接回健康表。只有一条测试盯着「端口上没有 setter」，下一次重构就可能顺手
-// 把实现也删掉——而删掉之后编译照样过（没人透过端口调它们），症状是上闸前诊断
-// **静默**不再运行：坏 binding 照摘，只是那道「先再要一次主动证据」没有了。
+// Cutting the port is **not** cutting the capability: those three methods are still
+// there, and `BindEnv` uses them to wire the log outlet and the pre-trip diagnostic back into the
+// health table. Only one test watches "no setters on the port", so the next refactor might delete
+// the implementation along with it -- and after deleting it compilation still passes (nobody calls
+// them through the port), with the symptom that the pre-trip diagnostic **silently** stops running:
+// bad bindings are still delisted, just without that "ask for active evidence one more time" step.
 func TestTheWiringMethodsStillExistOnTheTable(t *testing.T) {
 	concrete := reflect.TypeOf(&table{})
 	for _, name := range []string{"SetPolicy", "SetErrorHandler", "SetVerifier"} {
 		if _, ok := concrete.MethodByName(name); !ok {
-			t.Errorf("*table 上没有 %s 了——端口的收窄不该把接线方法一起砍掉，"+
-				"BindEnv 还要用它（见 api.go）", name)
+			t.Errorf("%s is gone from *table - narrowing the port must not cut the wiring method too,"+
+				"BindEnv still needs it (see api.go)", name)
 		}
 	}
 }

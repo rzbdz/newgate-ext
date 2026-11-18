@@ -33,7 +33,7 @@ type denyBinding struct {
 }
 
 func (d denyBinding) Name() string { return "test-deny-binding" }
-func (d denyBinding) Why() string  { return "pin fallback 测试：按名字拒绝一条 binding" }
+func (d denyBinding) Why() string  { return "pin fallback test: reject one binding by name" }
 func (d denyBinding) Admit(provider, model string) (bool, string) {
 	if provider == d.provider && model == d.model {
 		return false, d.reason
@@ -103,7 +103,7 @@ func newPinRig(t *testing.T) *pinRig {
 	srv, logs := newLoggingTestServer()
 	if _, err := srv.Filters.Register(denyBinding{
 		provider: "ds", model: "deepseek-flash", reason: "circuit open"}); err != nil {
-		t.Fatalf("注册准入策略: %v", err)
+		t.Fatalf("registering the admission policy: %v", err)
 	}
 	front := httptest.NewServer(http.HandlerFunc(srv.handleProxy))
 	t.Cleanup(front.Close)
@@ -129,14 +129,14 @@ func TestUnpinnedKnownModelUnavailableFallsBack(t *testing.T) {
 	rig := newPinRig(t)
 	code, body := rig.post(t, "/v1/chat/completions")
 	if code != 200 || body != `{"ok":true}` {
-		t.Fatalf("应回落到 a 的 mid 候选并回 200；got %d %q\n%s", code, body, rig.logs.String())
+		t.Fatalf("should fall back to the mid candidates of a and return 200; got %d %q\n%s", code, body, rig.logs.String())
 	}
 	if n := atomic.LoadInt64(rig.hitsA); n == 0 {
-		t.Error("a 的上游一次都没被敲——fallback 没发生")
+		t.Error("the upstream of a was never hit - no fallback happened")
 	}
 	// 换人要在日志里看得见：客户端点名的是 deepseek-flash，实际落到 a-model。
 	if !strings.Contains(rig.logs.String(), "deepseek-flash -> a/a-model") {
-		t.Errorf("实际走的 provider/model 应写在日志里; 日志:\n%s", rig.logs.String())
+		t.Errorf("the provider/model actually used should be in the log; log:\n%s", rig.logs.String())
 	}
 }
 
@@ -147,21 +147,21 @@ func TestPinnedProfileNeverSwitchesProfile(t *testing.T) {
 	rig := newPinRig(t)
 	code, body := rig.post(t, "/a/claude/p/ds/v1/chat/completions")
 	if code != 404 {
-		t.Fatalf("点名 ds 而已 ds 无可用候选时应 404；got %d %q\n%s", code, body, rig.logs.String())
+		t.Fatalf("with ds pinned and no usable candidate for ds it should be 404; got %d %q\n%s", code, body, rig.logs.String())
 	}
 	if n := atomic.LoadInt64(rig.hitsA); n != 0 {
-		t.Errorf("点名 ds 却敲了 a 的上游 %d 次——静默换 profile 回来了", n)
+		t.Errorf("ds was pinned yet the upstream of a was hit %d times - the silent profile switch is back", n)
 	}
 	if n := atomic.LoadInt64(rig.hitsDS); n != 0 {
-		t.Errorf("被摘掉的 binding 不该被敲，实际 %d 次", n)
+		t.Errorf("the removed binding must not be hit, got %d times", n)
 	}
 	if strings.Contains(body, "neither a known tier") {
-		t.Errorf("模型绑在 ds 的 mid 上，不该报「不在任何 profile 的绑定里」: %q", body)
+		t.Errorf("the model is bound to the mid tier of ds, so it must not say 'not in any profile binding': %q", body)
 	}
 	if !strings.Contains(body, "bound to tier mid") {
-		t.Errorf("404 应说清模型绑在哪个档位、为什么没有可用候选: %q", body)
+		t.Errorf("the 404 should say which tier the model is bound to and why there is no usable candidate: %q", body)
 	}
 	if !strings.Contains(rig.logs.String(), "circuit open") {
-		t.Errorf("原因应留在跳过原因里（不静默）; 日志:\n%s", rig.logs.String())
+		t.Errorf("the reason should stay among the skip reasons (never silent); log:\n%s", rig.logs.String())
 	}
 }

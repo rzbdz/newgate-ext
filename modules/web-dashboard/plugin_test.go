@@ -17,7 +17,7 @@ func testPlugin(name string) Plugin {
 	}
 }
 
-// 登记期就拦住作者的错：入口不在、槽位拼错、一个槽位都不填、重名。
+// Author errors are caught at registration: missing entry, misspelled slot, no slot, duplicate.
 func TestPluginRegistrationRejectsAuthorErrors(t *testing.T) {
 	r := newPluginRegistry()
 	bad := []Plugin{
@@ -44,8 +44,8 @@ func TestPluginRegistrationRejectsAuthorErrors(t *testing.T) {
 	}
 }
 
-// 清单 + 发文件：界面拿到的只有名字、地址、槽位；文件只从那个插件自己的 Assets
-// 里出，路径穿越与不存在的名字一律 404（不落回 index.html）。
+// Manifest + file serving: the UI gets only name, address, slots; files come only from
+// that plugin's Assets; path traversal and unknown names are 404 (no index.html fallback).
 func TestPluginManifestAndFiles(t *testing.T) {
 	h := newHandler()
 	if _, err := h.plugins.RegisterPlugin(testPlugin("demo")); err != nil {

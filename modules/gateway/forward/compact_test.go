@@ -34,8 +34,8 @@ func TestCompactKeepsExplicitThinking(t *testing.T) {
 	front := httptest.NewServer(http.HandlerFunc(srv.handleProxy))
 	defer front.Close()
 
-	// /a/claude/ 让 Agent=claude（claude-bg 只认这个 agent，dump 里 compact
-	// 就是 claude 发起的非流式）。
+	// /a/claude/ makes Agent=claude (claude-bg only accepts this agent;
+	// compacts in dumps are non-streaming calls started by claude).
 	compact := `{"model":"heavy","stream":false,"max_tokens":32000,` +
 		`"thinking":{"type":"adaptive"},` +
 		`"tools":[{"name":"Bash","description":"run a command","input_schema":{"type":"object"}}],` +
@@ -48,10 +48,10 @@ func TestCompactKeepsExplicitThinking(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
 		b, _ := ioutil.ReadAll(resp.Body)
-		t.Fatalf("状态 %d: %s", resp.StatusCode, b)
+		t.Fatalf("status %d: %s", resp.StatusCode, b)
 	}
 	if len(sent) == 0 {
-		t.Fatal("上游没收到请求体")
+		t.Fatal("the upstream received no request body")
 	}
 	var got struct {
 		Thinking struct {
@@ -60,17 +60,17 @@ func TestCompactKeepsExplicitThinking(t *testing.T) {
 		Tools []json.RawMessage `json:"tools"`
 	}
 	if err := json.Unmarshal(sent, &got); err != nil {
-		t.Fatalf("发出去的不是合法 JSON: %v\n%s", err, sent)
+		t.Fatalf("what was sent is not valid JSON: %v\n%s", err, sent)
 	}
 	if got.Thinking.Type != "adaptive" {
-		t.Errorf("compact 显式 thinking:adaptive 不该被强改成 disabled，实际 %q\n%s",
+		t.Errorf("compact with an explicit thinking:adaptive must not be forced to disabled, got %q\n%s",
 			got.Thinking.Type, sent)
 	}
 	if len(got.Tools) == 0 {
-		t.Errorf("tools 不该被摘掉: %s", sent)
+		t.Errorf("tools must not be stripped: %s", sent)
 	}
 }
 
-// TestBackgroundCallStillDisablesThinking 对照组：真没写 thinking 的后台调用
-// （分类器/起标题形态）仍补 disabled——修的是「强改显式意图」，不是「放弃
-// 禁思考」这条 intent。
+// TestBackgroundCallStillDisablesThinking is the control group: a background call (classifier
+// / title-generation shape) that really wrote no thinking still gets `disabled` added -
+// the fix targets "forced explicit intent", not giving up the "disable thinking" intent.

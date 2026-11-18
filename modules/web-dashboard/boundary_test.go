@@ -10,16 +10,16 @@ import (
 	"testing"
 )
 
-// 界面的前端**不认识任何模块**：它给框架接口（Kind、槽位、插件契约、host.ext），
-// 模块往里填。一个模块的前端知识应当住在那个模块里（插件），多个模块拼起来的
-// 界面住在一层包装模块里——而不是在 web/src 里点名某个模块的扩展端点。
+// The UI front end **knows no module**: it gives framework interfaces (Kind, slots, plugin
+// contract, host.ext) that modules fill in. A module's front-end knowledge belongs in its
+// module (a plugin); combined UI in a wrapper module - not web/src naming module endpoints.
 //
-// 这条棘轮守的是最容易越界、也最容易查的那一种：前端源码里**写死**一个扩展端点
-// 的名字（`/ext/<名字>`）。插件走 host.ext(变量)，不会命中它。
+// This ratchet guards the most easily crossed, most easily checked kind: front-end source
+// **hard-coding** an extension endpoint (`/ext/<name>`). Plugins use host.ext(var) - no match.
 //
-// 2026-10-29 加它时已经有两处越界（模型下拉直接问 modellist 与 verify 的端点，
-// 指纹那一屏整个是 verify 的界面）。它们列在下面，**只减不增**：迁走一个就删一行；
-// 多出来一个、或者列着的已经不在了，这条都会红（后者是提醒你把名单缩短）。
+// When added on 2026-10-29 two crossings already existed: the model dropdown asked the
+// modellist and verify endpoints directly; the fingerprint screen was all verify's UI.
+// They're listed below, **shrink-only**: migrate one and delete a row; extras or gone = red.
 var extLiteralAllowlist = map[string]string{
 	"modellist":   "ModelPicker / api.ts: the model picker asks modules/modellist directly",
 	"fingerprint": "Fingerprints.svelte / ModelPicker / api.ts: the fingerprint page is modules/verify's UI living in the shell",
@@ -56,7 +56,7 @@ func TestShellFrontendNamesNoExtension(t *testing.T) {
 	for _, n := range names {
 		if _, ok := extLiteralAllowlist[n]; !ok {
 			t.Errorf("web/src names the extension %q (%v): the shell must not know a module — "+
-				"ship the UI as a plugin from that module (api.go, \"前端插件\"), or aggregate it in a wrapper module",
+				"ship the UI as a plugin from that module (api.go, \"front-end plugin\"), or aggregate it in a wrapper module",
 				n, found[n])
 		}
 	}

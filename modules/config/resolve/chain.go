@@ -1,7 +1,8 @@
-// Package resolve 是解析流水线：给定配置快照，算出一个档位的 fallback 链。
+// Package resolve is the resolution pipeline: given
+// a config snapshot, compute a tier's fallback chain.
 //
-// 全部是纯函数——外部事实（熔断状态、禁用规则、时钟）都作为入参传进来。
-// 这样「给定这些配置，应该解析出什么链」可以完全离线测试。
+// All pure functions -- external facts (breaker state, disable rules, the clock) are passed in as
+// arguments. This way "given this config, what chain should resolve" can be tested fully offline.
 package resolve
 
 import (
@@ -11,7 +12,7 @@ import (
 	"github.com/rzbdz/newgate/lib/i18n"
 )
 
-// Step 链上的一步：用哪个 profile 的哪个绑定。
+// Step one step on the chain: which profile's which binding.
 type Step struct {
 	Profile  string
 	Binding  domain.Binding
@@ -20,100 +21,113 @@ type Step struct {
 
 func (s Step) String() string { return s.Profile + ":" + s.Binding.String() }
 
-// Skip 某个候选为什么没进链。给 explain 视图和 X-Newgate-Chain 用。
+// Skip why some candidate did not make the chain. For the explain view and X-Newgate-Chain.
 //
-// 记录跳过原因不是锦上添花：用户唯一会问的问题是「为什么不是我想的那个」，
-// 没有这个就只能靠猜（docs/04-configuration.md）。
+// Recording skip reasons is not a flourish: the only question the user will ask is "why not
+// the one I thought", and without this it can only be guessed (docs/04-configuration.md).
 type Skip struct {
 	Profile string
 	Target  string // provider/model；空表示整个 profile 被跳过
-	// Reason 给用户看的那句话，已经过 i18n.T。
+	// Reason the sentence shown to the user, already through i18n.T.
 	Reason string
-	// Kind 这条跳过的**类目**：机器标记，不随语言变（见下面那组常量）。
+	// Kind this skip's **category**: a machine marker, not
+	// changing with language (see the constant set below).
 	//
-	// 为什么要跟 Reason 分开：显示层要按类目分组（`newgate tier` 的「跳过 N 个
-	// 候选」按原因计数、状态块尾行也一样），而分组判据不能是那句给人看的话——
-	// 话是翻过的，中文下拿英文子串去匹配只会把每一类都落进「其他」。类目在建链
-	// 时（这里）就定下来，措辞由显示层按类目查表。
+	// Why separate from Reason: the display layer groups by category (`newgate tier`'s "N candidates
+	// skipped" counts by reason, and so does the status block's tail line), and the grouping
+	// criterion cannot be that human sentence -- the sentence is translated, and matching an English
+	// substring under Chinese would just drop every category into "other". The category is settled
+	// when the chain is built (here); the wording is looked up by category in the display layer.
 	Kind string
 }
 
-// Skip.Kind 的取值。它们是**机器标记**：分组、计数、排序的判据；给人看的措辞
-// 由显示层按类目查表（见 modules/config 的 skipLabel / skipDetail），一个字都
-// 不在这一层。
+// The values of Skip.Kind. They are **machine markers**: the criterion for grouping,
+// counting and sorting; the human wording is looked up by category in the display layer
+// (see skipLabel / skipDetail in modules/config), and not one word of it is in this layer.
 //
-// 为什么这一层分得清：拒绝这条候选的是**哪一道关**在这里是明确的（role 没定义 /
-// provider 没定义 / 没 key / 被禁用 / 健康表说不可用 / 超出 maxAttempts / 重复 /
-// 成环），而**为什么**不能用（准入回调返回的那句话）属于提供判据的人。两件事分开
-// 正是因为这个：resolve 只认形状，不认任何一家的词汇（见 Opts.Available）。
+// Why this layer can tell them apart: **which gate** rejected this candidate
+// is unambiguous here (role undefined / provider undefined / no key / disabled /
+// the health table says unavailable / over maxAttempts / duplicate / cycle), while
+// **why** it cannot be used (the sentence the admission callback returned) belongs
+// to whoever provides the criterion. The two are separated exactly for this:
+// resolve recognizes only the shape, not anyone's vocabulary (see Opts.Available).
 const (
-	// SkipExcluded profile 标了 excluded：不自动进链，只能被显式选中。
+	// SkipExcluded the profile is marked excluded: does not
+	// join the chain automatically, only by explicit selection.
 	SkipExcluded = "excluded"
-	// SkipUndefined 这一层没提供这个 role；也用于「候选的 provider 未定义」
-	// （两者原先归在同一栏，文案不同而已）。
+	// SkipUndefined this level does not offer this role; also used for "the candidate's provider
+	// is undefined" (the two were originally in the same column, only the wording differed).
 	SkipUndefined = "undefined"
-	// SkipNoKey provider 没有 api_key。
+	// SkipNoKey the provider has no api_key.
 	SkipNoKey = "no-key"
-	// SkipUnavailable 准入回调（健康表等）说这条候选现在不能用。
+	// SkipUnavailable the admission callback (health table
+	// etc.) says this candidate cannot be used right now.
 	SkipUnavailable = "unavailable"
-	// SkipDisabled 被显式禁用。
+	// SkipDisabled explicitly disabled.
 	SkipDisabled = "disabled"
-	// SkipMaxSteps 链长超过 maxAttempts，尾部落选。
+	// SkipMaxSteps the chain exceeded maxAttempts, and the tail did not make it.
 	SkipMaxSteps = "max-attempts"
-	// SkipDuplicate 与链上更靠前的候选重复。
+	// SkipDuplicate duplicates a candidate earlier on the chain.
 	SkipDuplicate = "duplicate"
-	// SkipCycle 引用成环，已跳过。
+	// SkipCycle references form a cycle, skipped.
 	SkipCycle = "cycle"
-	// SkipOther 兜底：显示层的类目表里没有这一栏（如「链头 pinned，不往下掉」——
-	// 那一类今天没有单独的栏位，见 modules/config 的 skipKindOrder）。
+	// SkipOther the catch-all: the display layer's category table has no column
+	// for it (e.g. "chain head pinned, does not fall through" -- that class
+	// has no column of its own today, see skipKindOrder in modules/config).
 	SkipOther = "other"
 )
 
-// Opts 构建链需要的外部输入。全部以函数形式注入，保持 BuildChain 纯净。
+// Opts the external inputs needed to build a chain.
+// All injected as functions, keeping BuildChain pure.
 type Opts struct {
-	// Active 链头。per-agent：不同 agent 可以有不同的链头。
+	// Active the chain head. Per-agent: different agents can have different chain heads.
 	Active string
-	// Available 可用性判断。返回 false 时第二个值说明**为什么**不能用，
-	// 那句理由会原样进 Skip.Reason 给用户看（`newgate tier` 的「为什么不是
-	// 我想的那个」）。
+	// Available the availability judgment. When it returns false, the second
+	// value says **why** it cannot be used, and that reason goes into Skip.Reason
+	// verbatim for the user (`newgate tier`'s "why not the one I thought").
 	//
-	// 为什么是「返回理由」而不是让 resolve 自己写「熔断中」：准入的判据属于
-	// 提供它的人（今天只有健康表一家，但它也可以是配额、灰度、时段），
-	// resolve 只认这个**形状**，不认任何一家的词汇。
+	// Why "return the reason" rather than letting resolve write "circuit open" itself: the admission
+	// criterion belongs to whoever provides it (today only the health table, but it could be quota,
+	// canary, time of day), and resolve recognizes only this **shape**, not anyone's vocabulary.
 	//
-	// nil = 都可用。
+	// nil = all available.
 	Available func(provider, model string) (bool, string)
-	// Rank 最近 probe 的健康档。只重排链头之后的 fallback；值越小越优先，
-	// 相同值保持 profile/list 的原始顺序。nil = 不动态重排。
+	// Rank the health tier from the latest probe. Reorders only the fallbacks
+	// after the chain head; smaller value is preferred, and equal values
+	// keep the profile/list original order. nil = no dynamic reordering.
 	Rank func(provider, model string) int
-	// Disabled 禁用判断。nil = 都没禁。target 形如 "provider/model"。
+	// Disabled the disable judgment. nil = none disabled. target looks like "provider/model".
 	Disabled func(tier, target string) (bool, string)
-	// MaxSteps 0 = 不限。
+	// MaxSteps 0 = unlimited.
 	MaxSteps int
 }
 
-// BuildChain 为某个键构造 fallback 链。
+// BuildChain constructs the fallback chain for some key.
 //
-// 「键」可以是档位（heavy/normal/mid/light/vision），也可以是模块贡献的
-// 动态角色（omo-sisyphus，见 domain.ExtraRole）；解析路径完全同一条。
+// The "key" may be a tier (heavy/normal/mid/light/vision) or a dynamic role contributed by
+// a module (omo-sisyphus, see domain.ExtraRole); the resolution path is exactly the same.
 //
-// 顺序：**profile 为主序（链头优先，其余按 priority），list 为次序**。
-// 语义是「先在当前任务键内部找替代，找不到才降到下一个 profile」——
-// 「我要便宜的」应该先在便宜的里面挑，而不是一失败就跳到贵的。
+// Order: **profile is the main order (chain head first, the rest by priority), list
+// is the within order**. The semantics are "look for an alternative within the current task's
+// key first, and only drop to the next profile when there is none" -- "I want the cheap one"
+// should pick among the cheap ones first, not jump to the expensive one on the first failure.
 //
-// 规则：
-//   - 链头 = Opts.Active；其余按 (priority, name) 排序，name 做 tiebreak
-//     保证可复现
-//   - excluded 的 profile 不进链，除非它就是链头（显式选中优先）
-//   - 链头是 pinned 时链只有它自己（含它内部的 list），不往下掉
-//   - profile 可稀疏：没定义这个键就整层跳过（有别名时先走别名，见
-//     domain.Profile.CandidatesFor）
-//   - 候选里的**引用**（`@normal`）就地展开成那条链，深度优先，带环检测
-//   - (provider, model) 全链去重，只试一次
+// Rules:
+//   - the chain head = Opts.Active; the rest sorted by (priority,
+//     name), with name as tiebreak to guarantee reproducibility
+//   - an excluded profile does not join the chain, unless
+//     it is the chain head (explicit selection wins)
+//   - when the chain head is pinned the chain is only itself
+//     (including its internal list), no falling through
+//   - profiles may be sparse: without this key the whole level is skipped
+//     (with an alias, the alias goes first, see domain.Profile.CandidatesFor)
+//   - a **reference** in the candidates (`@normal`) is expanded
+//     in place into that chain, depth first, with cycle detection
+//   - (provider, model) deduped across the whole chain, tried once
 //
-// 展开后的结果就是一条扁平的 fallback 序列：所有 profile、所有候选（含引用
-// 展开出来的）按「profile 优先级 → list 次序」排好。引用没有引入第二套
-// fallback 语义，只是让键之间能互相指。见 docs/04-configuration.md。
+// The expanded result is one flat fallback sequence: all profiles, all candidates (including
+// expanded references) laid out by "profile priority -> list order". References introduce no
+// second fallback semantics, they only let keys point at each other. See docs/04-configuration.md.
 func BuildChain(key string, profiles []*domain.Profile, provs *domain.Providers, o Opts) ([]Step, []Skip) {
 	ordered, skips := orderProfiles(profiles, o.Active)
 	b := &chainBuilder{profiles: ordered, provs: provs, o: o,
@@ -130,12 +144,14 @@ func BuildChain(key string, profiles []*domain.Profile, provs *domain.Providers,
 	return b.steps, b.skips
 }
 
-// capSteps 把链截到 maxAttempts（<=0 = 不限），被截掉的每一步都留一条跳过原因。
+// capSteps cuts the chain to maxAttempts (<=0 =
+// unlimited), leaving a skip reason for each cut step.
 //
-// 单独成函数是因为 ResolveRequest 还要在**不截断**的情况下反查具体模型名：
-// 名字可能排在 maxAttempts 之后，先截断会把一个配置里明明存在的模型判成
-// 「不认识」（2026-11-04 现场）。那里是「建整条 → 挪头 → 再截」，与这里
-// 「建整条 → 截断」共用同一段收尾，措辞才不会漂。
+// A separate function because ResolveRequest also needs to reverse-look-up a concrete model
+// name **without truncation**: the name may come after maxAttempts, and truncating first would
+// judge a model that plainly exists in the config as "unknown" (the scene on 2026-11-04). There
+// it is "build the whole thing -> move the head -> truncate again", sharing this same finishing
+// passage with "build the whole thing -> truncate" here, so the wording does not drift.
 func capSteps(steps []Step, skips []Skip, max int) ([]Step, []Skip) {
 	if max <= 0 || len(steps) <= max {
 		return steps, skips
@@ -158,7 +174,7 @@ type chainBuilder struct {
 	skips    []Skip
 }
 
-// expand 把 key 的候选按 profile 优先、list 次序展开进 steps。
+// expand expands key's candidates into steps by profile priority, list order.
 func (b *chainBuilder) expand(key string) {
 	for _, p := range b.profiles {
 		cands := p.CandidatesFor(key)
@@ -186,7 +202,7 @@ func (b *chainBuilder) expand(key string) {
 	}
 }
 
-// add 一条具体候选过准入检查后进链。
+// add lets one concrete candidate through the admission check and onto the chain.
 func (b *chainBuilder) add(p *domain.Profile, key string, bd domain.Binding) {
 	k := bd.String()
 	if b.seen[k] {
@@ -215,28 +231,33 @@ func (b *chainBuilder) add(p *domain.Profile, key string, bd domain.Binding) {
 	}
 	if b.o.Available != nil {
 		if ok, why := b.o.Available(bd.Provider, bd.Model); !ok {
-			// 理由（why）原样透传：它属于提供判据的人，措辞不归这里。
-			// 类目归这里——「这一关拒绝了它」是本层的知识。
+			// The reason (why) is passed through as is: it belongs to whoever provides
+			// the criterion, and the wording is not this layer's. The category is
+			// this layer's -- "this gate rejected it" is this layer's knowledge.
 			b.skips = append(b.skips, Skip{Profile: p.Name, Target: k,
 				Kind: SkipUnavailable, Reason: why})
 			return
 		}
 	}
-	// **标记放在准入检查之后**（2026-09-18 挪的）：原来它在最前面，于是一个被拒的
-	// 候选（没 key / 熔断 / 已禁用）再出现在别的 profile 里时，`newgate tier` 报的
-	// 是「与链上更前面的重复，已去重」——而它从没上过链，真正的原因是第一次那个。
-	// 用户唯一会问的问题是「为什么不是我想的那个」，一个指向错误的原因比没有原因
-	// 更费时间。去重语义不变：同一个 key 在链上仍然只出现一次。
+	// **The marker goes after the admission check** (moved there 2026-09-18): it used
+	// to be first, so when a rejected candidate (no key / breaker / disabled) appeared
+	// again in another profile, `newgate tier` reported "duplicate of an earlier one on
+	// the chain, deduped" -- while it had never been on the chain, and the real reason was
+	// the first one's. The only question the user will ask is "why not the one I thought",
+	// and a reason pointing at the wrong thing wastes more time than no reason. The
+	// dedup semantics are unchanged: the same key still appears only once on the chain.
 	b.seen[k] = true
 	b.steps = append(b.steps, Step{Profile: p.Name, Binding: bd, Provider: prov})
 }
 
-// OverrideChain 构造「覆盖绑定为链头、tier 档链为 fallback」的链。
+// OverrideChain builds the chain "override binding as the head, the tier's chain as fallback".
 //
-// 覆盖绑定的 provider 未定义 / 没 key / 熔断 / 禁用时覆盖不生效：回落纯
-// tier 链并返回 applied=false（顺带记一条 Skip 说明为什么没覆盖上）。成功则
-// 把覆盖 Step 插到最前，tier 链里与它同 key 的重复步去掉——「全局覆盖第一
-// 优先」落在这里，覆盖 model 挂了才轮到 tier 档的候选。
+// When the override binding's provider is undefined / has no key / is broken
+// / disabled, the override does not take effect: fall back to the pure tier chain and
+// return applied=false (recording a Skip saying why the override did not apply along
+// the way). On success the override Step is inserted at the front, and the duplicate
+// step with the same key in the tier chain is removed -- "global override first" lands
+// here, and the tier's candidates only get their turn if the override model fails.
 func OverrideChain(source string, override domain.Binding, tier string, profiles []*domain.Profile,
 	provs *domain.Providers, o Opts) ([]Step, []Skip, bool) {
 
@@ -267,8 +288,9 @@ func OverrideChain(source string, override domain.Binding, tier string, profiles
 			return steps, skips, false
 		}
 	}
-	// 覆盖绑定同样要过准入：被摘牌的 binding 不该因为用户在命令行点了它就能
-	// 上链（那样「点名的那个挂了」会绕过 fallback 保护，直接撞上去）。
+	// The override binding must pass admission too: a delisted binding should not get
+	// onto the chain just because the user clicked it on the command line (that way
+	// "the named one is broken" would bypass fallback protection and hit it head-on).
 	if o.Available != nil {
 		if ok, why := o.Available(override.Provider, override.Model); !ok {
 			skips = append(skips, Skip{Profile: source, Target: override.String(),
@@ -289,7 +311,7 @@ func OverrideChain(source string, override domain.Binding, tier string, profiles
 	return out, skips, true
 }
 
-// orderProfiles 链头 + 其余按 (priority, name)。
+// orderProfiles the chain head + the rest by (priority, name).
 func orderProfiles(profiles []*domain.Profile, active string) ([]*domain.Profile, []Skip) {
 	var head *domain.Profile
 	var rest []*domain.Profile
@@ -314,9 +336,9 @@ func orderProfiles(profiles []*domain.Profile, active string) ([]*domain.Profile
 		out = append(out, head) // 显式选中优先，excluded 挡不住链头
 		if head.Pinned {
 			for _, p := range rest {
-				// 类目是「其他」：显示层的类目表里没有给 pinned 单开一栏
-				// （`newgate tier` 的跳过汇总按那张表分组），这里不擅自加一栏
-				// ——加一栏是产品决定，不是翻译。
+				// The category is "other": the display layer's category table gives pinned no
+				// column of its own (`newgate tier`'s skip summary groups by that table), and no
+				// column is invented here -- adding one is a product decision, not a translation.
 				skips = append(skips, Skip{Profile: p.Name, Kind: SkipOther,
 					Reason: i18n.T("chain head {name} is pinned, the chain stops there",
 						i18n.A{"name": head.Name})})

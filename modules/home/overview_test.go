@@ -87,7 +87,7 @@ func newOverviewFixture(t *testing.T, extra ...modules.Component) *ovFixture {
 		f.deps.health = v
 	}
 	if _, err := registerView(f.reg, f.cfg, f.deps); err != nil {
-		t.Fatalf("把这一节挂进账本失败: %v", err)
+		t.Fatalf("registering this section into the ledger failed: %v", err)
 	}
 	return f
 }
@@ -97,24 +97,24 @@ func (f *ovFixture) overview() view.Overview {
 	f.t.Helper()
 	all, err := f.reg.Snapshot()
 	if err != nil {
-		f.t.Fatalf("快照失败: %v", err)
+		f.t.Fatalf("snapshot failed: %v", err)
 	}
 	for _, c := range all {
 		if c.ID != overviewID {
 			continue
 		}
 		if c.Kind != view.KindOverview {
-			f.t.Fatalf("Kind 该是 %q，实际 %q", view.KindOverview, c.Kind)
+			f.t.Fatalf("Kind should be %q, actual %q", view.KindOverview, c.Kind)
 		}
 		// 断类型而不是断 JSON：形状是**契约**（前端也按 Kind 挑渲染器），转不过去就是
 		// 有人换了 Data 的类型，而那在界面上只表现为「这一屏白了」。
 		data, ok := c.Data.(view.Overview)
 		if !ok {
-			f.t.Fatalf("Data 该是 view.Overview，实际 %T", c.Data)
+			f.t.Fatalf("Data should be view.Overview, actual %T", c.Data)
 		}
 		return data
 	}
-	f.t.Fatalf("这一节没报出 %s", overviewID)
+	f.t.Fatalf("this section did not report %s", overviewID)
 	return view.Overview{}
 }
 
@@ -123,10 +123,10 @@ func (f *ovFixture) auto() view.OverviewCard {
 	f.t.Helper()
 	a := f.overview().Auto
 	if a == nil {
-		f.t.Fatal("首屏上没有「默认」那一张卡")
+		f.t.Fatal("there is no \"default\" card on the landing screen")
 	}
 	if !a.Auto {
-		f.t.Fatal("那张卡没有打上 Auto 记号——界面会把它当成一份 profile 画")
+		f.t.Fatal("that card was not marked Auto -- the UI will draw it as a profile")
 	}
 	return *a
 }
@@ -138,7 +138,7 @@ func (f *ovFixture) card(profile string) view.OverviewCard {
 			return c
 		}
 	}
-	f.t.Fatalf("首屏上没有 %q 这张卡", profile)
+	f.t.Fatalf("there is no %q card on the landing screen", profile)
 	return view.OverviewCard{}
 }
 
@@ -188,19 +188,19 @@ func TestOverviewIsTheOnlyCardOnTheLandingSection(t *testing.T) {
 		for _, c := range all {
 			ids = append(ids, c.ID)
 		}
-		t.Fatalf("这一节该只有一张卡，实际 %d 张：%v", len(all), ids)
+		t.Fatalf("this section should have only one card, actual %d: %v", len(all), ids)
 	}
 	ov := all[0]
 	if ov.ID != overviewID {
-		t.Errorf("那一张该是 %s，实际 %s", overviewID, ov.ID)
+		t.Errorf("that one should be %s, actual %s", overviewID, ov.ID)
 	}
 	if ov.Kind != view.KindOverview {
-		t.Errorf("Kind 该是 %q，实际 %q", view.KindOverview, ov.Kind)
+		t.Errorf("Kind should be %q, actual %q", view.KindOverview, ov.Kind)
 	}
 	// 它摆的每一份 profile 都得在（少一张就是「某条链在界面上不存在」，而那件事
 	// 没有任何东西会报出来）。
 	if got := len(ov.Data.(view.Overview).Cards); got != 2 {
-		t.Errorf("两张档位都该有一张卡，实际 %d", got)
+		t.Errorf("both tiers should each have a card, actual %d", got)
 	}
 }
 
@@ -236,14 +236,14 @@ func TestOverviewAgentsAndUseActions(t *testing.T) {
 	// 是它的时候画得出来（见 Overview.svelte 的 actions()），少这一档就等于把
 	// 「所有客户端一起换链」从这一屏上删掉——而且是静默的。
 	if strings.Join(ids, ",") != "claude,codex,opencode," {
-		t.Fatalf("标签该按 id 排、三个客户端都在、末尾一档空的，实际 %v", ids)
+		t.Fatalf("tabs should be sorted by id, all three clients present, and an empty tier at the end, actual %v", ids)
 	}
 	last := ov.Agents[len(ov.Agents)-1]
 	if last.ID != "" || !last.Ready {
-		t.Errorf("末尾那档该是空的「全部客户端」且能点，实际 %+v", last)
+		t.Errorf("the last tier should be the empty \"all clients\" tab and clickable, actual %+v", last)
 	}
 	if last.Profile != "production" {
-		t.Errorf("空那一档该报全局默认 production，实际 %q", last.Profile)
+		t.Errorf("the empty tier should report the global default production, actual %q", last.Profile)
 	}
 	for _, a := range ov.Agents {
 		if a.ID == "" {
@@ -251,88 +251,88 @@ func TestOverviewAgentsAndUseActions(t *testing.T) {
 		}
 		want := a.ID != "opencode"
 		if a.Ready != want {
-			t.Errorf("%s 的 Ready 该是 %v，实际 %v", a.ID, want, a.Ready)
+			t.Errorf("Ready for %s should be %v, actual %v", a.ID, want, a.Ready)
 		}
 		if a.ID == "codex" && a.Profile != "cheap" {
-			t.Errorf("codex 单独设过 cheap，标签上该写它，实际 %q", a.Profile)
+			t.Errorf("codex has its own cheap setting, the tab should say so, actual %q", a.Profile)
 		}
 		if a.ID == "claude" && a.Profile != "production" {
-			t.Errorf("claude 没单设过，该报全局默认 production，实际 %q", a.Profile)
+			t.Errorf("claude has no override, it should report the global default production, actual %q", a.Profile)
 		}
 		// Own 与 Profile 是两件事，而这里正是它们分得开的地方：codex 单独设过
 		// （Own=true），claude 只是跟着全局默认走、恰好解析成 production（Own=false）。
 		// 少了这一格，界面只能把这两个状态说成同一句话——而它们的路由行为不同：
 		// 改掉全局默认，claude 会跟着变，codex 不会。
 		if a.ID == "codex" && !a.Own {
-			t.Error("codex 单独设过，Own 该是 true")
+			t.Error("codex has its own override, so Own should be true")
 		}
 		if a.ID == "claude" && a.Own {
-			t.Error("claude 没单设过、只是跟着默认，Own 该是 false")
+			t.Error("claude has no override and just follows the default, so Own should be false")
 		}
 	}
 
 	prod := actions(f.card("production"))
 	if !prod[useActionID("codex", "production")] {
-		t.Error("production 那张卡上该有 use:codex（codex 单独设的是 cheap）")
+		t.Error("the production card should have use:codex (codex on its own is set to cheap)")
 	}
 	// **这一条是这一整块的重点**：claude 此刻确实走在 production 上（它跟着全局
 	// 默认，而默认就是 production），但它**没有固定**在 production 上——「固定它」
 	// 与「让它跟着」是两个状态，所以「就用它」这个按钮必须还在。前一版按解析结果
 	// 去比，判的是「它已经在用了」，于是用户想固定住的那一步**永远做不出来**。
 	if !prod[useActionID("claude", "production")] {
-		t.Error("claude 跟着默认走在 production 上，但没固定住——该报一个 use:claude 让它固定下来")
+		t.Error("claude follows the default on production but is not pinned -- there should be a use:claude to pin it")
 	}
 	if prod[useAutoPrefix+"claude"] {
-		t.Error("claude 没固定在任何一份上，不该报「改回自动」")
+		t.Error("claude is not pinned to any of them, so it should not offer \"back to auto\"")
 	}
 	if prod[useActionID(useGlobal, "production")] {
-		t.Error("production 就是全局默认，不该报 use:global")
+		t.Error("production is the global default, so it should not offer use:global")
 	}
 	if prod[useActionID("opencode", "production")] {
-		t.Error("opencode 没装，不该报它的按钮")
+		t.Error("opencode is not installed, so its buttons should not be offered")
 	}
 
 	cheap := actions(f.card("cheap"))
 	if !cheap[useActionID("claude", "cheap")] {
-		t.Error("cheap 那张卡上该有 use:claude:cheap（把 claude 固定到 cheap）")
+		t.Error("the cheap card should have use:claude:cheap (pin claude to cheap)")
 	}
 	if cheap[useActionID("codex", "cheap")] {
-		t.Error("codex 已经固定在 cheap 上了，不该再报一个 use:codex")
+		t.Error("codex is already pinned to cheap, so use:codex should not be offered again")
 	}
 	// **同一张卡上还有「把自动指到它」那一条**：它在「自动」那一档下才会被画出来
 	// （前端按当前这一档挑，见 Overview.svelte 的 actions）。两句话长在同一张卡上
 	// 是有意的——同一张卡、同一个手势，含义由你在哪一档决定。
 	if !cheap[useActionID(useGlobal, "cheap")] {
-		t.Error("cheap 那张卡上该有 use:global:cheap（在「自动」档下点它 = 把自动指到 cheap）")
+		t.Error("the cheap card should have use:global:cheap (clicking it under the auto tier points auto at cheap)")
 	}
 
 	// 「自动」那张：它此刻 resolve 到 production，而它自己**不摆成员表**——能指向
 	// 哪几份由下面那几张 profile 卡自己说（点它们就是改自动）。
 	au := f.auto()
 	if au.Profile != "production" {
-		t.Errorf("「自动」该报它此刻 resolve 到的那一份 production，实际 %q", au.Profile)
+		t.Errorf("\"auto\" should report the production that it currently resolves to, actual %q", au.Profile)
 	}
 	if !au.Default || au.File == "" {
-		t.Errorf("「自动」该带上默认记号与它指向那份的文件，实际 %+v", au)
+		t.Errorf("\"auto\" should carry the default marker and the file it points at, actual %+v", au)
 	}
 	am := actions(au)
 	if am[useActionID(useGlobal, "cheap")] {
-		t.Error("「自动」那张卡上不该有成员动作——选择靠点 profile 卡本身")
+		t.Error("the \"auto\" card should have no member actions -- you choose by clicking a profile card itself")
 	}
 	if !am[useAutoPrefix+"codex"] {
-		t.Error("codex 自己设过，该有一条「跟着自动走」")
+		t.Error("codex has its own override, so there should be a \"follow auto\" entry")
 	}
 	if am[useAutoPrefix+"claude"] {
-		t.Error("claude 没设过、本来就在跟着，不该有它的「跟着自动走」")
+		t.Error("claude has no override and already follows, so there should be no \"follow auto\" for it")
 	}
 	// 它的链必须与它指向的那一份**逐字相同**：两张卡各建一次的话，两次读盘之间配置
 	// 变了，同一份 profile 会在两张卡上显示两条不同的链。
 	if len(au.Roles) != len(f.card("production").Roles) {
-		t.Errorf("「自动」的链该与 production 那张逐字相同，档位数 %d vs %d",
+		t.Errorf("the \"auto\" chain should match the production one word for word, tier counts %d vs %d",
 			len(au.Roles), len(f.card("production").Roles))
 	}
 	if cheap[useActionID("opencode", "cheap")] {
-		t.Error("opencode 没装，不该报它的按钮")
+		t.Error("opencode is not installed, so its buttons should not be offered")
 	}
 }
 
@@ -350,18 +350,18 @@ func TestOverviewUseActionWritesTheHeader(t *testing.T) {
 	f.twoProfiles()
 
 	if got := store.LoadState().Active["claude"]; got != "" {
-		t.Fatalf("开头 claude 不该有单独设过，实际 %q", got)
+		t.Fatalf("at the start claude should have no override, actual %q", got)
 	}
 	if _, err := f.reg.RunConceptAction(overviewID, useActionID("claude", "cheap")); err != nil {
-		t.Fatalf("跑 use:claude 失败: %v", err)
+		t.Fatalf("running use:claude failed: %v", err)
 	}
 	if got := store.LoadState().Active["claude"]; got != "cheap" {
-		t.Fatalf("跑完 use:claude 之后 state.active.claude 该是 cheap，实际 %q", got)
+		t.Fatalf("after running use:claude, state.active.claude should be cheap, actual %q", got)
 	}
 	// 同一个动作跑第二次时它已经不在那一行上了（「已经用它」的不报）——这正是
 	// 「按钮消失」在协议上的样子，而它必须报成一句说得通的话，不是静默。
 	if _, err := f.reg.RunConceptAction(overviewID, useActionPrefix+"claude"); err == nil {
-		t.Error("已经用着它之后这个动作不该还存在，第二次点该报出来")
+		t.Error("once it is already in use this action should no longer exist, the second click should report it")
 	}
 }
 
@@ -385,7 +385,7 @@ func TestOverviewLatencyLandsOnTheStation(t *testing.T) {
 		table.RecordProbe("ark", c.model, 200, 0, c.ms, 12*time.Second, "")
 	}
 	if n := len(table.Snapshot()); n == 0 {
-		t.Fatal("健康表一条都没记下来——快照的键与 RecordProbe 的键对不上？")
+		t.Fatal("not a single health record was kept -- do the snapshot keys and the RecordProbe keys not match?")
 	}
 
 	// 档位行按能力从高到低排（domain.Roles），而这份 profile 只写了 normal——
@@ -397,7 +397,7 @@ func TestOverviewLatencyLandsOnTheStation(t *testing.T) {
 		}
 	}
 	if row.Tier == "" {
-		t.Fatal("production 上该有一行 normal")
+		t.Fatal("there should be a normal row on production")
 	}
 	byModel := map[string]view.OverviewStep{}
 	for _, s := range row.Steps {
@@ -408,18 +408,18 @@ func TestOverviewLatencyLandsOnTheStation(t *testing.T) {
 	} {
 		s, ok := byModel[c.model]
 		if !ok {
-			t.Fatalf("链上少了 %s", c.model)
+			t.Fatalf("the chain is missing %s", c.model)
 		}
 		if s.LatencyMs == 0 {
-			t.Errorf("%s 该带一个延迟样本", c.model)
+			t.Errorf("%s should carry a latency sample", c.model)
 			continue
 		}
 		if s.LatencyTone != c.tone {
-			t.Errorf("%s 的语气该是 %q，实际 %q（%dms）", c.model, c.tone, s.LatencyTone, s.LatencyMs)
+			t.Errorf("the tone of %s should be %q, actual %q (%dms)", c.model, c.tone, s.LatencyTone, s.LatencyMs)
 		}
 	}
 	if s := byModel["unprobed-model"]; s.LatencyMs != 0 || s.LatencyTone != "" {
-		t.Errorf("没样本的那一站什么都不该带，实际 %dms/%q", s.LatencyMs, s.LatencyTone)
+		t.Errorf("the station with no sample should carry nothing, actual %dms/%q", s.LatencyMs, s.LatencyTone)
 	}
 }
 
@@ -434,22 +434,22 @@ func TestOverviewWithoutOptionalPorts(t *testing.T) {
 
 	ov := f.overview()
 	if len(ov.Agents) != 1 || ov.Agents[0].ID != "" || !ov.Agents[0].Ready {
-		t.Fatalf("没有客户端目录时该只有一档空的「全部客户端」，实际 %+v", ov.Agents)
+		t.Fatalf("with no client catalog there should be only one empty \"all clients\" tier, actual %+v", ov.Agents)
 	}
 	if len(ov.Cards) != 2 {
-		t.Fatalf("两张卡都该在，实际 %d 张", len(ov.Cards))
+		t.Fatalf("both cards should be there, actual %d", len(ov.Cards))
 	}
 	if !actions(f.card("cheap"))[useActionID(useGlobal, "cheap")] {
-		t.Error("「把自动指到它」必须在——一个客户端都没装时，它是唯一能换链的手段")
+		t.Error("\"point auto at it\" must be present -- with no client installed it is the only way to switch chains")
 	}
 	for _, c := range ov.Cards {
 		if actions(c)["probe"] {
-			t.Errorf("%s 那张卡上报了探活按钮，可这一张图里没有网关", c.Profile)
+			t.Errorf("%s card offers a probe button, but this graph has no gateway", c.Profile)
 		}
 		for _, r := range c.Roles {
 			for _, s := range r.Steps {
 				if s.LatencyMs != 0 || s.LatencyTone != "" {
-					t.Errorf("没有健康表时不该有延迟：%s/%s 带了 %dms", s.Provider, s.Model, s.LatencyMs)
+					t.Errorf("with no health table there should be no latency: %s/%s carried %dms", s.Provider, s.Model, s.LatencyMs)
 				}
 			}
 		}
@@ -474,19 +474,19 @@ func TestProbeBatchReportsWhatWentWrong(t *testing.T) {
 		return gatewayapi.ProbeOutcome{OK: true, Status: 200}, nil
 	}, targets)
 	if err == nil {
-		t.Fatal("有一条没通，这一发必须报出来（静默成功是最坏的答案）")
+		t.Fatal("one did not get through, this request must report it (a silent success is the worst answer)")
 	}
 	if !strings.Contains(err.Error(), "a/m2") {
-		t.Errorf("那句话该点名哪一条没通，实际：%v", err)
+		t.Errorf("the sentence should name which one did not get through, actual: %v", err)
 	}
 	if strings.Contains(err.Error(), "a/m1") {
-		t.Errorf("通了的那条不该被算进不通里，实际：%v", err)
+		t.Errorf("the one that got through must not be counted as failed, actual: %v", err)
 	}
 
 	if ok := probeBatch(func(string, string) (gatewayapi.ProbeOutcome, error) {
 		return gatewayapi.ProbeOutcome{OK: true, Status: 200}, nil
 	}, targets); ok != nil {
-		t.Errorf("全都通了就不该有横幅，实际：%v", ok)
+		t.Errorf("when everything gets through there should be no banner, actual: %v", ok)
 	}
 }
 
@@ -505,11 +505,11 @@ func TestProbeTargetsDedupe(t *testing.T) {
 	}
 	for _, want := range []string{"p/m1", "p/m2", "q/m1"} {
 		if seen[want] != 1 {
-			t.Errorf("%s 该正好出现一次，实际 %d 次", want, seen[want])
+			t.Errorf("%s should appear exactly once, actual %d times", want, seen[want])
 		}
 	}
 	if len(got) != 3 {
-		t.Errorf("去重之后该是 3 条，实际 %d 条", len(got))
+		t.Errorf("after deduplication there should be 3 entries, actual %d", len(got))
 	}
 }
 

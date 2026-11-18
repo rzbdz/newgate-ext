@@ -6,17 +6,18 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// status 把 codex 的**接管模式**报进 `newgate status`。
+// status reports codex's **takeover mode** into `newgate status`.
 //
-// 为什么由本模块报：模式与那张模型名表都是 codex 自己的知识产权（见 models.go），
-// 界面不认识它们。上一版它们只在网页的「Codex 模型名」卡上有，终端里一个字都
-// 看不到——用户在 CLI 里切不了、也确认不了「我现在到底是哪种模式」。
+// Why this module reports it: the mode and that model-name table are both codex's own
+// IP (see models.go), and the UI does not know them. The previous version had them only
+// on the web's "Codex models" card, and not one word of them was visible in the terminal
+// -- the user could not switch in the CLI, nor confirm "which mode am I actually in".
 type status struct{}
 
 var _ cliapi.StatusProvider = status{}
 
 func (status) Status() []cliapi.StatusLine {
-	// 没装 codex 的机器上，这一行说的是一个不存在的工具的行为。不报。
+	// No codex on this machine: this line would describe a tool that does not exist. Not reported.
 	if !(facts{}).Installed() {
 		return nil
 	}

@@ -1,41 +1,46 @@
-// 皮肤怎么落到 DOM 上。
+// How a skin lands on the DOM.
 //
-// # 为什么是一段注入的 <style> 而不是 class
+// # Why an injected <style> rather than classes
 //
-// 后端给的是**一串令牌**（`--bg: …; --accent: …;`），不是一组 class 名。走 class
-// 的话，样式表里得为每一套皮肤各写一段，而「有哪些皮肤」是**装配期**的事实（装哪
-// 几个 theme-* 模块）——前端写死一份名单，就等于每加一套皮肤都要改一次前端，
-// 而那样一来「删掉皮肤模块界面照常工作」这条也就不成立了。
+// What the backend gives is **a string of tokens** (`--bg: …; --accent: …;`), not a set of
+// class names. With classes, the stylesheet would need one block per skin, while "which
+// skins there are" is an **assembly-time** fact (which theme-* modules are installed) --
+// hard-coding a list in the front end would mean editing the front end for every new
+// skin, and then "removing the skin module leaves the UI working" would stop holding too.
 //
-// 注入的样式表按 `[data-theme="<id>"]` 限定：令牌只覆盖**这个 id 生效时**，切走就
-// 整段失效，不需要谁去把上一次的覆盖清掉。
+// The injected stylesheet is scoped by `[data-theme="<id>"]`: tokens override **only while
+// this id is in effect**, and switching away invalidates the whole block, so nobody has to
+// clear the previous override.
 //
-// # 为什么 data-theme 挂在 <html> 上
+// # Why data-theme hangs on <html>
 //
-// app.css 里那套出厂令牌写在 `:root`（= html），而它那个浅色分支写在
-// `@media (prefers-color-scheme: light)` 里。同一个元素上两套规则时，胜出的是
-// **具体度更高**的那个：`html[data-theme="x"]` 比 `:root:not([data-theme])` 高，
-// 所以选了皮肤就是选了皮肤——系统偏好不再插手。这也是为什么 app.css 那个媒体查询
-// 必须带上 `:not([data-theme])`（见那里）。
+// The factory tokens in app.css are written on `:root` (= html), and their light branch is
+// written inside `@media (prefers-color-scheme: light)`. With two sets of rules on the same
+// element, the **more specific** one wins: `html[data-theme="x"]` beats
+// `:root:not([data-theme])`, so picking a skin is picking a skin -- the system preference no
+// longer interferes. That is also why the media query in app.css must carry
+// `:not([data-theme])` (see there).
 //
 // # color-scheme
 //
-// 滚动条、复选框的勾、自动填充的底色不归 CSS 变量管，它们跟着 `color-scheme` 走。
-// 所以深色皮肤要把它设成 dark，否则一套真黑界面会挂着一条白滚动条。这件事只能由
-// **皮肤自己声明**（后端的 Theme.Dark）——从前端颜色的亮度里猜，会在「一套很浅的
-// 暖色皮肤」上猜错。
+// Scrollbars, checkbox ticks, autofill backgrounds are not governed by CSS variables; they
+// follow `color-scheme`. So a dark skin must set it to dark, otherwise a truly black UI
+// hangs a white scrollbar. This can only be **declared by the skin itself** (the backend's
+// Theme.Dark) -- guessing from the brightness of the front-end colors gets it wrong on "a
+// very light warm skin".
 
 import type { ThemeInfo, Themes } from "./api";
 
-/** STYLE_ID 是那段注入样式表的 id（换皮肤时先找到它、再替换内容）。 */
+/** STYLE_ID is the id of that injected stylesheet (switching skins finds it first, then
+    replaces its content). */
 const STYLE_ID = "ng-theme";
 
 /**
- * applyTheme 把当前这套皮肤落到文档上。
+ * applyTheme lands the current skin on the document.
  *
- * `active` 为空 = 出厂那套令牌：这时**什么都不注入**、并且把 `data-theme` 去掉——
- * 于是 app.css 的 `:root` 与它那个 `prefers-color-scheme` 分支重新生效。这是
- * 「跟随系统」那个状态，它不是一个皮肤模块。
+ * `active` empty = the factory tokens: then **nothing is injected** and `data-theme` is
+ * removed -- so app.css's `:root` and its `prefers-color-scheme` branch take effect again.
+ * That is the "follow the system" state, and it is not a skin module.
  */
 export function applyTheme(doc: Themes): void {
   const root = document.documentElement;
@@ -45,7 +50,7 @@ export function applyTheme(doc: Themes): void {
   if (!active) {
     el?.remove();
     root.removeAttribute("data-theme");
-    // 交给系统：`color-scheme: light dark` 是 app.css 里那个默认值。
+    // Hand it to the system: `color-scheme: light dark` is the default in app.css.
     root.style.removeProperty("color-scheme");
     return;
   }
@@ -53,12 +58,13 @@ export function applyTheme(doc: Themes): void {
   if (!el) {
     el = document.createElement("style");
     el.id = STYLE_ID;
-    // 放 head 末尾：它只覆盖令牌，但万一哪天有人往令牌里写了没见过的选择器，
-    // 位置靠后至少让它的行为是可预期的。
+    // Append to the end of head: it only overrides tokens, but should someone someday put
+    // an unseen selector into a token, being last at least makes its behavior predictable.
     document.head.append(el);
   }
-  // 令牌只在这个 id 生效时覆盖（见文件头）。选择器由这里拼，皮肤只给令牌
-  // ——皮肤能写选择器的话，「这行样式是谁加的」就要靠读一段运行时字符串才能回答。
+  // Tokens override only while this id is in effect (see the file header). The selector is
+  // assembled here, the skin only gives tokens -- if a skin could write selectors, "who
+  // added this line of style" would require reading a runtime string to answer.
   el.textContent = `:root[data-theme="${active.id}"] {${active.css}}`;
   root.setAttribute("data-theme", active.id);
   root.style.setProperty("color-scheme", active.dark ? "dark" : "light");

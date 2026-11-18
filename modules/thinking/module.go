@@ -1,11 +1,11 @@
-// Package thinking 管理与具体模型无关的思考模式策略。
+// Package thinking manages thinking-mode policy that is independent of any concrete model.
 //
-// “模型是否支持 thinking”与“某家上游要求怎样回传 reasoning”是两件事：
-// 本模块提供通用的安全降级和通用插件；DeepSeek 等模型家族保留自己的协议
-// 约束；Claude Code × DeepSeek 之类交叉问题由交叉组件处理。
+// "Does a model support thinking" and "how an upstream wants reasoning echoed back" are two
+// separate things: this module provides the generic safe downgrade plus generic plugins; model
+// families such as DeepSeek keep their own protocol constraints; cross problems like Claude
+// Code x DeepSeek are handled by cross components.
 //
-// 这种拆分使单方模块不需要猜测另一方行为，也让每条修补都能独立注册、观测
-// 和撤销。
+// So neither side guesses the other; each patch registers, is observable and undoes on its own.
 package thinking
 
 import (
@@ -21,8 +21,8 @@ type service struct{}
 
 var _ Service = (*service)(nil)
 
-// New 声明通用 thinking 组件：它既提供跨模型降级端口，
-// 也把与模型无关的处理器注册进网关，并在 Stop 时逆序撤销。
+// New declares the generic thinking component: it provides the cross-model downgrade port
+// and registers the model-agnostic handlers into the gateway, undoing them in reverse on Stop.
 func New() modules.Component {
 	var releases []modules.Release
 	return modules.Component{
@@ -36,9 +36,9 @@ func New() modules.Component {
 		Start: func(_ context.Context, ctx modules.Context) error {
 			gateway := modules.MustGet(ctx, gatewayapi.Capability)
 
-			// 判据由**拥有补丁的模块**注册（见 signatures.go）：这三条是各家上游的
-			// 方言原文，而把 disabled 翻成 enabled 的补丁住在本模块。数据面在每次
-			// 请求上把同一张表交给插件，所以注册完对热路径立刻生效。
+			// The criteria are registered by the **module owning the patch** (see signatures.go): these
+			// three are upstreams' dialect text, and the patch turning disabled into enabled lives here.
+			// The data plane hands plugins the same table on every request, so it is live on the hot path.
 			for _, sig := range signatures() {
 				release, err := gateway.Quirks().RegisterSignature(sig)
 				if err != nil {
@@ -60,7 +60,7 @@ func New() modules.Component {
 	}
 }
 
-// BestEffortDisable 暴露保守降级：无法安全改写时返回原请求和明确错误，而非猜测结构。
+// BestEffortDisable: without a safe rewrite, return the request and a clear error - no guessing.
 func (service) BestEffortDisable(body []byte, request *special.Request) ([]byte, []string, error) {
 	return BestEffortDisableThink(body, request)
 }

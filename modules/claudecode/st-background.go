@@ -24,76 +24,91 @@ func Treatments(thinking thinkingapi.Service) []special.Plugin {
 	return []special.Plugin{background{thinking: thinking}}
 }
 
-// claudeBg 修 Claude Code 后台小请求撞上「默认思考」模型后的慢。
+// claudeBg fixes the slowness of Claude Code's small background
+// requests when they hit a model that "thinks by default".
 //
-// 现场实抓（2026-09，Claude Code 2.1.263，NEWGATE_DUMP 落盘复核）：
+// Captured on site (2026-09, Claude Code 2.1.263, verified with NEWGATE_DUMP captures):
 //
-//	主循环     normal + stream=true + tools:33 + thinking:adaptive
-//	后台调用   mid   + 非流式      + tools 无 + thinking 没写
-//	分类器本体 再叠加：system ~126KB，开头是
-//	           "You are a security monitor for autonomous AI coding agents"；
-//	           2 条 user 消息（CLAUDE.md + 完整会话 transcript）；
-//	           stop_sequences ["</block>"]；max_tokens 2112
+//	main loop     normal + stream=true + tools:33 + thinking:adaptive
+//	background    mid   + non-streaming + no tools + thinking unwritten
+//	classifier itself, on top: system ~126KB, starting with
+//	           "You are a security monitor for autonomous AI coding agents";
+//	           2 user messages (CLAUDE.md + the full session transcript);
+//	           stop_sequences ["</block>"]; max_tokens 2112
 //
-// 而 glm-5.3 这类国模**默认开思考**，「没写」不等于「关了」，于是分类器
-// 15-30 秒才回、成波超时重试（日志里一串「客户端在连接阶段就取消」），
-// 整个开发会话跟着卡死。
+// Chinese models like glm-5.3 **think by default**, so "unwritten" does not mean "off", and
+// the classifier takes 15-30 seconds to answer, timing out and retrying in waves (a string of
+// "client cancelled at the connect stage" in the log), and the whole dev session stalls with it.
 //
-// 分两层，各管一件事：
+// Two layers, each handling one thing:
 //
-//  1. 改道（Route，路由层）：分类器本体整个走 **light 链**——不只是
-//     链头换 light，fallback 也在 light 链里走。「这条命令安全不安全」要
-//     的是快和便宜，这个意图必须贯穿整条链：只换头的话，light 一挂掉回
-//     mid 的体格，又慢回去了。其他后台调用（compact 总结、起标题）不改
-//     道：它们要一点质量，且不挡交互；标记对不上时也自然不改道。
-//  2. 禁思考（Apply，body 层）：对「没写 thinking 的」后台调用补显式
-//     thinking:{"type":"disabled"}，写了的不碰（compact 总结显式带
-//     adaptive，强改 disabled 会被始终思考模型拒掉——见 BestEffortDisableThink）。
-//     撞上「该模型始终思考」的 400（GLM 1210）时由排最后的 always-thinks
-//     兜底（改回 enabled + reasoning_effort:low）——本插件只表达「客户端
-//     这次不想思考」的意图，翻译成各家上游听得懂的话是模型级插件的事。
+//  1. Reroute (Route, routing layer): the classifier itself takes the **light chain**
+//     entirely -- not just the chain head switched to light, but fallback too, within
+//     the light chain. "Is this command safe" wants speed and cheapness, and that intent
+//     must run through the whole chain: switching only the head means the moment light
+//     dies it falls back to mid's build and is slow again. Other background calls (compact
+//     summary, title generation) are not rerouted: they want a bit of quality and do not
+//     block interaction; and when the marker does not match, no reroute happens naturally.
+//  2. Disable thinking (Apply, body layer): for background calls that "did
+//     not write thinking", add an explicit thinking:{"type":"disabled"}; those that wrote
+//     one are untouched (the compact summary explicitly carries adaptive, and forcing
+//     it to disabled gets rejected by always-think models -- see BestEffortDisableThink).
+//     When it hits the 400 for "this model always thinks" (GLM 1210), the always-thinks
+//     plugin, sorted last, backstops it (back to enabled + reasoning_effort:low) -- this
+//     plugin only expresses the intent "the client does not want to think this time", and
+//     translating it into what each upstream understands is the model-level plugin's job.
 //
-// 特征为什么可靠：主循环**永远是流式的**（dump 佐证，含 -p 模式），非流式
-// 的只剩后台小调用；后台调用里分类器本体再靠 system 标记精确认出。
-// 两层都不看 Tier——真实模型名注入后 Tier 是「名字反查的猜测」（见
-// resolve.realNameRoleOrder），标记和非流式才是精确特征。
+// Why the signature is reliable: the main loop **is always streaming** (corroborated by the
+// dumps, including -p mode), so only small background calls are non-streaming; among background
+// calls, the classifier itself is identified precisely by the system marker. Neither layer
+// looks at Tier -- with real model names injected, Tier is "a guess back-derived from the name"
+// (see resolve.realNameRoleOrder), and the marker plus non-streaming are the precise features.
 //
-// 这是少数会**改写客户端显式意图**的补丁，所以三条保险：
-//   - notes / 日志明说改了什么（不静默，docs/01-product.md）；
-//   - `newgate st off claude-bg` 一键摘除（改道和禁思考一起停）；
-//   - 只认 Agent=="claude"（opencode 等其他客户端不受影响）。
+// This is one of the few patches that **rewrites the
+// client's explicit intent**, so three safeguards:
+//   - notes / logs state plainly what changed (never silent, docs/01-product.md);
+//   - `newgate st off claude-bg` removes it in one step
+//     (reroute and thinking-disabled stop together);
+//   - only Agent=="claude" is recognized (opencode and other clients are unaffected).
 type background struct{ thinking thinkingapi.Service }
 
-// classifierMarker 是分类器 system 的自报家门（cc 2.1.263 实抓 4/4 命中；
-// 2.1.295 反混淆核对仍在）。**四个 gate 共用同一份 system**：2026-10-10 在
-// 2.1.295 里读出来，gate（Bash）/ sandboxNetwork / workflowGate / handoff
-// 都走 xio()→GNe() 拼出的这一句，flavour 只改**消息里**追加的尾巴。
+// classifierMarker is the classifier system's self-introduction (captured
+// 4/4 in cc 2.1.263; still present on deobfuscation check in 2.1.295). **All four
+// gates share the same system**: read out of 2.1.295 on 2026-10-10, gate (Bash)
+// / sandboxNetwork / workflowGate / handoff all take this one sentence composed by
+// xio()->GNe(), and flavour only changes the tail appended **inside the messages**.
 const classifierMarker = "You are a security monitor"
 
-// classifierStopSequences 是分类器的两个终止符。**整个客户端里只有 auto_mode
-// 分类器会设顶层 stop_sequences**（2026-10-10 反混淆核对：设置点唯一，就是
-// tao() 里那句 `…V!=="fast"&&{stop_sequences:[_e?"</severity>":"</block>"]}`；
-// 另两处是通用透传，得调用方先给，还有一处是源码表）。所以「顶层有
-// stop_sequences」是一条**与提示词措辞无关**的结构判据。
+// classifierStopSequences are the classifier's two stop sequences.
+// **Only the auto_mode classifier in the whole client sets a top-level stop_sequences**
+// (deobfuscation check 2026-10-10: the setting point is unique, the line in tao()
+// `…V!=="fast"&&{stop_sequences:[_e?"</severity>": "</block>"]}`; the other two occurrences are
+// generic pass-through that need the caller to supply them first, plus one in a source table).
+// So "a top-level stop_sequences" is a structural test **independent of the prompt's wording**.
 var classifierStopSequences = []string{"</block>", "</severity>"}
 
-// isClassifier 认「这条非流式请求是 Claude Code 的安全分类器」。两条判据是
-// **或**的关系，任一条成立即认：
+// isClassifier recognizes "this non-streaming request is Claude Code's safety
+// classifier". The two tests are in an **or** relation; either one suffices:
 //
-//  1. system 里出现分类器的自报家门（四个 gate 共用，见 classifierMarker）；
-//  2. 顶层 stop_sequences 带着分类器的终止符（结构判据，措辞改了也还在）。
+//  1. the classifier's self-introduction appears in system
+//     (shared by the four gates, see classifierMarker);
+//  2. the top-level stop_sequences carries the classifier's stop
+//     sequences (a structural test that survives wording changes).
 //
-// 为什么要在标记之外再要一条结构判据：标记是**提示词**，措辞是客户端的事，
-// 一次改版就可能把它挪走或改写；而漏认的代价不是「少省一次上游调用」，是
-// **这一发被送去上游、上游回不出分类器形状 → 客户端判「无法评估」并把动作
-// 拦下来**（见 classifier-naked.go 里 classifierAnswer 的注释）。多认的代价
-// 只是一个后台小调用被短路，所以宁可宽。
+// Why a structural test is wanted in addition to the marker: the marker is **prompt** text, and the
+// wording is the client's business, so one release can move or rewrite it. And the cost of missing
+// it is not "one upstream call saved less", it is **this request goes upstream, the upstream cannot
+// return the classifier's shape -> the client judges "cannot evaluate" and blocks the action**
+// (see the comment on classifierAnswer in classifier-naked.go). The cost of over-recognizing
+// is only that one small background call gets short-circuited, so being generous is better.
 //
-// **为什么不连消息正文一起认**：分类器的 flavour 尾巴（stage 1/2 的说明）确实
-// 落在消息里，但 compact 总结请求**带着整段会话**从这条路过去——会话里只要有人
-// 引用过那几句话（本仓库的文档与注释里就有），compact 就会被当成分类器短路掉，
-// 而它的答复是要**替换整段历史**的：那是一次会话级损坏，比漏认贵得多。system
-// 与 stop_sequences 都长在「客户端自己组装的壳」上，会话正文碰不到。
+// **Why the message bodies are not matched too**: the classifier's flavour tail
+// (the stage 1/2 explanations) does land in the messages, but compact-summary requests
+// **carry the whole session** down this path -- if anyone ever quoted those sentences in
+// the session (this repo's docs and comments do), the compact would be short-circuited
+// as a classifier, and its answer is meant to **replace the whole history**: that is
+// session-level damage, far more expensive than a miss. system and stop_sequences both
+// live on "the shell the client assembles itself", which the session body cannot reach.
 func isClassifier(body []byte) bool {
 	if raw, ok := rewrite.TopLevelRaw(body, "system"); ok && bytes.Contains(raw, []byte(classifierMarker)) {
 		return true
@@ -110,13 +125,14 @@ func isClassifier(body []byte) bool {
 
 func (background) Name() string { return "claude-bg" }
 
-// Before 让「先补 thinking」的插件排在兜底翻译器（always-thinks）前面动手。
+// Before makes "fill thinking first" plugins act ahead of the backstop translator (always-thinks).
 //
-// 这里只写内核自己的插件名——2026-09-20 之前还列着 `deepseek`、`glm` 两个**发行版**
-// 的名字，那是方向反了（内核不该认识产品插件），而且 special 的排序图对未注册的
-// 名字静默忽略，所以那两条边在纯内核构建里一直是空转的。现在那条边由产品自己声明
-// （见发行版仓库 modules/deepseek / modules/claudecode_glm 的 Before），
-// `app/ordering_test.go` 钉住「内核的排序边只指向内核自己的插件」。
+// Only the kernel's own plugin names are listed here -- before 2026-09-20 it also listed `deepseek`
+// and `glm`, two **distribution** names, which was the wrong direction (the kernel should not
+// know product plugins), and since the special ordering graph silently ignores unregistered names,
+// those two edges always idled in a pure-kernel build. Now that edge is declared by the product
+// itself (see the Before in the distribution repo's modules/deepseek / modules/claudecode_glm), and
+// `app/ordering_test.go` pins "the kernel's ordering edges only point at the kernel's own plugins".
 func (background) Before() []string { return []string{"always-thinks"} }
 func (background) After() []string  { return nil }
 
@@ -207,16 +223,18 @@ func (background) Metrics() []special.MetricInfo {
 	}}
 }
 
-// Match 认「Claude Code 的后台小调用」这个类：claude 发起 + 非流式。
-// 分类器本体的精确判定（system 标记）在 Route 里，那边管改道。
+// Match recognizes the class "Claude Code's small background calls":
+// initiated by claude + non-streaming. The precise determination of the
+// classifier itself (the system marker) is in Route, which handles rerouting.
 func (background) Match(r *special.Request) bool {
 	return r != nil && r.Agent == ID && !r.Stream
 }
 
-// Apply 认出后台调用后，把「这次调用不想思考」交给 BestEffortDisableThink
-// ——意图在这里，翻译（模型不支持关思考时改成最小思考）在那边，best
-// effort：关不掉就让它思考，绝不因此失败。改道没命中（Route 没认出
-// 分类器）时同样只禁思考，慢而不死。
+// Apply, after recognizing a background call, hands "this call does not want to think"
+// to BestEffortDisableThink -- the intent is here, the translation (minimum thinking when
+// the model does not support disabling) is there, best effort: if it cannot be disabled,
+// let it think, and never fail because of that. When the reroute did not hit (Route
+// did not recognize the classifier), thinking is disabled anyway, slow but not dead.
 func (b background) Apply(body []byte, r *special.Request) ([]byte, []string, error) {
 	if b.thinking == nil {
 		return body, nil, fmt.Errorf("thinking capability is unavailable")

@@ -1,13 +1,16 @@
-// Package status 是健康表的 **wire 类型**：daemon 与 CLI 之间那份 JSON 的形状。
+// Package status is the health table's **wire types**:
+// the shape of the JSON between daemon and CLI.
 //
-// 为什么单开一个叶子（2026-09-18）：这份类型是**跨进程契约**（`/__newgate/status`
-// 的 `breakers` 字段），好几处都要用它——数据面负责序列化、CLI 负责渲染、控制面
-// 客户端负责反序列化、breaker 自己的命令也要读它。它留在 modules/breaker 根包里
-// 的话，「谁要用它就得 import 整个 breaker 模块」，而 breaker 的命令又要反过来用
-// 控制面客户端——成环。下沉成叶子之后两边都能引。
+// Why a separate leaf (2026-09-18): this type is a **cross-process contract**
+// (the `breakers` field of `/__newgate/status`), and several places need it -- the data
+// plane serializes it, the CLI renders it, the control-plane client deserializes it, and
+// breaker's own command reads it too. If it stayed in the modules/breaker root package,
+// "whoever wants it must import the whole breaker module", while breaker's command in turn
+// needs the control-plane client -- a cycle. Sunk into a leaf, both sides can import it.
 //
-// 它也是**唯一**允许被跨版本读取的东西（优雅交接期间 CLI 与 daemon 可以来自不同
-// 版本），所以下面那条「只能加字段，不能改字段」是硬要求。
+// It is also the **only** thing allowed to be read across versions (during
+// graceful handover the CLI and daemon can be from different versions),
+// so the "only add fields, never change them" rule below is hard.
 package status
 
 import (
@@ -16,7 +19,8 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// ProbeGrade 把探活结果归一为少量稳定档位，供路由排序和 UI 共同解释。
+// ProbeGrade normalizes probe results into a few stable
+// tiers, interpreted jointly by routing ordering and the UI.
 type ProbeGrade string
 
 const (
@@ -26,16 +30,17 @@ const (
 	ProbeUnavailable ProbeGrade = "unavailable"
 )
 
-// Status 是 binding 健康表的一行，也是 daemon→CLI 的 wire 契约
-// （`/__newgate/status` 的 `breakers` 字段）。
+// Status is one row of the binding health table, and the daemon->CLI
+// wire contract (the `breakers` field of `/__newgate/status`).
 //
-// **只能加字段，不能改字段。** 优雅交接期间 CLI 与 daemon 可以来自不同版本：
-// 新 CLI 读旧 daemon 的快照、旧 CLI 读新 daemon 的快照都必须能活。同理
-// `health.json` 的文件名与这些 JSON 键也不能改——降级回滚用的 known-good
-// 二进制读的就是它们。
+// **Only add fields, never change them.** During graceful handover the CLI and daemon can be
+// from different versions: a new CLI reading an old daemon's snapshot, and an old CLI reading a
+// new daemon's snapshot, must both survive. Likewise the `health.json` file name and these JSON
+// keys cannot change -- the known-good binary used for downgrade rollback reads exactly them.
 //
-// 因此 `Open` 保留原义（「现在被摘着」），半开等新状态放在新增的 `State` 里；
-// 旧 CLI 看到 `Open=true` 就当它不可用，只是不知道它马上要试探回来了。
+// So `Open` keeps its original meaning ("delisted right now"), and new states
+// like half-open go into the added `State`; an old CLI seeing `Open=true` treats
+// it as unusable, it just does not know it is about to probe its way back.
 type Status struct {
 	Provider string        `json:"provider"`
 	Model    string        `json:"model"`
@@ -52,39 +57,43 @@ type Status struct {
 	Buckets  [4]int        `json:"samples_by_bucket,omitempty"`
 	OpenedAt time.Time     `json:"opened_at,omitempty"`
 
-	// —— 2026-09-17 半开重构新增（只加不改）——
+	// -- Added in the 2026-09-17 half-open refactor (add only, no changes) --
 	//
-	// State 是 closed / open / half-open。Open 表达不了半开：半开时 binding
-	// 已经能进链了，状态机在等这一发的结果。
+	// State is closed / open / half-open. Open cannot express half-open: when half-open the binding
+	// can already enter the chain, and the state machine is waiting for this request's result.
 	State string `json:"state,omitempty"`
-	// Rule 是当前这本账的名字（可用性 / 限流 / 配置 / 请求形状），
-	// 让人一眼看出它是被哪一类问题摘的。
+	// Rule is the name of the current ledger (availability / rate limit / config
+	// / request shape), so one glance tells which class of problem delisted it.
 	Rule string `json:"rule,omitempty"`
-	// OpenUntil 冷却到期的绝对时刻。CLI 用 OpenedAt 自算 age，不再依赖
-	// 快照时刻算出来的 OpenFor（那个值一过网就陈旧了）。
+	// OpenUntil is the absolute moment the cooldown expires. The CLI computes
+	// age from OpenedAt itself, no longer relying on the snapshot-time
+	// OpenFor (that value is stale as soon as it crosses the wire).
 	OpenUntil time.Time `json:"open_until,omitempty"`
-	// Trial 这一刻有没有一个半开试探在飞。
+	// Trial: is there a half-open trial in flight right now.
 	Trial bool `json:"trial,omitempty"`
-	// ShapeSkips 请求形状错误的累计次数。这类错误永不摘牌，但这个数字要
-	// 能被看见——不然「为什么老是 400」只能去翻 metrics。
+	// ShapeSkips is the cumulative count of request-shape errors. Such
+	// errors never delist, but the number must be visible -- otherwise "why
+	// is it always 400" can only be answered by digging through metrics.
 	ShapeSkips int `json:"shape_skips,omitempty"`
-	// CooldownMs 下次开闸会用多长（退避后的值）。
+	// CooldownMs is how long the next trip will use (the value after backoff).
 	CooldownMs int64 `json:"cooldown_ms,omitempty"`
-	// Rank 是 daemon 算好的排序键（按 ≤4K 档位）。CLI 直接用它，不再自己
-	// 重算 3000/12000 那套阈值——策略只有一个来源。
+	// Rank is the sort key computed by the daemon (by the <=4K tier). The CLI uses it directly
+	// and no longer recomputes the 3000/12000 thresholds -- there is one source for policy.
 	Rank int `json:"rank,omitempty"`
-	// Spared 上闸前那一次诊断探活把这条 binding 救回来了（差一点摘、结果
-	// 探活证明它还通）。数字为累计次数，跨重启保留。
+	// Spared: the diagnostic probe before tripping pulled this binding back (almost delisted,
+	// and the probe proved it still works). The number is cumulative and survives restarts.
 	Spared int `json:"spared,omitempty"`
 }
 
-// Latency 是延迟样本的档位。**阈值只在这里定义一次**（2026-09-18）。
+// Latency is the tiering of latency samples.
+// **Thresholds are defined here only once** (2026-09-18).
 //
-// 排序（谁先上链）与展示（流畅 / 可用 / 卡顿）读的是同一套数。之前有三份各自的
-// 3000 / 12000 拷贝：modules/breaker 的排序键、gateway 的 metrics 渲染、config 的
-// tier 渲染。改一处另两处不会跟着变——这个仓库为同一件事付过一次代价（
-// modules/cli/proxy.go 的注释记着 2026-09-17 那次「两边各有一份」），所以现在只
-// 留一个来源：阈值在这里，档位名也在这里。
+// Ordering (who goes on the chain first) and display (fluent / usable / laggy)
+// read the same numbers. There used to be three separate copies of 3000 / 12000: the
+// sort key in modules/breaker, the metrics rendering in gateway, the tier rendering
+// in config. Changing one did not change the other two -- this repo has paid for that
+// once already (the comment in modules/cli/proxy.go records the 2026-09-17 "a copy on
+// each side"), so now there is one source only: thresholds here, tier names here too.
 type Latency int
 
 const (
@@ -95,13 +104,13 @@ const (
 )
 
 const (
-	// FastMs 是「流畅」的上界。
+	// FastMs is the upper bound of "fluent".
 	FastMs = 3000
-	// SlowMs 是「可用」的上界；超过它就算卡顿。
+	// SlowMs is the upper bound of "usable"; beyond it counts as laggy.
 	SlowMs = 12000
 )
 
-// Grade 把一个延迟样本归到档位。sampled=false（没探过）给 LatencyUnknown。
+// Grade puts a latency sample into a tier. sampled=false (never probed) gives LatencyUnknown.
 func Grade(scoreMs int, sampled bool) Latency {
 	switch {
 	case !sampled:
@@ -115,8 +124,9 @@ func Grade(scoreMs int, sampled bool) Latency {
 	}
 }
 
-// String 是这几个档位给人看的说法。档位本身（LatencyFast 那些常量）才是判据，
-// 它不落盘、不过线，所以这里翻的是**说法**，不是判据。
+// String is the human wording of these tiers. The tiers themselves (the
+// LatencyFast constants) are the test; they are not persisted and do not go
+// over the wire, so what is translated here is the **wording**, not the test.
 func (l Latency) String() string {
 	switch l {
 	case LatencyFast:

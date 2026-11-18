@@ -28,10 +28,10 @@ func TestTheDataPlaneServesItsOwnPortByDefault(t *testing.T) {
 	// 测试里没有可用上游，所以答案是数据面的失败——关键是这个路径**走到了数据面**
 	// （它有话要说），而不是被谁接住、也不是空白。
 	if rec.Body.Len() == 0 {
-		t.Fatal("没装根 handler 时端口该由数据面应答，实际什么都没说")
+		t.Fatal("with no root handler the port should be answered by the data plane, but nothing was said at all")
 	}
 	if rec.Code == http.StatusOK {
-		t.Errorf("没有上游时数据面不该给出 200（这条用例是来确认请求真的走到了数据面），实际 %d: %s",
+		t.Errorf("without an upstream the data plane must not return 200 (this case exists to confirm the request really reached the data plane), got %d: %s",
 			rec.Code, rec.Body.String())
 	}
 }
@@ -50,7 +50,7 @@ func TestSetRootHandsThePortOver(t *testing.T) {
 	rec := httptest.NewRecorder()
 	s.rootHandler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ui/index.html", nil))
 	if got := rec.Body.String(); got != body {
-		t.Fatalf("根 handler 装上去之后该由它应答，实际: %q", got)
+		t.Fatalf("once the root handler is installed it should answer, got: %q", got)
 	}
 }
 
@@ -61,7 +61,7 @@ func TestHandlerIsStable(t *testing.T) {
 	isolate(t)
 	s := newTestServer()
 	if s.Handler() != s.Handler() {
-		t.Error("Handler() 两次给了两份不同的 mux——兜底与端口服务的就不是同一个东西了")
+		t.Error("Handler() returned two different muxes on two calls - the fallback and the port service would not be the same thing")
 	}
 }
 
@@ -75,24 +75,24 @@ func TestRootSeamComposesWithTheHub(t *testing.T) {
 	if _, err := hub.Mount("/ui", "web", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("web"))
 	})); err != nil {
-		t.Fatalf("挂载失败: %v", err)
+		t.Fatalf("mount failed: %v", err)
 	}
 	root, err := hub.Root("gateway", s.Handler())
 	if err != nil {
-		t.Fatalf("Root 失败: %v", err)
+		t.Fatalf("Root failed: %v", err)
 	}
 	s.SetRoot(root)
 
 	rec := httptest.NewRecorder()
 	s.rootHandler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ui/index.html", nil))
 	if got := rec.Body.String(); got != "web" {
-		t.Errorf("挂在 /ui 的服务没接到请求，实际: %q", got)
+		t.Errorf("the service mounted at /ui got no request, got: %q", got)
 	}
 
 	// 数据面自己的路径不受影响（`/a/…` 是数据面的转发路径）。
 	rec2 := httptest.NewRecorder()
 	s.rootHandler().ServeHTTP(rec2, httptest.NewRequest(http.MethodGet, "/v1/models", nil))
 	if strings.Contains(rec2.Body.String(), "web") {
-		t.Errorf("/v1/models 被 web 接住了——挂载表抢了数据面的路径: %q", rec2.Body.String())
+		t.Errorf("/v1/models was caught by web - the mount table stole a data-plane path: %q", rec2.Body.String())
 	}
 }

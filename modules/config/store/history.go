@@ -1,28 +1,33 @@
 package store
 
-// 写盘之前留一份「上一版」。
+// Keep a copy of "the previous version" before writing.
 //
-// # 为什么要有它
+// # Why it is needed
 //
-// 2026-09-20 现场：一个前端 bug 把用户某个 profile 的档位写没了（`mid=/模型名`
-// 这种 provider 为空的绑定落进了配置）。发现的时候，**没有任何地方能找回写之前
-// 那一份**——`backups/` 是接管时给 opencode/claude 配置用的，与配置文件无关；
-// git 也没有（配置目录不在版本控制里）。于是「改坏了」等于「重新凭记忆写一遍」。
+// The scene on 2026-09-20: a front-end bug wrote away the tiers of one
+// of the user's profiles (a `mid=/model-name` binding with an empty provider landed
+// in the config). By the time it was noticed, **nowhere could retrieve the copy from
+// before the write** -- `backups/` is for opencode/claude config at takeover time
+// and has nothing to do with config files; git has none either (the config directory
+// is not under version control). So "broke it" equaled "rewrite it from memory".
 //
-// 判据是**代价不对称**：留备份的成本是每次写多一次小文件的复制（几 KB），而丢掉
-// 一次的代价是用户手上的配置没了。所以这件事不该由调用方记得做——它必须在**写入
-// 的唯一出口**上，谁都绕不过去。
+// The criterion is **asymmetric cost**: keeping a backup costs one more
+// small-file copy per write (a few KB), while losing one costs the config in the
+// user's hands. So this should not be something the caller remembers to do -- it
+// must be on **the single exit point of writing**, which nobody can go around.
 //
-// # 形状
+// # Shape
 //
-// 每个被写过的文件一个目录（路径里的 `/` 换成 `__`），里面按时间命名，**只留最近
-// 20 版**。20 这个数是「够回溯到发现问题之前」与「不会把配置目录撑大」之间的取舍：
-// 一次编辑会话通常几次保存，20 版够翻回半小时到几小时之前。
+// One directory per file ever written (the `/` in the path becomes `__`), named by time
+// inside, **keeping only the most recent 20 versions**. 20 is the trade-off between "enough to
+// go back to before the problem was noticed" and "not inflating the config directory": an editing
+// session usually has a few saves, and 20 versions covers going back half an hour to a few hours.
 //
-// # 失败方向
+// # Direction of failure
 //
-// 备份失败**不阻止写盘**（fail-open）。为了留一份历史而让用户的保存失败，是把
-// 安全网变成了路障——而安全网的意义正是「主流程出问题时还在」。
+// A failed backup **does not block the write** (fail-open). Making the user's
+// save fail in order to keep a history turns the safety net into a roadblock
+// -- and the point of a safety net is "still there when the main flow breaks".
 
 import (
 	"fmt"
@@ -36,17 +41,18 @@ import (
 )
 
 const (
-	// historyDirName 放在配置根下（与 `.write.lock` 同一种做法：点开头，不与人
-	// 会去翻的那些目录混在一起）。
+	// historyDirName goes under the config root (the same approach as `.write.lock`:
+	// leading dot, so it does not mix with the directories people go poking through).
 	historyDirName = ".history"
-	// historyKeep 是每个文件保留的版本数。
+	// historyKeep is the number of versions kept per file.
 	historyKeep = 20
 )
 
-// snapshotBeforeWrite 把 path **此刻**的内容抄一份进历史。
+// snapshotBeforeWrite copies path's content **at this moment** into history.
 //
-// 调用点必须在「目标已经被替换」之前。文件不存在（新建）或读不出来时什么都不做
-// ——没有「上一版」可留，这不是错误。
+// The call site must be before "the target has already been replaced". When
+// the file does not exist (creating) or cannot be read, it does nothing
+// -- there is no "previous version" to keep, and that is not an error.
 func snapshotBeforeWrite(path string) {
 	b, err := os.ReadFile(path)
 	if err != nil || len(b) == 0 {
@@ -59,8 +65,9 @@ func snapshotBeforeWrite(path string) {
 	if err := os.MkdirAll(dir, 0o2770); err != nil {
 		return
 	}
-	// 文件名按时间排：UnixNano 单调、可排序，同一纳秒内的两次写会撞名——撞了就
-	// 退一格（多写一纳秒），不必为此上锁。
+	// File names are ordered by time: UnixNano is monotonic and sortable, and
+	// two writes within the same nanosecond would collide -- on collision,
+	// step one notch back (one nanosecond more), no need for a lock.
 	name := time.Now().UnixNano()
 	for i := 0; i < 100; i++ {
 		p := filepath.Join(dir, fmt.Sprintf("%d.bak", name+int64(i)))
@@ -72,7 +79,8 @@ func snapshotBeforeWrite(path string) {
 	pruneHistory(dir)
 }
 
-// pruneHistory 只留最近 historyKeep 版。删除失败不管：多留几版比删错强。
+// pruneHistory keeps only the most recent historyKeep versions. Deletion failures
+// are ignored: keeping a few extra versions is better than deleting the wrong one.
 func pruneHistory(dir string) {
 	ents, err := os.ReadDir(dir)
 	if err != nil {
@@ -83,8 +91,8 @@ func pruneHistory(dir string) {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".bak") {
 			continue
 		}
-		// 名字是 UnixNano；解析不出来的（人手放进去的东西）**不动它**——那不是
-		// 我们写的，删它没有道理。
+		// The name is UnixNano; one that cannot be parsed (something a human put there)
+		// is **left alone** -- we did not write it, so there is no reason to delete it.
 		var n int64
 		if _, err := fmt.Sscanf(e.Name(), "%d.bak", &n); err == nil {
 			stamps = append(stamps, n)
@@ -99,7 +107,7 @@ func pruneHistory(dir string) {
 	}
 }
 
-// historyDirFor 把配置文件路径映射成历史目录。
+// historyDirFor maps a config file path to its history directory.
 func historyDirFor(path string) (string, error) {
 	root, err := filepath.Abs(paths.Root())
 	if err != nil {
@@ -113,8 +121,9 @@ func historyDirFor(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// 路径拼成一个目录名：`mappings/demo.kv` → `mappings__demo.kv`。用一个不可能
-	// 出现在文件名里的分隔（路径分隔符本身已被换掉）。
+	// Join the path into one directory name: `mappings/demo.kv` ->
+	// `mappings__demo.kv`. Using a separator that cannot appear in a
+	// file name (the path separator itself has already been replaced).
 	flat := strings.ReplaceAll(filepath.ToSlash(rel), "/", "__")
 	if flat == "" || strings.HasPrefix(flat, "..") {
 		return "", fmt.Errorf("store: %s is outside the config root", path)
@@ -122,10 +131,10 @@ func historyDirFor(path string) (string, error) {
 	return filepath.Join(root, historyDirName, flat), nil
 }
 
-// HistoryDir 是某个配置文件的历史目录（给测试与「去哪儿找备份」用）。
+// HistoryDir is some config file's history directory (for tests and for "where do I find backups").
 func HistoryDir(path string) (string, error) { return historyDirFor(path) }
 
-// HistoryEntries 列出某个配置文件的历史版本，**从新到旧**。
+// HistoryEntries lists some config file's history versions, **newest to oldest**.
 func HistoryEntries(path string) []string {
 	dir, err := historyDirFor(path)
 	if err != nil {

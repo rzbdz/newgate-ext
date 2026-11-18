@@ -122,8 +122,8 @@ esac
 echo
 echo "== 2. The question really sent is that sentence (option values are not part of it) =="
 RESETUP
-"$BIN" ask --tier normal "今天天气如何" >/dev/null 2>&1
-check "the user content the upstream received" "$(SENT)" "今天天气如何"
+"$BIN" ask --tier normal "what is the weather today" >/dev/null 2>&1
+check "the user content the upstream received" "$(SENT)" "what is the weather today"
 
 echo
 echo "== 3. --profile is a single-call override and does not touch the global default =="
@@ -135,9 +135,9 @@ check "the global default was not touched" "$(python3 -c 'import json;print(json
 echo
 echo "== 4. Fed in through a pipe =="
 RESETUP
-out=$(printf '从管道来的问题' | "$BIN" ask --tier light 2>/dev/null)
+out=$(printf 'a question from the pipe' | "$BIN" ask --tier light 2>/dev/null)
 check "the piped request was answered too" "$out" "MOCK-STREAM mock-model"
-check "the upstream received the sentence from the pipe" "$(SENT)" "从管道来的问题"
+check "the upstream received the sentence from the pipe" "$(SENT)" "a question from the pipe"
 
 echo
 echo "== 5. No question given: say so, do not send an empty request =="

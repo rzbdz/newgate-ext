@@ -46,14 +46,14 @@ func TestCheckDialectsBilingual(t *testing.T) {
 		CheckDialects("prov", p, "glm-5.3", 5_000_000_000)
 
 		if ok, known := dialect.Supports("prov", "glm-5.3", dialect.CapOpenAI); !ok || !known {
-			t.Errorf("count_tokens=%v: 声明的 openai 应直接记支持", ct)
+			t.Errorf("count_tokens=%v: a declared openai provider should be recorded as supported directly", ct)
 		}
 		if ok, known := dialect.Supports("prov", "glm-5.3", dialect.CapAnthropic); !ok || !known {
-			t.Errorf("count_tokens=%v: anthropic 方言应探明支持", ct)
+			t.Errorf("count_tokens=%v: the anthropic dialect should be found supported by probing", ct)
 		}
 		got, known := dialect.Supports("prov", "glm-5.3", dialect.CapCountTokens)
 		if !known || got != ct {
-			t.Errorf("count_tokens=%v: 探明结果应为 (known, %v)，实际 (%v,%v)", ct, ct, known, got)
+			t.Errorf("count_tokens=%v: the probe result should be (known, %v), got (%v,%v)", ct, ct, known, got)
 		}
 		up.Close()
 	}
@@ -80,15 +80,15 @@ func TestCheckDialectsOpenAIOnly(t *testing.T) {
 	CheckDialects("prov", p, "deepseek-chat", 5_000_000_000)
 
 	if ok, known := dialect.Supports("prov", "deepseek-chat", dialect.CapAnthropic); ok || !known {
-		t.Errorf("anthropic 应探明不支持，实际 (ok=%v known=%v)", ok, known)
+		t.Errorf("anthropic should be found unsupported, got (ok=%v known=%v)", ok, known)
 	}
 	if ok, known := dialect.Supports("prov", "deepseek-chat", dialect.CapCountTokens); ok || !known {
-		t.Errorf("count_tokens 应连带记不支持（/messages 都没有），实际 (ok=%v known=%v)", ok, known)
+		t.Errorf("count_tokens should be recorded unsupported as well (there is not even /messages), got (ok=%v known=%v)", ok, known)
 	}
 	// 不该拿 count_tokens 去撞一个连 /messages 都没有的上游
 	for _, p := range paths {
 		if p == "/v1/messages/count_tokens" {
-			t.Fatal("anthropic 都不通时不应再探 count_tokens")
+			t.Fatal("when anthropic does not work, count_tokens should not be probed either")
 		}
 	}
 }
@@ -106,13 +106,13 @@ func TestCheckDialectsAnthropicDeclared(t *testing.T) {
 	CheckDialects("prov", p, "claude-opus", 5_000_000_000)
 
 	if ok, known := dialect.Supports("prov", "claude-opus", dialect.CapAnthropic); !ok || !known {
-		t.Error("声明的 anthropic 应直接记支持")
+		t.Error("a declared anthropic provider should be recorded as supported directly")
 	}
 	if ok, known := dialect.Supports("prov", "claude-opus", dialect.CapOpenAI); !ok || !known {
-		t.Error("openai 方言应探明支持")
+		t.Error("the openai dialect should be found supported by probing")
 	}
 	if ok, known := dialect.Supports("prov", "claude-opus", dialect.CapCountTokens); !ok || !known {
-		t.Error("count_tokens 应探明支持")
+		t.Error("count_tokens should be found supported by probing")
 	}
 }
 
@@ -130,6 +130,6 @@ func TestLearnDialectTransientNotLearned(t *testing.T) {
 
 	learnDialect("prov", p, "m", dialect.CapAnthropic, 5_000_000_000)
 	if _, known := dialect.Supports("prov", "m", dialect.CapAnthropic); known {
-		t.Fatal("429 不该被学成任何状态")
+		t.Fatal("429 must not be learned as any state")
 	}
 }

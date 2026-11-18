@@ -14,12 +14,12 @@ import (
 	"github.com/rzbdz/newgate-ext/testing/testkit"
 )
 
-// 本文件的用例只管**向导自己那点知识**：写出去的三份文件长什么样、更新 provider
-// 时别人的东西动没动、base URL 里的常见垃圾去没去掉、以及「有没有可用配置」那条
-// 判断（它决定向导要不要重新问一遍上游）。
+// These cases cover only **the wizard's own knowledge**: what the three written files
+// look like, whether others' providers move on update, whether junk in base URLs is
+// stripped, and the "is there usable config" check (it decides whether to re-ask).
 //
-// 全部是纯函数或 store 的读写，走 testkit.Sandbox 圈在临时目录里——不碰真实的
-// ~/.config/newgate。
+// All pure functions or store I/O, fenced into a temp dir by testkit.Sandbox - never
+// touching the real ~/.config/newgate.
 
 func seedSandbox(t *testing.T) {
 	t.Helper()
@@ -29,11 +29,11 @@ func seedSandbox(t *testing.T) {
 	}
 }
 
-// TestApplyWritesAChainThatResolves 是这一整个功能的核心承诺：**一份只给了一个
-// base、一个 key、一个模型的配置，每一档都解析得出候选**。
+// TestApplyWritesAChainThatResolves is this feature's core promise: **a config given
+// one base, one key, one model resolves a candidate on every tier**.
 //
-// 只要有一档是空链，症状就是「某类请求突然没有可用候选」——而用户完全看不出
-// 那是当初 bootstrap 没写它。
+// One empty tier is symptom enough ("some request suddenly has no candidate") - and
+// the user cannot see that bootstrap never wrote it.
 func TestApplyWritesAChainThatResolves(t *testing.T) {
 	seedSandbox(t)
 	in := Bootstrap{Provider: "demo", BaseURL: "https://api.example.com/v1", APIKey: "sk-x", Model: "m-1"}
@@ -42,32 +42,32 @@ func TestApplyWritesAChainThatResolves(t *testing.T) {
 		t.Fatalf("Apply: %v", err)
 	}
 	if len(res.Files) == 0 {
-		t.Fatal("Apply 没报改过任何文件")
+		t.Fatal("Apply did not report changing any file")
 	}
 
 	pr, err := store.LoadProfile(ProfileName)
 	if err != nil {
-		t.Fatalf("读回 default: %v", err)
+		t.Fatalf("reading back default: %v", err)
 	}
 	for _, tier := range domain.Roles {
 		c, ok := pr.Roles[tier]
 		if !ok || len(c) == 0 {
-			t.Fatalf("档位 %s 没有候选（链是空的）", tier)
+			t.Fatalf("tier %s has no candidates (the chain is empty)", tier)
 		}
 		if c[0].Provider != "demo" || c[0].Model != "m-1" {
-			t.Fatalf("档位 %s = %v，想要 demo/m-1", tier, c[0])
+			t.Fatalf("tier %s = %v, want demo/m-1", tier, c[0])
 		}
 	}
 	if got := store.LoadState().DefaultProfile; got != ProfileName {
-		t.Fatalf("全局默认 = %q，想要 %q", got, ProfileName)
+		t.Fatalf("global default = %q, want %q", got, ProfileName)
 	}
 	if !Inspect().HasUsable {
-		t.Fatal("刚写完的配置判成「不可用」——向导下次会再问一遍上游")
+		t.Fatal("the config just written is judged \"unusable\" -- the wizard would ask for the upstream again next time")
 	}
 }
 
-// TestApplyKeepsOtherProvidersVerbatim 是一条不能破的规矩：用户别的 provider
-// **一个字节都不动**，尤其是那些用 api_key_env 的（它们的明文只活在环境里）。
+// TestApplyKeepsOtherProvidersVerbatim is a rule that must not break: other providers
+// keep **every byte**, especially api_key_env ones (their plaintext lives in env only).
 func TestApplyKeepsOtherProvidersVerbatim(t *testing.T) {
 	seedSandbox(t)
 	first := &domain.Providers{Providers: map[string]domain.Provider{
@@ -77,7 +77,7 @@ func TestApplyKeepsOtherProvidersVerbatim(t *testing.T) {
 	if err := store.SaveProviders(first); err != nil {
 		t.Fatal(err)
 	}
-	// 让 api_key_env 解析得出一个明文：写回去的话它会落盘。
+	// Make api_key_env resolve to plaintext: writing it back would put it on disk.
 	t.Setenv("NEWGATE_KEY_WORK", "sk-from-env")
 
 	if _, err := Apply(Bootstrap{Provider: "demo", BaseURL: "https://demo.example.com", APIKey: "sk-d", Model: "d-1"},
@@ -97,24 +97,24 @@ func TestApplyKeepsOtherProvidersVerbatim(t *testing.T) {
 		} `json:"providers"`
 	}
 	if err := json.Unmarshal(b, &doc); err != nil {
-		t.Fatalf("写出来的不是合法 JSON: %v", err)
+		t.Fatalf("what was written is not valid JSON: %v", err)
 	}
 	work := doc.Providers["work"]
 	if work.BaseURL != "https://work.example.com/v1" || work.APIKeyEnv != "NEWGATE_KEY_WORK" {
-		t.Fatalf("work 被改坏了: %+v", work)
+		t.Fatalf("work was corrupted: %+v", work)
 	}
 	if work.APIKey != "" {
-		t.Fatalf("work 的明文 key 被写回磁盘了（它只该活在环境变量里）: %q", work.APIKey)
+		t.Fatalf("the plaintext key of work was written back to disk (it should only live in an env var): %q", work.APIKey)
 	}
 	if home := doc.Providers["home"]; home.APIKey != "sk-home" || home.BaseURL != "https://home.example.com/v1" {
-		t.Fatalf("home 被改坏了: %+v", home)
+		t.Fatalf("home was corrupted: %+v", home)
 	}
 	if demo, ok := doc.Providers["demo"]; !ok || demo.BaseURL != "https://demo.example.com" {
-		t.Fatalf("demo 没写对: %+v", demo)
+		t.Fatalf("demo was not written right: %+v", demo)
 	}
 }
 
-// TestApplyLeavesExistingKvAlone：默认不覆盖一份已经存在的 default.kv。
+// TestApplyLeavesExistingKvAlone: by default an existing default.kv is not overwritten.
 func TestApplyLeavesExistingKvAlone(t *testing.T) {
 	seedSandbox(t)
 	kv := filepath.Join(paths.Mappings(), ProfileName+".kv")
@@ -128,14 +128,14 @@ func TestApplyLeavesExistingKvAlone(t *testing.T) {
 	}
 	b, _ := ioutil.ReadFile(kv)
 	if string(b) != "normal=other/keep-me\n" {
-		t.Fatalf("已有的 default.kv 被覆盖了: %q", b)
+		t.Fatalf("the existing default.kv was overwritten: %q", b)
 	}
 	if len(res.Warnings) == 0 {
-		t.Fatal("没覆盖却没说出来——用户会以为模型已经指过去了")
+		t.Fatal("it did not overwrite but did not say so either -- the user will think the model was pointed over")
 	}
 }
 
-// TestApplyKvWinsOverStaleJson：写 .kv 之后，同名的 .json 不能留在那里假装还有效。
+// TestApplyKvWinsOverStaleJson: after .kv is written, a same-named .json must not linger as valid.
 func TestApplyKvWinsOverStaleJson(t *testing.T) {
 	seedSandbox(t)
 	old := filepath.Join(paths.Mappings(), ProfileName+".json")
@@ -147,18 +147,18 @@ func TestApplyKvWinsOverStaleJson(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(old); err == nil {
-		t.Fatal("旧的 default.json 还在——它现在是一份不起作用的旧绑定，正是最会骗人的那种")
+		t.Fatal("the old default.json is still there -- it is now an inert old binding, exactly the most deceptive kind")
 	}
 	pr, err := store.LoadProfile(ProfileName)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := pr.Roles["normal"][0]; got.Provider != "demo" || got.Model != "m" {
-		t.Fatalf("读回来的是旧的绑定: %+v", got)
+		t.Fatalf("what was read back is the old binding: %+v", got)
 	}
 }
 
-// TestNormalizeBase：用户贴进来的地址有各种尾巴，转发层只认「base + 后缀」。
+// TestNormalizeBase: pasted addresses carry tails; forwarding only joins base + suffix.
 func TestNormalizeBase(t *testing.T) {
 	cases := map[string]string{
 		"https://api.example.com/v1/":                 "https://api.example.com/v1",
@@ -170,12 +170,12 @@ func TestNormalizeBase(t *testing.T) {
 	}
 	for in, want := range cases {
 		if got := normalizeBase(in); got != want {
-			t.Errorf("normalizeBase(%q) = %q，想要 %q", in, got, want)
+			t.Errorf("normalizeBase(%q) = %q, want %q", in, got, want)
 		}
 	}
 }
 
-// TestSuggestedProvider：从 base 推出的名字要能直接用，撞名要避开。
+// TestSuggestedProvider: the name derived from base must be usable as-is, clashes avoided.
 func TestSuggestedProvider(t *testing.T) {
 	cases := map[string]string{
 		"https://api.rvcompute.com:60000/v1": "rvcompute",
@@ -186,15 +186,15 @@ func TestSuggestedProvider(t *testing.T) {
 	}
 	for in, want := range cases {
 		if got := SuggestedProvider(in, nil); got != want {
-			t.Errorf("SuggestedProvider(%q) = %q，想要 %q", in, got, want)
+			t.Errorf("SuggestedProvider(%q) = %q, want %q", in, got, want)
 		}
 	}
 	if got := SuggestedProvider("https://api.deepseek.com", map[string]bool{"deepseek": true}); got != "deepseek-2" {
-		t.Errorf("撞名没有避开: %q", got)
+		t.Errorf("a name collision was not avoided: %q", got)
 	}
 }
 
-// TestParseModelNames：三种真实形状都要认（newapi 的 name、Ollama 的 models、裸数组）。
+// TestParseModelNames: all three real shapes parse (newapi's name, Ollama's models, bare array).
 func TestParseModelNames(t *testing.T) {
 	cases := map[string][]string{
 		`{"data":[{"id":"gpt-5"},{"id":"deepseek-chat"}]}`: {"deepseek-chat", "gpt-5"},
@@ -207,35 +207,35 @@ func TestParseModelNames(t *testing.T) {
 	for in, want := range cases {
 		got := parseModelNames([]byte(in))
 		if strings.Join(got, ",") != strings.Join(want, ",") {
-			t.Errorf("parseModelNames(%s) = %v，想要 %v", in, got, want)
+			t.Errorf("parseModelNames(%s) = %v, want %v", in, got, want)
 		}
 	}
 }
 
-// TestModelURLs：带不带 /v1 两种写法都试，已经贴了 /models 的不重复拼。
+// TestModelURLs: try with and without /v1; a pasted /models is not appended again.
 func TestModelURLs(t *testing.T) {
 	if got := modelURLs("https://api.deepseek.com"); len(got) != 2 || got[0] != "https://api.deepseek.com/v1/models" {
-		t.Errorf("无 /v1 的 base: %v", got)
+		t.Errorf("base without /v1: %v", got)
 	}
 	if got := modelURLs("https://gw.example.com/v1"); len(got) != 1 || got[0] != "https://gw.example.com/v1/models" {
-		t.Errorf("带 /v1 的 base: %v", got)
+		t.Errorf("base with /v1: %v", got)
 	}
 	if got := modelURLs("https://gw.example.com/v1/models"); len(got) != 1 || got[0] != "https://gw.example.com/v1/models" {
-		t.Errorf("已经是 /models: %v", got)
+		t.Errorf("already /models: %v", got)
 	}
 }
 
-// TestUsableRejectsPlaceholders：《newgate init》铺出来的占位配置**文件都在**，
-// 但它跑不起来。把它当成「已经配好了」会让向导跳过唯一能让人跑起来的那一步。
+// TestUsableRejectsPlaceholders: a placeholder config from `newgate init` has **all its
+// files**, but cannot run. Treating it as "set up" skips the only step that makes it run.
 func TestUsableRejectsPlaceholders(t *testing.T) {
 	seedSandbox(t)
 	if _, err := store.Init(false); err != nil {
 		t.Fatal(err)
 	}
 	if Inspect().HasUsable {
-		t.Fatal("占位配置被判成可用")
+		t.Fatal("the placeholder config was judged usable")
 	}
-	// 写了真 key 之后它才可用（占位里的 provider 名与模型名都还在，只是 key 有了）。
+	// Only a real key makes it usable (placeholder provider and model names remain, key set).
 	provs, err := store.LoadProviders()
 	if err != nil {
 		t.Fatal(err)
@@ -249,13 +249,13 @@ func TestUsableRejectsPlaceholders(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !Inspect().HasUsable {
-		t.Fatal("有 key 的配置仍然被判成不可用——向导会白问一遍上游")
+		t.Fatal("a config that has a key is still judged unusable -- the wizard would pointlessly ask for the upstream again")
 	}
 }
 
-// TestPortOf：0 / 负数落回 8899（向导要把它交给接管与 Start）。
+// TestPortOf: 0 / negative falls back to 8899 (the wizard hands it to takeover and Start).
 func TestPortOf(t *testing.T) {
 	if portOf(0) != domain.ProxyPort || portOf(-1) != domain.ProxyPort || portOf(9000) != 9000 {
-		t.Fatal("portOf 的收敛不对")
+		t.Fatal("portOf does not converge correctly")
 	}
 }

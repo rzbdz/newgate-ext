@@ -1,43 +1,45 @@
-// Package distinfo 是「这个二进制是哪份发行版、从哪来」的叶子包。
+// Package distinfo is the leaf package for "which
+// distribution this binary is, and where it came from".
 //
-// 三个事实，都在构建期定下来：
+// Three facts, all settled at build time:
 //
-//   - 选的是哪份规格书（spec）——由 build/build.sh 用
-//     `-ldflags -X github.com/rzbdz/newgate-ext/manifest/distinfo.spec=<文件名>` 注入；
-//   - 那份规格书叫什么、发在哪个 GitHub 仓库——由 tools/distgen 从 dist*.json
-//     生成进 specs_gen.go；
-//   - 编它的源码树在哪（source）——同样由 build.sh 注入。
+//   - which spec was chosen (spec) -- injected by build/build.sh with `-ldflags
+//     -X github.com/rzbdz/newgate-ext/manifest/distinfo.spec=<filename>`;
+//   - what that spec is called and which GitHub repo it ships from --
+//     generated from dist*.json into specs_gen.go by tools/distgen;
+//   - where the source tree that built it is (source) -- also injected by build.sh.
 //
-// # 为什么是一个单独的叶子包
+// # Why it is a separate leaf package
 //
-// 读它的是**模块**（self-update 要知道自己该下哪个产物、该去哪个仓库编），而
-// manifest 包 import 了每一个模块——模块抬头 import manifest 就是编译环。这个包
-// 不 import 本仓库的任何东西，谁都能读。
+// What reads it is **modules** (self-update has to know which artifact to download and which repo
+// to build from), while the manifest package imports every module -- a module importing manifest
+// would be a compile cycle. This package imports nothing from this repo, so anyone can read it.
 //
-// # 为什么 spec 的注入点在这里而不是 main
+// # Why the spec injection point is here and not in main
 //
-// 2026-10-29 之前是 `-X main.spec`：main 读它、交给 manifest.Loader。模块从此读不到
-// 「我是哪份规格书」，只能从版本号前缀里猜 distribution——而那正是产物名的一段，
-// 猜错了就下错产物。现在只有一处注入、两边都读它（main 也从这里取）。
+// Before 2026-10-29 it was `-X main.spec`: main read it and handed it to manifest.Loader. Modules
+// could never read "which spec I am", and could only guess distribution from the version prefix
+// -- which is one segment of the artifact name, and guessing wrong downloads the wrong artifact.
+// Now there is one injection point and both sides read it (main takes it from here too).
 package distinfo
 
-// 由 -ldflags -X 注入（见 build/build.sh）。空值 = `go run` / `go test`。
+// Injected with -ldflags -X (see build/build.sh). Empty = `go run` / `go test`.
 var (
 	spec   string
 	source string
 )
 
-// Info 是一份规格书的身份。
+// Info is a spec's identity.
 type Info struct {
-	// Spec 是规格书文件名（dist.json / dist-dev.json）。
+	// Spec is the spec file name (dist.json / dist-dev.json).
 	Spec string
-	// Distribution 是规格书里的 distribution：产物名与版本号的前缀。
+	// Distribution is distribution from the spec: the prefix of the artifact name and version.
 	Distribution string
-	// GitHub 是发布仓库（`owner/repo`），空 = 这份规格书没声明发在哪。
+	// GitHub is the release repo (`owner/repo`); empty = this spec does not declare where it ships.
 	GitHub string
 }
 
-// Spec 是本次构建选的规格书文件名；没注入时是 DefaultSpec。
+// Spec is the spec file name chosen for this build; when not injected, DefaultSpec.
 func Spec() string {
 	if spec == "" {
 		return DefaultSpec
@@ -45,9 +47,10 @@ func Spec() string {
 	return spec
 }
 
-// Current 是本二进制那份规格书的身份。规格书名不在表里（不该发生：build.sh
-// 只会注入存在的文件名）时只带回文件名，其余为空——调用方据此报「不知道」，
-// 而不是猜一个产物名去下。
+// Current is the identity of this binary's spec. When the spec name
+// is not in the table (which should not happen: build.sh only injects file names
+// that exist), only the file name comes back and the rest is empty -- the caller
+// reports "unknown" from that rather than guessing an artifact name to download.
 func Current() Info {
 	if i, ok := specs[Spec()]; ok {
 		return i
@@ -55,15 +58,17 @@ func Current() Info {
 	return Info{Spec: Spec()}
 }
 
-// Lookup 按文件名查一份规格书的身份。
+// Lookup looks up a spec's identity by file name.
 func Lookup(name string) (Info, bool) {
 	i, ok := specs[name]
 	return i, ok
 }
 
-// Source 是编这个二进制的源码树（仓库根的绝对路径）；没注入时为空。
+// Source is the source tree that built this binary (the
+// absolute path of the repo root); empty when not injected.
 //
-// 它只是一条**线索**：CI 上编的产物带的是 runner 的路径，拿到别的机器上它不存在；
-// 本地编的产物带的是开发者的 checkout。self-update 用它判断「这台机器第一次装的
-// 是不是自己编的」，并且一定会先核实那个目录真的在、真的是本仓库。
+// It is only a **clue**: an artifact built in CI carries the runner's path, which does
+// not exist on another machine; a locally built artifact carries the developer's checkout.
+// self-update uses it to decide "was the first install on this machine built here",
+// and always verifies first that the directory really exists and really is this repo.
 func Source() string { return source }

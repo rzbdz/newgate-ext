@@ -22,19 +22,19 @@ import (
 	upgradeapi "github.com/rzbdz/newgate-ext/modules/upgrade"
 )
 
-// fakeBinary 是一个「会回答 version 的 newgate」：一段 shell 脚本。smoke 只看
-// `version` 的第一行，所以它足够当真二进制用。
+// fakeBinary is a "newgate that answers version": a shell script. smoke reads only
+// `version`'s first line, so it serves as a real binary.
 func fakeBinary(ver string) []byte {
 	return []byte("#!/bin/sh\necho \"newgate " + ver + "\"\n")
 }
 
-// fakeGitHub 起一个最小的 GitHub API：/releases/latest、/releases/tags/<tag> 与产物下载。
+// fakeGitHub starts a minimal GitHub API: /releases/latest, /releases/tags/<tag>, downloads.
 type fakeGitHub struct {
 	srv      *httptest.Server
 	releases map[string]map[string][]byte // tag → 产物名 → 内容
 	latest   string
 	badSum   bool
-	// limited 让 API 一律 403（出口 IP 的额度被别人用光），只剩网页那几条地址。
+	// limited makes the API always 403 (the egress IP's quota spent by others), leaving only web.
 	limited bool
 }
 
@@ -109,7 +109,7 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// harness 是一个装在临时目录里的「当前二进制」+ 指向假 GitHub 的 updater。
+// harness is a "current binary" installed in a temp dir + an updater pointing at the fake GitHub.
 type harness struct {
 	u        *updater
 	target   string
@@ -180,7 +180,7 @@ func TestReleaseUpgradeInstallsAndKeepsPrevious(t *testing.T) {
 		t.Fatalf("restarts = %d, want 1", h.restarts)
 	}
 
-	// rollback 是一个开关：换回去，再换回来。
+	// rollback is a switch: swap back, then swap back again.
 	if v, err := rollback(context.Background(), h.target); err != nil || v != "default-v0.8.0" {
 		t.Fatalf("rollback = %q, %v", v, err)
 	}
@@ -210,7 +210,7 @@ func TestReleaseChecksumMismatchReplacesNothing(t *testing.T) {
 	}
 }
 
-// 下回来的东西跑不起来 / 是别的发行版：不换。
+// What came back cannot run / is another distribution: no swap.
 func TestBrokenOrForeignBinaryIsNotInstalled(t *testing.T) {
 	for name, content := range map[string][]byte{
 		"does not run": []byte("not an executable"),
@@ -245,13 +245,13 @@ func TestReleaseNotNewerIsSkippedWithoutForce(t *testing.T) {
 		}
 	}
 
-	// 手上是一个没打 tag 的提交编的（upgrade@<分支> 钉上去的）：没法比，不替人换。
+	// At hand: built from an untagged commit (pinned via upgrade@<branch>) - cannot compare, no swap.
 	h0 := newHarness(t, gh, "default-d5899f6")
 	if msg, err := h0.u.runMsg(context.Background(), upgradeapi.Request{}); err != nil || h0.installedVersion(t) != "default-d5899f6" {
 		t.Fatalf("untagged build: msg %q err %v; must stay", msg, err)
 	}
 
-	// --force 照样装（开发机想回到正式版）。
+	// --force still installs (a dev machine wants back on stable).
 	h := newHarness(t, gh, "default-v0.8.0-40-gabcdef0")
 	if _, err := h.u.run(context.Background(), upgradeapi.Request{Force: true}); err != nil {
 		t.Fatal(err)
@@ -277,7 +277,7 @@ func TestCheckChangesNothing(t *testing.T) {
 	}
 }
 
-// `upgrade@<tag>`：有 Release 就用 Release（哪怕比手上旧——点名就是要它）。
+// `upgrade@<tag>`: with a Release, use it (even older than at hand - naming it means it).
 func TestPinnedReleaseMayGoBack(t *testing.T) {
 	gh := newFakeGitHub(t)
 	gh.publish("v0.7.0", map[string][]byte{asset: fakeBinary("default-v0.7.0")})
@@ -291,8 +291,8 @@ func TestPinnedReleaseMayGoBack(t *testing.T) {
 	}
 }
 
-// 没有这个 tag 的 Release、或者本平台没有产物：改走源码（这里只用 --check 看它
-// 选了哪条路——真的 clone 要出网）。
+// No Release for this tag, or no artifact for this platform: build from source (here only
+// --check sees which route it took - a real clone would need the network).
 func TestPinnedWithoutReleaseFallsBackToSource(t *testing.T) {
 	if err := requireTools(); err != nil {
 		t.Skip(err)
@@ -301,8 +301,8 @@ func TestPinnedWithoutReleaseFallsBackToSource(t *testing.T) {
 	gh.publish("v0.9.0", map[string][]byte{"newgate-default-darwin-arm64": fakeBinary("default-v0.9.0")})
 	h := newHarness(t, gh, "default-v0.8.0")
 
-	// clone 的前缀换成本地目录：<base>/o/r.git 是一个裸仓库，ls-remote 真的问得到
-	// ref，而测试不出网。
+	// The clone prefix points at a local dir: <base>/o/r.git is a bare repo, ls-remote really
+	// asks it for refs, and the test never leaves the machine.
 	base := t.TempDir() + "/"
 	origin := filepath.Join(base, "o", "r.git")
 	seed := filepath.Join(t.TempDir(), "seed")
@@ -324,15 +324,15 @@ func TestPinnedWithoutReleaseFallsBackToSource(t *testing.T) {
 		t.Fatal("a ref the remote does not have must fail before any clone")
 	}
 
-	// 本平台没有产物：同样改走源码。
+	// No artifact for this platform: build from source too.
 	msg, err = h.u.runMsg(context.Background(), upgradeapi.Request{Check: true})
 	if err != nil || !strings.Contains(msg, "v0.9.0") || !strings.Contains(msg, "clone") {
 		t.Fatalf("no asset for this platform: msg %q err %v; want a source build of v0.9.0", msg, err)
 	}
 }
 
-// API 额度被同一出口的别人用光时，退回 github.com 的网页地址：latest 跟重定向、
-// tag 看 200/404、产物清单读 SHA256SUMS。拿到的东西要和 API 那条一样能装、能校验。
+// When the API quota is spent by others on the same egress, fall back to github.com's
+// web pages: latest follows redirects, tag 200/404, artifacts from SHA256SUMS; same install.
 func TestRateLimitedAPIFallsBackToTheWebEndpoints(t *testing.T) {
 	gh := newFakeGitHub(t)
 	gh.limited = true
@@ -356,7 +356,7 @@ func TestRateLimitedAPIFallsBackToTheWebEndpoints(t *testing.T) {
 		t.Fatalf("missing tag via web = %v, want errNoRelease", err)
 	}
 
-	// 校验照样生效。
+	// Verification still applies.
 	gh2 := newFakeGitHub(t)
 	gh2.limited, gh2.badSum = true, true
 	gh2.publish("v0.9.0", map[string][]byte{asset: fakeBinary("default-v0.9.0")})
@@ -366,13 +366,13 @@ func TestRateLimitedAPIFallsBackToTheWebEndpoints(t *testing.T) {
 	}
 }
 
-// runMsg 是测试里的便捷形：只要那句话。
+// runMsg is the test shorthand: just the sentence.
 func (u *updater) runMsg(ctx context.Context, req upgradeapi.Request) (string, error) {
 	r, err := u.run(ctx, req)
 	return r.Message, err
 }
 
-// 「没什么可做」要以 UpToDate 报出来：upgrade 据此不再追问 y/N。
+// "Nothing to do" must report as UpToDate: upgrade then stops asking y/N.
 func TestNothingToDoIsReportedAsUpToDate(t *testing.T) {
 	gh := newFakeGitHub(t)
 	gh.publish("v0.8.0", map[string][]byte{asset: fakeBinary("default-v0.8.0")})
@@ -396,7 +396,7 @@ func TestParseSums(t *testing.T) {
 	}
 }
 
-// 装进图里：往 upgrade 登记一个认识版本的 `binary` 动作，Stop 时撤销。
+// Into the graph: register a version-aware `binary` action with upgrade, undo in Stop.
 func TestModuleRegistersVersionedBinaryAction(t *testing.T) {
 	testkit.Sandbox(t)
 	g := testkit.Start(t, upgradeapi.New(), New())
@@ -419,9 +419,9 @@ func TestModuleRegistersVersionedBinaryAction(t *testing.T) {
 	}
 }
 
-// 换上去之后才失败（daemon 交接不上 / 新进程起不来 / 不答话）：自动换回旧版，
-// 再用旧版把 daemon 拉回来。这是「任何一步失败都要能退回去」里最要紧的一条——
-// 失败发生在二进制已经换掉之后。
+// Failing only after the swap (handoff / new process / no answer): swap back to the old
+// version automatically, then bring the daemon back with it - the most important part of
+// "any step failing must be reversible": it fails after the binary is already replaced.
 func TestHandoffFailureRollsBack(t *testing.T) {
 	gh := newFakeGitHub(t)
 	gh.publish("v0.9.0", map[string][]byte{asset: fakeBinary("default-v0.9.0")})
@@ -445,13 +445,13 @@ func TestHandoffFailureRollsBack(t *testing.T) {
 	if strings.Join(ranWith, ",") != "default-v0.9.0,default-v0.8.0" {
 		t.Fatalf("restarted with %v, want the new one, then the old one", ranWith)
 	}
-	// 坏掉的那份留成 .prev（想再试可以 rollback），不是被删掉。
+	// The broken copy is kept as .prev (rollback can retry), not deleted.
 	if v, _ := smoke(context.Background(), h.target+".prev"); v != "default-v0.9.0" {
 		t.Fatalf(".prev = %s, want the failed new version", v)
 	}
 }
 
-// 退路上 daemon 也拉不回来：二进制照样换回旧版，并且明说要手动 start。
+// On the way back the daemon cannot be revived either: swap the old binary back, and say start.
 func TestHandoffFailureWhenTheOldDaemonDoesNotComeBackEither(t *testing.T) {
 	gh := newFakeGitHub(t)
 	gh.publish("v0.9.0", map[string][]byte{asset: fakeBinary("default-v0.9.0")})
@@ -466,7 +466,7 @@ func TestHandoffFailureWhenTheOldDaemonDoesNotComeBackEither(t *testing.T) {
 	}
 }
 
-// 下载/构建被 Ctrl-C 打断会在 bin 目录里留下候选；下一次升级（持锁）清掉它们。
+// A download/build interrupted by Ctrl-C leaves candidates in bin/; the next upgrade clears.
 func TestStaleCandidatesAreCleanedUp(t *testing.T) {
 	gh := newFakeGitHub(t)
 	gh.publish("v0.9.0", map[string][]byte{asset: fakeBinary("default-v0.9.0")})

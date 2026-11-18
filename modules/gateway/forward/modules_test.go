@@ -35,7 +35,7 @@ func TestMain(m *testing.M) {
 	os.Setenv("NEWGATE_HOME", dir)
 	if _, err := store.Init(false); err != nil {
 		_ = os.RemoveAll(dir)
-		panic("铺测试配置失败: " + err.Error())
+		panic("seeding the test config failed: " + err.Error())
 	}
 
 	// The graph is the distribution's flagship spec: this package tests how a

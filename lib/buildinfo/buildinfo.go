@@ -1,17 +1,20 @@
-// Package buildinfo 是**链接期注入的构建信息**：版本号、构建时间、提交时间。
+// Package buildinfo holds **build information injected
+// at link time**: version, build time, commit time.
 //
-// # 为什么它是一个独立的叶子（2026-09-18）
+// # Why it is a standalone leaf (2026-09-18)
 //
-// 这几个值原来只有 modules/cli 看得见（`cli.Version` 那一组包级变量），因为只有
-// 界面在打印版本。但**守护进程也要打**——它启动时写的日志行 `newgate <版本> …
-// 启动` 是排查「线上跑的是哪一版」的唯一线索（CLAUDE.md §0.1 就靠它判断线上
-// checkout）。守护进程的主循环已经搬去 gateway，于是那几个值不能再锁在界面里。
+// These values used to be visible only to modules/cli (the `cli.Version` group of package-level
+// variables), because only the UI printed the version. But the **daemon must print it too**
+// -- the log line it writes at startup, `newgate <version> … started`, is the only clue for "which
+// version is running in production" (CLAUDE.md §0.1 relies on it to judge the production checkout).
+// The daemon main loop has moved to gateway, so those values cannot stay locked inside the UI.
 //
-// 放在 lib/ 而不是某个模块：它是**进程级事实**，不属于任何一个模块。组合根
-// （main）注入一次，谁要谁读。
+// Why lib/ and not a module: it is a **process-level fact** and belongs to no
+// module. The composition root (main) injects it once, and whoever needs it reads it.
 //
-// 与「不静默」那条规矩的关系：版本号是用户判断「我这一发是不是新版本的行为」的
-// 唯一依据，所以它必须到处都能拿到，而不是只有某一个命令打得出。
+// Relation to the "never silent" rule: the version is the only basis for
+// the user to judge "is what I am seeing the new version's behavior",
+// so it must be reachable everywhere, not only printable by one command.
 package buildinfo
 
 import (
@@ -20,15 +23,15 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// 由组合根通过 Set 注入（ldflags → main → 这里）。零值对开发者友好：make build
-// 出来的本机二进制就该显示 dev。
+// Injected by the composition root through Set (ldflags -> main -> here). The zero
+// value is developer-friendly: a local binary from make build should show dev.
 var (
 	version    = "dev"
 	buildTime  = "unknown"
 	commitTime = "unknown"
 )
 
-// Set 注入本次构建的信息。组合根在装配完成后调一次。
+// Set injects this build's information. The composition root calls it once after assembly.
 func Set(v, built, committed string) {
 	if v != "" {
 		version = v
@@ -41,27 +44,28 @@ func Set(v, built, committed string) {
 	}
 }
 
-// Version 版本号（`newgate --version` 与守护进程启动日志都用它）。
+// Version is the version string (`newgate --version` and the daemon startup log both use it).
 func Version() string { return version }
 
-// BuildTimeDisplay 构建时间的展示串。
+// BuildTimeDisplay is the display string for the build time.
 func BuildTimeDisplay() string { return StampDisplay(buildTime) }
 
-// VersionLine 是 `newgate version` 的三行输出。
+// VersionLine is the three-line output of `newgate version`.
 //
-// `newgate ` 那个前缀是程序名（机器标记），留在消息外面。
+// The `newgate ` prefix is the program name (a machine marker) and stays outside the message.
 func VersionLine() string {
 	return "newgate " + version +
 		i18n.T("\n  built at {time}", i18n.A{"time": BuildTimeDisplay()}) +
 		i18n.T("\n  committed at {time}", i18n.A{"time": StampDisplay(commitTime)})
 }
 
-// StampDisplay 把 ldflags 里的时间戳渲染成**一个**本地时间。
+// StampDisplay renders the timestamp from ldflags as **one** local time.
 //
-// 2026-09-18 之前界面里印两个时间（UTC 原文 + 换算出本地），因为 Makefile 用
-// `date -u` 打 UTC，而 commitTime 走 git 的本地时间——同一行两个时区，看的人得
-// 自己换算。现在 Makefile 统一打本地时区（`%z` 带偏移），这里也就只印一个。
-// 解析不了（dev 构建没注入，值是 "unknown"）就原样回，不硬凑。
+// Before 2026-09-18 the UI printed two times (raw UTC + converted local), because the Makefile
+// stamped UTC with `date -u` while commitTime used git's local time -- two time zones on
+// one line, and the reader had to convert. Now the Makefile stamps the local zone throughout
+// (`%z` with offset), so only one is printed here. If it cannot be parsed (a dev build
+// injects nothing, the value is "unknown"), return it as is instead of forcing something.
 func StampDisplay(s string) string {
 	if t, err := time.Parse("2006-01-02_15:04:05Z0700", s); err == nil {
 		return t.Local().Format("2006-01-02 15:04:05 MST")
@@ -69,7 +73,7 @@ func StampDisplay(s string) string {
 	return pretty(s)
 }
 
-// pretty ldflags 传不了空格，用下划线占位，展示时换回。
+// pretty: ldflags cannot carry spaces, so underscores stand in and are swapped back for display.
 func pretty(s string) string {
 	out := make([]rune, 0, len(s))
 	for _, r := range s {

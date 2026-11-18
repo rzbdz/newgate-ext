@@ -11,7 +11,7 @@ import (
 	"github.com/rzbdz/newgate-ext/modules/config/domain"
 )
 
-// stateWith 造一个只带 plugin_manager 字段的 state 快照。
+// stateWith builds a state snapshot carrying only the plugin_manager field.
 func stateWith(t *testing.T, cfg Config) *domain.State {
 	t.Helper()
 	raw, err := cfg.Marshal()
@@ -22,11 +22,11 @@ func stateWith(t *testing.T, cfg Config) *domain.State {
 }
 
 func TestOffDefaultsToFalse(t *testing.T) {
-	// 用户没动过 = 没关。这条是 kill switch 语义的地基：出厂开着的补丁
-	// 不能因为「没配置」就被关掉。
+	// Untouched = not off. This is the foundation of kill switch semantics: a patch
+	// that is on by default must not be disabled by "no configuration".
 	for _, st := range []*domain.State{nil, {}, stateWith(t, Config{})} {
 		if Off(st, "deepseek.tail-shape") {
-			t.Fatalf("没设过的开关点不该是「已关」: %+v", st)
+			t.Fatalf("a switch point never set must not be 'off': %+v", st)
 		}
 	}
 }
@@ -34,52 +34,52 @@ func TestOffDefaultsToFalse(t *testing.T) {
 func TestOffHonoursExplicitSetting(t *testing.T) {
 	st := stateWith(t, Config{Off: map[string]Entry{"deepseek.tail-shape": {}}})
 	if !Off(st, "deepseek.tail-shape") {
-		t.Fatal("显式关掉的开关点应该是「已关」（空 Until = 不限时）")
+		t.Fatal("an explicitly disabled switch point should be 'off' (empty Until = no time limit)")
 	}
 	if Off(st, "deepseek.inject-thinking") {
-		t.Fatal("没被关的那条不该受影响")
+		t.Fatal("the one that was not disabled must not be affected")
 	}
 }
 
 func TestOffExpiresLazily(t *testing.T) {
-	// 懒过期：没人在后台扫，读的时候比一下时间。过期当没设过。
+	// Lazy expiry: no background scan, the read compares times. Expired = never set.
 	st := stateWith(t, Config{Off: map[string]Entry{
 		"deepseek.tail-shape":      {Until: time.Now().Add(-time.Second)},
 		"deepseek.inject-thinking": {Until: time.Now().Add(time.Hour)},
 	}})
 	if Off(st, "deepseek.tail-shape") {
-		t.Fatal("过期的设定应该当没设过")
+		t.Fatal("an expired setting should be treated as never set")
 	}
 	if !Off(st, "deepseek.inject-thinking") {
-		t.Fatal("没过期的设定应该还在")
+		t.Fatal("an unexpired setting should still be there")
 	}
 }
 
 func TestOffAndOnAreSeparateTables(t *testing.T) {
-	// 两张表独立：Off 看 Off 表，On 看 On 表。一条 Path 只会出现在其中一张里，
-	// 由 CLI 按 Switch.Default 决定——这样热路径两个函数都不必查注册表。
+	// Two independent tables: Off reads Off, On reads On. A Path is in only one,
+	// picked by the CLI from Switch.Default - so neither hot-path function needs the registry.
 	st := stateWith(t, Config{On: map[string]Entry{"gateway.passthrough": {}}})
 	if Off(st, "gateway.passthrough") {
-		t.Fatal("On 表里的设定不该被 Off() 看见")
+		t.Fatal("a setting in the On table must not be seen by Off()")
 	}
 	if !On(st, "gateway.passthrough") {
-		t.Fatal("On() 应该看见 On 表里的设定")
+		t.Fatal("On() should see settings in the On table")
 	}
 	if On(st, "deepseek.tail-shape") {
-		t.Fatal("没设过的 mode 不该是「已开」")
+		t.Fatal("a mode never set must not be 'on'")
 	}
 }
 
 func TestParseNeverFails(t *testing.T) {
-	// fail-open：坏 JSON 一律当「什么都没设过」。绝不因为一段坏配置把某个
-	// 功能关掉——那比不生效更糟，因为它静默。
+	// fail-open: bad JSON always reads as "nothing was ever set". Never disable a
+	// feature over a broken config - worse than not working, because it is silent.
 	for _, raw := range [][]byte{
-		nil, {}, []byte("not json"), []byte(`{"off": "不是 map"}`),
+		nil, {}, []byte("not json"), []byte(`{"off": "not a map"}`),
 		[]byte(`{"off": {"a": 123}}`), []byte(`[]`),
 	} {
 		st := &domain.State{ModuleConfig: map[string][]byte{StateKey: raw}}
 		if Off(st, "deepseek.tail-shape") {
-			t.Fatalf("坏配置不该被解释成「已关」: %q", raw)
+			t.Fatalf("a broken config must not be interpreted as 'off': %q", raw)
 		}
 	}
 }
@@ -95,14 +95,14 @@ func TestConfigRoundTrips(t *testing.T) {
 	}
 	got := Parse(raw)
 	if !got.Off["deepseek.tail-shape"].Until.Equal(want.Off["deepseek.tail-shape"].Until) {
-		t.Fatalf("Until 没往返回来: %+v", got.Off)
+		t.Fatalf("Until did not round trip: %+v", got.Off)
 	}
 	if _, ok := got.On["gateway.passthrough"]; !ok {
-		t.Fatalf("On 表没往返回来: %+v", got.On)
+		t.Fatalf("the On table did not round trip: %+v", got.On)
 	}
-	// 不限时的那条不能因为 omitempty 变成「有值」。
+	// The unlimited one must not turn into "present" through omitempty.
 	if !got.On["gateway.passthrough"].Until.IsZero() {
-		t.Fatal("不限时应该是零值 Until")
+		t.Fatal("no time limit should be a zero Until")
 	}
 }
 
@@ -116,13 +116,13 @@ func TestPruneDropsExpiredOnly(t *testing.T) {
 	}
 	got := cfg.Prune()
 	if _, ok := got.Off["a.x"]; ok {
-		t.Fatal("过期项该被清掉")
+		t.Fatal("an expired entry should be cleared")
 	}
 	if _, ok := got.Off["b.y"]; !ok {
-		t.Fatal("未过期项不该被清掉")
+		t.Fatal("an unexpired entry must not be cleared")
 	}
 	if _, ok := got.Off["c.z"]; !ok {
-		t.Fatal("不限时项不该被清掉")
+		t.Fatal("an entry with no time limit must not be cleared")
 	}
 }
 
@@ -133,31 +133,31 @@ func TestRemaining(t *testing.T) {
 		On:  map[string]Entry{"gateway.passthrough": {}},
 	})
 	if got := Remaining(st, "deepseek.tail-shape"); !got.Equal(until) {
-		t.Fatalf("Remaining = %v, 想要 %v", got, until)
+		t.Fatalf("Remaining = %v, want %v", got, until)
 	}
-	// 不限时的返回零值（调用方据此决定要不要显示「还有 …」）。
+	// Unlimited returns the zero value (callers decide whether to show "42s left").
 	if got := Remaining(st, "gateway.passthrough"); !got.IsZero() {
-		t.Fatalf("不限时该返回零值，得到 %v", got)
+		t.Fatalf("no time limit should return the zero value, got %v", got)
 	}
-	if got := Remaining(st, "没这条"); !got.IsZero() {
-		t.Fatalf("没设过的该返回零值，得到 %v", got)
+	if got := Remaining(st, "no such entry"); !got.IsZero() {
+		t.Fatalf("never set should return the zero value, got %v", got)
 	}
 }
 
-// TestQueryIsPure 守的是这个包最重要的一条纪律：Off/On 跑在转发热路径上、
-// 每个请求都要调，所以它们**只读传进来的配置快照**——无锁、无 IO、不查注册表、
-// 不开文件。
+// TestQueryIsPure guards this package's top discipline: Off/On run on the forwarding
+// hot path on every request, so they **only read the config snapshot passed in** - no
+// lock, no IO, no registry lookup, no file.
 //
-// 为什么用解析 import 而不是靠 review：这条纪律一旦破了，症状是「转发循环里多了
-// 一把锁」或「CLI 改了配置但 daemon 读到的是另一份」——都很晚才被发现。而它同时
-// 还是一条**缝**：将来要让共享配置层统一治理车队（共享层 overlay + 机器本地层，
-// 本地优先），做法是共享层把值合并进快照，这两个函数一个字都不用改。谁让
-// query.go 自己去读文件，这条缝就焊死了。
+// Why check imports instead of review: once broken, the symptom is "one more lock in
+// the forwarding loop" or "CLI changed the config but the daemon reads another copy" -
+// both found very late. It is also a **seam**: a shared config layer governing a fleet
+// later (shared overlay + machine-local, local first) merges values into the snapshot
+// and these two functions do not change; let query.go read files and it is welded shut.
 func TestQueryIsPure(t *testing.T) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, "query.go", nil, parser.ImportsOnly)
 	if err != nil {
-		t.Fatalf("解析 query.go: %v", err)
+		t.Fatalf("parsing query.go: %v", err)
 	}
 	allowed := map[string]bool{
 		strconv.Quote("time"): true,
@@ -165,25 +165,25 @@ func TestQueryIsPure(t *testing.T) {
 	}
 	for _, imp := range f.Imports {
 		if !allowed[imp.Path.Value] {
-			t.Fatalf("query.go 多了一个 import %s —— 热路径查询必须是纯函数："+
-				"只读传进来的 *domain.State，不许查注册表、不许开文件、不许读环境变量。"+
-				"见 TestQueryIsPure 的注释（它还是一条给共享配置层留的缝）。",
+			t.Fatalf("query.go gained an import %s - hot-path queries must be pure functions:"+
+				"read only the *domain.State passed in, do not consult registries, do not open files, do not read environment variables."+
+				"see the comment on TestQueryIsPure (it is also a seam left for the shared config layer).",
 				imp.Path.Value)
 		}
 	}
 }
 
-// TestOffIsDeterministic 同一个快照调一千次结果必须一致，且不修改它。
+// TestOffIsDeterministic: a thousand calls on one snapshot must agree, and not modify it.
 func TestOffIsDeterministic(t *testing.T) {
 	st := stateWith(t, Config{Off: map[string]Entry{"deepseek.tail-shape": {}}})
 	before, _ := json.Marshal(st.ModuleConfig)
 	for i := 0; i < 1000; i++ {
 		if !Off(st, "deepseek.tail-shape") {
-			t.Fatalf("第 %d 次结果变了", i)
+			t.Fatalf("the result changed on attempt %d", i)
 		}
 	}
 	after, _ := json.Marshal(st.ModuleConfig)
 	if string(before) != string(after) {
-		t.Fatal("Off() 改动了传进来的快照")
+		t.Fatal("Off() modified the snapshot passed in")
 	}
 }

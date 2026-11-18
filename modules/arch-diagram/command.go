@@ -10,13 +10,15 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// `newgate arch`：告诉用户这张图在哪儿。
+// `newgate arch`: tells the user where this diagram is.
 //
-// 与 `newgate web` 同一条理由：地址是端口与前缀相乘出来的，两个都不在用户脑子里，
-// 而猜错的症状是「打不开」——看不出是端口不对还是路径不对。
+// Same reason as `newgate web`: the address is port times prefix, both of
+// which are in no user's head, and the symptom of guessing wrong is "it does
+// not open" -- you cannot tell whether the port is wrong or the path is wrong.
 //
-// 它顺带说清**这次扫得到扫不到 import**：那张图有一半要源码树（见 handler.go）。
-// 不说的话，部署出去的机器上打开一看只有装配图，用户会以为图坏了。
+// It also states plainly **whether this run can scan imports**: half of that diagram
+// needs a source tree (see handler.go). Without saying so, a machine in deployment
+// opens it, sees only the assembly diagram, and the user thinks the diagram is broken.
 type archCommand struct{ svc *service }
 
 var (

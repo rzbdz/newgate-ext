@@ -7,13 +7,14 @@ import (
 	"github.com/rzbdz/newgate-ext/testing/testkit"
 )
 
-// 这一族锁的是「codex 用自己的模型名」这件事的两半：
+// This family pins both halves of "codex uses its own model names":
 //
-//	哪一档该写成 codex 的哪个名字（rename 模式，写进 config.toml）
-//	哪个名字该认回哪一档（请求进来时，靠动态角色）
+//	which codex name to write for which tier (rename mode, written into config.toml)
+//	which tier to recognize which name as (when the request arrives, via dynamic roles)
 //
-// 两半用的是**同一张表**，所以最容易坏的错是「两边对不上」——那不会让任何东西
-// 报错，只会让用户在 codex 里选了 gpt-5.6-luna，落到一个谁也说不清的档位上。
+// Both halves use the **same table**, so the most easily broken error is
+// "the two sides disagree" -- which makes nothing error, it just makes the
+// user pick gpt-5.6-luna in codex and land on some tier nobody can explain.
 func seedModels(t *testing.T, body string) {
 	t.Helper()
 	testkit.Sandbox(t)
@@ -24,79 +25,86 @@ func seedModels(t *testing.T, body string) {
 
 func TestModeDefaultsToTakeoverAndRoundTrips(t *testing.T) {
 	testkit.Sandbox(t)
-	// 文件还不存在时是 takeover：**不变更任何人的现状**（那是 2026-09-21 之前
-	// 唯一的行为，老装配升上来不该突然按新模式接管）。
+	// When the file does not exist it is takeover: **changing no one's
+	// current state** (that was the only behavior before 2026-09-21, and an
+	// old assembly upgraded should not suddenly take over in the new mode).
 	if got := Mode(); got != ModeTakeover {
-		t.Fatalf("没有这份文件时模式是 %q，应当是 %q", got, ModeTakeover)
+		t.Fatalf("without this file the mode is %q, should be %q", got, ModeTakeover)
 	}
 	if err := SetMode(ModeRename); err != nil {
 		t.Fatal(err)
 	}
 	if got := Mode(); got != ModeRename {
-		t.Fatalf("写下 rename 之后读回来是 %q", got)
+		t.Fatalf("after writing rename it reads back as %q", got)
 	}
-	// 认不出来的值一律**当成缺省**，不写进文件里当第三种模式。
+	// Unrecognized values are always treated as the **default**, never a third mode in the file.
 	if err := SetMode("banana"); err != nil {
 		t.Fatal(err)
 	}
 	if got := Mode(); got != ModeTakeover {
-		t.Fatalf("写了个不认识的值之后模式是 %q，应当回落到 %q", got, ModeTakeover)
+		t.Fatalf("after writing an unknown value the mode is %q, should fall back to %q", got, ModeTakeover)
 	}
 }
 
-// TestTheTableComesFromTheFileOnceItHasOne 锁的是「界面上那张表所见即所得」。
+// TestTheTableComesFromTheFileOnceItHasOne pins "the
+// table in the UI is what you see is what you get".
 //
-// 语义 2026-09-21 改过一次：原来是「出厂值叠加文件」（手写很舒服，加一行就是加一行），
-// 但做成界面上的表之后它是错的——用户在卡上删掉一行、保存，读的时候出厂值又把它顶
-// 回来了：界面显示删除成功，实际什么也没发生。
+// The semantics changed once on 2026-09-21: it used to be "factory values overlaid with
+// the file" (comfortable to hand-write; one line adds one line), but once it became a table
+// in the UI it was wrong -- the user deletes a row on the card and saves, and on read the
+// factory value pushes it back: the UI shows the delete succeeded while nothing happened.
 //
-// 所以现在是：文件里**有** models 这一段，它就是全部；没有才用出厂那五条。
-// 这同时意味着「出厂那几条不会因为文件里没抄一遍就消失」只在**没有那一段**时成立。
+// So now: if the file **has** a models section, that is everything; only without
+// it are the five factory ones used. This also means "the factory ones do not vanish
+// just because the file did not copy them" holds only when **that section is absent**.
 func TestTheTableComesFromTheFileOnceItHasOne(t *testing.T) {
-	// 没有那一段（只写了 mode）→ 出厂五条照旧。
+	// No such section (only mode written) -> the five factory ones as usual.
 	seedModels(t, `{"mode":"rename"}`)
 	if got := len(effectiveModels()); got != len(defaultModels) {
-		t.Errorf("文件里没有 models 那一段时应当用出厂表（%d 条），得到 %d 条", len(defaultModels), got)
+		t.Errorf("with no models section in the file it should use the factory table (%d entries), got %d", len(defaultModels), got)
 	}
 
-	// 有了那一段 → 它就是全部，出厂值不再参与。
+	// With the section -> it is everything; factory values no longer participate.
 	seedModels(t, `{"models":[{"slug":"gpt-7-nova","tier":"heavy"}]}`)
 	got := effectiveModels()
 	if len(got) != 1 || got[0].Slug != "gpt-7-nova" {
-		t.Fatalf("文件里有 models 时应当以它为准，得到 %+v", got)
+		t.Fatalf("when the file has models, use it, got %+v", got)
 	}
-	// 空数组也是「有」：那是用户把表清空了，不是「还没配」。
+	// An empty array is also "has": the user emptied the table, not "not configured yet".
 	seedModels(t, `{"models":[]}`)
 	if got := len(effectiveModels()); got != 0 {
-		t.Errorf("空数组是明确的「没有映射」，出厂值不该顶回来，得到 %d 条", got)
+		t.Errorf("an empty array means an explicit 'no mapping'; factory values must not come back, got %d entries", got)
 	}
 }
 
-// TestModelForFallsBackInsteadOfFailing：反查不到时回空串，调用方回落到档位名。
+// TestModelForFallsBackInsteadOfFailing: when the reverse lookup fails,
+// return the empty string and the caller falls back to the tier name.
 //
-// 一张被改窄的表不该让接管写不出东西——那只是「这一档没有对应的 codex 模型」。
+// A narrowed table should not make takeover unable to write anything
+// -- it just means "this tier has no corresponding codex model".
 func TestModelForFallsBackInsteadOfFailing(t *testing.T) {
-	// 文件里**没有** models 那一段 → 出厂表生效。
+	// The file has **no** models section -> the factory table applies.
 	seedModels(t, `{"mode":"rename"}`)
 	if got := modelFor("heavy"); got != "gpt-6-astra" {
-		t.Errorf("heavy 反查成 %q，应当是 gpt-6-astra（出厂表）", got)
+		t.Errorf("heavy resolves to %q, should be gpt-6-astra (factory table)", got)
 	}
 	if got := modelFor("nonexistent-tier"); got != "" {
-		t.Errorf("没有对应模型的档位应当回空串（调用方据此回落成档位名），得到 %q", got)
+		t.Errorf("a tier with no matching model should give an empty string (the caller then falls back to the tier name), got %q", got)
 	}
 	if got := modelFor(""); got != "" {
-		t.Errorf("空档位应当回空串，得到 %q", got)
+		t.Errorf("an empty tier should give an empty string, got %q", got)
 	}
 }
 
-// TestRolesAreContributedOnlyInRenameMode 是这次改动里**最要紧**的一条。
+// TestRolesAreContributedOnlyInRenameMode is the **most important** test in this change.
 //
-// 这些名字一旦登记成动态角色，`IsKnownRole` 就为真，于是「具体模型名反解回它所属
-// 档位、并把点名的模型放最前」那条路被短路。而那条路是**别的客户端**在用的：本机
-// smt-codex 的链上就挂着 gpt-5.6-terra。无条件登记 = 悄悄改掉没让路的人的行为。
+// Once these names are registered as dynamic roles, `IsKnownRole` is true, so the path "resolve
+// a concrete model name back to its tier, putting the named model first" is short-circuited. And
+// that path is what **other clients** use: this machine's smt-codex chain carries gpt-5.6-terra.
+// Unconditional registration = quietly changing the behavior of people who did not opt in.
 //
-// 所以这条测试钉的是「不让路的人不受影响」：takeover 模式下这个提供者必须**一个
-// 角色都不贡献**。
+// So this test pins "people who did not opt in are unaffected":
+// in takeover mode this provider must contribute **not one role**.
 func TestRolesAreContributedOnlyInRenameMode(t *testing.T) {
 	testkit.Sandbox(t)
 	rs, err := rolesProvider{}.Roles()
@@ -104,8 +112,8 @@ func TestRolesAreContributedOnlyInRenameMode(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(rs) != 0 {
-		t.Errorf("takeover 模式下贡献了 %d 个角色，应当是 0 个——"+
-			"登记它们会短路掉「具体模型名反解回档位」那条路，而那条路上走着别人的请求", len(rs))
+		t.Errorf("in takeover mode %d roles were contributed, should be 0 - "+
+			"registering them would short-circuit the 'concrete model name resolves back to a tier' path, and other people's requests travel over that path", len(rs))
 	}
 
 	if err := SetMode(ModeRename); err != nil {
@@ -116,52 +124,53 @@ func TestRolesAreContributedOnlyInRenameMode(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(rs) == 0 {
-		t.Fatal("rename 模式下也一个角色都没贡献——那 codex 发的模型名会 404")
+		t.Fatal("in rename mode not a single role was contributed either - then codex's model names would 404")
 	}
 	byKey := map[string]string{}
 	for _, r := range rs {
 		byKey[r.Key] = r.Default
 	}
-	// 逐个对一遍出厂表：**两边是同一张表**，对不上就是「在 codex 里选了谁、
-	// 落到哪一档说不清」。
+	// Check the factory table one by one: **both sides are the same table**, and a mismatch
+	// means "whoever was picked in codex, which tier it lands on is unexplainable".
 	for _, want := range defaultModels {
 		if byKey[want.Slug] != want.Tier {
-			t.Errorf("角色 %s 的缺省档位是 %q，表里写的是 %q", want.Slug, byKey[want.Slug], want.Tier)
+			t.Errorf("the default tier of role %s is %q, the table says %q", want.Slug, byKey[want.Slug], want.Tier)
 		}
 	}
 }
 
-// TestRenameModeWritesCodexModelNames：模式的**全部意义**就在这一条断言上。
+// TestRenameModeWritesCodexModelNames: the mode's **whole point** is in this one assertion.
 //
-// takeover 模式写档位名（codex 只认一个模型，切不动）；rename 模式写 codex 自己的
-// 模型名，于是它的选择器里每一项都认得，而每一项进来时被认回档位。
+// takeover mode writes the tier name (codex knows only one model, cannot
+// switch); rename mode writes codex's own model names, so every entry in its
+// picker is recognized, and every entry is mapped back to a tier when it arrives.
 func TestRenameModeWritesCodexModelNames(t *testing.T) {
 	testkit.Sandbox(t)
 	seedModels(t, `{"mode":"rename","models":[{"slug":"gpt-7-nova","tier":"heavy"},
 	                                        {"slug":"gpt-5.6-luna","tier":"normal"}]}`)
 
-	// 槽位表没写过 → 两个槽位都用登记时的缺省档位（都是 normal，见 agent.go）。
+	// The slot table was never written -> both slots use the registration default (normal).
 	got := slotValue("model")
 	if got == "normal" {
-		t.Fatal("rename 模式下写出去的还是档位名——那次切换等于没发生")
+		t.Fatal("in rename mode it still writes the tier name - that switch did not happen")
 	}
 	if got != "gpt-5.6-luna" {
-		t.Errorf("normal 档对应的 codex 模型是 %q，应当是表里那条 gpt-5.6-luna", got)
+		t.Errorf("the codex model for the normal tier is %q, should be the gpt-5.6-luna entry in the table", got)
 	}
-	// 表里**没有**的档位：回落成档位名（不报错、也不是空串）。
-	// 这是「所见即所得」的代价，也是它该有的样子——界面上那张表里没有 light，
-	// 那就没有哪个 codex 模型名能代表 light。
+	// A tier **not in** the table: falls back to the tier name (no error, and not the empty
+	// string). This is the cost of "what you see is what you get", and how it should be --
+	// there is no light in the table in the UI, so no codex model name can represent light.
 	if got := modelFor("light"); got != "" {
-		t.Errorf("light 不在表里，反查应当是空串，得到 %q", got)
+		t.Errorf("light is not in the table, so the reverse lookup should be an empty string, got %q", got)
 	}
-	// 文件里那条也反查得到（它是此刻唯一的一条 heavy）。
+	// The one in the file is also reverse-lookup-able (it is the only heavy right now).
 	if got := modelFor("heavy"); got != "gpt-7-nova" {
-		t.Errorf("heavy 反查成 %q，应当是 gpt-7-nova", got)
+		t.Errorf("heavy resolves to %q, should be gpt-7-nova", got)
 	}
-	// 而表里没有的档位回空串（调用方回落成档位名）。文件里只写了一条，
-	// 所以 light 此刻**没有**对应的 codex 模型——这是「所见即所得」的代价，
-	// 也是它该有的样子：界面上那张表只有一行。
+	// And a tier not in the table gives the empty string (the caller falls back to the tier name). The
+	// file only wrote one entry, so light now has **no** corresponding codex model -- this is the cost
+	// of "what you see is what you get", and how it should be: the table in the UI has only one row.
 	if got := modelFor("light"); got != "" {
-		t.Errorf("light 不在表里，反查应当是空串，得到 %q", got)
+		t.Errorf("light is not in the table, so the reverse lookup should be an empty string, got %q", got)
 	}
 }

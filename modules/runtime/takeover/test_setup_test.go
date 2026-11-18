@@ -17,10 +17,10 @@ func (catalog testCatalog) Get(id string) (*agentapi.Agent, bool) {
 	return agent, ok
 }
 
-// Installer / Facts / Installed 补齐目录端口（见 agentapi.AgentCatalog），走真实现那条判据。
+// Installer / Facts / Installed complete the catalog port (agentapi.AgentCatalog); same criterion.
 func (catalog testCatalog) Facts(string) agentapi.AgentFacts { return nil }
 
-// Installer：这些测试不验安装，一律没有（那就不提供自助安装）。
+// Installer: these tests do not verify installs, so none (no self-install offered).
 func (catalog testCatalog) Installer(string) agentapi.AgentInstaller { return nil }
 
 func (catalog testCatalog) Installed(id string) bool {
@@ -36,11 +36,11 @@ func (catalog testCatalog) Names() []string {
 	return names
 }
 
-// fakeConfigTakeover 是测试专用的最小 ConfigTakeover：这个包测的是
-// shim/config 两种接管机制怎么选、怎么切换，不测某个具体客户端插件的
-// 改写逻辑，所以不该依赖 opencodeomo 这种可选插件模块（那会把
-// runtime/takeover 的测试和 cli → runtime/takeover 的生产依赖拼成环，
-// 2026-09-17 实测触发）。
+// fakeConfigTakeover is a test-only minimal ConfigTakeover: this package tests how the
+// shim/config mechanisms are chosen and switched, not a specific client plugin's rewrite
+// logic, so it must not depend on optional plugin modules like opencodeomo (that would
+// make runtime/takeover's tests and cli -> runtime/takeover's production dependency a
+// cycle, hit live on 2026-09-17).
 type fakeConfigTakeover struct{}
 
 func (fakeConfigTakeover) Targets() []string       { return nil }
@@ -50,12 +50,12 @@ func (fakeConfigTakeover) Apply(int) ([]*agentapi.TakeoverReport, error) {
 }
 func (fakeConfigTakeover) Restore() ([]string, error) { return nil, nil }
 
-// syntheticAgent 是内核测试用的**合成**客户端定义。
+// syntheticAgent is the kernel tests' **synthetic** client definition.
 //
-// 真实的 claude / opencode 定义住在发行版里（客户端接入是产品取舍，2026-09-20
-// 搬走），而这个包测的是「shim / config 两种接管机制怎么选、怎么切换」——它要的是
-// 「一个带 config 接管的 agent」，不是「claude 长什么样」。合成定义还更稳：产品那边
-// 改定义不会让内核的测试红。id 仍写 claude / opencode 只是让断言好读。
+// Real claude / opencode definitions live in the distribution (client integration is a
+// product choice, moved 2026-09-20), and this package tests "how shim / config takeover
+// is chosen and switched" - it wants "an agent with config takeover", not "what claude
+// looks like". Synthetic is steadier: ids stay claude/opencode just for readable assertions.
 func syntheticAgent(id, dialect string) *agentapi.Agent {
 	upper := strings.ToUpper(id)
 	return &agentapi.Agent{
@@ -64,8 +64,8 @@ func syntheticAgent(id, dialect string) *agentapi.Agent {
 		Dialect:    dialect,
 		BaseURLEnv: upper + "_BASE_URL",
 		AuthEnv:    upper + "_API_KEY",
-		// Config 留空 = 这个客户端靠 **shim**（PATH 前置）接管；想测 config 改写那条
-		// 机制，调用方自己塞一个（见 TestMain 里的 open）。
+		// Config empty = this client is taken over by the **shim** (PATH prepend); to test
+		// the config rewrite, the caller supplies one (see open in TestMain).
 	}
 }
 

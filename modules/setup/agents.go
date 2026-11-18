@@ -1,23 +1,23 @@
 package setup
 
-// 本文件是向导的第一幕：**把选中的客户端装上，并让它们走 newgate**。
+// This file is the wizard's first act: **install the chosen clients and make them go
+// through newgate**.
 //
-// 它只做两件事，两件都是「这一台机器此刻的样子」，不问任何问题：
+// It does only two things, both "what this machine looks like right now", no questions:
 //
-//	install  客户端没装 → 跑它自己的安装命令（见 confighook.AgentInstaller）
-//	takeover 让这台客户端的流量走我们（见 kernel 的 runtime/takeover）
+//	install  client absent -> run its own install command (see confighook.AgentInstaller)
+//	takeover route this client's traffic through us (see the kernel's runtime/takeover)
 //
-// # 为什么它不去问「装哪个包」
+// # Why it does not ask "which package to install"
 //
-// 装法归客户端模块（`npm i -g @openai/codex`、hermes 的 curl|bash…），那是
-// confighook.AgentInstaller 这条端口存在的全部理由（见内核 install.go 的注释）。
-// 这里只负责**按人选的顺序跑一遍**，并把每一步的结局如实报出来。
+// Install methods belong to the client module (`npm i -g @openai/codex`, hermes'
+// curl|bash...): that is the whole reason confighook.AgentInstaller exists. Here it
+// only **runs them in the chosen order** and reports each step's outcome truthfully.
 //
-// # 为什么「装不上」不是向导的失败
+// # Why "cannot install" is not the wizard's failure
 //
-// 用户可能没有 npm、没有 curl、公司网络不通、没有 sudo。那是他这台机器的现实，
-// 不是配置错了。所以：一条失败就记下来、继续下一条，最后在收尾里逐条念出来
-// ——「没装成却看着像装成了」是这个环节唯一不可接受的结局。
+// A user may lack npm, curl, a working network or sudo - that is their machine, not a
+// config error. Note a failure, continue, recite each at the end: "looked installed" is fatal.
 
 import (
 	"fmt"
@@ -29,29 +29,29 @@ import (
 	"github.com/rzbdz/newgate/lib/i18n"
 )
 
-// Step 是一条「装 + 接管」的结局。
+// Step is the outcome of one "install + takeover".
 type Step struct {
 	Agent string
-	// Installed 报告跑完之后它在不在这台机器上。
+	// Installed reports whether it is on this machine after the run.
 	Installed bool
-	// DidInstall = 这一次真的跑了安装命令。
+	// DidInstall = the install command really ran this time.
 	DidInstall bool
-	// Takeover 是接管那一幕的结局（空 = 没走到：还不在机器上）。
+	// Takeover is the takeover act's outcome (empty = never reached: not on the machine).
 	Takeover runtimeapi.Result
-	// TakenOver 报告「此刻磁盘上真的被我们改过了吗」。
+	// TakenOver reports "has the disk really been changed by us right now".
 	//
-	// 与 len(Takeover.Lines)>0 不是一回事：配置型客户端（codex / hermes）的
-	// 配置文件要它自己先跑一次才会出现，那一次接管会**跳过**并记一行说明。
-	// 把那一行当成「接管成功」正是这个仓库最不能接受的那种话
-	// （「没装成却看着像装成了」）——用户在 codex 里发请求，走的是直连。
+	// It is not the same as len(Takeover.Lines)>0: a config-type client (codex / hermes)
+	// only grows its config file after one run, and that takeover **skips** with a note.
+	// Reading that line as "taken over" is the one thing this repo cannot accept
+	// ("looks installed"): requests in codex go direct.
 	TakenOver bool
-	// Err 是安装那一步的错误（接管自己的错误在 Takeover.Err 里）。
+	// Err is the install step's error (takeover's own error is in Takeover.Err).
 	Err error
 }
 
-// EnsureAgents 对选中的每一个 agent 依次：没装就装、装上了就接管。
+// EnsureAgents, for each chosen agent in turn: install if absent, take over if present.
 //
-// out 收安装命令自己的输出（best-effort 的「尽力」要看得见，见内核 install.go）。
+// out collects the install output (best-effort "trying" must be visible, see install.go).
 func EnsureAgents(agents agentapi.AgentCatalog, rt runtimeapi.Control, ids []string, port int, out io.Writer) []Step {
 	status := map[string]bool{}
 	for _, st := range rt.TakeoverStatus() {
@@ -81,8 +81,8 @@ func EnsureAgents(agents agentapi.AgentCatalog, rt runtimeapi.Control, ids []str
 				steps = append(steps, st)
 				continue
 			}
-			// 装是装完了，但这个进程的 PATH 里可能还是找不到它（包管理器把 bin
-			// 放到了别处）。不假装成功——Installed 再说一次真话。
+			// The install finished, but this process's PATH may still not find it (the package
+			// manager put bin elsewhere). No pretending: Installed tells the truth again.
 			st.Installed = agents.Installed(id)
 			if !st.Installed {
 				st.Err = i18n.E("{agent} was installed but is still not on PATH — open a new shell and run newgate config again",
@@ -93,13 +93,13 @@ func EnsureAgents(agents agentapi.AgentCatalog, rt runtimeapi.Control, ids []str
 		} else {
 			st.Installed = true
 		}
-		// 装上之后立刻接管：接管写的是**这台机器上的配置文件**，没装的话那些
-		// 文件还不存在，接管只会报「没这个文件」。
+		// Take over right after installing: takeover writes **config files on this machine**;
+		// uninstalled, those files do not exist and takeover just says "no such file".
 		st.Takeover = rt.TakeOver(id, port)
 		st.TakenOver = st.Takeover.Err == nil && takenOver(agents, id, status)
 		if !st.TakenOver && st.Takeover.Err == nil {
-			// 配置型客户端（codex / hermes）的文件要它自己先跑一次才会出现。
-			// 那是一个**要告诉用户的下一步**，不是失败——但绝不能写成「已接管」。
+			// A config-type client's (codex / hermes) file appears only after one run.
+			// That is a **next step to tell the user**, not a failure - but never "taken over".
 			if msg := firstStartHint(agents, id); msg != "" {
 				st.Takeover.Warn = append(st.Takeover.Warn, msg)
 			}
@@ -109,12 +109,12 @@ func EnsureAgents(agents agentapi.AgentCatalog, rt runtimeapi.Control, ids []str
 	return steps
 }
 
-// takenOver 问磁盘：这台客户端此刻**真的**被我们指着本机代理吗。
+// takenOver asks the disk: is this client **really** pointed at the local proxy now?
 //
-// 配置型走它自己的 IsTakenOver（那是它的判据，每家有细微差别：codex 看那段表头、
-// hermes 看 providers.newgate 那一行）；shim 型看内核的接管状态（链接在不在）。
-// 两者都由拥有那件事的模块回答，这里不猜——猜出来的「已接管」是这个环节最坏的
-// 一种错。
+// Config-type goes through its own IsTakenOver (its criterion, each slightly
+// different: codex looks at that header block, hermes at the providers.newgate line);
+// shim-type reads the kernel's takeover state (link present or not). Both are answered
+// by the module owning it; a guessed "taken over" is the worst error here.
 func takenOver(agents agentapi.AgentCatalog, id string, status map[string]bool) bool {
 	a, ok := agents.Get(id)
 	if !ok {
@@ -134,10 +134,10 @@ func takenOver(agents agentapi.AgentCatalog, id string, status map[string]bool) 
 	return false
 }
 
-// firstStartHint 是「装好了，但它的配置文件还不存在」时该说的那句话。
+// firstStartHint is the sentence for "installed, but its config file does not exist yet".
 //
-// 判据用描述符的机制（有 Config = 配置型），而不是一张 agent 名单——名单会在
-// 加一家客户端时忘记更新，而那种漏掉的表现恰好是「用户以为接管了」。
+// The criterion uses the descriptor mechanism (has Config = config-type), not an agent
+// list - a list is forgotten when a client is added, and the symptom is "user thinks taken over".
 func firstStartHint(agents agentapi.AgentCatalog, id string) string {
 	a, ok := agents.Get(id)
 	if !ok || a.Config == nil {
@@ -154,7 +154,7 @@ func firstBin(a *agentapi.Agent) string {
 	return a.ID
 }
 
-// joinArgv 把 argv 拼成一行给人看（不做 shell 转义：它是提示文本）。
+// joinArgv joins argv into one display line (no shell escaping: it is hint text).
 func joinArgv(argv []string) string {
 	s := ""
 	for i, a := range argv {
@@ -169,7 +169,7 @@ func joinArgv(argv []string) string {
 	return s
 }
 
-// Report 把一次「装 + 接管」写成给人看的几行。w 通常是 stdout。
+// Report writes one "install + takeover" as lines for humans. w is usually stdout.
 func Report(w io.Writer, steps []Step) {
 	for _, s := range steps {
 		switch {
@@ -199,7 +199,7 @@ func Report(w io.Writer, steps []Step) {
 	}
 }
 
-// StepsFailed 报告有没有哪一步真的失败了（用于退出码）。
+// StepsFailed reports whether any step really failed (for the exit code).
 func StepsFailed(steps []Step) bool {
 	for _, s := range steps {
 		if s.Err != nil || s.Takeover.Err != nil {
@@ -209,5 +209,5 @@ func StepsFailed(steps []Step) bool {
 	return false
 }
 
-// stdout 是向导的默认输出口（测试里换成 buffer）。
+// stdout is the wizard's default output (a buffer in tests).
 var stdout io.Writer = os.Stdout

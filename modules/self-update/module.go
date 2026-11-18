@@ -1,43 +1,43 @@
-// Package selfupdate 换 newgate 自己的二进制：从 GitHub Release 下产物，或者在
-// 本地仓库里编一份，然后优雅地换上去（daemon 走 socket 交接，不断流）。
+// Package selfupdate replaces newgate's own binary: download the artifact from a GitHub
+// Release, or build one in a local repo, then swap it in gracefully (daemon socket, no gap).
 //
-// # 它挂在哪
+// # Where it hangs
 //
-// 本模块**不新开一条升级命令**：它往 modules/upgrade 的登记处交一个 ID 为
-// `binary` 的动作，于是 `newgate upgrade` 连二进制带数据一起升，
-// `newgate upgrade@v0.9.0` 把二进制钉到某个 tag。upgrade 不知道怎么下 Release、
-// 怎么编、怎么交接——那些都在这里；这里也不知道参考库之类的数据怎么刷新。
-// 自己只多带一条 `newgate self-update`：看/改「走哪条路」，以及回滚。
+// This module **adds no new upgrade command**: it hands modules/upgrade a registered
+// action with id `binary`, so `newgate upgrade` upgrades binary and data together, and
+// `newgate upgrade@v0.9.0` pins the binary to a tag. upgrade knows nothing of downloading
+// Releases, building, or handoff - all here; this knows nothing of refreshing a reference
+// library's data. It only adds `newgate self-update`: see/change "which route", and rollback.
 //
-// # 两条路（mode），装第一次时定下来
+// # Two routes (mode), settled on first install
 //
-//   - **release**：去规格书里声明的 GitHub 仓库（dist.json 的 `github`）拿最新
-//     Release 里本平台的产物，对 SHA256SUMS，换上。给不编代码的机器（snode1 那类）。
-//   - **git**：在一份本地 checkout 里 fetch → 能快进就快进 → `build/build.sh` →
-//     换上。给开发者和尝鲜的人：他们手上本来就有仓库，要的是「我这份树的最新」。
+//   - **release**: fetch the artifact for this platform from the latest Release in the
+//     spec's GitHub repo (dist.json's `github`), check SHA256SUMS, swap. No-build machines.
+//   - **git**: in a local checkout, fetch -> fast-forward if possible -> `build/build.sh`
+//     -> swap. For developers and early adopters: they have the repo, they want "my tree".
 //
-// 走哪条记在 state.json 的 `self-update` 段里，**第一次运行这个二进制时**按构建
-// 期注入的源码目录推断（见 settings.go）：编它的那份 checkout 在本机、是本仓库
-// → git；不在 → release。之后只认那一段，用户可以 `newgate self-update git|release`
-// 改它。推断而不是每次重算，是因为「这台机器走哪条路」是一个**决定**，不该随着
-// 某个目录被挪走就悄悄翻转。
+// The route is recorded in state.json's `self-update` section, **inferred on the binary's
+// first run** from the build-time source dir (see settings.go): the checkout that built it
+// is here and is this repo -> git; not -> release. Afterwards only that section counts,
+// and `newgate self-update git|release` changes it. Inferred rather than recomputed,
+// because "which route this machine takes" is a **decision**, not a directory's fate.
 //
-// # `@版本`
+// # `@version`
 //
-// `newgate upgrade@<ref>` 不分 mode：先找这个 tag 的 Release；有、且有本平台产物
-// → 下它；没有（只打了 tag 没发版、或者是分支/提交、或者本平台没有产物，比如
-// riscv64）→ 在临时目录里 clone 那个 ref、编、换上。开发者的本地 checkout 永远
-// 不被切换分支——那是他正在改的东西。
+// `newgate upgrade@<ref>` ignores mode: look for a Release of that tag; if present with an
+// artifact for this platform -> download it; else (tag without a release, a branch/commit,
+// or no artifact for this platform, e.g. riscv64) -> clone that ref into a temp dir, build,
+// swap. The developer's local checkout is never switched - that is what he is editing.
 //
-// # 稳妥（每一条都是「换坏了比不换糟得多」）
+// # Safety (each rule is "a bad swap is far worse than none")
 //
-//   - 新二进制先**按 newgate 的名字跑一次 `version`**，跑不起来（架构不对、被截断、
-//     发行版不对）就不换；
-//   - 替换是同目录临时文件 + rename，旧的那份硬链接成 `<路径>.prev`，
-//     `newgate self-update rollback` 一步换回去；
-//   - 没给 `--force` 时不倒退：Release 比手上的旧（开发机常态）就只说一声；
-//   - 同一时刻只有一个升级在跑（配置目录里的 flock）；
-//   - daemon 在跑就用新二进制执行 `restart`（优雅交接），换完核对它的 /proc/<pid>/exe。
+//   - The new binary first **runs `version` under the name newgate**; if it fails (wrong
+//     architecture, truncated, wrong distribution), no swap;
+//   - Replacement is a same-dir temp file + rename, old one hard-linked to `<path>.prev`:
+//     `newgate self-update rollback` restores it in one step;
+//   - Without `--force` it never goes backwards: an older Release (dev norm) is just noted;
+//   - Only one upgrade runs at a time (config-dir flock); with a daemon running, run
+//     `restart` on the new binary (graceful handoff) and verify its /proc/<pid>/exe.
 package selfupdate
 
 import (
@@ -51,17 +51,17 @@ import (
 	webapi "github.com/rzbdz/newgate-ext/modules/web-dashboard"
 )
 
-// Name 是这个模块在装配表与 `newgate plugin` 里的名字（= 目录名）。
+// Name is this module's name in the assembly table and `newgate plugin` (= directory name).
 const Name = "self-update"
 
-// actionID 是登记进 upgrade 的那个动作的 ID。
+// actionID is the ID of the action registered into upgrade.
 const actionID = "binary"
 
-// New 声明这个组件。
+// New declares the component.
 //
-// 两条依赖都是 Optional：没装 upgrade 时没有 `newgate upgrade` 里的那一项，但
-// `newgate self-update` 照样能看、能改、能回滚；没装界面时两个入口都没有，模块
-// 什么也不做——它没有后台行为（不定时检查更新：换二进制是用户要知道的事）。
+// Both dependencies are Optional: without upgrade there is no `newgate upgrade` item,
+// but `newgate self-update` can still look, change and roll back; with no UI both entries
+// are gone and the module does nothing - no background behavior (no periodic checks).
 func New() modules.Component {
 	var releases []modules.Release
 	return modules.Component{
@@ -73,13 +73,13 @@ func New() modules.Component {
 		Requires: []modules.Requirement{
 			modules.Optional(upgradeapi.Capability),
 			modules.Optional(cliapi.Capability),
-			// 网页那一面（web.go）：扩展端点给数据与文案，插件口发前端代码。
+			// The web face (web.go): extension endpoints give data and copy, the plugin port ships JS.
 			modules.Optional(webapi.ExtensionCapability),
 			modules.Optional(webapi.PluginCapability),
 		},
 		Start: func(_ context.Context, ctx modules.Context) error {
-			// 第一次运行时把「走哪条路」写下来（见包注释）。失败不挡启动：
-			// 写不进去就每次现推，等用户第一次真的升级时再试一次。
+			// Record "which route" on first run (see the package note). Failure does not block
+			// startup: unreadable, infer each time, and retry on the first real upgrade.
 			_, _ = ensureSettings()
 
 			if up, ok := modules.Get(ctx, upgradeapi.Capability); ok {
@@ -89,7 +89,7 @@ func New() modules.Component {
 					Describe:  describeAction,
 					Run:       runAction,
 					Versioned: true,
-					// 换 newgate 本身：`newgate upgrade` 单独为它问一次（见 upgrade 的 Kind）。
+					// Replacing newgate itself: `newgate upgrade` asks about it separately (see upgrade's Kind).
 					Kind: upgradeapi.KindProgram,
 				})
 				if err != nil {
@@ -103,7 +103,7 @@ func New() modules.Component {
 					return err
 				}
 				releases = append(releases, rel)
-				// 插件只在端点在的时候挂：没有端点的插件只会在顶栏上报错。
+				// The plugin mounts only when the endpoint is there: without it, the top bar errors.
 				if plugins, ok := modules.Get(ctx, webapi.PluginCapability); ok {
 					rel, err := plugins.RegisterPlugin(webapi.Plugin{
 						Name:   webName,

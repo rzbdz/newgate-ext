@@ -1,26 +1,26 @@
-// 浏览器里跑的那一层检查：**界面真的渲染出来了吗、点了真的落盘吗**。
+// The layer of checks that runs in the browser: **did the UI really render, does a click really hit the disk**.
 //
-// # 为什么需要第五层
+// # Why a fifth layer is needed
 //
-// Go 那几层（单测 / BFF 的 e2e）验的是**契约**：端点回什么、状态码对不对。它们
-// 看不见「界面把两个复选框放在一起了」「同一屏上两种语言」「点保存没反应」这类
-// 事——2026-09-20 真去渲染了一次，一次就抓到三个，而当时**没有一条测试会红**。
+// The Go layers (unit tests / the BFF e2e) verify the **contract**: what an endpoint
+// returns, whether a status code is right. They cannot see things like "the UI put two
+// checkboxes together", "two languages on one screen", "clicking save does nothing" -- on 2026-09-20 we actually rendered it once and caught three at once, while **no test went red**.
 //
-// # 为什么不在 CI 里
+// # Why it is not in CI
 //
-// 它要一个浏览器。CI 完全不用 node（前端产物进了版本控制，Go 直接嵌它），为了
-// 这一层去装一个 chromium 换不到相应的价值。所以它和那条要真 token 的 e2e 一样：
-// **开发者本地跑**，见 mock/ui_check.sh。
+// It needs a browser. CI does not use node at all (the frontend build is checked in,
+// Go embeds it directly), and installing a chromium just for this layer buys little.
+// So, like the e2e that needs a real token: **run locally by the developer**, see mock/ui_check.sh.
 //
-// 跑法由 ui_check.sh 张罗（起沙箱、起 daemon、调这个脚本）；这里认两个参数：
-// 界面地址（带尾斜杠），以及沙箱的 state.json（冲突那一段要**从外面**改它，
-// 扮演那个抢先改文件的命令行）。断言失败即非零退出，红的理由直接打在屏幕上。
+// How to run it is ui_check.sh's job (start the sandbox, start the daemon, call this
+// script); this file takes two arguments: the UI address (with trailing slash), and
+// the sandbox's state.json (the conflict section edits it **from outside**, playing the CLI that writes first). A failed assertion exits non-zero, and the reason goes on screen.
 //
-// # 怎么找东西
+// # How to find things
 //
-// 一律按**机器标记**找，不按翻译过的文字：侧栏那一行有 `title="<source>"`、tab 有
-// `title="<concept id>"`。按文字找的话，这个脚本会跟着语言跑（它跑在 zh-Hans 下），
-// 而改一句译文就让检查红——那种红没有任何信息量。
+// Always find things by **machine markers**, never by translated text: a sidebar row has `title="<source>"`, a tab has
+// `title="<concept id>"`. Finding by text would make this script follow the language (it runs under zh-Hans),
+// and changing one translation would turn it red -- a red with no information in it.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -28,28 +28,28 @@ import path from "node:path";
 const url = process.argv[2];
 const stateFile = process.argv[3];
 if (!url || !stateFile) {
-  console.error("用法: node ui_check.mjs <界面地址> <沙箱的 state.json 路径>");
+  console.error("usage: node ui_check.mjs <ui address> <sandbox state.json path>");
   process.exit(2);
 }
-// 不带尾斜杠的那一份：它是**给人敲的**形式，也是 2026-09-20 那次真 bug 的现场
-// （相对地址会拿它当基准去解析，于是 API 请求掉出 /ui 挂载点）。
+// The variant without a trailing slash: it is the form **people type**, and the scene of
+// the real bug on 2026-09-20 (relative addresses resolve against it, so API requests fall out of the /ui mount point).
 const bare = url.replace(/\/+$/, "");
 
-// 依赖解析：默认从 node_modules 找 playwright；这台机器上它可能装在别处，
-// 那种情况用 PLAYWRIGHT_MODULE 指过去（与别处「机器相关的路径走环境变量」同一条）。
+// Dependency resolution: look for playwright in node_modules by default; on this machine
+// it may live elsewhere -- point at it with PLAYWRIGHT_MODULE (same rule as elsewhere: machine-specific paths go through env vars).
 async function loadPlaywright() {
   const tries = [process.env.PLAYWRIGHT_MODULE, "playwright"].filter(Boolean);
   for (const spec of tries) {
     try {
       return await import(spec);
     } catch {
-      /* 试下一个 */
+      /* try the next one */
     }
   }
   console.error(
-    "找不到 playwright。装一个（它**不在**本仓库的依赖里，理由见文件头）：\n" +
+    "playwright not found. Install one (it is **not** a dependency of this repo, see the file header for why):\n" +
       "  cd modules/web-dashboard/web && pnpm add -D playwright\n" +
-      "已经装在别处的话，用环境变量指过去：PLAYWRIGHT_MODULE=/路径/playwright/index.mjs",
+      "if it is installed elsewhere, point at it with an env var: PLAYWRIGHT_MODULE=/path/playwright/index.mjs",
   );
   process.exit(2);
 }
@@ -66,34 +66,34 @@ const skip = (m) => console.log(`  · ${m}`);
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
 
-// 页面自己抛的错一个都不许有：白屏、组件崩了、effect 里炸了，全都先在这里露头。
+// No error thrown by the page itself is allowed: a white screen, a crashed component, a blowup in an effect -- all surface here first.
 const pageErrors = [];
 page.on("pageerror", (e) => pageErrors.push(String(e)));
 page.on("console", (m) => {
   if (m.type() !== "error") return;
   const text = m.text();
-  // 409 是冲突那一段**预期**的结果：浏览器为任何非 2xx 的 fetch 都打一条 console
-  // error，而「基线过期」正是那里要制造的局面。它不是页面抛的错——把它算进来的
-  // 话，这条断言就变成了「不许测冲突」。排除得很窄，别的错照样算。
+  // The 409 is the **expected** result of the conflict section: the browser logs a console
+  // error for any non-2xx fetch, and "stale baseline" is exactly the situation created
+  // there. It is not a page error -- counting it would make this assertion "do not test conflicts". The exclusion is narrow; other errors still count.
   if (text.includes("status of 409")) return;
-  // 第 21 条**故意**让一次行内动作失败（沙箱的 provider 指向死端口），BFF 对
-  // 「动作没做成」回 400，于是这里也有一条 console error。同样不是页面抛的错。
+  // Check 21 **deliberately** makes an inline action fail (the sandbox provider points
+  // at a dead port); the BFF returns 400 for "the action did not go through", so here too there is a console error. Same again: not a page error.
   //
-  // 排除条件卡到**端点**上（`location().url`），不只看状态码：`/api/*` 上任何
-  // 别的地方冒出 400 都还是真信号，不该被这一条误伤。
+  // The exclusion is pinned to the **endpoint** (`location().url`), not just the status: any
+  // 400 from anywhere else on `/api/*` is still a real signal and must not be hit by this exclusion.
   const where = m.location?.()?.url ?? "";
   if (text.includes("status of 400") && where.endsWith("/api/row-action")) return;
   pageErrors.push("console: " + text);
 });
 
-// 有未保存的改动时，界面会挂一个 beforeunload 问询（见 App.svelte）。Playwright
-// 默认**自动消掉**所有对话框，而消掉 beforeunload 的意思是「留在原地」——那样
-// 下面那次 reload 会静静不发生，之后的断言全在测一个没刷新过的页面。所以这里
-// 明确接受它。
+// With unsaved changes the UI installs a beforeunload prompt (see App.svelte). Playwright
+// **auto-dismisses** all dialogs by default, and dismissing beforeunload means "stay
+// here" -- the reload below would then silently not happen and every later assertion
+// would be testing a page that was never refreshed. So accept it explicitly here.
 //
-// confirm 也接受：删掉一份档位文件这类不可撤销的动作**该**先问一句（见
-// MappingEditor 的删除按钮），问了并把问题记下来，正好让下面能断言「它问过」。
-// 别的一律算页面错误——一个没人预期的模态框就是 bug。
+// confirm is accepted too: an irreversible action like deleting a profile file **should**
+// ask first (see the delete button in MappingEditor), and asking plus recording the
+// question lets us assert below that "it did ask". Anything else counts as a page error -- an unexpected modal is a bug.
 const confirms = [];
 page.on("dialog", (d) => {
   if (d.type() === "beforeunload") return void d.accept();
@@ -105,18 +105,18 @@ page.on("dialog", (d) => {
   void d.dismiss();
 });
 
-// 后端那份快照：栏目名、概念 id 都从这儿取（**不猜翻译**）。
+// The backend snapshot: section titles and concept ids are taken from here (**never guess translations**).
 async function fetchSnapshot() {
   const r = await fetch(bare + "/api/snapshot");
   return r.json();
 }
 
-// —— 0. 敲 `/ui` 不带尾斜杠也要能用 ——
+// -- 0. Typing `/ui` without a trailing slash must still work --
 //
-// 这一条是真 bug 的回归：porthub 认裸前缀，所以 `/ui` 进得来、页面画得出来（资源
-// 地址是绝对的），但**运行期的 API 地址**是从文档路径解析的——从 `/ui` 出发，
-// `api/snapshot` 成了 `/api/snapshot`，掉出挂载点、落进数据面，被当成一次形状不
-// 认识的转发（400）。症状是「界面好好的、一操作就报错」，很难联想到 URL 上。
+// This is the regression for a real bug: porthub accepts the bare prefix, so `/ui` gets
+// in and the page renders (asset URLs are absolute), but the **runtime API URL** is
+// resolved from the document path -- starting from `/ui`, `api/snapshot` becomes
+// `/api/snapshot`, falls out of the mount point into the data plane, and is treated as a forward of an unrecognized shape (400). The symptom is "the UI looks fine, every action errors" -- hard to connect to the URL.
 {
   const p = await browser.newPage({ viewport: { width: 1400, height: 900 } });
   const errs = [];
@@ -124,11 +124,11 @@ async function fetchSnapshot() {
   await p.goto(bare, { waitUntil: "networkidle" });
   await p.waitForTimeout(800);
   const n = await p.locator("section.card").count();
-  check("`/ui`（不带尾斜杠）也能用", n > 0, `实际 ${n} 张卡；地址 ${p.url()}`);
-  check("`/ui` 的请求落回了 /ui/", new URL(p.url()).pathname.startsWith("/ui/"), p.url());
+  check("`/ui` (without trailing slash) also works", n > 0, `${n} cards; address ${p.url()}`);
+  check("`/ui` requests land back under /ui/", new URL(p.url()).pathname.startsWith("/ui/"), p.url());
   const banner = await p.locator(".banner").count();
-  check("`/ui` 下没有报错横幅", banner === 0, await p.locator(".banner").first().innerText().catch(() => ""));
-  check("`/ui` 下没有页面错误", errs.length === 0, errs.slice(0, 2).join(" / "));
+  check("`/ui` shows no error banner", banner === 0, await p.locator(".banner").first().innerText().catch(() => ""));
+  check("`/ui` has no page errors", errs.length === 0, errs.slice(0, 2).join(" / "));
   await p.close();
 }
 
@@ -138,66 +138,66 @@ await page.waitForTimeout(1200);
 const snap = await fetchSnapshot();
 const titleOf = (source) => (snap.sections.find((s) => s.source === source) || {}).title || "";
 
-// —— 1. 渲染出来了 ——
+// -- 1. It rendered --
 const cards = await page.locator("section.card").count();
-check("卡片渲染出来了", cards > 0, `实际 ${cards} 张`);
-check("页面没有抛错", pageErrors.length === 0, pageErrors.slice(0, 2).join(" / "));
+check("cards rendered", cards > 0, `${cards} actual`);
+check("the page threw nothing", pageErrors.length === 0, pageErrors.slice(0, 2).join(" / "));
 
-// —— 2. 不再是「一条瀑布」 ——
+// -- 2. No longer "one waterfall" --
 //
-// 改版前：所有卡片按来源分组一路往下铺，实测 4303px ≈ 4.8 屏；「改一个开关」这件
-// 四步能做完的事，第一步是滚三屏。判据两条：分组标题没了、整页高度在一屏上下
-// （宽屏上内容多时留一点余量）。
+// Before the redesign: all cards were laid out downward grouped by source, measured at
+// 4303px ≈ 4.8 screens; a four-step job like "flip one switch" started with three screens
+// of scrolling. Two criteria: group headings are gone, and full page height is about one screen (leaving some slack for lots of content on wide screens).
 {
   const headers = await page.locator("h2.srch").count();
-  check("分组标题（一条瀑布的化石）没有了", headers === 0, `还有 ${headers} 个`);
+  check("group headings (fossils of the waterfall) are gone", headers === 0, `${headers} left`);
   const h = await page.evaluate(() => document.documentElement.scrollHeight);
-  console.log(`  · 整页高度 ${h}px（改版前 4303px ≈ 4.8 屏）`);
-  check("整页高度回到一屏内", h < 900 * 1.5, `实际 ${h}px`);
+  console.log(`  · full page height ${h}px (before the redesign: 4303px ≈ 4.8 screens)`);
+  check("full page height is back within one screen", h < 900 * 1.5, `actual ${h}px`);
   const side = await page.locator("nav.side button").count();
-  check("侧栏列出了各节", side > 0, `实际 ${side} 行`);
+  check("the sidebar lists the sections", side > 0, `actual ${side} rows`);
 }
 
-// —— 3. 一屏只有一种语言 ——
+// -- 3. One language per screen --
 //
-// 这条是 2026-09-20 那个 bug 的棘轮：t() 读的语言住在模块级变量里、不是响应式
-// 状态，于是没有响应式依赖的字符串停在**首次渲染**那一刻的语言上——后端给
-// zh-Hans 时，同一行里「44 个概念」是中文而 "save" 是英文。
+// This is the ratchet for the 2026-09-20 bug: the language t() reads lived in a module-
+// level variable, not reactive state, so strings with no reactive dependency froze at
+// the language of **first render** -- under zh-Hans, "44 concepts" was Chinese while "save" was English in the same row.
 //
-// 判据用**界面骨架上的几个词**（按钮、输入框提示）：它们是「没有响应式依赖」的
-// 那一批，正是会冻住的那一批。语言不是英文时，它们就不该还是英文原文。
+// The criterion uses **a few words from the UI skeleton** (button, input placeholder):
+// they are the ones with "no reactive dependency", exactly the ones that froze. When the language is not English, they should no longer be the English original.
 const lang = snap.lang;
 const saveText = (await page.locator("header.top button.primary").innerText()).trim();
 const placeholder = await page.locator("header.top input.filter").getAttribute("placeholder");
 if (lang === "en" || !lang) {
-  skip(`语言是 ${lang}，跳过「只有一种语言」那条`);
+  skip(`language is ${lang}, skipping the 'one language only' check`);
 } else {
-  // 键就是那句英文，所以「还是英文原文」= 没翻。
-  check("按钮跟着界面语言走", saveText !== "save", `保存按钮显示 ${JSON.stringify(saveText)}`);
-  check("输入框提示跟着界面语言走", !placeholder.startsWith("filter"), `实际 ${JSON.stringify(placeholder)}`);
+  // The key is the English sentence itself, so "still the English original" = not translated.
+  check("the button follows the UI language", saveText !== "save", `save button shows ${JSON.stringify(saveText)}`);
+  check("the input placeholder follows the UI language", !placeholder.startsWith("filter"), `actual ${JSON.stringify(placeholder)}`);
 }
 
-// —— 4. 栏目名来自后端（模块自己报的），不是来源名 ——
+// -- 4. Section titles come from the backend (reported by the module), not the source name --
 //
-// 掉掉它不会有任何东西报错：前端会回落到来源名，侧栏里出现 config / plugin-manager
-// 这种机器标记，看着只像「还没翻」。所以在这一层按「和快照里的 title 一致、且不等于
-// source」验一遍。
+// Dropping it would not make anything error: the frontend falls back to the source name,
+// so the sidebar shows machine markers like config / plugin-manager, looking merely like
+// "not translated yet". So verify here that it matches the snapshot's title and is not equal to the source.
 if (snap.sections.length) {
   const first = snap.sections[0];
   const shown = (await page.locator(`nav.side button[title="${first.source}"]`).first().innerText()).trim();
-  check("侧栏用的是后端报的栏目名", shown.startsWith(first.title), `屏幕上是 ${JSON.stringify(shown)}，快照里是 ${JSON.stringify(first.title)}`);
+  check("the sidebar uses the section title from the backend", shown.startsWith(first.title), `on screen: ${JSON.stringify(shown)}, in the snapshot: ${JSON.stringify(first.title)}`);
   if (lang !== "en" && lang) {
-    check("栏目名翻过了（不是来源名）", shown !== first.source, `屏幕上还是 ${JSON.stringify(shown)}`);
+    check("the section title is translated (not the source name)", shown !== first.source, `still shows ${JSON.stringify(shown)}`);
   }
 }
 
-// —— 5. 分栏：同一份文件的两半并排 ——
+// -- 5. Split panes: the two halves of one file side by side --
 //
-// 这是「改配置」最常见的动作（这个值在文件里长什么样），改版前要滚过去再滚回来。
+// This is the most common "change config" action (what this value looks like in the file); before the redesign it meant scrolling over and back.
 {
-  // 按**数据**找一对（与 nav.ts 的 fileOf 同一条约定：控件那半带 file、原文那半
-  // 带 path，同一个相对路径就是同一份文件）。不写死 config —— 那是模块名，测里
-  // 认了它，界面里那条「不认识模块」的规矩就只剩一半。
+  // Find a pair by **data** (same convention as fileOf in nav.ts: the controls half carries
+  // file, the raw half carries path, and the same relative path means the same file). Do
+  // not hardcode config -- that is a module name; accepting it in the test would leave the "does not know modules" rule in the UI only half enforced.
   const fileOf = (c) => c.data?.file ?? c.data?.path;
   const pair = snap.concepts.find(
     (c) =>
@@ -206,7 +206,7 @@ if (snap.sections.length) {
       snap.concepts.some((x) => x.kind === "code" && x.source === c.source && fileOf(x) === fileOf(c)),
   );
   if (!pair) {
-    skip("这份装配里没有「同一份文件的两半」，跳过并排那条");
+    skip("this assembly has no 'two halves of one file', skipping the side-by-side check");
   } else {
     await page.locator(`nav.side button[title="${pair.source}"]`).click();
     await page.waitForTimeout(200);
@@ -214,23 +214,23 @@ if (snap.sections.length) {
     await page.waitForTimeout(300);
     const split = await page.locator(".split.two").count();
     const panes = await page.locator(".pane-l, .pane-r").count();
-    check("控件与原文并排了", split > 0 && panes === 2, `实际 ${panes} 栏`);
+    check("controls and raw text are side by side", split > 0 && panes === 2, `actual ${panes} panes`);
     const right = await page.locator(".pane-r .mono").first().innerText().catch(() => "");
-    check("右栏是那份文件的原文", right.includes(fileOf(pair)), `右栏是 ${JSON.stringify(right)}`);
+    check("the right pane is that file's raw text", right.includes(fileOf(pair)), `right pane: ${JSON.stringify(right)}`);
   }
 }
 
-// —— 6. 卡一多，横 tab 让位成左侧竖栏 ——
+// -- 6. With many cards, horizontal tabs give way to a left vertical column --
 //
-// 这是「config 38 张横 tab 滚不动」那次的回归：超过阈值（App 的 TAB_OVERFLOW=8）
-// 的节，tab 条改成一个竖向滚动列表放在内容左侧。阈值是内容决定的（不是宽度），
-// 所以这里按「config 的卡数」判断走哪条断言——沙箱注入了 9 个填充 profile，正常
-// 会走到竖栏那半。
+// This is the regression for "config's 38 horizontal tabs would not scroll": sections above
+// the threshold (TAB_OVERFLOW=8 in App) switch the tab strip to a vertical scrolling list
+// on the left of the content. The threshold is content-driven (not width), so which
+// assertion runs is decided by "the number of config cards" -- the sandbox injects 9 filler profiles, so normally the vertical-column half runs.
 {
-  // 导航的单位是**文件**，不是卡片：同一份文件有「控件 + 原文」两半时只列控件那
-  // 半，原文只是并排的右栏（见 App.svelte 的 navUnits）。所以这里的期望值不能直接
-  // 数概念，要按同一条规则先折一遍——否则这条断言会把「原文不再占一格」这个**有意
-  // 的改动**报成失败。
+  // Navigation counts **files**, not cards: when one file has "controls + raw" halves, only
+  // the controls half is listed; the raw text is just the right pane (see navUnits in
+  // App.svelte). So the expected value here cannot just count concepts; fold by the same
+  // rule first -- otherwise this assertion reports the **intentional change** of "raw text no longer takes a slot" as a failure.
   const fileOf = (c) => c.data?.file ?? c.data?.path;
   const navUnits = (list) => {
     const byFile = new Map();
@@ -254,36 +254,36 @@ if (snap.sections.length) {
   const rows = await page.locator(".content nav.v").count();
   const horiz = await page.locator(".content .tabs").count();
   if (n > 8) {
-    check("卡一多就转成左侧竖栏", rows === 1, `nav.v 出现 ${rows} 次`);
-    check("竖栏出现时没有横 tab 条", horiz === 0, `还剩 ${horiz} 条横的`);
+    check("many cards switch to a left vertical column", rows === 1, `nav.v appears ${rows} times`);
+    check("no horizontal tab strip when the vertical column is shown", horiz === 0, `${horiz} horizontal ones left`);
     const items = await page.locator(".content nav.v button").count();
-    check("竖栏列出这节全部卡", items === n, `${items} vs ${n}`);
-    // 竖栏必须是滚动容器。回归点不在「这次真的溢出了没」（沙箱的卡数够不够挤满
-    // 一屏是内容的事），而在「容器是不是设成了可以滚」——用户那次 bug 是 38 行
-    // 摆出来却永远不会滚，因为里面那层高度跟着内容走。机制在做，溢出才生效。
+    check("the vertical column lists every card in this section", items === n, `${items} vs ${n}`);
+    // The vertical column must be a scroll container. The regression point is not "did it
+    // actually overflow this time" (whether the sandbox has enough cards to fill a screen is
+    // a matter of content), but "is the container set to scroll" -- the user's bug was 38 rows laid out that would never scroll because the inner layer's height followed the content. The mechanism has to be there for overflow to take effect.
     const slotCss = await page.evaluate(() => {
       const slot = document.querySelector(".content.subcol > .nav-slot");
       return slot ? getComputedStyle(slot).overflowY : "";
     });
-    check("竖栏是滚动容器（滚轮能生效）", slotCss === "auto", `overflow-y=${slotCss}`);
-    // 点竖栏里一张卡要真的切过去（从**会出现在竖栏里**的那批里挑——原文半不在里面）
+    check("the vertical column is a scroll container (the wheel works)", slotCss === "auto", `overflow-y=${slotCss}`);
+    // Clicking a card in the vertical column must really switch (pick from the ones that **appear in the vertical column** -- the raw half is not there)
     const target = cfgCards[1];
     await page.locator(`.content nav.v button[title="${target.id}"]`).click();
     await page.waitForTimeout(300);
     const on = await page.locator(".content nav.v button.on").getAttribute("title");
-    check("点竖栏里一张卡能切过去", on === target.id, `实际选中 ${on}`);
+    check("clicking a card in the vertical column switches to it", on === target.id, `actually selected ${on}`);
 
-    // —— 分组：大档（`档位`）与族（`claude`）——
+    // -- Grouping: top-level kind (`tier`) and family (`claude`) --
     //
-    // 用户要的是「装完就要配的两项」与「一天天加出来的一堆」在版面上分开（原话：
-    // 「profile 这里就可以做一个分栏了啊」）。标题由后端的两级 group 给
-    // （`档位/claude`），画不画由这里按「这一段底下有没有 ≥2 张卡」定。
+    // The user wanted "the two things you configure right after install" and "the pile that
+    // grows day by day" separated on the page (original words: "profile here could just get a
+    // column split"). Titles come from the backend's two-level group (`tier/claude`); whether one is drawn is decided here by "are there ≥2 cards under this run".
     //
-    // 判据不能只是「有标题」：一行小字下头卡片不缩进的话，那只是一句注释，读的人
-    // 还是分不出那两张属于它。所以这里量**缩进**——标题之后的每一张卡都必须比标题
-    // 本身更靠右。
+    // The criterion cannot just be "a heading exists": if the cards below a small caption are
+    // not indented, the caption is just a comment and the reader still cannot tell those two
+    // belong to it. So measure **indentation** here -- every card after a heading must sit further right than the heading itself.
     const groups = await page.locator(".content nav.v .group").count();
-    check("竖栏里有分组标题（大档 / 一族档位）", groups > 0, `实际 ${groups} 个`);
+    check("the vertical column has group headings (top-level kind / profile family)", groups > 0, `actual ${groups}`);
     const nesting = await page.evaluate(() => {
       const nav = document.querySelector(".content nav.v");
       const kids = [...nav.children];
@@ -300,22 +300,22 @@ if (snap.sections.length) {
       };
     });
     check(
-      "标题底下的卡真的缩进了（不是只加了一行小字）",
+      "cards under a heading are really indented (not just a caption added)",
       !!nesting && nesting.n > 0 && nesting.flat.length === 0,
       JSON.stringify(nesting),
     );
   } else {
-    skip(`这份装配里 config 卡没超阈值（${n} ≤ 8），竖栏那几条不适用`);
+    skip(`config cards in this assembly do not exceed the threshold (${n} ≤ 8), the vertical-column checks do not apply`);
   }
 }
 
-// —— 7. 点一下真的落盘 ——
+// -- 7. A click really hits the disk --
 //
-// 只测**可写的 toggles**（布尔开关）：它是「最少点击」那条设计里的一步操作，
-// 也是用户在界面上改运行期行为的那条路。
+// Only test the **writable toggles** (boolean switches): it is one step in the "fewest
+// clicks" design, and the path by which a user changes runtime behavior in the UI.
 //
-// 改版后它在一节里、一张 tab 后面——所以先走过去。**这一步本身就是版面那场改版
-// 的验收**：侧栏一次、tab 一次、开关一次、保存一次 = 四次操作（改版前是滚三屏）。
+// After the redesign it sits inside a section, behind a tab -- so walk there first. **This
+// step is itself the acceptance for the layout redesign**: sidebar once, tab once, switch once, save once = four operations (before the redesign it was three screens of scrolling).
 const box = page.locator('section.card input[type="checkbox"]').first();
 async function openSwitches() {
   const src = snap.sections.find((s) => s.source === "plugin-manager");
@@ -328,14 +328,14 @@ async function openSwitches() {
   return true;
 }
 if (!(await openSwitches())) {
-  skip("这份装配里没有 plugin-manager 的开关卡，跳过保存与冲突那几段");
+  skip("this assembly has no plugin-manager switches card, skipping the save and conflict sections");
 } else {
   await box.click();
   await page.waitForTimeout(200);
   const before = (await page.locator("header.top button.primary").innerText()).trim();
-  check("改一下就出现「未保存」", /\d/.test(before), `保存按钮显示 ${JSON.stringify(before)}`);
+  check("one change shows 'unsaved'", /\d/.test(before), `save button shows ${JSON.stringify(before)}`);
 
-  // 换到别节再回来：草稿**不许丢**（版面改了，这条语义没改）。
+  // Switch to another section and back: the draft **must not be lost** (the layout changed; this semantics did not).
   const conf = snap.sections.find((s) => s.source !== "plugin-manager");
   if (conf) {
     await page.locator(`nav.side button[title="${conf.source}"]`).click();
@@ -343,17 +343,17 @@ if (!(await openSwitches())) {
     await page.locator(`nav.side button[title="plugin-manager"]`).click();
     await page.waitForTimeout(200);
     const still = (await page.locator("header.top button.primary").innerText()).trim();
-    check("换节再回来，草稿还在", /\d/.test(still), `保存按钮显示 ${JSON.stringify(still)}`);
+    check("the draft survives switching sections and back", /\d/.test(still), `save button shows ${JSON.stringify(still)}`);
 
-    // 顺带：选中的那一节进了 URL，刷新之后还在（「少操作」的一部分）。
+    // Also: the selected section goes into the URL and survives a reload (part of "fewer operations").
     //
-    // 注意草稿**不过**刷新：它住在页面内存里，而刷新就是重来（App 里那条
-    // beforeunload 会在真刷新之前拦一下，见那里的注释）。所以这里刷完要重新点
-    // 一下开关，再造一个草稿出来——这不是将就，是这条语义本来的样子。
+    // Note the draft **does not survive** a reload: it lives in page memory, and a reload
+    // is a fresh start (the beforeunload in App blocks just before the real reload, see
+    // the comment there). So after reloading we click the switch again to create a draft -- not a workaround, that is what this semantics is.
     await page.reload({ waitUntil: "networkidle" });
     await page.waitForTimeout(900);
     const active = await page.locator("nav.side button.on").getAttribute("title");
-    check("刷新之后还在原来那一节", active === "plugin-manager", `实际 ${active}`);
+    check("still on the same section after reload", active === "plugin-manager", `actual ${active}`);
     await openSwitches();
     await box.click();
     await page.waitForTimeout(200);
@@ -362,15 +362,15 @@ if (!(await openSwitches())) {
   await page.locator("header.top button.primary").click();
   await page.waitForTimeout(900);
   const after = (await page.locator("header.top button.primary").innerText()).trim();
-  check("保存之后回到「没有未保存的东西」", !/\d/.test(after), `保存按钮显示 ${JSON.stringify(after)}`);
+  check("after saving it is back to 'nothing unsaved'", !/\d/.test(after), `save button shows ${JSON.stringify(after)}`);
 
-  // —— 8. 别人抢先改过 → 弹冲突，而且**不许覆盖** ——
+  // -- 8. Someone else wrote first -> show a conflict, and **never overwrite** --
   //
-  // 这是这个产品里唯一一处两个写者改同一份文件的地方（命令行与浏览器），也是当初
-  // 点名要的语义：「commit 的时候会检测是否冲突，如果有，提示用户」。
+  // This is the only place in the product where two writers change the same file (the CLI
+  // and the browser), and the semantics explicitly asked for: "on commit, detect whether there is a conflict, and if so, prompt the user".
   //
-  // 浏览器这一层独有的一条：**对话框真的出现在用户面前了**。Go 那条 e2e 验的是
-  // 409 与那几个字段，看不见屏幕上是弹了一张带两边原文的卡片，还是一片空白。
+  // One thing only this browser layer can check: **the dialog really appears in front of
+  // the user**. The Go e2e verifies the 409 and those fields; it cannot see whether the screen shows a card with both sides' raw text or just a blank.
   const raw = JSON.parse(fs.readFileSync(stateFile, "utf8"));
   raw.written_by_someone_else = true;
   fs.writeFileSync(stateFile, JSON.stringify(raw, null, 2));
@@ -382,27 +382,27 @@ if (!(await openSwitches())) {
 
   const dialog = page.locator(".banner.conflict");
   const shown = await dialog.count();
-  check("别人抢先改过之后弹出了冲突", shown > 0, "屏幕上什么都没弹，用户的改动就这么没了");
+  check("a conflict appears after someone else wrote first", shown > 0, "nothing appeared on screen; the user's changes just vanished");
   if (shown) {
-    // 两边原文都要摆出来，否则用户没法判断该留谁的。
+    // Both sides' raw text must be shown, or the user cannot decide whose to keep.
     const text = await dialog.first().innerText();
-    check("冲突里点名了文件", text.includes(stateFile), text.slice(0, 80));
-    check("冲突给了两个选择", /keep mine/i.test(text) || text.includes("保留"), text.slice(0, 80));
+    check("the conflict names the file", text.includes(stateFile), text.slice(0, 80));
+    check("the conflict offers two choices", /keep mine/i.test(text) || text.includes("保留"), text.slice(0, 80));
   }
   const after2 = JSON.parse(fs.readFileSync(stateFile, "utf8"));
-  check("被拒的那次写没有覆盖磁盘", after2.written_by_someone_else === true);
+  check("the rejected write did not overwrite the disk", after2.written_by_someone_else === true);
 }
 
-// —— 9. provider 表：凭据不出门，但能加能改 ——
+// -- 9. provider table: credentials never leave, yet it can be added to and edited --
 //
-// 这一段是「用户要在网页上配 provider」那条要求的验收。它验的是一件看起来很矛盾
-// 的事：**浏览器拿不到那个 key，却仍然能改 provider**。做法是值根本不进快照
-// （FieldSecret），界面回传空串 = 别动它。所以这里两条都要验：
+// This section is the acceptance for "the user wants to configure providers in the web
+// UI". It verifies something that looks contradictory: **the browser never gets the key,
+// yet can still edit the provider**. The trick is the value never enters the snapshot (FieldSecret); an empty string sent back from the UI = leave it alone. So verify both:
 //
-//   - 那一格来时是空的、类型是 password（凭据不出门）；
-//   - 改完别处保存之后，磁盘上的 key **还在**（空串没有被当成「删掉」）。
+//   - the field arrives empty with type password (credentials do not leave);
+//   - after changing something else and saving, the key on disk is **still there** (empty string was not taken as "delete").
 //
-// 第二条错了的话，症状是「改一次 base_url，下一次请求 401」，而且保存是成功的。
+// If the second one is wrong, the symptom is "change base_url once, the next request is 401", with the save reporting success.
 {
   const providersFile = stateFile.replace(/state\.json$/, "providers.json");
   const before = fs.existsSync(providersFile) ? fs.readFileSync(providersFile, "utf8") : "";
@@ -410,7 +410,7 @@ if (!(await openSwitches())) {
 
   const card = snap.concepts.find((c) => c.kind === "records" && c.data?.file === "providers.json");
   if (!card) {
-    skip("这份装配里没有 provider 表那张卡，跳过 provider 那几条");
+    skip("this assembly has no provider table card, skipping the provider checks");
   } else {
     await page.locator(`nav.side button[title="${card.source}"]`).click();
     await page.waitForTimeout(200);
@@ -418,65 +418,65 @@ if (!(await openSwitches())) {
     await page.waitForTimeout(300);
 
     const keyBox = page.locator('section.card input[type="password"]').first();
-    check("凭据那一格是遮蔽的", (await keyBox.count()) > 0);
-    check("凭据的值没有随快照过来", (await keyBox.inputValue()) === "", "浏览器手里不该有这个值");
+    check("the credential field is masked", (await keyBox.count()) > 0);
+    check("the credential value did not come with the snapshot", (await keyBox.inputValue()) === "", "the browser should not have this value");
 
-    // 改一个**不是凭据**的字段，保存，然后看磁盘。
+    // Change a field that is **not a credential**, save, then look at the disk.
     //
-    // 上一段故意制造的那个冲突还挂在屏幕上（那是它要验的东西），所以「没有报错」
-    // 的判据是**横幅没有变多**，不是「屏幕上一个横幅都没有」。
+    // The conflict the previous section deliberately created is still on screen (that is
+    // what it verifies), so "no error" means **no new banner**, not "no banner on screen at all".
     const bannerBefore = await page.locator(".banner").first().innerText().catch(() => "");
-    // 字段 id 是 `f-<这条记录的 id>-<字段名>`（记录 id 现在是 provider 名，不再是
-    // 数组下标——见 kinds/Records.svelte 里 key/id 分开的那段注释）。所以按**后缀**
-    // 找，别把 id 写死。
+    // The field id is `f-<this record's id>-<field name>` (the record id is now the provider
+    // name, no longer the array index -- see the comment separating key/id in
+    // kinds/Records.svelte). So find by **suffix**; do not hardcode the id.
     const baseURL = page.locator(`input[id$="-base_url"]`).first();
     await baseURL.fill("http://127.0.0.1:9/changed");
     await page.waitForTimeout(150);
     await page.locator("header.top button.primary").click();
     await page.waitForTimeout(900);
-    // 保存报错要说出来。少了这一条，「没写下去」与「写了但我读错了」在屏幕上长得
-    // 一模一样——文件没变的真实原因会被猜成十几种。
+    // A save error must be spoken. Without this check, "it was not written" and "it was
+    // written but I read it wrong" look identical on screen -- the real reason the file did not change gets guessed a dozen ways.
     const banner = await page.locator(".banner").first().innerText().catch(() => "");
-    check("保存没有多出新的报错", banner === bannerBefore, `${banner.slice(0, 120)}`.trim());
+    check("saving added no new error", banner === bannerBefore, `${banner.slice(0, 120)}`.trim());
     const after = JSON.parse(fs.readFileSync(providersFile, "utf8")).providers?.demo ?? {};
-    check("改得动 provider 的字段", after.base_url === "http://127.0.0.1:9/changed", JSON.stringify(after));
-    check("回传空的凭据格没有把 key 弄丢", after.api_key === keyBefore && keyBefore !== "", `现在 ${JSON.stringify(after.api_key)}`);
+    check("provider fields can be edited", after.base_url === "http://127.0.0.1:9/changed", JSON.stringify(after));
+    check("sending back an empty credential field did not lose the key", after.api_key === keyBefore && keyBefore !== "", `now ${JSON.stringify(after.api_key)}`);
 
-    // 眼睛：点了之后输入框变明文。值是我们自己刚敲的，所以这条验的是「那个按钮真的
-    // 接到了这一格」——粘一串 key 之后核对一眼，是最常见的动作。
+    // The eye: clicking turns the input into plain text. The value is one we just typed,
+    // so this verifies "that button really is wired to this field" -- pasting a key and glancing at it is the most common action.
     //
-    // 按 **id** 找那一格（后缀匹配，理由同上），不按 `input[type=password]`：
-    // 点亮之后类型就变了，用类型当选择器会变成「元素不存在」而超时——那看起来像
-    // 界面坏了，其实是在测一个已经不存在的东西。
+    // Find the field by **id** (suffix match, reason as above), not by `input[type=password]`:
+    // after revealing, the type changes, so using the type as a selector becomes "element
+    // does not exist" and times out -- which looks like the UI is broken but is really testing something that no longer exists.
     const keyField = page.locator(`input[id$="-api_key"]`).first();
     await keyField.fill("sk-typed-in-the-browser");
     await page.waitForTimeout(150);
     await page.locator(".rec button[title]").first().click();
     await page.waitForTimeout(150);
-    check("眼睛把那格变成明文", (await keyField.getAttribute("type")) === "text");
+    check("the eye turns that field into plain text", (await keyField.getAttribute("type")) === "text");
   }
 }
 
-// —— 10. 一份档位文件的全部动作都在它自己那张 kv 卡上 ——
+// -- 10. All actions for a profile file live on its own kv card --
 //
-// 2026-09-20 之前：新建/改名/删除在一张「档位文件」目录卡上，档位在每张 profile 卡
-// 上——同一份文件被两张卡说着，而那张目录卡列的文件与这些卡一一对应（用户的原话：
-// 「这个多余的啊……要求彻底删除」）。现在动作都收在卡自己身上：
-// `+ profile` 建新的一份、名字那一格改名、继承那一格选父档位、`delete this file`
-// 删掉整份文件（删之前问一句）。
+// Before 2026-09-20: create/rename/delete lived on a "profile files" directory card, while
+// profiles lived on each profile card -- one file spoken of by two cards, and the files
+// listed by that directory card corresponded one-to-one with these cards (original words: "this one is redundant... I want it removed entirely"). Now the actions all live on the card itself:
+// `+ profile` creates a new one, the name field renames, the inherit field picks the parent
+// profile, `delete this file` deletes the whole file (asking first).
 {
   const home = stateFile.slice(0, stateFile.lastIndexOf("/"));
   const mappingsDir = home + "/mappings";
   const has = (n) => fs.existsSync(`${mappingsDir}/${n}.kv`);
 
-  // 那张多余的目录卡必须**真的没了**（它是被点名要求删掉的东西，回来了要有人喊）。
+  // That redundant directory card must **really be gone** (it was explicitly asked to be removed; if it comes back someone should shout).
   check(
-    "「档位文件」那张多余的目录卡不在了",
+    "the redundant 'profile files' directory card is gone",
     !snap.concepts.some((c) => c.id === "config.profiles"),
     snap.concepts.filter((c) => c.id.startsWith("config.profile")).map((c) => c.id).join(" "),
   );
 
-  // 从一张白纸开始（前面几节故意制造过冲突，草稿会干扰这一节）。
+  // Start from a blank slate (earlier sections deliberately created conflicts; drafts would disturb this one).
   await page.goto(url, { waitUntil: "networkidle" });
   await page.waitForTimeout(700);
 
@@ -489,32 +489,32 @@ if (!(await openSwitches())) {
     .click();
   await page.waitForTimeout(400);
 
-  // —— 新建：**这一节的工具条**上一个按钮 ——
+  // -- Create: a button on **this section's toolbar** --
   //
-  // 它不在任何一张卡上（2026-09-21 从卡片头搬过去的）：新建出来的那一份此刻还没有
-  // 概念，没有哪张卡能挂它。挂在栏目上它还永远够得着，不管你正看着哪一张卡。
+  // It is not on any card (moved from the card head on 2026-09-21): the newly created one has
+  // no concept yet, so no card can host it. On the section it is always within reach, whichever card you are looking at.
   await page.locator(".secbar button").first().click();
-  // 两件事都要等，而且是**先落盘、再切卡**（切卡发生在 apply 之后的 load 里）。
-  // 只等文件的话会在导航之前就断言 URL，那红的是测试的时序不是产品。
+  // Both things must be awaited, and it is **write to disk first, then switch cards** (the switch happens in the load after apply).
+  // Waiting only for the file would assert the URL before navigation; that red would be the test's timing, not the product.
   for (let i = 0; i < 40 && !has("new-profile"); i++) await page.waitForTimeout(100);
-  check("`+ profile` 建出了一份新档位文件", has("new-profile"), `mappings 里有 ${fs.readdirSync(mappingsDir).join(" ")}`);
+  check("`+ profile` created a new profile file", has("new-profile"), `mappings contains ${fs.readdirSync(mappingsDir).join(" ")}`);
   for (let i = 0; i < 40 && !page.url().includes("config.profile.new-profile"); i++) {
     await page.waitForTimeout(100);
   }
-  check("新建之后直接切到那一张卡", page.url().includes("config.profile.new-profile"), page.url());
+  check("right after creating, it switches to that card", page.url().includes("config.profile.new-profile"), page.url());
 
-  // —— 改名 + 继承：两格都在卡片头上，改完点保存一起落盘 ——
+  // -- Rename + inherit: both fields are in the card head; save once and both land --
   await page.locator(".card .head input.name").fill("uicheck-renamed");
   await page.locator(".card .head select").selectOption("demo");
   await page.waitForTimeout(200);
   await page.locator("header.top button.primary").click();
   for (let i = 0; i < 40 && !has("uicheck-renamed"); i++) await page.waitForTimeout(100);
-  check("改名把文件改到了新名字下", has("uicheck-renamed") && !has("new-profile"),
+  check("renaming moved the file to the new name", has("uicheck-renamed") && !has("new-profile"),
     `new-profile=${has("new-profile")} uicheck-renamed=${has("uicheck-renamed")}`);
   const renamed = has("uicheck-renamed") ? fs.readFileSync(`${mappingsDir}/uicheck-renamed.kv`, "utf8") : "";
-  check("继承写进了文件", renamed.includes("extends=demo"), JSON.stringify(renamed.slice(0, 80)));
+  check("the inheritance was written into the file", renamed.includes("extends=demo"), JSON.stringify(renamed.slice(0, 80)));
 
-  // —— 删除：问一句，然后真的删盘 ——
+  // -- Delete: ask once, then really remove from disk --
   const before = confirms.length;
   await page
     .locator(`button.tab[title="config.profile.uicheck-renamed"], nav.v button[title="config.profile.uicheck-renamed"]`)
@@ -523,23 +523,23 @@ if (!(await openSwitches())) {
   await page.waitForTimeout(350);
   await page.locator(".card .head button.danger").click();
   for (let i = 0; i < 30 && has("uicheck-renamed"); i++) await page.waitForTimeout(100);
-  check("删之前问了一句", confirms.length > before, `confirms=${JSON.stringify(confirms.slice(before))}`);
-  check("删除真的删掉了文件", !has("uicheck-renamed"));
+  check("it asked before deleting", confirms.length > before, `confirms=${JSON.stringify(confirms.slice(before))}`);
+  check("deleting really removed the file", !has("uicheck-renamed"));
 }
 
 
-// —— 11. 文本编辑器里打字不会跳回第一行（2026-09-20 实测到的回归） ——
+// -- 11. Typing in the text editor does not jump back to the first line (regression seen live on 2026-09-20) --
 //
-// 现场：在原文那一栏按一下 `d`，光标跳到第一行，根本没法编辑。根因是 CodeMirror
-// 那个 `$effect` 读了 `value`（响应式），于是**每敲一个字符**就重建一次编辑器，
-// doc 从头灌进去、光标回到 0（见 kinds/CodeEditor.svelte 里的 untrack）。
+// The scene: press `d` once in the raw pane and the cursor jumps to the first line; editing
+// is impossible. The root cause was that CodeMirror's `$effect` read `value` (reactive), so
+// **every character typed** rebuilt the editor, poured the doc in from the top and reset the cursor to 0 (see untrack in kinds/CodeEditor.svelte).
 //
-// 判据用「敲进去的字符在末尾」而不是「光标在哪」：跳回开头的症状正是字符被**逆序**
-// 插在最前面，这一条判得出来。
+// The criterion is "the typed characters are at the end", not "where the cursor is": the symptom
+// of jumping back to the start is characters being **inserted in reverse** at the front, and this check can tell.
 {
-  // 挑一个**可写**的原文栏：profile 的右栏是 `.kv`（没有凭据，不是只读），而
-  // providers.json 那种带 api_key 的右栏是**只读**的（redacted）——往只读编辑器里
-  // 打字什么都不会发生，那种「失败」测的是别的东西。
+  // Pick a **writable** raw pane: a profile's right pane is `.kv` (no credentials, not
+  // read-only), while the right pane of something like providers.json with an api_key is
+  // **read-only** (redacted) -- typing into a read-only editor does nothing, and that "failure" tests something else.
   const editable = snap.concepts.find((c) => c.kind === "mapping-editor");
   await page.locator(`nav.side button[title="${editable.source}"]`).click();
   await page.waitForTimeout(250);
@@ -556,24 +556,24 @@ if (!(await openSwitches())) {
     await page.keyboard.type("xyz");
     await page.waitForTimeout(300);
     const text = (await cm.innerText()).trimEnd();
-    check("在文本编辑器里连打三个字符不会跳回开头", text.endsWith("xyz"),
-      `结尾是 ${JSON.stringify(text.slice(-24))}`);
-    // 留一份脏草稿会影响后面的键盘检查，撤销掉。
+    check("typing three characters in the text editor does not jump back to the start", text.endsWith("xyz"),
+      `ends with ${JSON.stringify(text.slice(-24))}`);
+    // Leaving a dirty draft would disturb the keyboard checks later; revert it.
     const revert = page.locator(".card.dirty button").filter({ hasText: /撤销|revert|Revert/ }).first();
     if (await revert.count()) { await revert.click(); await page.waitForTimeout(300); }
   } else {
-    skip("文本编辑器没渲染出来（模板变了？）——这一条跳过");
+    skip("the text editor did not render (did the template change?) -- skipping this check");
   }
 }
 
-// —— 11.5. 挤掉另一半的草稿时，必须说一声 ——
+// -- 11.5. Displacing the other half's draft must be announced --
 //
-// 两半写的是同一份文件，所以后改的那一半赢、另一半**没保存的**草稿作废（见
-// App.svelte 的 edit/lastEdit，那是用户点名要的语义）。但作废掉的是他刚敲进去的
-// 字——不声不响地丢掉违背这个仓库那条硬规矩（不静默），而且他会以为那段字还在。
+// Both halves write the same file, so the half edited later wins and the other half's
+// **unsaved** draft is discarded (see edit/lastEdit in App.svelte; that is the semantics
+// the user asked for). But what is discarded is text they just typed -- dropping it silently breaks this repo's hard rule (never silent), and they would think the text is still there.
 //
-// 判据两条：屏幕上出现了一句提示，且那句话**点名了是哪份文件**（同一个文件的两半
-// 才可能撞上这件事，不说文件名等于让用户自己去猜是哪一份）。
+// Two criteria: a notice appears on screen, and it **names which file** (only two halves of
+// the same file can collide like this; not naming the file makes the user guess which one).
 {
   const pair = snap.concepts.find((c) => c.kind === "mapping-editor");
   await page.locator(`nav.side button[title="${pair.source}"]`).click();
@@ -587,7 +587,7 @@ if (!(await openSwitches())) {
   const cm = page.locator(".pane-r .cm-content").first();
   const name = page.locator(".card .head input.name").first();
   if ((await cm.count()) && (await name.count())) {
-    // 先在**原文**那一栏敲一句（造一份 raw 草稿），再去**控件**那一栏动一下。
+    // First type something in the **raw** pane (create a raw draft), then touch the **controls** pane.
     await cm.click();
     await page.keyboard.press("Control+End");
     await page.keyboard.type("# raw half");
@@ -595,13 +595,13 @@ if (!(await openSwitches())) {
     await name.fill("demo-renamed");
     await page.waitForTimeout(300);
     const notice = await page.locator(".notice").first().innerText().catch(() => "");
-    check("挤掉另一半的草稿时说了一声", notice.trim().length > 0, "屏幕上一句话都没有，那段字就没了");
+    check("displacing the other half's draft is announced", notice.trim().length > 0, "not a word on screen; that text is just gone");
     check(
-      "那句话点名了是哪份文件",
+      "the notice names which file",
       notice.includes(pair.data.file),
-      `实际 ${JSON.stringify(notice.slice(0, 90))}`,
+      `actual ${JSON.stringify(notice.slice(0, 90))}`,
     );
-    // 收尾：把这一节的草稿撤掉，别影响后面的键盘检查。
+    // Wrap up: revert this section's draft so it does not disturb the keyboard checks later.
     await page
       .locator(".card.dirty button")
       .filter({ hasText: /撤销|revert|Revert/ })
@@ -610,26 +610,26 @@ if (!(await openSwitches())) {
       .catch(() => {});
     await page.waitForTimeout(400);
   } else {
-    skip("这一节没有「控件 + 原文」两半，跳过 11.5");
+    skip("this section has no 'controls + raw' halves, skipping 11.5");
   }
 }
 
-// —— 11.6. 改原文，控件那一半跟着变 ——
+// -- 11.6. Edit the raw text and the controls half follows --
 //
-// 这是用户点名要的那条：「编辑完 raw 后马上刷新 ui controls」。没有它的话，控件
-// 那一半手里还是**改之前**那份盘上内容，而它的编辑载荷是**整份文件**——接着动
-// 一个下拉框交上去的就是整份旧表，刚粘进原文的东西当场没了，而屏幕上从头到尾
-// 没显示过它（见内核 lib/view 的 Concept.Preview）。
+// This is the one the user explicitly asked for: "refresh the ui controls right after
+// editing the raw". Without it, the controls half still holds the on-disk content from
+// **before the change**, and its edit payload is the **whole file** -- touching one
+// dropdown then submits the entire old table, and what was just pasted into the raw text is gone on the spot, never having been shown on screen (see Concept.Preview in the kernel's lib/view).
 //
-// 判据落在**控件那一栏真的多出一个档位**上，不是「后端回了 200」：回 200 而界面
-// 没换，与这条要的东西差着十万八千里。
+// The criterion lands on **the controls column really gaining a role**, not "the backend
+// returned 200": a 200 with an unchanged UI is nowhere near what this check wants.
 //
-// 用 `.kv` 的档位（沙箱脚本铺的 fill1..fill9）：往末尾加一行 `键=provider/model`
-// 就是合法 KV，而 JSON 那份要在花括号里面插，打字很难构造得干净。
+// Use a `.kv` profile (fill1..fill9 laid down by the sandbox script): appending a line
+// `key=provider/model` at the end is valid KV, whereas the JSON one must be inserted inside the braces, which is hard to construct cleanly by typing.
 {
   const kvProfile = snap.concepts.find((c) => c.kind === "mapping-editor" && c.data.file?.endsWith(".kv"));
   if (!kvProfile) {
-    skip("这份装配里没有 .kv 档位，跳过 11.6");
+    skip("this assembly has no .kv profile, skipping 11.6");
   } else {
     await page.locator(`nav.side button[title="${kvProfile.source}"]`).click();
     await page.waitForTimeout(250);
@@ -643,28 +643,28 @@ if (!(await openSwitches())) {
     const cm = page.locator(".pane-r .cm-content").first();
     await cm.click();
     await page.keyboard.press("Control+End");
-    // `role.<名字>=` 是 KV 里「任意档位名」的写法（`zzprobe=` 会被解析器拒掉——
-    // 它不认识的键宁可报错，因为写错一个键原本会被静默忽略）。
+    // `role.<name>=` is how KV writes "any role name" (`zzprobe=` is rejected by the parser --
+    // it prefers an error on a key it does not know, because a mistyped key used to be silently ignored).
     await page.keyboard.type("\nrole.zzprobe=demo/demo-model");
-    // 防抖 200ms + 一个来回，留足余量（这是本地 BFF，正常几毫秒）。
+    // 200ms debounce + one round trip, with plenty of slack (this is the local BFF; normally a few milliseconds).
     await page.waitForTimeout(1200);
     const after = await page.locator(".pane-l .role b.mono").allInnerTexts();
     check(
-      "原文里加的那个档位，控件那一半跟着出现了",
+      "the role added in the raw text shows up in the controls half",
       after.includes("zzprobe") && !before.includes("zzprobe"),
-      `之前 [${before}] 之后 [${after}]`,
+      `before [${before}] after [${after}]`,
     );
 
-    // —— 接着在控件上改一格、保存：盘上**两笔都要在** ——
+    // -- Then change one field in the controls and save: **both edits must be on disk** --
     //
-    // 这一条才是这个功能存在的全部理由（用户的原话：「编辑完 raw 后马上刷新 ui
-    // controls」）。控件那一半的编辑载荷是**整份文件**，所以它交上去的那一份必须
-    // 建立在原文草稿之上；否则「原文里加的东西」和「控件里改的那一格」只能活一个。
+    // This check is the whole reason the feature exists (original words: "refresh the ui
+    // controls right after editing the raw"). The controls half's edit payload is the **whole
+    // file**, so what it submits must be built on the raw draft; otherwise "what was added in the raw text" and "the field changed in the controls" cannot both survive.
     //
-    // 实测过的坏法（修之前）：保存写的是**原文那一半、内容 = 盘上原样**——两笔
-    // 编辑一起消失，屏幕上连一句报错都没有，只看到「未保存」自己没了。根因是
-    // CodeEditor 把「外部换内容」那次 dispatch 当成了用户输入又交了回去
-    // （见 kinds/CodeEditor 里 applying 那段）。
+    // The bad behavior seen live (before the fix): the save wrote **the raw half, content =
+    // exactly what was on disk** -- both edits vanished together, with not a single error on
+    // screen; all you saw was "unsaved" clearing itself. The root cause was CodeEditor treating
+    // the dispatch that swaps content externally as user input and sending it back (see the applying block in kinds/CodeEditor).
     const home = stateFile.slice(0, stateFile.lastIndexOf("/"));
     const file = `${home}/${kvProfile.data.file}`;
     await page
@@ -678,17 +678,17 @@ if (!(await openSwitches())) {
     await page.waitForTimeout(1200);
     const saved = fs.readFileSync(file, "utf8");
     check(
-      "保存之后：原文加的那一档、控件改的那一格，两笔都在盘上",
+      "after saving: the role added in the raw text and the field changed in the controls are both on disk",
       saved.includes("zzprobe") && saved.includes("m-from-control"),
       JSON.stringify(saved),
     );
   }
 }
 
-// —— 12. 运行期开关画成「开关」，不是复选框 ——
+// -- 12. Runtime switches are drawn as "switches", not checkboxes --
 //
-// 用户的原话是「别搞那个傻逼钩啊，用一个可以 toggle 的开关」。判据落在
-// `role=switch` 上：读屏器与键盘靠它，而一个纯 CSS 的假开关不会有。
+// The user's words were "don't do that stupid tick thing, use a switch you can toggle". The
+// criterion lands on `role=switch`: screen readers and the keyboard rely on it, and a pure CSS fake switch has none.
 {
   await page.locator(`nav.side button[title="plugin-manager"]`).click();
   await page.waitForTimeout(250);
@@ -699,47 +699,47 @@ if (!(await openSwitches())) {
   await page.waitForTimeout(300);
   const switches = await page.locator(`.card .body input[role="switch"]`).count();
   const plain = await page.locator(`.card .body input[type="checkbox"]:not([role="switch"])`).count();
-  check("开关是开关（role=switch）", switches > 0, `实际 ${switches} 个`);
-  check("没有一个是裸复选框", plain === 0, `还有 ${plain} 个裸复选框`);
+  check("a switch is a switch (role=switch)", switches > 0, `actual ${switches}`);
+  check("not one is a bare checkbox", plain === 0, `${plain} bare checkboxes left`);
 }
 
-// —— 13. 键盘：`/` 找东西、Esc 退出 ——
+// -- 13. Keyboard: `/` to find things, Esc to exit --
 //
-// 这条是「4-5 次操作」那条线的下限保障：鼠标走完侧栏 → tab → 控件 → 保存是四次，
-// 没有余量；`/` 与 Alt+数字 把「回到一个已知位置」压成一次按键。
+// This is the lower-bound guard for the "4-5 operations" line: by mouse, sidebar -> tab ->
+// control -> save is four, with no slack; `/` and Alt+number compress "back to a known position" into one keypress.
 {
   await page.keyboard.press("/");
   await page.waitForTimeout(150);
   const focused = await page.evaluate(() => document.activeElement?.className || "");
-  check("`/` 把光标送进过滤框", focused.includes("filter"), `焦点在 ${JSON.stringify(focused)}`);
+  check("`/` puts the cursor in the filter box", focused.includes("filter"), `focus is on ${JSON.stringify(focused)}`);
   await page.keyboard.press("Escape");
   await page.waitForTimeout(150);
   const after = await page.evaluate(() => document.activeElement?.tagName || "");
-  check("Esc 退出输入", after !== "INPUT", `焦点还在 ${after}`);
+  check("Esc exits the input", after !== "INPUT", `focus is still on ${after}`);
 }
 
-// —— 14. 侧栏的分组标题底下，真的全是那一类 ——
+// -- 14. Under each sidebar group heading, everything really is that kind --
 //
-// 用户的原话：「大的目录是不是也要分类下啊」。分组由各模块**声明**
-// （view.Section.Group），侧栏按它聚拢。
+// The user's words: "shouldn't the big directories be categorized too". Grouping is
+// **declared** by each module (view.Section.Group), and the sidebar gathers by it.
 //
-// 判据不是「画出了标题」而是**成员真的聚在一起**：第一版是「边走边插标题」，而成
-// 员按来源序来，于是「数据面」标题底下只有「熔断」、「网关」跑到了下一个标题底下
-// （实测）。标题说的是「下面这几栏是一类」，底下就必须真的是那一类——一行小字
-// 加错了地方，读的人反而更晕。
+// The criterion is not "a heading was drawn" but **members really clump together**: the first
+// version inserted headings as it walked, while members came in source order, so under
+// the "data plane" heading there was only "breaker", and "gateway" landed under the next heading (seen live). A heading says "the rows below are one kind", so below it really must be that kind -- a caption
+// added in the wrong place leaves the reader more confused.
 //
-// 不归组的那几栏排在最前面（今天只有「配置」）：它们不属于任何标题，所以游标从
-// 空串起步，正好也对得上。
+// The ungrouped rows come first (today only "config"): they belong to no heading, so
+// starting the cursor at the empty string lines up exactly.
 {
   if (!snap.sections.some((s) => s.group)) {
-    skip("这份装配里没有模块声明分组，跳过侧栏分组那条");
+    skip("no module in this assembly declares a group, skipping the sidebar grouping check");
   } else {
     const layout = await page.evaluate(() =>
       [...document.querySelector("nav.side").children]
         .filter((e) => e.classList.contains("group") || e.classList.contains("row"))
         .map((e) => ({
           head: e.classList.contains("group"),
-          // 标题读文字、栏读 title（= source，机器标记，不跟着语言跑）。
+          // Read text for headings, title for rows (= source, a machine marker that does not follow the language).
           name: e.classList.contains("group") ? e.textContent.trim() : e.getAttribute("title"),
         })),
     );
@@ -755,26 +755,26 @@ if (!(await openSwitches())) {
       }
       if ((groupOf.get(r.name) ?? "") !== cur) stray.push(r.name);
     }
-    check("侧栏画出了分组标题", heads > 0, `实际画了 ${heads} 个`);
+    check("the sidebar drew group headings", heads > 0, `actually drew ${heads}`);
     check(
-      "每个标题底下只有那一类的栏（没被别的组打断）",
+      "under each heading there are only rows of that kind (not interrupted by another group)",
       stray.length === 0,
-      `跑错组的: ${stray.join(", ")}`,
+      `stray from their group: ${stray.join(", ")}`,
     );
   }
 }
 
-// —— 15. 静默刷新之后，卡片的顺序不许变 ——
+// -- 15. After a silent refresh, card order must not change --
 //
-// 用户的原话：「上游、全局设置经常会自己跑到下面」。真相不是它们「自己跑」，而是
-// **界面在局部刷新时重排了一遍**：3 秒一次的静默刷新只问 Live 的那几个源，拿回来
-// 的几张卡要并回手里那份，拼接这一步自己排了一次——而它当时只按 `(source, id)`
-// 排。于是 `Order` 为 0/1 的「全局设置」「上游」掉到十几张档位卡（Order 10）底下。
+// The user's words: "upstream and global settings often wander down by themselves".
+// The truth is not that they "wander"; **the UI re-sorted once during a partial refresh**:
+// the 3-second silent refresh asks only the Live sources, and the few cards it returns must
+// be merged back into the local copy, and that merge sorted on its own -- it sorted only by `(source, id)`. So "global settings" and "upstream" with `Order` 0/1 fell below a dozen profile cards (Order 10).
 //
-// 症状之所以是「经常」而不是「总是」：整份加载（刷新页面）走的是另一条路，那条
-// 不排、照抄后端顺序，所以是对的。只有静默刷新之后错——而它 3 秒就来一次。
+// Why the symptom is "often" rather than "always": a full load (page reload) takes another
+// path that does not sort and copies the backend order, so it is right. Only after a silent refresh is it wrong -- and that comes every 3 seconds.
 //
-// 所以这条必须**等一次真的静默刷新**再比：@3 秒是 App 里的间隔常量，这里按它等。
+// So this check must **wait for one real silent refresh** before comparing: @3 seconds is the interval constant in App; wait that long here.
 {
   await page.locator(`nav.side button[title="config"]`).click();
   await page.waitForTimeout(300);
@@ -783,28 +783,28 @@ if (!(await openSwitches())) {
       [...document.querySelectorAll("nav.v button.row")].map((b) => b.getAttribute("title")),
     );
   const before = await navOrder();
-  check("config 那节的竖栏画出来了", before.length > 2, `实际 ${before.length} 张`);
-  // 后端声明的顺序：全局设置(0) / 上游(1) 在档位卡(10)前面。
+  check("the vertical column for the config section is drawn", before.length > 2, `actual ${before.length} cards`);
+  // The backend-declared order: global settings (0) / upstream (1) before the profile cards (10).
   check(
-    "装完就要配的那两张排在最前",
+    "the two you configure right after install come first",
     before.findIndex((id) => id === "config.providers") <
       before.findIndex((id) => id?.startsWith("config.profile.")),
     before.slice(0, 4).join(" "),
   );
-  // **必须真的开一次自动刷新**：轮询默认是关的（`auto = false`），不打开的话这条
-  // 检查是空转的——它会「通过」，而它要防的那个 bug 一次都没被触发过。第一版就是
-  // 这样：把排序改回旧写法，它照样全绿。
+  // **Auto-refresh must really be turned on**: polling is off by default (`auto = false`);
+  // without turning it on this check spins idle -- it "passes" while the bug it guards
+  // against was never triggered once. The first version was exactly that: revert the sort to the old code and it stayed all green.
   await page.locator('header.top input[type="checkbox"]').check();
-  // 轮询 3 秒一次（App 里的间隔），等一次落地再多给一点。
+  // Polling is every 3 seconds (the App interval); wait one cycle plus a bit more.
   await page.waitForTimeout(4200);
   const after = await navOrder();
   check(
-    "静默刷新之后顺序没变",
+    "order is unchanged after a silent refresh",
     JSON.stringify(after) === JSON.stringify(before),
-    `刷新前 ${before.slice(0, 4).join(" ")} / 刷新后 ${after.slice(0, 4).join(" ")}`,
+    `before refresh ${before.slice(0, 4).join(" ")} / after refresh ${after.slice(0, 4).join(" ")}`,
   );
   check(
-    "静默刷新之后那两张还在最前",
+    "those two are still first after a silent refresh",
     after.findIndex((id) => id === "config.providers") <
       after.findIndex((id) => id?.startsWith("config.profile.")),
     after.slice(0, 4).join(" "),
@@ -812,17 +812,17 @@ if (!(await openSwitches())) {
   await page.locator('header.top input[type="checkbox"]').uncheck();
 }
 
-// —— 16. Claude Code 的槽位映射能改，而且真的落盘 ——
+// -- 16. Claude Code's slot mapping is editable, and really hits the disk --
 //
-// 2026-09-21 之前这个映射**只**住在 Go 源码里（`modules/claudecode/agent.go` 的
-// Slots），想「让 Bash 分类器走 normal，免得 Sonnet 一挂整场断」只有改代码重编。
-// 用户的原话：「目前看 go 代码就是他妈的写死的吧，我觉得要搞成可配置的，前端也要
-// 支持上」。
+// Before 2026-09-21 this mapping lived **only** in Go source (the Slots in
+// `modules/claudecode/agent.go`); "make the Bash classifier use normal so a Sonnet outage does not break the whole session" meant editing code and rebuilding.
+// The user's words: "right now the go code is hardcoded, damn it; I think it should be
+// configurable, and the frontend should support it too".
 //
-// 判据落在**磁盘上**而不是「下拉框显示成新值」：后者在只改前端状态时也是绿的，而
-// 这条要的是「改完下一次接管真的会用新的档位」。顺带锁住那条容易做错的取舍——
-// 与缺省相同的行**不落盘**（留下同值记录，会让以后改缺省的人发现自己的改动对
-// 一部分用户不生效，而那些用户从没配过任何东西）。
+// The criterion lands on **the disk**, not "the dropdown shows the new value": the latter is
+// green even when only frontend state changed, and what this check wants is "the next
+// takeover really uses the new role". Also lock down the trade-off that is easy to get wrong --
+// rows equal to the default **are not written** (leaving same-value records would surprise whoever changes the default later, when they find their change does not apply to some users who never configured anything).
 {
   await page.locator(`nav.side button[title="claudecode"]`).click();
   await page.waitForTimeout(250);
@@ -834,15 +834,15 @@ if (!(await openSwitches())) {
 
   const rows = page.locator(".card .body .item");
   const n = await rows.count();
-  check("槽位卡一个槽位一行", n >= 4, `实际 ${n} 行`);
+  check("the slots card has one row per slot", n >= 4, `actual ${n} rows`);
 
-  // 找到 sonnet 那一行的下拉（缺省 mid），改成 normal。
+  // Find the dropdown on the sonnet row (default mid) and change it to normal.
   const sonnet = rows.filter({ has: page.locator('b:text-is("sonnet")') }).locator("select");
   const before = await sonnet.inputValue();
-  check("sonnet 出厂缺省是 mid", before === "mid", `实际 ${JSON.stringify(before)}`);
+  check("sonnet ships with mid as the default", before === "mid", `actual ${JSON.stringify(before)}`);
   const opts = await sonnet.locator("option").allInnerTexts();
   check(
-    "下拉里是语义档位（不是模型名）",
+    "the dropdown holds semantic roles (not model names)",
     ["heavy", "normal", "mid", "light"].every((t) => opts.includes(t)),
     opts.join(","),
   );
@@ -853,90 +853,90 @@ if (!(await openSwitches())) {
 
   const st = JSON.parse(fs.readFileSync(stateFile, "utf8"));
   const slots = st.claude_slots ?? {};
-  check("改过的槽位落到了 state.json", slots.sonnet === "normal", JSON.stringify(slots));
+  check("the changed slot landed in state.json", slots.sonnet === "normal", JSON.stringify(slots));
   check(
-    "与缺省相同的槽位不写进去",
+    "slots equal to the default are not written",
     slots.opus === undefined && slots.haiku === undefined,
     `opus=${JSON.stringify(slots.opus)} haiku=${JSON.stringify(slots.haiku)}`,
   );
   check(
-    "卡片上说清了「改了、下次接管才生效」",
+    "the card says it clearly: changed now, effective on the next takeover",
     /下次接管|taken over/.test(await rows.filter({ has: page.locator('b:text-is("sonnet")') }).innerText()),
-    "改完只说了一句「已保存」，用户会以为跑着的会话马上就变了",
+    "saying only 'saved' after the change would make the user think a running session changes at once",
   );
 }
 
-// —— 17. 没装的客户端，整张卡锁灰 ——
+// -- 17. A client that is not installed: the whole card is locked grey --
 //
-// 用户的原话：「前端的客户端也要更新，未安装的东西，直接全锁灰」。给一个没装的
-// 工具配槽位、调开关，一个字节都不会生效——卡片照常能改的话，用户改完才会发现白改。
+// The user's words: "the frontend clients need it too -- anything not installed, lock
+// it all grey". Configuring slots and toggling switches for a tool that is not installed changes not a single byte -- if the card stayed editable, the user would only learn it was wasted after doing it.
 //
-// 三条一起验，缺一条这条规则就不成立：
-//   1. 判据真的算出来了（卡片带 locked，且写得下**理由**——锁了不说是让人猜）；
-//   2. 界面真的画成锁灰（class，不是「看起来灰」）；
-//   3. 里面的控件真的**禁掉**了（只灰不禁的话，键盘还能 Tab 进去改）。
+// Verify three things together; the rule does not hold if any is missing:
+//   1. the criterion is really computed (the card carries locked, and can state a **reason** -- locking without saying why makes people guess);
+//   2. the UI really draws it locked grey (a class, not "it looks grey");
+//   3. the controls inside are really **disabled** (grey but not disabled, and the keyboard can still Tab in and change it).
 //
-// 沙箱里 opencode 当然没装（PATH 上是我们自己造的沙箱），所以它那一节正好是现场。
+// opencode is of course not installed in the sandbox (PATH points at the sandbox we built), so its section is exactly the scene.
 {
   const missing = snap.sections.find((s) => s.source === "opencode-omo");
   if (!missing) {
-    skip("这份装配里没有 opencode 那一节，跳过第 17 条");
+    skip("this assembly has no opencode section, skipping check 17");
   } else {
     await page.locator(`nav.side button[title="opencode-omo"]`).click();
     await page.waitForTimeout(300);
     const card = page.locator(".card").first();
-    check("没装的客户端那张卡画成锁灰", (await page.locator(".card.locked").count()) > 0,
-      "屏幕上没有锁灰的卡片");
+    check("the card for a client that is not installed is drawn locked grey", (await page.locator(".card.locked").count()) > 0,
+      "there is no locked-grey card on screen");
     const why = await page.locator(".card.locked .locked-bar").innerText().catch(() => "");
-    check("锁灰的理由写在卡上", why.trim().length > 0, "锁了却不说为什么，用户只会以为界面坏了");
-    // 理由里要带**怎么办**：那一格的全部用处就是告诉用户「为什么动不了」与「怎么
-    // 让它能动」。安装命令将来由 agent 模块注入（`newgate <agent> -y`）。
-    check("理由里给了装它的命令", /newgate\s+\S+\s+-y/.test(why), `实际 ${JSON.stringify(why.slice(0, 90))}`);
+    check("the reason for the lock is written on the card", why.trim().length > 0, "locking without saying why just makes the user think the UI is broken");
+    // The reason must include **what to do**: the whole point of that field is to tell the user
+    // "why it cannot move" and "how to make it move". The install command will be injected by the agent module later (`newgate <agent> -y`).
+    check("the reason gives the command to install it", /newgate\s+\S+\s+-y/.test(why), `actual ${JSON.stringify(why.slice(0, 90))}`);
     const enabled = await page
       .locator(".card.locked select:not([disabled]), .card.locked input:not([disabled]), .card.locked button:not([disabled])")
       .count();
-    check("锁灰的卡里没有还能动的控件", enabled === 0, `还有 ${enabled} 个能动的控件`);
-    // 侧栏那一节也要灰，但**点得进去**——灰是陈述「这台机器上用不上」，不是禁用。
+    check("no still-live controls inside a locked-grey card", enabled === 0, `${enabled} live controls left`);
+    // The sidebar section must be grey too, but **clickable** -- grey states "not usable on this machine", it does not disable.
     const sec = page.locator('nav.side button[title="opencode-omo"]');
-    check("侧栏那一节也灰了", (await sec.getAttribute("class"))?.includes("locked") === true,
-      "侧栏没灰，用户以为那一节和别的一样能用");
-    check("那一节仍然点得进去（详情要看得到）", (await sec.isEnabled()) === true,
-      "把整节禁用的话，用户连「这一节是干什么的」都看不到了");
+    check("the sidebar section is grey too", (await sec.getAttribute("class"))?.includes("locked") === true,
+      "the sidebar is not grey, so the user thinks that section works like any other");
+    check("that section is still clickable (its details must be visible)", (await sec.isEnabled()) === true,
+      "disabling the whole section would hide even 'what this section is for' from the user");
   }
 }
 
-// —— 18. codex 那张卡（接管写的是 TOML，界面也得看得见） ——
+// -- 18. The codex card (takeover writes TOML, so the UI must show it too) --
 //
-// codex 的档位住在 ~/.codex/config.toml 的 `model = "…"` 里，而那份文件是**接管
-// 时**写的。在这张卡之前，用户没有任何地方能看见「codex 现在跑哪一档」——除了
-// 去终端敲 `newgate agents` 或者直接打开那份 TOML。
+// codex's role lives in `model = "…"` in ~/.codex/config.toml, and that file is written
+// **at takeover time**. Before this card, there was nowhere to see "which role codex runs
+// now" -- except typing `newgate agents` in a terminal or opening that TOML directly.
 //
-// 判据与第 17 条那条槽位卡**同源但不同路**：这一张的值最终写进一份文件（而不是
-// 注入环境变量），所以「界面上改了」与「接管真的会用」之间多了一跳。这里锁的是
-// 前半段——**改完真的落盘**；后半段（`newgate on codex` 把它写进 TOML）由
-// modules/codex 的单测与真机验收锁。
+// The criterion is **same origin, different path** as the slots card in check 17: this one's
+// value ends up in a file (not injected as an env var), so there is one extra hop between
+// "changed in the UI" and "takeover really uses it". Here we lock the first half --
+// **the change really hits the disk**; the second half (`newgate on codex` writing it into the TOML) is locked by modules/codex unit tests and on-device acceptance.
 //
-// 沙箱里 codex **可能装着也可能没装**（取决于这台机器），所以这里不断言锁不锁：
-// 锁灰那条路已经由第 17 条用 opencode 覆盖过，而它走的是同一份判据。
+// In the sandbox codex **may or may not be installed** (depends on this machine), so do not assert locked or not here:
+// the locked-grey path is already covered by check 17 with opencode, and it goes through the same criterion.
 {
   const sec = page.locator(`nav.side button[title="codex"]`);
   if ((await sec.count()) === 0) {
-    skip("这份装配里没有 codex 那一节，跳过第 18 条");
+    skip("this assembly has no codex section, skipping check 18");
   } else {
     await sec.click();
     await page.waitForTimeout(300);
     const card = page.locator(".card").first();
     const sel = card.locator(".body .item").filter({ has: page.locator('b:text-is("model")') }).locator("select");
-    check("codex 卡上有 model 槽位", (await sel.count()) > 0, "卡上找不到那个下拉");
+    check("the codex card has a model slot", (await sel.count()) > 0, "cannot find that dropdown on the card");
 
     const opts = await sel.locator("option").allInnerTexts();
     check(
-      "下拉里是语义档位（不是模型名）",
+      "the dropdown holds semantic roles (not model names)",
       ["heavy", "normal", "mid", "light"].every((t) => opts.includes(t)),
       opts.join(","),
     );
     const before = await sel.inputValue();
-    check("codex 出厂缺省是 normal", before === "normal", `实际 ${JSON.stringify(before)}`);
+    check("codex ships with normal as the default", before === "normal", `actual ${JSON.stringify(before)}`);
 
     await sel.selectOption("mid");
     await page.waitForTimeout(200);
@@ -944,48 +944,48 @@ if (!(await openSwitches())) {
     await page.waitForTimeout(600);
 
     const st = JSON.parse(fs.readFileSync(stateFile, "utf8"));
-    check("改过的档位落到了 state.json 的 codex_slots",
+    check("the changed role landed in codex_slots in state.json",
       (st.codex_slots ?? {}).model === "mid", JSON.stringify(st.codex_slots ?? {}));
     check(
-      "卡片上说清了「下次接管才生效」",
+      "the card says it clearly: effective on the next takeover",
       /下次接管|taken over/.test(await card.innerText()),
-      "codex 的档位是接管时写进 TOML 的，不说这句用户会以为跑着的会话马上就变了",
+      "codex's role is written into the TOML at takeover time; without this line the user thinks a running session changes at once",
     );
 
-    // 改回缺省 = 那个键消失（与第 17 条同一条规矩，这里再验一次是因为它跨了模块：
-    // claude 与 codex 现在共用内核那一份实现，任一处回退都会在这里红）。
+    // Reverting to the default = that key disappears (same rule as check 17; verified again
+    // here because it spans modules: claude and codex now share the kernel's one implementation, so a regression in either goes red here).
     await sel.selectOption("normal");
     await page.waitForTimeout(200);
     await page.locator("header.top button.primary").click();
     await page.waitForTimeout(600);
     const st2 = JSON.parse(fs.readFileSync(stateFile, "utf8"));
-    check("改回缺省之后那个键消失", st2.codex_slots === undefined, JSON.stringify(st2.codex_slots));
+    check("the key disappears after reverting to the default", st2.codex_slots === undefined, JSON.stringify(st2.codex_slots));
   }
 }
 
-// —— 18b. codex 的模式开关（那张卡上的一句陈述 + 一个按钮） ——
+// -- 18b. codex's mode switch (one statement plus one button on that card) --
 //
-// 背景（为什么要「codex 用自己的模型名」这件事本身）见 mock/e2e_codex_modes.sh
-// 的文件头。这里只验**界面这一半**：那张卡上说清了此刻是哪种模式，按钮按下去
-// 真的换了写法。
+// For the background (why "codex uses its own model names" at all) see the header of
+// mock/e2e_codex_modes.sh. Here only the **UI half** is verified: the card states which mode
+// is in effect right now, and pressing the button really changes what is written.
 //
-// # 为什么这么短（2026-09-21 用户定的规矩）
+// # Why this is so short (a rule the user set on 2026-09-21)
 //
-//	以后 ui 这边，测试主要覆盖 BFF 就行了。e2e 的尽量少动，我们最后我会把关的。
+//	From now on, on the ui side, tests mainly covering the BFF are enough. Touch e2e as little as possible; I will do the final review.
 //
-// 所以那张映射表的行为**不在这里**——它压在 modules/codex 的单测里
-// （modelsview_test.go：整表写回、mode 不许被抹、空名字/空档位/重名要被拒、
-// 基线过期不许盖别人的），毫秒级、跑一次不用等浏览器。这里只留「控件在界面上
-// 真的画得出来、点了真的落盘」——那是只有浏览器能回答的问题。
+// So the behavior of that mapping table is **not here** -- it lives in modules/codex's unit
+// tests (modelsview_test.go: whole-table write-back, mode must not be wiped, empty name/empty role/duplicate
+// names must be rejected, a stale baseline must not overwrite others'), at millisecond
+// speed, with no browser wait. Only "controls really render in the UI and a click really hits the disk" stays here -- questions only a browser can answer.
 {
   const sec = page.locator(`nav.side button[title="codex"]`);
   if ((await sec.count()) === 0) {
-    skip("这份装配里没有 codex 那一节，跳过第 18b 条");
+    skip("this assembly has no codex section, skipping check 18b");
   } else {
     await sec.click();
     await page.waitForTimeout(300);
-    // 模式开关与那张表**在同一张卡**上（codex.models）。按概念 id 打开，
-    // 不按译文——措辞会变，id 不会（与第 6 条同一个写法）。
+    // The mode switch and that table are **on the same card** (codex.models). Open by concept
+    // id, not by translated text -- wording changes; ids do not (same approach as check 6).
     await page.locator('button.tab[title="codex.models"], nav.v button[title="codex.models"]').first().click();
     await page.waitForTimeout(300);
     const card = page.locator("section.card").first();
@@ -993,15 +993,15 @@ if (!(await openSwitches())) {
     const note = card.locator("[data-note]");
     const tone = await note.first().getAttribute("data-note").catch(() => null);
     const text = ((await note.first().textContent().catch(() => "")) ?? "").trim();
-    check("那张卡上说清了此刻是哪种接管模式",
+    check("the card states which takeover mode is in effect right now",
       (await note.count()) === 1 && tone === "ok" && text.length > 0,
       `note=${await note.count()} tone=${JSON.stringify(tone)}`);
 
-    // 只画「另一个」：当前这一种画成按钮就是一个点了不会改变任何事的按钮。
+    // Only draw "the other one": drawing the current mode as a button gives a button whose click changes nothing.
     const toRename = card.locator('button[data-action="mode-rename"]');
     const toTakeover = card.locator('button[data-action="mode-takeover"]');
     const takeoverFirst = (await toTakeover.count()) === 0;
-    check("只画了「另一个」模式的那个按钮",
+    check("only the button for 'the other' mode is drawn",
       takeoverFirst ? (await toRename.count()) === 1 : (await toTakeover.count()) === 1,
       `rename=${await toRename.count()} takeover=${await toTakeover.count()}`);
 
@@ -1012,48 +1012,48 @@ if (!(await openSwitches())) {
     await (takeoverFirst ? toRename : toTakeover).first().click();
     await page.waitForTimeout(900);
     const after = ((await note.first().textContent().catch(() => "")) ?? "").trim();
-    check("按下去之后那句陈述变了、而且真的落盘了",
+    check("after pressing, the statement changed and it really hit the disk",
       after !== text && after.length > 0 &&
         modeOnDisk() === (takeoverFirst ? "rename" : "takeover"),
-      `陈述 ${JSON.stringify(text)} → ${JSON.stringify(after)}，文件里 mode = ${JSON.stringify(modeOnDisk())}`);
+      `statement ${JSON.stringify(text)} → ${JSON.stringify(after)}, mode in file = ${JSON.stringify(modeOnDisk())}`);
 
-    // 切回去，别把状态留给后面的条目（这一份沙箱是共享的）。
+    // Switch back so state is not left for later checks (this sandbox is shared).
     if (takeoverFirst) {
       await page.locator('button[data-action="mode-takeover"]').first().click();
       await page.waitForTimeout(900);
-      check("再按一次切得回来", modeOnDisk() === "takeover", `mode = ${JSON.stringify(modeOnDisk())}`);
+      check("pressing once more switches back", modeOnDisk() === "takeover", `mode = ${JSON.stringify(modeOnDisk())}`);
     }
   }
 }
 
-// —— 19. 语言卡：在网页上换语言，**当场**生效 ——
+// -- 19. Language card: switch language in the web UI, effective **on the spot** --
 //
-// 用户的要求：「newgate web 也做一个 locale 切换功能吧，对标 cli」。CLI 那条是
-// `newgate lang <tag>`，web 这条是语言模块自己贡献的一张卡（界面不认识「语言」）。
+// The user's request: "make a locale switch in newgate web too, matching the cli". The CLI
+// one is `newgate lang <tag>`; the web one is a card contributed by the language module itself (the UI does not know "language").
 //
-// 两件事一起验，缺一条这个功能就不成立：
-//   1. 换完之后**界面真的变了**（不是只写了个文件，等重启才生效——daemon 是长命的，
-//      那种「点了没反应」正是这条要防的）；
-//   2. 换回来之后**发行版的文案还在**（`i18n.Use` 不重装目录表；用 Install 那句
-//      话，发行版在装配期 Extend 进来的译文会被冲掉，症状是「切成中文之后发行版
-//      那一半界面变回英文」，看起来只像「有几条没翻」）。
+// Verify two things together; the feature does not hold if either is missing:
+//   1. after switching, **the UI really changes** (not just a file written, waiting for a restart -- the daemon is long-lived,
+//      and that "clicked, nothing happened" is exactly what this guards against);
+//   2. after switching back, **the distribution's strings are still there** (`i18n.Use` does not reinstall the catalog; with
+//      Install, the translations the distribution Extends in at assembly time get wiped, and the symptom is "after switching to
+//      Chinese that half of the UI goes back to English", which only looks like "a few strings are untranslated").
 {
   const sec = page.locator(`nav.side button[title="locale"]`);
   if ((await sec.count()) === 0) {
-    skip("这份装配里没有语言那一节，跳过第 19 条");
+    skip("this assembly has no language section, skipping check 19");
   } else {
     await sec.click();
     await page.waitForTimeout(300);
     const card = page.locator(".card").first();
-    // 语言那一格按**位置**取，不按 label 文本：它的 label 是翻过的（这门界面此刻
-    // 说什么语言，它就是那个词），拿一个译好的词当选择器，等于让这条检查依赖
-    // 「跑的时候是哪门语言」——而这一条检查的全部内容正是要换语言。
+    // Take the language field by **position**, not by label text: its label is translated (whatever
+    // language this UI speaks right now, that is the word), and using a translated word as a
+    // selector makes this check depend on "which language it runs in" -- while the entire content of this check is switching languages.
     const sel = card.locator(".body .item select").first();
-    check("语言卡上有那个选择器", (await sel.count()) > 0, "卡上找不到选语言的下拉");
+    check("the language card has that selector", (await sel.count()) > 0, "cannot find the language dropdown on the card");
     const opts = await sel.locator("option").allInnerTexts();
-    check("下拉里是语言 tag", opts.includes("en") && opts.includes("zh-Hans"), opts.join(","));
+    check("the dropdown holds language tags", opts.includes("en") && opts.includes("zh-Hans"), opts.join(","));
 
-    // 那时 sidebar 上「配置」那一栏叫什么，等一下要拿它对照。
+    // What the "config" row on the sidebar is called right now; we will compare against it shortly.
     const configTitleBefore = await page.locator(`nav.side button[title="config"]`).innerText();
 
     await sel.selectOption("en");
@@ -1062,72 +1062,72 @@ if (!(await openSwitches())) {
     await page.waitForTimeout(900);
 
     const configTitleEn = await page.locator(`nav.side button[title="config"]`).innerText();
-    check("换成 en 之后界面当场变英文", /Configuration/i.test(configTitleEn),
-      `侧栏那一栏还叫 ${JSON.stringify(configTitleEn)}——保存了但没生效`);
+    check("after switching to en the UI turns English on the spot", /Configuration/i.test(configTitleEn),
+      `the sidebar row is still called ${JSON.stringify(configTitleEn)} -- saved but not effective`);
 
-    // 换回来，并顺带验「发行版的译文没被冲掉」：`claudecode` 那一栏的名字是
-    // **发行版**目录里的（内核不认识它），它要是变回英文，就是 Use 被写成了
-    // Install（重装目录表）。
+    // Switch back, and along the way verify "the distribution's translations were not wiped": the name of the
+    // `claudecode` row comes from the **distribution** catalog (the kernel does not know it); if it goes back to English,
+    // then Use was written as Install (reinstalling the catalog).
     await sel.selectOption("zh-Hans");
     await page.waitForTimeout(200);
     await page.locator("header.top button.primary").click();
     await page.waitForTimeout(900);
 
     const configTitleBack = await page.locator(`nav.side button[title="config"]`).innerText();
-    check("换回中文之后界面跟着回来", configTitleBack === configTitleBefore,
+    check("after switching back to Chinese the UI follows back", configTitleBack === configTitleBefore,
       `${JSON.stringify(configTitleBefore)} → ${JSON.stringify(configTitleBack)}`);
     const ccTitle = await page.locator(`nav.side button[title="claudecode"]`).innerText();
-    check("发行版自己的译文在换语言之后还在", ccTitle.trim().length > 0 && ccTitle.trim() !== "claudecode",
-      `claudecode 那一栏显示成 ${JSON.stringify(ccTitle)}——发行版的目录被重装冲掉了`);
+    check("the distribution's own translations survive the language switch", ccTitle.trim().length > 0 && ccTitle.trim() !== "claudecode",
+      `the claudecode row shows ${JSON.stringify(ccTitle)} -- the distribution catalog was wiped by a reinstall`);
 
     const st = JSON.parse(fs.readFileSync(stateFile, "utf8"));
-    check("语言落到了 state.json", (st.module_config ?? {}).locale?.lang === "zh-Hans",
+    check("the language landed in state.json", (st.module_config ?? {}).locale?.lang === "zh-Hans",
       JSON.stringify((st.module_config ?? {}).locale));
   }
 }
 
-// —— 20. 链头：每个客户端从哪条 profile 起步 ——
+// -- 20. Chain head: which profile each client starts from --
 //
-// 用户的要求：「state 引入 per-agent state 功能…web 优化下」。per-agent 那张表
-// （state.json 的 `active`）从 M1 起就在，但**只有 CLI 有**（`newgate --set-profile
-// <名> --agent <x>`）——浏览器里能改这个客户端的每个槽位走哪一档，却改不了它整条链
-// 从哪儿开始，而后者更靠前：链决定每个档位落到哪家模型上。
+// The user's request: "add per-agent state to state... optimize the web". The per-agent
+// table (`active` in state.json) has existed since M1, but **only the CLI had it** (`newgate --set-profile
+// <name> --agent <x>`) -- the browser could change which role each slot of this client
+// uses, but not where its whole chain starts, and the latter comes first: the chain decides which provider's model each role lands on.
 //
-// 三条一起验，缺一条这个功能就不成立：
-//   1. 那一格真的画出来了，且选项里有**空**（= 跟随全局缺省，不是「没得选」）；
-//   2. 选一个真 profile → 落进 state.json 的 `active`；
-//   3. 选回空 → 那个键**消失**（留下 `{"codex": ""}` 就是一条谁也看不懂的记录，
-//      与第 18 条那条「同值记录」是同一条规矩）。
+// Verify three things together; the feature does not hold if any is missing:
+//   1. the field really renders, and the options include **empty** (= follow the global default, not "no choice");
+//   2. choose a real profile → lands in `active` in state.json;
+//   3. choosing empty again → that key **disappears** (leaving `{"codex": ""}` is a record nobody can read,
+//      the same rule as the "same-value record" in check 18).
 {
   const sec = page.locator(`nav.side button[title="codex"]`);
   if ((await sec.count()) === 0) {
-    skip("这份装配里没有 codex 那一节，跳过第 20 条");
+    skip("this assembly has no codex section, skipping check 20");
   } else {
     await sec.click();
     await page.waitForTimeout(300);
     const card = page.locator(".card").first();
-    // 位置取第一格：label 是翻过的（这一条检查不换语言，但别处会），而**链头永远
-    // 是第一格**——这条顺序本身有意义（先有链才有档），所以它值得被钉住。
+    // Take the first field by position: labels are translated (this check does not switch
+    // languages, but others do), and **the chain head is always the first field** -- that order has meaning (the chain comes before the roles), so it deserves pinning.
     const sel = card.locator(".body .item").first().locator("select");
-    check("第一格是链头选择器", (await sel.count()) > 0, "第一格里没有下拉");
+    check("the first field is the chain-head selector", (await sel.count()) > 0, "there is no dropdown in the first field");
 
     const opts = await sel.locator("option").allInnerTexts();
-    // 第一档是「跟随全局缺省」，而它**必须点名跟着谁**——用户的原话是「你要区分开是
-    // 用户选了 xx，还是说 xx 是缺省的」。两者在这一格的当前值是同一个字符串
-    // （`Active()` 返回此刻实际走的那条），所以判据只能落在**显示出来的说法**上：
-    // 跟随缺省那一档带着「缺省」二字，而用户真选了某条时那一档就是光秃秃的名字。
-    check("链头第一档是「跟随全局缺省」并点名跟着谁",
-      /缺省|default/.test(opts[0] ?? ""), `第一档显示成 ${JSON.stringify(opts[0])}`);
-    check("链头的选项里有真的 profile 名",
+    // The first option is "follow the global default", and it **must name whom it follows** -- the user's
+    // words were "you have to distinguish whether the user chose xx or xx is the default". Both have
+    // the same current value in this field (`Active()` returns the one actually used now), so the criterion can only land on **what is displayed**:
+    // the follow-default option carries the word "default", while when the user really chose one, that option is just a bare name.
+    check("the first chain-head option is 'follow the global default' and names whom it follows",
+      /缺省|default/.test(opts[0] ?? ""), `first option shows ${JSON.stringify(opts[0])}`);
+    check("the chain-head options include real profile names",
       opts.slice(1).some((o) => o && !/缺省|default/.test(o)), opts.join(","));
 
-    // 要挑一个**不等于全局默认**的 profile：与默认同名 = 没设过（见
-    // confighook.AgentProfile.Write），所以拿它去验「落盘」验的是那条规矩，
-    // 而不是这一条。沙箱里 `demo` 正好就是默认，第一版就是这么红的。
+    // Pick a profile **not equal to the global default**: same name as the default = never set (see
+    // confighook.AgentProfile.Write), so using it to verify "landed on disk" would verify that rule
+    // instead of this one. In the sandbox `demo` happens to be the default, which is exactly why the first version went red.
     const st0 = JSON.parse(fs.readFileSync(stateFile, "utf8"));
     const other = opts.slice(1).find((o) => o && !/缺省|default/.test(o) && o !== st0.default_profile);
     if (!other) {
-      skip("这个沙箱除默认 profile 之外没有别的，跳过链头这一条");
+      skip("this sandbox has nothing besides the default profile, skipping the chain-head check");
     } else {
       await sel.selectOption(other);
       await page.waitForTimeout(200);
@@ -1135,7 +1135,7 @@ if (!(await openSwitches())) {
       await page.waitForTimeout(600);
 
       const st = JSON.parse(fs.readFileSync(stateFile, "utf8"));
-      check("选一个 profile 落到了 state.json 的 active",
+      check("choosing a profile landed in active in state.json",
         (st.active ?? {}).codex === other, JSON.stringify(st.active ?? {}));
 
       await sel.selectOption("");
@@ -1143,32 +1143,32 @@ if (!(await openSwitches())) {
       await page.locator("header.top button.primary").click();
       await page.waitForTimeout(600);
       const st2 = JSON.parse(fs.readFileSync(stateFile, "utf8"));
-      check("选回空之后那个键消失（不是留下一个空串）",
+      check("the key disappears after choosing empty again (not left as an empty string)",
         (st2.active ?? {}).codex === undefined, JSON.stringify(st2.active ?? {}));
     }
   }
 }
 
-// —— 21. 熔断表每一行上的「测试」按钮 ——
+// -- 21. The "test" button on each row of the breaker table --
 //
-// 用户的要求：「breaker 页面单项增加一个测试按钮（选用合理的icon），点击可以测试
-// probe 的效果。最终可以更新摘帽、延迟等。」
+// The user's request: "add a test button to each item on the breaker page (pick a reasonable
+// icon); clicking it can test the probe. Ultimately it should update the trip removal, latency, etc."
 //
-// 这条检查的重点**不是**「按钮画出来了」，而是最后那半句「最终可以更新」。所以
-// 三条一起验，缺一条这个功能就不成立：
-//   1. 那一行上真的有按钮（没有 = 界面根本没提供这个动作）；
-//   2. 点下去**真的发出去了**：沙箱的 provider 指向一个死端口，所以必然连不上，
-//      横幅必须点名是**哪一条**、并带上原因。「什么都没发生」是这里最坏的答案
-//      ——用户会以为按钮坏了；
-//   3. 表上那几列**真的跟着变了**：结论进了健康表（探活、失败数、冷却），不是
-//      只在界面上弹一句话就完了。
+// The point of this check is **not** "the button is drawn" but the last half, "ultimately it should
+// update". So verify three things together; the feature does not hold if any is missing:
+//   1. there really is a button on that row (none = the UI does not offer the action at all);
+//   2. clicking **really sends it**: the sandbox provider points at a dead port, so the connection
+//      must fail; the banner must name **which binding** and include the reason. "Nothing happened" is the worst answer here
+//      -- the user would think the button is broken;
+//   3. those columns in the table **really change**: the result enters the health table (probe, failure count, cooldown), not
+//      just a sentence popped up in the UI and nothing more.
 //
-// 按 `data-action` 找按钮，不按按钮上的字：那个字是贡献者给的（后端翻好，本沙箱
-// 下是「⚡ 测试」），拿它当选择器等于让这条检查跟着语言跑。
+// Find the button by `data-action`, not by its label: the label is given by the contributor (translated by the backend; in this
+// sandbox it is "⚡ test"), and using it as a selector makes this check follow the language.
 {
   const sec = page.locator(`nav.side button[title="breaker"]`);
   if ((await sec.count()) === 0) {
-    skip("这份装配里没有熔断那一节，跳过第 21 条");
+    skip("this assembly has no breaker section, skipping check 21");
   } else {
     await sec.click();
     await page.waitForTimeout(300);
@@ -1176,10 +1176,10 @@ if (!(await openSwitches())) {
     const btn = card.locator('button[data-action="probe"]').first();
 
     if ((await btn.count()) === 0) {
-      // 一行都没有：说明 ui_check.sh 那发失败请求没造出行来（装配里没有 breaker、
-      // 或者分类变了）。跳过而不是判红——这条检查要验的是按钮，不是「沙箱一定
-      // 造得出坏 binding」。
-      skip("健康表里一行都没有，跳过第 21 条（ui_check.sh 那发请求没造出行来？）");
+      // No rows at all: the failing request from ui_check.sh did not create a row (no breaker in the
+      // assembly, or the classification changed). Skip rather than fail -- this check verifies the
+      // button, not "the sandbox can always produce a bad binding".
+      skip("no rows in the health table, skipping check 21 (did the ui_check.sh request fail to create one?)");
     } else {
       const row = card
         .locator("tbody tr")
@@ -1189,61 +1189,61 @@ if (!(await openSwitches())) {
       const before = squeeze(await row.innerText());
 
       await btn.click();
-      // 探活要打到那个死端口再回来（连接被拒是立刻的，但这一发是同步等的）。
+      // The probe has to hit that dead port and come back (connection refused is immediate, but this call waits synchronously).
       await page.waitForTimeout(2000);
 
       const bannerText = await page.locator(".banner").first().innerText().catch(() => "");
       check(
-        "点了测试按钮，横幅点名了那条 binding",
+        "after clicking the test button, the banner names that binding",
         /demo\/demo-model/.test(bannerText),
-        `横幅上是 ${JSON.stringify(bannerText.slice(0, 160))}`,
+        `banner says ${JSON.stringify(bannerText.slice(0, 160))}`,
       );
       check(
-        "横幅给出了探不通的原因（不是「什么都没发生」）",
+        "the banner gives the reason it cannot be reached (not 'nothing happened')",
         bannerText.length > "demo/demo-model".length + 4,
-        `横幅上是 ${JSON.stringify(bannerText.slice(0, 160))}`,
+        `banner says ${JSON.stringify(bannerText.slice(0, 160))}`,
       );
 
       const after = squeeze(await row.innerText());
       check(
-        "探活的结论进了健康表（那一行的几列变了）",
+        "the probe result entered the health table (columns in that row changed)",
         after !== before,
-        `点之前 ${JSON.stringify(before)} / 点之后 ${JSON.stringify(after)}`,
+        `before the click ${JSON.stringify(before)} / after the click ${JSON.stringify(after)}`,
       );
     }
   }
 }
 
-// —— 22. 「应用 / 应用到全部」：把一份档位设成全局默认 ——
+// -- 22. "Apply / apply to all": make one profile the global default --
 //
-// 用户的要求：「配置再增加个功能，当处于特定 kv 详情页的时候，新增一个按钮可以把
-// 当前配置配置成默认，同样有强制 apply 按钮。」
+// The user's request: "add one more feature to config: when on a specific kv detail page, add a
+// button that can make the current config the default, plus a force-apply button as well."
 //
-// 措辞是他后来定的（原话：「你应该搞成 apply 和 apply all 啊。应用。应用到全部。」）
-// ——第一版写成 `set as the default profile`，第二版写成 `force: …`，而 `force`
-// 是**他描述需求时的口语**，不是界面上的词。所以这里按 `data-action` 找按钮，
-// 一个字都不碰：措辞是产品决定，会变；机器标记不会。
+// The wording was set by him later (original words: "you should make it apply and apply all. Apply. Apply to all.")
+// -- the first version wrote `set as the default profile`, the second wrote `force: …`, and `force`
+// is **his spoken shorthand when describing the requirement**, not a word on the UI. So find the button by `data-action`,
+// touching not a single word: wording is a product decision and changes; machine markers do not.
 //
-// 四条一起验：
-//   1. 非默认的那张卡上**两个**按钮都在；
-//   2. 点「应用到全部」→ 它成为全局默认，且每个客户端的链头都被清掉；
-//   3. 成了默认之后那张卡上**不再有按钮**——「一个提议去做已经成立的事的按钮，
-//      站在一排真会做事的按钮旁边就是噪音」（见 config/view.go 的 profileActions）；
-//   4. 而那一张卡上**有一句绿色的「当前配置」**（见下）。
+// Verify four things together:
+//   1. on the non-default card **both** buttons are present;
+//   2. click "apply to all" -> it becomes the global default, and every client's chain head is cleared;
+//   3. once it is the default, that card **has no buttons** -- "a button proposing to do what is already done,
+//      standing next to a row of buttons that really do things, is noise" (see profileActions in config/view.go);
+//   4. and that card **has a green "current config" line** (see below).
 //
-// # 第 4 条是后来补的（2026-09-21 用户）
+// # Item 4 was added later (user, 2026-09-21)
 //
-// 原来只有第 3 条，于是那一张卡上**什么都没有**。用户的原话：
+// Originally there was only item 3, so that card showed **nothing**. The user's words:
 //
-//	你应该注入的是一个 info only 的绿色：当前配置 / Active profile 的效果啊！
+//	What you should inject is an info-only green: current config / the effect of the Active profile!
 //
-// 他说得对：两张卡少了那两个按钮之后长得几乎一样，用户看不出哪一份在生效——
-// 而那恰恰是他打开这一节最想知道的事。**「不画那个按钮」与「什么都不说」是两件事**，
-// 第 3 条只钉住了前一件，所以这个缺口当初能整个溜过去。现在两条一起钉。
+// He is right: with those two buttons gone, the two cards look nearly identical and the user
+// cannot tell which one is in effect -- and that is exactly what he opens this section to learn. **"Not drawing that button" and "saying nothing" are two different things**;
+// item 3 only pinned the first, so this gap could slip through entirely. Now both are pinned together.
 {
   const sec = page.locator(`nav.side button[title="config"]`);
   if ((await sec.count()) === 0) {
-    skip("这份装配里没有配置那一节，跳过第 22 条");
+    skip("this assembly has no config section, skipping check 22");
   } else {
     await sec.click();
     await page.waitForTimeout(250);
@@ -1253,11 +1253,11 @@ if (!(await openSwitches())) {
       (c) => c.id.startsWith("config.profile.") && c.id !== `config.profile.${def}`,
     );
     if (!target) {
-      skip("这个沙箱只有一份档位，跳过第 22 条");
+      skip("this sandbox has only one profile, skipping check 22");
     } else {
       const name = target.id.slice("config.profile.".length);
-      // 打开某一张卡：横 tab 条与左侧竖栏都试一遍（哪一种是这一节当前的版式，
-      // 取决于这一节有几张卡——见第 6 条）。与 openSwitches 同一个写法。
+      // Open a given card: try both the horizontal tab strip and the left vertical column (which
+      // one this section uses depends on how many cards it has -- see check 6). Same approach as openSwitches.
       const open = async (id) => {
         await page.locator(`button.tab[title="${id}"], nav.v button[title="${id}"]`).first().click();
         await page.waitForTimeout(250);
@@ -1266,61 +1266,61 @@ if (!(await openSwitches())) {
       const card = page.locator("section.card").first();
       const applyOne = card.locator('button[data-action="set-default"]');
       const applyAll = card.locator('button[data-action="set-default-all"]');
-      check("非默认的档位卡上有「应用」与「应用到全部」两个按钮",
+      check("the non-default profile card has both an 'apply' and an 'apply to all' button",
         (await applyOne.count()) === 1 && (await applyAll.count()) === 1,
         `apply=${await applyOne.count()} applyAll=${await applyAll.count()}`);
-      // 这句话**此刻**不该在——判据是「这一张是不是当前配置」，而这一刻它不是。
-      // 必须在这里问，不能留到后面：`card` 是活定位器（每次查询按当前页面重新解析），
-      // 切到默认那张之后它会指到默认卡上去，问出来的就不是同一张卡了（第一版就是
-      // 这么写错的，被这条自己抓住：`非默认卡上 note=1`）。
-      check("非默认的那张卡上没有这句话（它是一句判词，写在不生效的卡上就是骗人）",
+      // That line must **not** be there right now -- it says "is this the current config", and at this moment it is not.
+      // It must be asked here, not later: `card` is a live locator (it re-resolves against the current page on every query);
+      // after switching to the default one it points at the default card, so the answer would no longer be
+      // about the same card (the first version got this wrong, and this check caught it: `note=1 on the non-default card`).
+      check("the non-default card does not carry that line (it is a verdict; on an inactive card it would be a lie)",
         (await card.locator("[data-note]").count()) === 0,
-        `非默认卡上 note=${await card.locator("[data-note]").count()}`);
+        `note on the non-default card=${await card.locator("[data-note]").count()}`);
 
-      // 默认那一张卡上不该有——先跳过去确认（这一步同时验了「两边都画得出来」）。
+      // The default card must not have it -- jump over to confirm (this step also verifies "both sides render").
       await open(`config.profile.${def}`);
       const defCard = page.locator("section.card").first();
-      check("已经是默认的那张卡上没有这两个按钮",
+      check("the card that is already the default has neither button",
         (await defCard.locator('button[data-action="set-default"]').count()) === 0 &&
           (await defCard.locator('button[data-action="set-default-all"]').count()) === 0,
-        "给一个「去做已经成立的事」的按钮，会把旁边真会做事的按钮淹掉");
+        "a button that proposes to do what is already done drowns out the buttons next to it that really do things");
 
-      // 而它上面**要说出来**：一句绿色的「当前配置」。按 `data-note`（机器标记）找，
-      // 不按译文——措辞会变，标记不会（与本节开头按 data-action 找按钮同一个理由）。
-      // 语气也一起验：它是**陈述**，画成警告或错误的样子就等于在说「出事了」。
+      // And it **must say it**: a green "current config" line. Find it by `data-note` (a machine marker),
+      // not by translated text -- wording changes; markers do not (same reason as finding buttons by data-action at the start of this section).
+      // Verify the tone too: it is a **statement**; drawn as a warning or error it would be saying "something went wrong".
       const defNote = defCard.locator("[data-note]");
       const defNoteTone = await defNote.first().getAttribute("data-note").catch(() => null);
       const defNoteText = ((await defNote.first().textContent().catch(() => "")) ?? "").trim();
-      check("已经是默认的那张卡上有一句绿色的「当前配置」",
+      check("the card that is already the default has a green 'current config' line",
         (await defNote.count()) === 1 && defNoteTone === "ok" && defNoteText.length > 0,
         `note=${await defNote.count()} tone=${JSON.stringify(defNoteTone)} text=${JSON.stringify(defNoteText)}`);
 
-      // 回到目标那张卡，点「应用到全部」。
+      // Go back to the target card and click "apply to all".
       await open(target.id);
       await card.locator('button[data-action="set-default-all"]').first().click();
       await page.waitForTimeout(900);
 
       const st = JSON.parse(fs.readFileSync(stateFile, "utf8"));
-      check("点了「应用到全部」之后它成了全局默认", st.default_profile === name,
-        `默认还是 ${JSON.stringify(st.default_profile)}`);
-      check("每个客户端的链头都被清掉了（不留 `{\"claude\": \"\"}` 这种记录）",
+      check("after clicking 'apply to all' it became the global default", st.default_profile === name,
+        `the default is still ${JSON.stringify(st.default_profile)}`);
+      check("every client's chain head is cleared (no `{\"claude\": \"\"}` records left)",
         Object.keys(st.active ?? {}).length === 0, JSON.stringify(st.active ?? {}));
 
-      // 重读之后那张卡已经成了默认——按钮该自己消失、那句话该自己出现。两件一起
-      // 验：只验按钮消失的话，「这一卡现在什么都不说」照样算过，而那正是原来的 bug。
+      // After the re-read that card is the default -- the buttons should vanish by themselves and the
+      // line should appear by itself. Verify both: checking only that buttons vanished would pass "this card now says nothing", which is exactly the original bug.
       const after = page.locator("section.card").first();
-      check("成了默认之后那张卡上的按钮自己消失了",
+      check("after it became the default, the buttons on that card vanished by themselves",
         (await after.locator('button[data-action="set-default-all"]').count()) === 0,
-        "快照重读之后按钮还在，说明它读的是旧的那份");
-      check("成了默认之后那句话自己出现了（按钮换成陈述，不是两个都没有）",
+        "the buttons are still there after the snapshot re-read, so it is reading the old one");
+      check("after it became the default that line appeared by itself (buttons replaced by a statement, not both gone)",
         (await after.locator("[data-note]").count()) === 1,
-        `成了默认的那张卡上 note=${await after.locator("[data-note]").count()}`);
+        `note on the card that became the default=${await after.locator("[data-note]").count()}`);
     }
   }
 }
 
-check("整场没有页面错误", pageErrors.length === 0, pageErrors.slice(0, 2).join(" / "));
+check("no page errors in the whole run", pageErrors.length === 0, pageErrors.slice(0, 2).join(" / "));
 
-console.log(`\n结果: ${pass} 通过, ${fail} 失败`);
+console.log(`\nresult: ${pass} passed, ${fail} failed`);
 await browser.close();
 process.exit(fail === 0 ? 0 : 1);

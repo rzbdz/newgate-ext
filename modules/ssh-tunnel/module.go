@@ -12,26 +12,26 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// Name 是这个模块在装配表、概念账本与 `newgate plugin` 里的名字（= 目录名）。
+// Name is this module's name in the assembly table, the concept ledger and `newgate plugin`.
 //
-// 它同时是 state.json 里 ModuleConfig 那一格的键（见 StateKey）。
+// It is also the key of its cell in state.json's ModuleConfig (see StateKey).
 const Name = "ssh-tunnel"
 
-// New 声明这个组件。
+// New declares this component.
 //
-// 依赖**全是 Optional**：没有界面、没有共享端口、没有命令行时它仍然成立——它的
-// 功能是「一条穿过 SSH 的通道」，而通道本身不需要谁看着。这与内核那条「业务模块
-// 不依赖任何 ui」是同一条规矩：谁来操作它，谁就装上；不装，它照常待着。
+// Deps are **all Optional**: with no UI, no shared port, no command line it still holds -
+// its function is "a channel through SSH", and a channel needs no onlooker. Same rule as
+// the kernel's "business modules depend on no ui": whoever operates it installs one.
 //
-// 它也**不声明 config 依赖**：这个模块读的是 state.json 里属于自己的那一格，
-// 而那是 `store.LoadState()` 直接读盘的事，不是 config 那个组件的语义（与
-// web-dashboard 读皮肤选择同一条路）。
+// It also **declares no config dependency**: it reads its own cell in state.json, which
+// is `store.LoadState()` reading disk, not the config component's semantics (same path
+// as web-dashboard reading skin choice).
 func New() modules.Component {
 	p := newPool(newSSHDialer())
 	m := newManager(p, Load)
-	// 同一个 proxy 实例既挂到共享端口上，也交给 manager（停机时要关它的空闲连接，
-	// 见 manager.shutdown）。建在这里而不是 Start 里：Start 每次调用都会跑，
-	// 而连接池应当是**每个进程一份**的东西。
+	// One proxy instance goes onto the shared port and to the manager (which closes its
+	// idle connections at shutdown, see manager.shutdown). Built here, not in Start: Start
+	// runs on every invocation, and a connection pool should be **one per process**.
 	px := newProxy(p, Load)
 	m.proxy = px
 
@@ -44,23 +44,23 @@ func New() modules.Component {
 		Desc: func() string {
 			return i18n.T("reaches a remote machine's newgate interface over SSH", nil)
 		},
-		// 「基础设施」这一类：它不是界面、不是客户端、不是模型，也不经手任何一次
-		// 转发请求。它是一条**通道**——与 porthub / i18n 同一档。
+		// "Infrastructure" class: not a UI, not a client, not a model, and it handles no
+		// forwarded request. It is a **channel** - same tier as porthub / i18n.
 		Type: "infra",
 		Requires: []modules.Requirement{
-			// 共享端口上那条 route（常态）。不在时模块照常工作：本地转发端口走
-			// serving 那条路，两条路各自独立。
+			// The shared-port route (the norm). Absent, the module still works: the local
+			// forwarded port goes through serving, and the two routes are independent.
 			modules.Optional(porthubapi.Capability),
-			// 本地转发端口 + 那个后台循环。**只有守护进程会调它**（见 manager 的
-			// 说明），所以短命的 CLI 进程不会因为装了这个模块而多开一堆东西。
+			// Local forwarded ports + the background loop. **Only the daemon calls it** (see
+			// the manager note), so short-lived CLI processes do not spawn a pile of things.
 			modules.Optional(servingapi.Capability),
 			modules.Optional(cliapi.Capability),
 			modules.Optional(viewapi.Capability),
 		},
 		Start: func(_ context.Context, ctx modules.Context) error {
-			// 挂载是进程内注册（不起 socket、不起 goroutine），所以 CLI 进程里挂
-			// 一次无害——那个进程没有 HTTP 服务在读这张表。与 web-dashboard 同一
-			// 条理由、同一条形状：porthub **不剥前缀**，我们自己在 handler 外面剥。
+			// Mounting is in-process registration (no socket, no goroutine), so mounting in a
+			// CLI process is harmless - nothing reads that table. Same reason and shape as
+			// web-dashboard: porthub **does not strip the prefix**, we strip outside the handler.
 			if hub, ok := modules.Get(ctx, porthubapi.Capability); ok {
 				rel, err := hub.Mount(Prefix, Name, http.StripPrefix(Prefix, px))
 				if err != nil {
@@ -68,9 +68,9 @@ func New() modules.Component {
 				}
 				mount = rel
 			}
-			// 转发端口与后台循环：登记在 serving 上，等真正拥有端口的那位说
-			// 「我要开始服务了」。**不能**在 Start 里直接起——那条路的尽头是
-			// 「敲一次 `newgate status` 就开一台服务器」。
+			// Forwarded ports and the background loop: registered on serving, waiting for the
+			// process that owns the port to say "I am serving". **Not** directly in Start -
+			// that road ends in "one `newgate status` starts a server".
 			if listeners, ok := modules.Get(ctx, servingapi.Capability); ok {
 				rel, err := listeners.OnServe(Name, m.Serve)
 				if err != nil {
@@ -84,7 +84,7 @@ func New() modules.Component {
 					return err
 				}
 				releases = append(releases, rel)
-				// 状态里一行、体检里每条 target 一项。两者都只读内存，不拨号。
+				// One line in status, one check item per target. Both read memory only, no dialing.
 				if rel, err := ui.RegisterStatus(tunnelStatus{m}); err != nil {
 					return err
 				} else {

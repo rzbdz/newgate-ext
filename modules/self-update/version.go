@@ -6,13 +6,13 @@ import (
 	"strings"
 )
 
-// 版本号的形状来自 build/build.sh：`<distribution>-<git describe --tags --always --dirty>`，
-// 例如 `default-v0.8.0-40-g59f5b3c-dirty`。Release 的 tag 是裸的 `v0.8.0`。
+// Shape from build/build.sh: `<distribution>-<git describe --tags --always --dirty>`,
+// e.g. `default-v0.8.0-40-g59f5b3c-dirty`. A Release tag is the bare `v0.8.0`.
 //
-// 比较只在需要回答「要不要换」时用：Release 比手上的新才换（不 --force 不倒退）。
-// 开发机上的二进制常常**比最新 Release 新**（`v0.8.0-40-g…` 是 v0.8.0 之后 40 个
-// 提交），所以 describe 的那段提交数要参与比较——只比 v0.8.0 会把它当成「一样」，
-// 进而把开发机换回 Release。
+// Comparison answers only "swap or not": swap only if the Release is newer (no rollback
+// without --force). A dev binary is often **newer than the latest Release**
+// (`v0.8.0-40-g...` is 40 commits after v0.8.0), so the describe commit count must
+// count - comparing only v0.8.0 calls them "same" and swaps the dev machine back.
 
 var (
 	describeTail = regexp.MustCompile(`-(\d+)-g([0-9a-f]{4,})$`)
@@ -27,8 +27,8 @@ type version struct {
 	dirty               bool
 }
 
-// parseVersion 解析一个 tag 或 describe 串（可以带 distribution 前缀）。
-// 认不出来（`dev`、只有提交号的 describe）时 ok 为假：那种版本没法比新旧。
+// parseVersion parses a tag or describe string (optionally with a distribution prefix).
+// When unrecognizable (`dev`, a commit-only describe) ok is false: no comparing that.
 func parseVersion(s, distribution string) (version, bool) {
 	var v version
 	if distribution != "" {
@@ -54,8 +54,8 @@ func parseVersion(s, distribution string) (version, bool) {
 	return v, true
 }
 
-// compare 返回 -1/0/1。预发布低于同号正式版（semver）；同一个 tag 之后，提交数
-// 多的更新。dirty 不参与：它说的是「工作区改过」，不是更新或更旧。
+// compare returns -1/0/1. A prerelease sorts below the same-numbered release (semver);
+// after one tag, more commits is newer. dirty does not count: it says "tree changed".
 func compare(a, b version) int {
 	for _, d := range []int{a.major - b.major, a.minor - b.minor, a.patch - b.patch} {
 		if d != 0 {

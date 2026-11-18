@@ -13,25 +13,25 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// 本文件是 `newgate upgrade`：把模块登记的升级动作跑一遍，或者只看清单。
+// This file is `newgate upgrade`: run the registered upgrade actions, or just list them.
 //
-// 二进制本身由 self-update 登记成其中一个动作（见 api.go 的包注释）；本命令对它
-// 一无所知，只负责解析 `@版本` / `--check` / `-y` / `-f`、挑出该跑的动作、问人、
-// 汇总结果。
+// The binary itself is registered by self-update as one of the actions (see api.go's package
+// comment); this command knows nothing about it, only parsing `@version` / `--check` / `-y` /
+// `-f`, picking what to run, asking, and summarizing.
 //
-// # 不静默（2026-10-29）
+// # Not silent (2026-10-29)
 //
-// 第一版敲下去就跑。二进制也进了这张表之后，「敲一下 upgrade」意味着换掉正在服务
-// 的程序、重启 daemon——那必须是用户看过之后点头的事。所以缺省是：
+// The first version ran on the keystroke. With the binary in this table, "type upgrade" means
+// replacing the serving program and restarting the daemon - the user must look first. Default:
 //
-//  1. 先**只看**一遍（Request.Check），把每个动作「会做什么 / 已经是最新」打出来；
-//  2. 按 Kind **分两次问** y/N：一次问 newgate 本身，一次问模块的数据——它们分量
-//     不同，用户要能只要其中一半；
-//  3. 只执行点了头、而且确实有事可做的那几个。
+//  1. First **check only** (Request.Check), printing each action's "would do / up to date";
+//  2. Ask y/N **twice, by Kind**: once for newgate itself, once for module data - different
+//     weight, and the user must be able to take just half;
+//  3. Run only the approved ones with real work to do.
 //
-// `-y` 跳过提问；`-f` 跳过提问并允许重装/倒退。没有终端又没给 `-y` 时**不执行**
-// 并以 1 退出：没人回答的提问不能当成同意（与内核 runtime 的 confirm 同一条规矩），
-// 而脚本需要从退出码上看出「其实没升」。
+// `-y` skips the prompts; `-f` skips them and allows reinstall/rollback. With no terminal
+// and no `-y` it **does not run** and exits 1: an unanswered prompt is not consent (same as
+// the kernel runtime's confirm); scripts must see "nothing upgraded" in the exit code.
 
 type upgradeCommand struct{ svc Service }
 
@@ -50,8 +50,8 @@ func (upgradeCommand) Help() cliapi.HelpLine {
 	}
 }
 
-// upgradeArgs 是解析过的参数。`@值` 来自界面把 `upgrade@v0.9.0` 拆开的那一刀
-// （内核 cli 的 splitAtVerb），也接受分开写的 `upgrade @v0.9.0`。
+// upgradeArgs is the parsed arguments. `@value` comes from the UI splitting `upgrade@v0.9.0`
+// (the kernel cli's splitAtVerb), and the split `upgrade @v0.9.0` is accepted too.
 type upgradeArgs struct {
 	only string
 	yes  bool
@@ -123,8 +123,8 @@ func (c upgradeCommand) Run(host cliapi.Host, args []string) int {
 	return code
 }
 
-// selectActions 按「点名的动作」与「点没点版本」筛出这一次要跑的动作；
-// 第二个返回值是因为没有版本概念而被跳过的那些（要说一声）。
+// selectActions picks the actions to run from "named actions" and "version given or not";
+// the second return value is those skipped for having no version concept (say so).
 func selectActions(actions []Action, parsed upgradeArgs) ([]Action, []string, error) {
 	req := parsed.req
 	if parsed.only != "" {
@@ -165,7 +165,7 @@ func selectActions(actions []Action, parsed upgradeArgs) ([]Action, []string, er
 	return kept, skipped, nil
 }
 
-// session 是一次 `newgate upgrade` 的执行现场。输入输出是字段，测试换掉它们。
+// session is one `newgate upgrade` run's live context. In/out are fields; tests swap them.
 type session struct {
 	ctx         context.Context
 	out         io.Writer
@@ -187,8 +187,8 @@ func (s *session) run(actions []Action, parsed upgradeArgs) int {
 		}
 		return s.finish()
 	}
-	// 先问 newgate 本身，再问数据：程序换完之后数据动作仍在这个（旧）进程里跑，
-	// 这没问题——它们拿的是文件，不依赖二进制的版本。
+	// Ask for newgate itself first, then data: after the program is swapped, data actions still
+	// run in this (old) process, which is fine - they work on files, not the binary's version.
 	for _, kind := range []Kind{KindProgram, KindData} {
 		var group []Action
 		for _, a := range actions {
@@ -203,7 +203,7 @@ func (s *session) run(actions []Action, parsed upgradeArgs) int {
 	return s.finish()
 }
 
-// group 处理一类动作：-y 时直接跑；否则先只看、再问一次、再跑有事可做的那几个。
+// group handles one action class: run directly with -y; else check, ask once, run those with work.
 func (s *session) group(kind Kind, group []Action, parsed upgradeArgs) {
 	if parsed.yes {
 		for _, a := range group {
@@ -247,7 +247,7 @@ func (s *session) title(a Action) {
 	s.println("  " + style.Dim(a.Describe()))
 }
 
-// report 跑只看的那一遍并打出结论。第二个返回值是「这一遍没出错」。
+// report runs the check pass and prints the conclusions. Second return = "this pass had no error".
 func (s *session) report(a Action, req Request) (Result, bool) {
 	res, err := a.Run(s.ctx, req)
 	switch {
@@ -281,7 +281,7 @@ func (s *session) execute(a Action, req Request) {
 	}
 }
 
-// confirm 问一句 y/N。只认 y/yes；读不到（EOF）当「不」。
+// confirm asks a y/N. Accepts only y/yes; unreadable (EOF) counts as no.
 func (s *session) confirm(kind Kind, n int) bool {
 	q := i18n.N("Refresh this module data now? [y/N] ", "Refresh these {n} module data items now? [y/N] ", n, i18n.A{"n": n})
 	if kind == KindProgram {
@@ -333,8 +333,8 @@ func printList(actions []Action) {
 	fmt.Print(t.String())
 }
 
-// printHelp 是 `newgate upgrade --help`：用法、流程、选项、例子，以及**这份构建**
-// 里实际登记了哪些动作（help 屏只有一行摘要，装不下「会问你两次」这种事）。
+// printHelp is `newgate upgrade --help`: usage, flow, options, examples, and the actions **this
+// build** actually registered (the help screen has one summary line, too small for "asks twice").
 func printHelp(w io.Writer, actions []Action) {
 	h := upgradeCommand{}.Help()
 	fmt.Fprintln(w, "usage: newgate "+h.Usage)
@@ -349,8 +349,8 @@ func printHelp(w io.Writer, actions []Action) {
 		{"-f, --force", i18n.T("like -y, and also reinstall the same version or go back to an older one", nil)},
 		{"--list", i18n.T("list the upgrade actions in this build", nil)},
 	} {
-		// 两行一条（与主 help 里过长的用法同一种排法）：选项名长短差得多，挤成
-		// 一列时短的空一大截、长的贴着说明。
+		// Two lines per item (like long usage lines in the main help): option name lengths vary
+		// a lot, and in one column short ones float far and long ones hug the description.
 		fmt.Fprintln(w, "  "+style.Bold(o[0]))
 		fmt.Fprintln(w, "      "+style.WrapLine(o[1], "      "))
 	}

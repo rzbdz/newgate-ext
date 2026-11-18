@@ -1,12 +1,12 @@
 package upstream_test
 
-// 这个文件自测假上游本身：两种方言的非流式与流式都能通、count_tokens 不是 42
-// 以外的值、严格口径真的会 400（先证明会拦，再证明补齐推理之后放行）、
-// FailNext 只影响一发、Requests/Reset 与记录面的形状都没坏。
+// This file self-tests the fake upstream: both dialects pass streaming and not,
+// count_tokens is 42, the strict rule really 400s (first prove it blocks, then
+// that filled-in reasoning passes), FailNext hits one shot, Requests/Reset is intact.
 //
-// 为什么值得专门测一个测试替身：e2e 的全部结论都建立在「假上游确实按官方口径
-// 拦过」之上——假上游要是自己漏判，后面那些 200 一文不值（mock/e2e_claude.sh
-// 第 6 章专门先自检这一点，这里对应 TestStrictReasoning）。
+// Why test a test double on purpose: every e2e conclusion rests on the fake really
+// blocking per the official rule - had it misjudged, the 200s after it are
+// worthless (mock/e2e_claude.sh ch. 6 checks this; TestStrictReasoning).
 
 import (
 	"bufio"
@@ -20,9 +20,9 @@ import (
 	"github.com/rzbdz/newgate-ext/testing/upstream"
 )
 
-// ---- 小工具 ----
+// ---- small helpers ----
 
-// send 发一发请求，返回原始响应（调用方负责关 Body；要看响应头的也走它）。
+// send sends one request and returns the raw response (callers close Body; use it for headers too).
 func send(t *testing.T, s *upstream.Server, method, path, body string, headers map[string]string) *http.Response {
 	t.Helper()
 	var reader io.Reader
@@ -31,7 +31,7 @@ func send(t *testing.T, s *upstream.Server, method, path, body string, headers m
 	}
 	req, err := http.NewRequest(method, s.URL()+path, reader)
 	if err != nil {
-		t.Fatalf("建请求 %s %s: %v", method, path, err)
+		t.Fatalf("building request %s %s: %v", method, path, err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	for key, value := range headers {
@@ -44,42 +44,42 @@ func send(t *testing.T, s *upstream.Server, method, path, body string, headers m
 	return resp
 }
 
-// post 发一发 POST 并读回状态码与响应体原文。
+// post sends a POST and reads back the status code and raw body.
 func post(t *testing.T, s *upstream.Server, path, body string) (int, string) {
 	t.Helper()
 	resp := send(t, s, http.MethodPost, path, body, nil)
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
-		t.Fatalf("读 %s 的响应体: %v", path, err)
+		t.Fatalf("reading the response body of %s: %v", path, err)
 	}
 	return resp.StatusCode, string(raw)
 }
 
-// get 发一发 GET。
+// get sends a GET.
 func get(t *testing.T, s *upstream.Server, path string) (int, string) {
 	t.Helper()
 	resp := send(t, s, http.MethodGet, path, "", nil)
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
-		t.Fatalf("读 %s 的响应体: %v", path, err)
+		t.Fatalf("reading the response body of %s: %v", path, err)
 	}
 	return resp.StatusCode, string(raw)
 }
 
-// decodeObj 解一个 JSON 对象，解不动就 Fatal。
+// decodeObj decodes a JSON object, Fatalf otherwise.
 func decodeObj(t *testing.T, raw string) map[string]any {
 	t.Helper()
 	var obj map[string]any
 	if err := json.Unmarshal([]byte(raw), &obj); err != nil {
-		t.Fatalf("不是 JSON 对象: %v（原文：%s）", err, raw)
+		t.Fatalf("not a JSON object: %v (raw: %s)", err, raw)
 	}
 	return obj
 }
 
-// dig 沿路径取值（字符串 = 对象键，整数 = 数组下标），取不到就 Fatal。
-// 断言里到处要 dig(..., "choices", 0, "message", "content")，摊平了才看得清。
+// dig walks a path (string = object key, int = array index), Fatalf if it misses.
+// Assertions are full of dig(..., "choices", 0, "message", "content"); only flattened does it read.
 func dig(t *testing.T, value any, path ...any) any {
 	t.Helper()
 	current := value
@@ -88,31 +88,31 @@ func dig(t *testing.T, value any, path ...any) any {
 		case string:
 			obj, ok := current.(map[string]any)
 			if !ok {
-				t.Fatalf("取 %v：%v 不是对象", path, current)
+				t.Fatalf("getting %v: %v is not an object", path, current)
 			}
 			field, ok := obj[key]
 			if !ok {
-				t.Fatalf("取 %v：没有 %q（实际键：%v）", path, key, obj)
+				t.Fatalf("getting %v: no %q (actual keys: %v)", path, key, obj)
 			}
 			current = field
 		case int:
 			arr, ok := current.([]any)
 			if !ok {
-				t.Fatalf("取 %v：%v 不是数组", path, current)
+				t.Fatalf("getting %v: %v is not an array", path, current)
 			}
 			if key >= len(arr) {
-				t.Fatalf("取 %v：下标 %d 越界（长度 %d）", path, key, len(arr))
+				t.Fatalf("getting %v: index %d out of range (length %d)", path, key, len(arr))
 			}
 			current = arr[key]
 		default:
-			t.Fatalf("取 %v：路径段只能是 string 或 int", path)
+			t.Fatalf("getting %v: path segments must be string or int", path)
 		}
 	}
 	return current
 }
 
-// sseEvents 把 SSE 响应体切成事件：每块一行 "data: <json>"、块间空行，
-// 收尾的 [DONE] 不是 JSON，单独用一个布尔返回。
+// sseEvents splits an SSE body into events: one "data: <json>" line per chunk, a
+// blank line between; the trailing [DONE] is not JSON, returned separately as a bool.
 func sseEvents(t *testing.T, body string) (events []map[string]any, done bool) {
 	t.Helper()
 	for _, block := range strings.Split(body, "\n\n") {
@@ -121,7 +121,7 @@ func sseEvents(t *testing.T, body string) (events []map[string]any, done bool) {
 			continue
 		}
 		if !strings.HasPrefix(block, "data: ") {
-			t.Fatalf("SSE 块不是 data:: %q", block)
+			t.Fatalf("SSE block is not a data: line: %q", block)
 		}
 		payload := strings.TrimPrefix(block, "data: ")
 		if payload == "[DONE]" {
@@ -130,14 +130,14 @@ func sseEvents(t *testing.T, body string) (events []map[string]any, done bool) {
 		}
 		var event map[string]any
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
-			t.Fatalf("SSE 块不是 JSON: %v（原文：%s）", err, payload)
+			t.Fatalf("SSE block is not JSON: %v (raw: %s)", err, payload)
 		}
 		events = append(events, event)
 	}
 	return events, done
 }
 
-// eventTypes 抽出事件类型序列，用来断言 Anthropic 的整条块序列。
+// eventTypes extracts the event type sequence, for asserting Anthropic's whole chunk order.
 func eventTypes(events []map[string]any) []string {
 	out := make([]string, 0, len(events))
 	for _, event := range events {
@@ -147,7 +147,7 @@ func eventTypes(events []map[string]any) []string {
 	return out
 }
 
-// ---- openai 方言 ----
+// ---- openai dialect ----
 
 func TestOpenAINonStream(t *testing.T) {
 	s := upstream.New(t)
@@ -160,24 +160,24 @@ func TestOpenAINonStream(t *testing.T) {
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
-		t.Fatalf("读响应体: %v", err)
+		t.Fatalf("reading the response body: %v", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("状态码 = %d，期望 200（体：%s）", resp.StatusCode, raw)
+		t.Fatalf("status code = %d, want 200 (body: %s)", resp.StatusCode, raw)
 	}
 	if ct := resp.Header.Get("Content-Type"); ct != "application/json" {
-		t.Errorf("Content-Type = %q，期望 application/json", ct)
+		t.Errorf("Content-Type = %q, want application/json", ct)
 	}
 
 	body := decodeObj(t, string(raw))
 	if got := dig(t, body, "id"); got != upstream.ChatCompletionID {
-		t.Errorf("id = %v，期望 %s", got, upstream.ChatCompletionID)
+		t.Errorf("id = %v, want %s", got, upstream.ChatCompletionID)
 	}
 	if got := dig(t, body, "object"); got != "chat.completion" {
-		t.Errorf("object = %v，期望 chat.completion", got)
+		t.Errorf("object = %v, want chat.completion", got)
 	}
 	if got := dig(t, body, "model"); got != "deepseek-chat" {
-		t.Errorf("model = %v（响应要把请求里的 model 原样回显）", got)
+		t.Errorf("model = %v (the response must echo the model from the request)", got)
 	}
 	if got := dig(t, body, "choices", 0, "message", "content"); got != "MOCK-OK model=deepseek-chat" {
 		t.Errorf("choices[0].message.content = %v", got)
@@ -186,41 +186,41 @@ func TestOpenAINonStream(t *testing.T) {
 		t.Errorf("finish_reason = %v", got)
 	}
 	if got := dig(t, body, "usage", "total_tokens"); got != float64(12) {
-		t.Errorf("usage.total_tokens = %v，期望 12", got)
+		t.Errorf("usage.total_tokens = %v, want 12", got)
 	}
 
-	// 记录面：代理到底发出去了什么，全靠它
+	// the record face: it is how we know what the proxy actually sent
 	if s.Count() != 1 {
-		t.Fatalf("记录数 = %d，期望 1", s.Count())
+		t.Fatalf("record count = %d, want 1", s.Count())
 	}
 	rec, ok := s.Last()
 	if !ok {
-		t.Fatal("Last() 说没有记录")
+		t.Fatal("Last() says there are no records")
 	}
 	if rec.Method != http.MethodPost {
-		t.Errorf("记录的方法 = %q", rec.Method)
+		t.Errorf("recorded method = %q", rec.Method)
 	}
 	if rec.Path != "/v1/chat/completions" {
-		t.Errorf("记录的路径 = %q", rec.Path)
+		t.Errorf("recorded path = %q", rec.Path)
 	}
 	if got := rec.Header.Get("Authorization"); got != "Bearer sk-test" {
-		t.Errorf("记录的 Authorization = %q", got)
+		t.Errorf("recorded Authorization = %q", got)
 	}
 	if got := rec.Header.Get("Anthropic-Version"); got != "2023-06-01" {
-		t.Errorf("记录的 Anthropic-Version = %q（http.Header 的键不区分大小写）", got)
+		t.Errorf("recorded Anthropic-Version = %q (http.Header keys are case-insensitive)", got)
 	}
 	if string(rec.Body) != payload {
-		t.Errorf("记录的请求体 = %q，期望原样字节 %q", rec.Body, payload)
+		t.Errorf("recorded request body = %q, want the verbatim bytes %q", rec.Body, payload)
 	}
 	if rec.At.IsZero() || rec.At.After(time.Now()) {
-		t.Errorf("记录的时间 = %v，不对", rec.At)
+		t.Errorf("recorded time = %v, wrong", rec.At)
 	}
 	fields, err := rec.JSON()
 	if err != nil {
 		t.Fatalf("Record.JSON(): %v", err)
 	}
 	if got := fields["model"]; got != "deepseek-chat" {
-		t.Errorf("JSON() 里的 model = %v", got)
+		t.Errorf("model in JSON() = %v", got)
 	}
 }
 
@@ -233,52 +233,52 @@ func TestOpenAIStream(t *testing.T) {
 	defer resp.Body.Close()
 
 	if got := resp.Header.Get("Content-Type"); got != "text/event-stream" {
-		t.Errorf("Content-Type = %q，期望 text/event-stream", got)
+		t.Errorf("Content-Type = %q, want text/event-stream", got)
 	}
-	// 分帧要跟 python 版一样：没有长度、也不分块（体以连接关闭为界）。
-	// Go 默认会给无长度的 HTTP/1.1 响应加 chunked，那与 bash e2e 里网关
-	// 看到的分帧就不是一回事了。
+	// Framing must match python: no length, no chunking (body delimited by close).
+	// Go's default adds chunked to HTTP/1.1 responses of unknown length, which is
+	// not the framing the gateway sees in the bash e2e.
 	if len(resp.TransferEncoding) != 0 {
-		t.Errorf("响应被分块了（%v）——Transfer-Encoding: identity 那行被删了？", resp.TransferEncoding)
+		t.Errorf("the response was chunked (%v) -- was the Transfer-Encoding: identity line removed?", resp.TransferEncoding)
 	}
 	if resp.ContentLength != -1 {
-		t.Errorf("ContentLength = %d，流式响应不该有长度", resp.ContentLength)
+		t.Errorf("ContentLength = %d, a streaming response should not have a length", resp.ContentLength)
 	}
 
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
-		t.Fatalf("读响应体: %v", err)
+		t.Fatalf("reading the response body: %v", err)
 	}
 	events, done := sseEvents(t, string(raw))
 	if !done {
-		t.Error("流没有以 data: [DONE] 收尾")
+		t.Error("the stream does not end with data: [DONE]")
 	}
 	if len(events) != 5 {
-		t.Fatalf("事件数 = %d，期望 4 个增量块 + 1 个收尾块（实际类型：%v）", len(events), eventTypes(events))
+		t.Fatalf("event count = %d, want 4 delta blocks + 1 closing block (actual types: %v)", len(events), eventTypes(events))
 	}
 
 	var text strings.Builder
 	for _, event := range events[:4] {
 		if got := dig(t, event, "object"); got != "chat.completion.chunk" {
-			t.Errorf("块的 object = %v，期望 chat.completion.chunk", got)
+			t.Errorf("block object = %v, want chat.completion.chunk", got)
 		}
 		if got := dig(t, event, "model"); got != "glm-4-plus" {
-			t.Errorf("块的 model = %v", got)
+			t.Errorf("block model = %v", got)
 		}
 		if got := dig(t, event, "choices", 0, "index"); got != float64(0) {
-			t.Errorf("块的 index = %v", got)
+			t.Errorf("block index = %v", got)
 		}
 		text.WriteString(dig(t, event, "choices", 0, "delta", "content").(string))
 	}
 	if got := text.String(); got != "MOCK-STREAM glm-4-plus" {
-		t.Errorf("增量块拼起来 = %q，期望 MOCK-STREAM glm-4-plus", got)
+		t.Errorf("delta blocks joined = %q, want MOCK-STREAM glm-4-plus", got)
 	}
 	if got := dig(t, events[4], "choices", 0, "finish_reason"); got != "stop" {
-		t.Errorf("收尾块的 finish_reason = %v", got)
+		t.Errorf("closing block finish_reason = %v", got)
 	}
 }
 
-// ---- anthropic 方言 ----
+// ---- anthropic dialect ----
 
 func TestAnthropicNonStream(t *testing.T) {
 	s := upstream.New(t)
@@ -292,15 +292,15 @@ func TestAnthropicNonStream(t *testing.T) {
 		body string
 		want int // 期望 content 里几块
 	}{
-		{"带 tools：thinking + tool_use + text", "/v1/messages", withTools, 3},
-		{"带前缀的路径也认（网关剥前缀前/直连假上游时）", "/a/claude/p/ds/v1/messages", withTools, 3},
-		{"不带 tools：没有 tool_use 块", "/v1/messages",
+		{"with tools: thinking + tool_use + text", "/v1/messages", withTools, 3},
+		{"prefixed paths are also accepted (before the gateway strips the prefix / when hitting the fake upstream directly)", "/a/claude/p/ds/v1/messages", withTools, 3},
+		{"without tools: no tool_use block", "/v1/messages",
 			`{"model":"glm-4-plus","max_tokens":64,"messages":[{"role":"user","content":"go"}]}`, 2},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			code, raw := post(t, s, tc.path, tc.body)
 			if code != http.StatusOK {
-				t.Fatalf("状态码 = %d，期望 200（体：%s）", code, raw)
+				t.Fatalf("status code = %d, want 200 (body: %s)", code, raw)
 			}
 			body := decodeObj(t, raw)
 			if got := dig(t, body, "id"); got != upstream.MessageID {
@@ -321,15 +321,15 @@ func TestAnthropicNonStream(t *testing.T) {
 
 			content, ok := dig(t, body, "content").([]any)
 			if !ok {
-				t.Fatalf("content 不是数组: %v", dig(t, body, "content"))
+				t.Fatalf("content is not an array: %v", dig(t, body, "content"))
 			}
 			if len(content) != tc.want {
-				t.Fatalf("content 块数 = %d，期望 %d", len(content), tc.want)
+				t.Fatalf("content block count = %d, want %d", len(content), tc.want)
 			}
-			// 顺序是语义：thinking 在前、紧跟 tool_use——thinkcache 靠这个相邻
-			// 关系把推理原文和 tool id 绑起来。
+			// Order is semantics: thinking first, tool_use right after - thinkcache
+			// binds reasoning text to tool id through this adjacency.
 			if got := dig(t, content, 0, "type"); got != "thinking" {
-				t.Errorf("content[0].type = %v，期望 thinking", got)
+				t.Errorf("content[0].type = %v, want thinking", got)
 			}
 			if got := dig(t, content, 0, "thinking"); got != upstream.ThinkingText {
 				t.Errorf("content[0].thinking = %v", got)
@@ -339,10 +339,10 @@ func TestAnthropicNonStream(t *testing.T) {
 			}
 			if tc.want == 3 {
 				if got := dig(t, content, 1, "type"); got != "tool_use" {
-					t.Errorf("content[1].type = %v，期望 tool_use", got)
+					t.Errorf("content[1].type = %v, want tool_use", got)
 				}
 				if got := dig(t, content, 1, "id"); got != upstream.ToolUseID {
-					t.Errorf("content[1].id = %v，期望 %s", got, upstream.ToolUseID)
+					t.Errorf("content[1].id = %v, want %s", got, upstream.ToolUseID)
 				}
 				if got := dig(t, content, 1, "name"); got != upstream.ToolName {
 					t.Errorf("content[1].name = %v", got)
@@ -350,10 +350,10 @@ func TestAnthropicNonStream(t *testing.T) {
 			}
 			last := len(content) - 1
 			if got := dig(t, content, last, "type"); got != "text" {
-				t.Errorf("最后一块的 type = %v，期望 text", got)
+				t.Errorf("type of the last block = %v, want text", got)
 			}
 			if got := dig(t, content, last, "text"); got != "MOCK-OK model=glm-4-plus" {
-				t.Errorf("最后一块的 text = %v", got)
+				t.Errorf("text of the last block = %v", got)
 			}
 		})
 	}
@@ -370,15 +370,15 @@ func TestAnthropicStream(t *testing.T) {
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
-		t.Fatalf("读响应体: %v", err)
+		t.Fatalf("reading the response body: %v", err)
 	}
 	events, done := sseEvents(t, string(raw))
 	if !done {
-		t.Error("流没有以 data: [DONE] 收尾（python 版也发这一行）")
+		t.Error("the stream does not end with data: [DONE] (the python version sends this line too)")
 	}
 
-	// 整条块序列：Claude Code 的真实形态（thinking 块在前、tools 请求加
-	// tool_use 块、正文块在后）。
+	// The whole chunk sequence: Claude Code's real shape (thinking block first, the
+	// tools request adds tool_use, text blocks after).
 	want := []string{
 		"message_start",
 		"content_block_start", // index 0：thinking
@@ -390,78 +390,78 @@ func TestAnthropicStream(t *testing.T) {
 	}
 	got := eventTypes(events)
 	if len(got) != len(want) {
-		t.Fatalf("块序列 = %v，期望 %v", got, want)
+		t.Fatalf("block sequence = %v, want %v", got, want)
 	}
 	for i := range want {
 		if got[i] != want[i] {
-			t.Fatalf("第 %d 块的 type = %q，期望 %q（整条：%v）", i, got[i], want[i], got)
+			t.Fatalf("type of block %d = %q, want %q (whole thing: %v)", i, got[i], want[i], got)
 		}
 	}
 
 	if got := dig(t, events[0], "message", "id"); got != upstream.MessageID {
-		t.Errorf("message_start 的 message.id = %v", got)
+		t.Errorf("message_start message.id = %v", got)
 	}
 	if got := dig(t, events[0], "message", "model"); got != "glm-4-plus" {
-		t.Errorf("message_start 的 message.model = %v", got)
+		t.Errorf("message_start message.model = %v", got)
 	}
 	if got := dig(t, events[0], "message", "content"); got == nil {
-		t.Error("message_start 的 message.content 该是空数组")
+		t.Error("message_start message.content should be an empty array")
 	}
 	if got := dig(t, events[1], "index"); got != float64(0) {
-		t.Errorf("thinking 块的 index = %v", got)
+		t.Errorf("thinking block index = %v", got)
 	}
 	if got := dig(t, events[1], "content_block", "type"); got != "thinking" {
-		t.Errorf("第 1 块的 content_block.type = %v", got)
+		t.Errorf("content_block.type of block 1 = %v", got)
 	}
 	if got := dig(t, events[2], "delta", "type"); got != "thinking_delta" {
-		t.Errorf("第 2 块的 delta.type = %v", got)
+		t.Errorf("delta.type of block 2 = %v", got)
 	}
 	if got := dig(t, events[2], "delta", "thinking"); got != upstream.ThinkingText {
-		t.Errorf("thinking_delta 的内容 = %v", got)
+		t.Errorf("thinking_delta content = %v", got)
 	}
 	if got := dig(t, events[3], "content_block", "id"); got != upstream.ToolUseID {
-		t.Errorf("tool_use 块的 id = %v，期望 %s", got, upstream.ToolUseID)
+		t.Errorf("tool_use block id = %v, want %s", got, upstream.ToolUseID)
 	}
 	if got := dig(t, events[3], "index"); got != float64(1) {
-		t.Errorf("tool_use 块的 index = %v", got)
+		t.Errorf("tool_use block index = %v", got)
 	}
 	if got := dig(t, events[4], "content_block", "type"); got != "text" {
-		t.Errorf("正文块的 type = %v", got)
+		t.Errorf("type of the text block = %v", got)
 	}
 	if got := dig(t, events[4], "index"); got != float64(2) {
-		t.Errorf("正文块的 index = %v", got)
+		t.Errorf("index of the text block = %v", got)
 	}
 	var text strings.Builder
 	for _, event := range events[5:9] {
 		if got := dig(t, event, "index"); got != float64(2) {
-			t.Errorf("正文增量的 index = %v，该指向正文块", got)
+			t.Errorf("index of the text delta = %v, it should point at the text block", got)
 		}
 		if got := dig(t, event, "delta", "type"); got != "text_delta" {
-			t.Errorf("正文增量的 delta.type = %v", got)
+			t.Errorf("delta.type of the text delta = %v", got)
 		}
 		text.WriteString(dig(t, event, "delta", "text").(string))
 	}
 	if got := text.String(); got != "MOCK-STREAM glm-4-plus" {
-		t.Errorf("正文增量拼起来 = %q", got)
+		t.Errorf("text deltas joined = %q", got)
 	}
 
-	// 不带 tools 时不该有 tool_use 块，正文块的下标跟着回到 1
+	// Without tools there is no tool_use block, and the text block's index falls back to 1
 	resp2 := send(t, s, http.MethodPost, "/v1/messages",
 		`{"model":"glm-4-plus","stream":true,"messages":[{"role":"user","content":"go"}]}`, nil)
 	defer resp2.Body.Close()
 	raw2, err := io.ReadAll(resp2.Body)
 	if err != nil {
-		t.Fatalf("读响应体: %v", err)
+		t.Fatalf("reading the response body: %v", err)
 	}
 	events2, _ := sseEvents(t, string(raw2))
 	if got := eventTypes(events2)[:4]; len(got) != 4 || got[3] != "content_block_start" {
-		t.Fatalf("块序列 = %v", got)
+		t.Fatalf("block sequence = %v", got)
 	}
 	if got := dig(t, events2[3], "content_block", "type"); got != "text" {
-		t.Errorf("没有 tools 时第 3 块该是 text，实际 %v", got)
+		t.Errorf("without tools block 3 should be text, actually %v", got)
 	}
 	if got := dig(t, events2[3], "index"); got != float64(1) {
-		t.Errorf("没有 tools 时正文块 index = %v，期望 1", got)
+		t.Errorf("without tools the text block index = %v, want 1", got)
 	}
 }
 
@@ -472,52 +472,52 @@ func TestCountTokens(t *testing.T) {
 	tools := `"tools":[{"name":"Read","input_schema":{"type":"object"}}]`
 
 	for _, tc := range []struct{ name, path, body string }{
-		{"Claude Code 的形态（不带 model）", "/v1/messages/count_tokens",
-			`{"messages":[{"role":"user","content":"数一下 token"}],` + tools + `}`},
-		{"带前缀的变体", "/a/claude/p/ds/v1/messages/count_tokens",
-			`{"messages":[{"role":"user","content":"数一下 token"}]}`},
-		{"历史里 assistant 没带推理也要放行（判严格口径在 count_tokens 之后）",
+		{"Claude Code's shape (no model)", "/v1/messages/count_tokens",
+			`{"messages":[{"role":"user","content":"count the tokens"}],` + tools + `}`},
+		{"prefixed variant", "/a/claude/p/ds/v1/messages/count_tokens",
+			`{"messages":[{"role":"user","content":"count the tokens"}]}`},
+		{"history with an assistant turn that has no reasoning must also pass (check the strict rule after count_tokens)",
 			`/v1/messages/count_tokens`,
 			`{"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"toolu_x","name":"Read","input":{}}]}],` + tools + `}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			code, raw := post(t, s, tc.path, tc.body)
 			if code != http.StatusOK {
-				t.Fatalf("状态码 = %d，期望 200（体：%s）", code, raw)
+				t.Fatalf("status code = %d, want 200 (body: %s)", code, raw)
 			}
 			body := decodeObj(t, raw)
 			if got := dig(t, body, "input_tokens"); got != float64(42) {
-				t.Errorf("input_tokens = %v，期望 42", got)
+				t.Errorf("input_tokens = %v, want 42", got)
 			}
 		})
 	}
 }
 
-// ---- 尾部形状口径 ----
+// ---- tail shape criterion ----
 
-// TestStrictTailShape 是这套假上游最重要那条判据的自检：**先证明它真的会拦**，
-// 再证明它**只**按形状拦。2026-09-18 按实测重写——原来的实现照抄官方文档口径
-// （「每条 assistant 都得回传非空推理」），那条口径在真实上游上不成立。
+// TestStrictTailShape self-checks the key criterion: **prove it really blocks**,
+// then prove it blocks **only** by shape. Rewritten 2026-09-18 from live data;
+// the old doc rule (non-empty reasoning per assistant) fails on the real upstream.
 //
-// 实测（打真实 smt-deepseek/deepseek-flash，每格 3/3）：
+// Measured (real smt-deepseek/deepseek-flash, 3/3 in each cell):
 //
-//	最后一条 user 消息的 content[] 全是 tool_result 块   → 400
-//	同一个 content[] 里多一个非空 text 块（一个空格就够） → 200
+//	the last user message's content[] is all tool_result blocks   -> 400
+//	one more non-empty text block in that content[] (a space is enough) -> 200
 //
-// 而 reasoning_content 是真实原文、省略、空串还是占位符，**对结果毫无影响**。
-// 下面「放行」组里那两条带完整推理、尾部合规的用例，和「拦截」组里那条带完整
-// 推理、尾部不合规的用例，就是这件事的两半——它们互为对照，缺一条就退化成
-// 「反正都能过」。
+// And whether reasoning_content is real text, omitted, empty or a placeholder
+// **makes no difference to the result**. The two passing cases below (full
+// reasoning, compliant tail) and the blocking one (full reasoning, non-compliant
+// tail) are the two halves, each other's control; drop one and it degrades to "passes anyway".
 func TestStrictTailShape(t *testing.T) {
 	const tools = `"tools":[{"name":"Read","input_schema":{"type":"object"}}]`
 	const thinkingOn = `"thinking":{"type":"enabled","budget_tokens":1024}`
 	const toolUse = `{"type":"tool_use","id":"toolu_x","name":"Read","input":{}}`
 	const tr = `{"type":"tool_result","tool_use_id":"toolu_x","content":"ok"}`
-	// 头部：普通一问一答之后再调一次工具，尾部由各用例自己接。
+	// Header: a normal Q&A round, then one more tool call; each case appends its own tail.
 	const head = `{"model":"deepseek-chat",`
-	const pre = `"messages":[{"role":"user","content":"跑一下"},{"role":"assistant","content":[` + toolUse + `]},`
-	// 完整推理原文：用来证明它既救不了不合规的尾部，也不影响合规的尾部。
-	const reason = `"reasoning_content":"这一轮的真实推理原文"`
+	const pre = `"messages":[{"role":"user","content":"run it"},{"role":"assistant","content":[` + toolUse + `]},`
+	// Full reasoning text: proves it neither rescues a bad tail nor hurts a good one.
+	const reason = `"reasoning_content":"the real reasoning text from this turn"`
 
 	for _, tc := range []struct {
 		name string
@@ -525,121 +525,121 @@ func TestStrictTailShape(t *testing.T) {
 		body string
 		want int
 	}{
-		// ---- 拦下：尾部形状不合规 ----
+		// ---- blocked: tail shape does not comply ----
 		{
-			name: "尾部只有 tool_result（Claude Code 主循环的标准形状）",
+			name: "tail is only tool_result (the standard shape of the Claude Code main loop)",
 			body: head + thinkingOn + `,` + tools + `,` + pre +
 				`{"role":"user","content":[` + tr + `]}]}`,
 			want: http.StatusBadRequest,
 		},
 		{
-			// 这一段是全套里最反直觉的一条：推理**已经在**，而且是真实原文，
-			// 上游照样 400。它证明报错文案在撒谎。
-			name: "尾部只有 tool_result，但推理原文完整——照样拦",
+			// The most counterintuitive case in the set: the reasoning **is there**,
+			// real text, and the upstream still 400s. It proves the error text lies.
+			name: "tail is only tool_result, but the reasoning text is complete -- still block it",
 			body: head + thinkingOn + `,` + tools + `,` + pre +
 				`{"role":"user","content":[` + tr + `]}]}` + ``,
 			want: http.StatusBadRequest,
 		},
 		{
-			name: "尾部两个 tool_result（并行工具轮）",
+			name: "tail has two tool_results (parallel tool round)",
 			body: head + thinkingOn + `,` + tools + `,` + pre +
 				`{"role":"user","content":[` + tr +
 				`,{"type":"tool_result","tool_use_id":"toolu_y","content":"ok2"}]}]}`,
 			want: http.StatusBadRequest,
 		},
 		{
-			name: "尾部只有 tool_result，后面跟一条 role:system 插话——照样拦",
+			name: "tail is only tool_result, followed by a role:system interjection -- still block it",
 			body: head + thinkingOn + `,` + tools + `,` + pre +
 				`{"role":"user","content":[` + tr + `]},` +
-				`{"role":"system","content":[{"type":"text","text":"用户插了一句话"}]}]}`,
+				`{"role":"system","content":[{"type":"text","text":"the user said one thing"}]}]}`,
 			want: http.StatusBadRequest,
 		},
 		{
-			name: "thinking: disabled 也拦（与思考开关无关）",
+			name: "thinking: disabled is also blocked (independent of the thinking switch)",
 			body: head + `"thinking":{"type":"disabled"},` + tools + `,` + pre +
 				`{"role":"user","content":[` + tr + `]}]}`,
 			want: http.StatusBadRequest,
 		},
 		{
-			name: "不带 tools 也拦（与 tools 无关）",
+			name: "also blocked without tools (independent of tools)",
 			body: head + thinkingOn + `,` + pre +
 				`{"role":"user","content":[` + tr + `]}]}`,
 			want: http.StatusBadRequest,
 		},
 
-		// ---- 放行：尾部形状合规 ----
+		// ---- allowed: tail shape complies ----
 		{
-			name: "尾部 tool_result + 文字（同一个请求体只多一个块）",
+			name: "tail is tool_result + text (the same request body with one extra block)",
 			body: head + thinkingOn + `,` + tools + `,` + pre +
-				`{"role":"user","content":[` + tr + `,{"type":"text","text":"继续"}]}]}`,
+				`{"role":"user","content":[` + tr + `,{"type":"text","text":"continue"}]}]}`,
 			want: http.StatusOK,
 		},
 		{
-			name: "尾部 tool_result + 一个空格的文字——空格就够",
+			name: "tail is tool_result + text of a single space -- the space is enough",
 			body: head + thinkingOn + `,` + tools + `,` + pre +
 				`{"role":"user","content":[` + tr + `,{"type":"text","text":" "}]}]}`,
 			want: http.StatusOK,
 		},
 		{
-			name: "尾部 tool_result + image（非 text 的块也算有指令）",
+			name: "tail is tool_result + image (a non-text block also counts as an instruction)",
 			body: head + thinkingOn + `,` + tools + `,` + pre +
 				`{"role":"user","content":[` + tr +
 				`,{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBORw0KGgo="}}]}]}`,
 			want: http.StatusOK,
 		},
 		{
-			name: "尾部只有 image",
+			name: "tail is only image",
 			body: head + thinkingOn + `,` + tools + `,` + pre +
 				`{"role":"user","content":[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBORw0KGgo="}}]}]}`,
 			want: http.StatusOK,
 		},
 		{
-			// 已知**修不好**的一族：尾部 user 是 tool_result-only，但数组以
-			// assistant 收尾。它照样 400，而且往那个 user 轮追加指令**也没用**
-			// （实测 3/3 还是 400），所以 deepseek 插件故意不碰它——塞一句没有
-			// 效果的噪音比 400 更糟。真实客户端到不了这个形状（Claude Code 要么
-			// 以 tool_result 收尾等模型接着干，要么以文字收尾）。
-			name: "尾部 user 是 tool_result、数组以 assistant 收尾（修不好的一族）",
+			// A family **known unfixable**: the tail user turn is tool_result-only, but the
+			// array ends with assistant. It still 400s, and appending an instruction to that
+			// user turn **does not help** (measured 3/3 still 400), so the deepseek plugin
+			// deliberately leaves it alone - noise with no effect is worse than a 400. Real
+			// clients never reach it (Claude Code ends on tool_result awaiting the model, or on text).
+			name: "tail user is tool_result and the array ends with assistant (the unfixable family)",
 			body: head + thinkingOn + `,` + tools + `,` + pre +
 				`{"role":"user","content":[` + tr + `]},` +
-				`{"role":"assistant","content":[{"type":"text","text":"说完了"}]}]}`,
+				`{"role":"assistant","content":[{"type":"text","text":"done talking"}]}]}`,
 			want: http.StatusBadRequest,
 		},
 		{
-			name: "尾部是普通 user 文字",
+			name: "tail is ordinary user text",
 			body: head + thinkingOn + `,` + tools + `,` + pre +
-				`{"role":"user","content":[{"type":"text","text":"再来一个"}]}]}`,
+				`{"role":"user","content":[{"type":"text","text":"one more"}]}]}`,
 			want: http.StatusOK,
 		},
 		{
-			name: "user 消息的 content 是普通字符串",
+			name: "the content of the user message is a plain string",
 			body: head + thinkingOn + `,` + tools + `,` +
-				`"messages":[{"role":"user","content":"纯文本"}]}`,
+				`"messages":[{"role":"user","content":"plain text"}]}`,
 			want: http.StatusOK,
 		},
 		{
-			name: "没有 user 消息",
+			name: "no user message",
 			body: head + thinkingOn + `,` + tools + `,` +
 				`"messages":[{"role":"assistant","content":[` + toolUse + `]}]}`,
 			want: http.StatusOK,
 		},
 		{
-			// openai 方言的续轮是 role:tool 收尾，最后一条 user 是老早那条
-			// 字符串消息——这条口径天然不管它。实测同为 200。
-			name: "openai 方言：role:tool 收尾",
+			// The openai dialect's continuation turn ends on role:tool, and the last user
+			// is the old string message - this rule never applies. Measured 200 here too.
+			name: "openai dialect: ends with role:tool",
 			path: "/v1/chat/completions",
 			body: head + thinkingOn + `,` + tools +
-				`,"messages":[{"role":"user","content":"跑一下"},` +
+				`,"messages":[{"role":"user","content":"run it"},` +
 				`{"role":"assistant","content":"","tool_calls":[{"id":"c1","type":"function","function":{"name":"Read","arguments":"{}"}}]},` +
 				`{"role":"tool","tool_call_id":"c1","content":"ok"}]}`,
 			want: http.StatusOK,
 		},
 		{
-			name: "合规尾部 + 推理原文完整（对照上面那条「照样拦」）",
+			name: "compliant tail + complete reasoning text (compare with the \"still block it\" case above)",
 			body: head + thinkingOn + `,` + tools + `,` +
-				`"messages":[{"role":"user","content":"跑一下"},` +
+				`"messages":[{"role":"user","content":"run it"},` +
 				`{"role":"assistant",` + reason + `,"content":[` + toolUse + `]},` +
-				`{"role":"user","content":[` + tr + `,{"type":"text","text":"继续"}]}]}`,
+				`{"role":"user","content":[` + tr + `,{"type":"text","text":"continue"}]}]}`,
 			want: http.StatusOK,
 		},
 	} {
@@ -651,25 +651,25 @@ func TestStrictTailShape(t *testing.T) {
 			}
 			code, raw := post(t, s, path, tc.body)
 			if code != tc.want {
-				t.Fatalf("状态码 = %d，期望 %d（体：%s）", code, tc.want, raw)
+				t.Fatalf("status code = %d, want %d (body: %s)", code, tc.want, raw)
 			}
 			if s.Count() != 1 {
-				t.Fatalf("这一发该被记录（无论拦没拦），记录数 = %d", s.Count())
+				t.Fatalf("this request should be recorded (whether blocked or not), record count = %d", s.Count())
 			}
 			if tc.want == http.StatusOK {
-				// 放行：必须是那条正常响应，不是别的什么错误
+				// allowed: it must be the normal response, not some other error
 				if !strings.Contains(raw, "MOCK-OK model=deepseek-chat") {
-					t.Errorf("放行了但响应体不是假上游的正常回复：%s", raw)
+					t.Errorf("it passed through but the response body is not the fake upstream's normal reply: %s", raw)
 				}
 				return
 			}
-			// 拦下了：错误文本必须逐字是 python 版那句——判据是它，不是状态码
+			// blocked: error text must be word-for-word python's - that is the criterion, not the code
 			if !strings.Contains(raw, upstream.StrictReasoningMessage) {
-				t.Errorf("400 的错误文本里没有那句话: %s", raw)
+				t.Errorf("that sentence is not in the 400 error text: %s", raw)
 			}
 			body := decodeObj(t, raw)
 			if got := dig(t, body, "type"); got != "error" {
-				t.Errorf("type = %v，期望 error", got)
+				t.Errorf("type = %v, want error", got)
 			}
 			if got := dig(t, body, "error", "type"); got != "invalid_request_error" {
 				t.Errorf("error.type = %v", got)
@@ -681,42 +681,42 @@ func TestStrictTailShape(t *testing.T) {
 	}
 }
 
-// ---- 控制面 ----
+// ---- control plane ----
 
 func TestFailNextIsOneShot(t *testing.T) {
 	s := upstream.New(t)
 	payload := `{"model":"deepseek-chat","messages":[{"role":"user","content":"hi"}]}`
 
 	if code, _ := post(t, s, "/v1/chat/completions", payload); code != http.StatusOK {
-		t.Fatalf("第一发就该是好的")
+		t.Fatalf("the first request should be fine")
 	}
 	s.FailNext(http.StatusServiceUnavailable)
 	code, raw := post(t, s, "/v1/chat/completions", payload)
 	if code != http.StatusServiceUnavailable {
-		t.Fatalf("武装之后的第一发 = %d，期望 503（体：%s）", code, raw)
+		t.Fatalf("the first request after arming = %d, want 503 (body: %s)", code, raw)
 	}
 	if !strings.Contains(raw, "mock forced 503") {
-		t.Errorf("失败响应体 = %s，期望带 mock forced 503", raw)
+		t.Errorf("failure response body = %s, expected to contain mock forced 503", raw)
 	}
 	if code, _ = post(t, s, "/v1/chat/completions", payload); code != http.StatusOK {
-		t.Fatalf("用完即消：第二发 = %d，期望 200", code)
+		t.Fatalf("one-shot: the second request = %d, want 200", code)
 	}
-	// 失败那一发也留在记录里（先记后判），所以能断言「网关确实重试了」
+	// The failed shot stays in the records (record first, judge after): retry is assertable
 	if s.Count() != 3 {
-		t.Errorf("记录数 = %d，期望 3（含那一发失败的）", s.Count())
+		t.Errorf("record count = %d, want 3 (including the one that failed)", s.Count())
 	}
 
-	// FailNext(0) 等于解除武装（python 里 0 是 falsy）
+	// FailNext(0) equals disarm (0 is falsy in python)
 	s.FailNext(http.StatusTooManyRequests)
 	s.FailNext(0)
 	if code, _ := post(t, s, "/v1/chat/completions", payload); code != http.StatusOK {
-		t.Errorf("FailNext(0) 之后 = %d，期望 200（0 是解除武装）", code)
+		t.Errorf("after FailNext(0) = %d, want 200 (0 disarms it)", code)
 	}
 
-	// 失败注入也能落在 count_tokens 上：python 判失败在判 count_tokens 之前
+	// Failure injection can land on count_tokens too: python judges failure before count_tokens
 	s.FailNext(http.StatusTooManyRequests)
 	if code, _ := post(t, s, "/v1/messages/count_tokens", `{"messages":[]}`); code != http.StatusTooManyRequests {
-		t.Errorf("武装中的 count_tokens = %d，期望 429", code)
+		t.Errorf("armed count_tokens = %d, want 429", code)
 	}
 }
 
@@ -726,47 +726,47 @@ func TestRequestsAndReset(t *testing.T) {
 	second := `{"model":"glm-4-plus","messages":[{"role":"user","content":"2"}]}`
 
 	if code, raw := post(t, s, "/v1/chat/completions", first); code != http.StatusOK {
-		t.Fatalf("第一发 = %d（%s）", code, raw)
+		t.Fatalf("first request = %d (%s)", code, raw)
 	}
 	if code, raw := post(t, s, "/v1/messages", second); code != http.StatusOK {
-		t.Fatalf("第二发 = %d（%s）", code, raw)
+		t.Fatalf("second request = %d (%s)", code, raw)
 	}
 
 	records := s.Requests()
 	if len(records) != 2 {
-		t.Fatalf("记录数 = %d，期望 2", len(records))
+		t.Fatalf("record count = %d, want 2", len(records))
 	}
 	if records[0].Path != "/v1/chat/completions" || records[1].Path != "/v1/messages" {
-		t.Errorf("记录顺序不对：%q, %q（要按时间顺序）", records[0].Path, records[1].Path)
+		t.Errorf("record order is wrong: %q, %q (must be chronological)", records[0].Path, records[1].Path)
 	}
 	if string(records[0].Body) != first || string(records[1].Body) != second {
-		t.Errorf("请求体记错了：%q, %q", records[0].Body, records[1].Body)
+		t.Errorf("request body recorded wrong: %q, %q", records[0].Body, records[1].Body)
 	}
 	if records[1].At.Before(records[0].At) {
-		t.Errorf("时间戳没有递增：%v → %v", records[0].At, records[1].At)
+		t.Errorf("timestamps did not increase: %v -> %v", records[0].At, records[1].At)
 	}
 
-	// 返回的是副本：改它不能穿透到 Server 内部
-	records[0].Path = "改着玩"
+	// What comes back is a copy: modifying it cannot reach into the Server
+	records[0].Path = "just poking at it"
 	if s.Requests()[0].Path != "/v1/chat/completions" {
-		t.Error("Requests() 返回的该是副本，改它不该影响内部记录")
+		t.Error("Requests() must return a copy; modifying it must not affect the internal records")
 	}
 
 	s.Reset()
 	if s.Count() != 0 || len(s.Requests()) != 0 {
-		t.Fatalf("Reset 之后还有记录：Count=%d", s.Count())
+		t.Fatalf("records remain after Reset: Count=%d", s.Count())
 	}
 
-	// Reset 也解除 FailNext 的武装（python 的 /__mock/reset 同时清 NEXT_FAIL）
+	// Reset disarms FailNext too (python's /__mock/reset clears NEXT_FAIL as well)
 	s.FailNext(http.StatusInternalServerError)
 	s.Reset()
 	if code, raw := post(t, s, "/v1/chat/completions", first); code != http.StatusOK {
-		t.Errorf("Reset 之后 = %d，期望 200（Reset 该顺手解除武装）（体：%s）", code, raw)
+		t.Errorf("after Reset = %d, want 200 (Reset should also disarm) (body: %s)", code, raw)
 	}
 }
 
-// TestControlPlaneHTTP 走 HTTP 面的控制端点——这条路径是 bash 脚本和 curl 用的，
-// 形状必须与 python 版一字不变（小写头、解析后的 body、epoch 秒、空记录是 []）。
+// TestControlPlaneHTTP walks the HTTP control endpoints, used by bash scripts and
+// curl: shape must match python exactly (lowercase headers, parsed body, epoch s, []).
 func TestControlPlaneHTTP(t *testing.T) {
 	s := upstream.New(t)
 
@@ -779,11 +779,11 @@ func TestControlPlaneHTTP(t *testing.T) {
 		t.Errorf("object = %v", models["object"])
 	}
 	if data, ok := models["data"].([]any); !ok || len(data) != 0 {
-		t.Errorf("data = %v，期望空数组", models["data"])
+		t.Errorf("data = %v, want an empty array", models["data"])
 	}
 
 	if code, _ := get(t, s, "/nope"); code != http.StatusNotFound {
-		t.Errorf("未知 GET 路径 = %d，期望 404", code)
+		t.Errorf("unknown GET path = %d, want 404", code)
 	}
 
 	payload := `{"model":"deepseek-chat","messages":[{"role":"user","content":"hi"}]}`
@@ -798,10 +798,10 @@ func TestControlPlaneHTTP(t *testing.T) {
 	}
 	var wire []map[string]any
 	if err := json.Unmarshal([]byte(raw), &wire); err != nil {
-		t.Fatalf("记录不是 JSON 数组: %v（%s）", err, raw)
+		t.Fatalf("records are not a JSON array: %v (%s)", err, raw)
 	}
 	if len(wire) != 1 {
-		t.Fatalf("记录数 = %d，期望 1（%s）", len(wire), raw)
+		t.Fatalf("record count = %d, want 1 (%s)", len(wire), raw)
 	}
 	if got := wire[0]["path"]; got != "/v1/chat/completions" {
 		t.Errorf("wire path = %v", got)
@@ -811,70 +811,70 @@ func TestControlPlaneHTTP(t *testing.T) {
 	}
 	headers, ok := wire[0]["headers"].(map[string]any)
 	if !ok {
-		t.Fatalf("wire headers 不是对象: %v", wire[0]["headers"])
+		t.Fatalf("wire headers is not an object: %v", wire[0]["headers"])
 	}
 	if got := headers["authorization"]; got != "Bearer sk-ds" {
-		t.Errorf("wire headers[authorization] = %v（python 版是小写键）", got)
+		t.Errorf("wire headers[authorization] = %v (the python version uses lowercase keys)", got)
 	}
 	if _, mixed := headers["Authorization"]; mixed {
-		t.Error("wire headers 里不该出现原大小写的键")
+		t.Error("wire headers must not contain the original-case key")
 	}
 	if got := dig(t, wire[0], "body", "model"); got != "deepseek-chat" {
-		t.Errorf("wire body.model = %v（body 该是解析后的对象）", got)
+		t.Errorf("wire body.model = %v (body should be the parsed object)", got)
 	}
 	at, ok := wire[0]["at"].(float64)
 	if !ok || at <= 0 {
-		t.Errorf("wire at = %v，期望 epoch 秒", wire[0]["at"])
+		t.Errorf("wire at = %v, want epoch seconds", wire[0]["at"])
 	}
 
-	// 空记录必须是 []，不是 null：bash 里的 for x in r 遇到 null 会当场炸
+	// Empty records must be [], not null: for x in r in bash blows up on null
 	s.Reset()
 	if _, raw = get(t, s, "/__mock/requests"); strings.TrimSpace(raw) != "[]" {
-		t.Errorf("空记录 = %q，期望 []", strings.TrimSpace(raw))
+		t.Errorf("empty record = %q, want []", strings.TrimSpace(raw))
 	}
 
-	// GET /__mock/fail?code=N 武装下一发
+	// GET /__mock/fail?code=N arms the next shot
 	code, raw = get(t, s, "/__mock/fail?code=429")
 	if code != http.StatusOK {
 		t.Fatalf("GET /__mock/fail = %d", code)
 	}
 	if got := decodeObj(t, raw)["next_fail"]; got != float64(429) {
-		t.Errorf("next_fail = %v，期望 429", got)
+		t.Errorf("next_fail = %v, want 429", got)
 	}
 	if code, _ := post(t, s, "/v1/chat/completions", payload); code != http.StatusTooManyRequests {
-		t.Errorf("武装后第一发 = %d，期望 429", code)
+		t.Errorf("first request after arming = %d, want 429", code)
 	}
 	if code, _ := post(t, s, "/v1/chat/completions", payload); code != http.StatusOK {
-		t.Errorf("武装后第二发 = %d，期望 200（用完即消）", code)
+		t.Errorf("second request after arming = %d, want 200 (one-shot)", code)
 	}
-	// 缺省 code=500（python 的 q.get("code", ["500"])）
+	// Default code=500 (python's q.get("code", ["500"]))
 	if _, raw = get(t, s, "/__mock/fail"); decodeObj(t, raw)["next_fail"] != float64(500) {
-		t.Errorf("缺省 code 该是 500：%s", raw)
+		t.Errorf("the default code should be 500: %s", raw)
 	}
-	// 不是整数：python 会抛异常断连，这里明说 400（有意的分歧）
+	// Not an integer: python throws and drops the connection, here a stated 400 (deliberate)
 	if code, _ := get(t, s, "/__mock/fail?code=abc"); code != http.StatusBadRequest {
-		t.Errorf("code=abc 的状态码 = %d，期望 400", code)
+		t.Errorf("status code for code=abc = %d, want 400", code)
 	}
 	s.FailNext(0) // 别把上面那发缺省 500 留给后面的用例
 
-	// POST /__mock/reset 清记录，且这一发不进记录表（python 也在读 body 之前处理）
+	// POST /__mock/reset clears records; this shot is not recorded (handled before body)
 	if code, raw = post(t, s, "/__mock/reset", ""); code != http.StatusOK {
 		t.Fatalf("POST /__mock/reset = %d（%s）", code, raw)
 	}
 	if s.Count() != 0 {
-		t.Errorf("reset 之后记录数 = %d", s.Count())
+		t.Errorf("record count after reset = %d", s.Count())
 	}
 }
 
-// ---- 延迟 ----
+// ---- delay ----
 
-// TestStreamIsIncremental 验证两件事：块间隔真的生效、而且响应是逐块出来的
-// （代理要是把整条流缓冲下来，首块也得等全吐完才到——这条断言就是冲着它）。
+// TestStreamIsIncremental verifies two things: the chunk gap really takes effect,
+// and chunks arrive incrementally (a buffering proxy would hold chunk one till the end).
 func TestStreamIsIncremental(t *testing.T) {
 	s := upstream.New(t)
 	const delay = 200 * time.Millisecond // 4 个增量块 → 整条流 ~800ms
 
-	// 先把基准延迟调快：mock_slow 走的是另一档，应当不受影响
+	// Speed up the baseline delay first: mock_slow uses the other dial, so it should not change
 	s.SetChunkDelay(0)
 	s.SetSlowChunkDelay(delay)
 
@@ -883,16 +883,16 @@ func TestStreamIsIncremental(t *testing.T) {
 		`{"model":"m","stream":true,"mock_slow":true,"messages":[]}`)
 	elapsed := time.Since(start)
 	if code != http.StatusOK {
-		t.Fatalf("mock_slow 流 = %d（%s）", code, raw)
+		t.Fatalf("mock_slow stream = %d (%s)", code, raw)
 	}
 	if elapsed < 3*delay {
-		t.Errorf("mock_slow 的流只花了 %v（期望 >= %v，约 4 个块间隔）——慢档没生效？", elapsed, 3*delay)
+		t.Errorf("the mock_slow stream took only %v (expected >= %v, about 4 block intervals) -- is the slow mode not in effect?", elapsed, 3*delay)
 	}
 	if !strings.HasSuffix(raw, "data: [DONE]\n\n") {
-		t.Errorf("流没完整吐完，尾部是：%q", raw[len(raw)-40:])
+		t.Errorf("the stream did not finish, tail is: %q", raw[len(raw)-40:])
 	}
 
-	// 基准延迟：逐块到达 + 整条流的时长都对得上
+	// Baseline delay: chunk-by-chunk arrival plus total stream duration both line up
 	s.SetChunkDelay(delay)
 	resp := send(t, s, http.MethodPost, "/v1/chat/completions",
 		`{"model":"m","stream":true,"messages":[]}`, nil)
@@ -902,38 +902,38 @@ func TestStreamIsIncremental(t *testing.T) {
 	start = time.Now()
 	firstLine, err := reader.ReadString('\n')
 	if err != nil {
-		t.Fatalf("读首块: %v", err)
+		t.Fatalf("reading the first block: %v", err)
 	}
 	first := time.Since(start)
 	rest, err := io.ReadAll(reader)
 	if err != nil {
-		t.Fatalf("读余下的流: %v", err)
+		t.Fatalf("reading the rest of the stream: %v", err)
 	}
 	total := time.Since(start)
 
-	// 缓冲整条流的实现要 ~800ms 才给第一块；阈值放到 400ms：机器抖动不至于
-	// 假失败，而「攒着发」一定超。
+	// A whole-stream buffer takes ~800ms to give the first chunk; set the threshold at
+	// 400ms: machine jitter does not fail it, and "accumulate then send" always exceeds.
 	if first > 400*time.Millisecond {
-		t.Errorf("首块 %v 才到（整条流约 %v）——流式没有逐块吐？", first, 4*delay)
+		t.Errorf("the first block arrived only after %v (the whole stream about %v) -- is it not flushing block by block?", first, 4*delay)
 	}
 	if total < 3*delay {
-		t.Errorf("整条流只花了 %v（期望 >= %v）——块间隔没生效？", total, 3*delay)
+		t.Errorf("the whole stream took only %v (expected >= %v) -- is the block interval not in effect?", total, 3*delay)
 	}
 	stream := firstLine + string(rest)
 	if got := strings.Count(stream, "data: "); got != 6 {
-		t.Errorf("data: 行数 = %d，期望 6（4 增量 + 1 收尾 + [DONE]）", got)
+		t.Errorf("data: line count = %d, want 6 (4 deltas + 1 closing + [DONE])", got)
 	}
 	if !strings.HasSuffix(stream, "data: [DONE]\n\n") {
-		t.Errorf("流没完整吐完，尾部是：%q", stream[len(stream)-40:])
+		t.Errorf("the stream did not finish, tail is: %q", stream[len(stream)-40:])
 	}
 
-	// SetChunkDelay(0) = 尽快：同一发立刻回来（延迟是可调的，不是写死的）
+	// SetChunkDelay(0) = as fast as possible: it returns at once (the delay is adjustable)
 	s.SetChunkDelay(0)
 	start = time.Now()
 	if code, raw := post(t, s, "/v1/chat/completions", `{"model":"m","stream":true,"messages":[]}`); code != http.StatusOK {
-		t.Fatalf("SetChunkDelay(0) 之后 = %d（%s）", code, raw)
+		t.Fatalf("after SetChunkDelay(0) = %d (%s)", code, raw)
 	}
 	if elapsed := time.Since(start); elapsed > 400*time.Millisecond {
-		t.Errorf("SetChunkDelay(0) 之后还花了 %v，期望尽快", elapsed)
+		t.Errorf("after SetChunkDelay(0) it still took %v, expected as fast as possible", elapsed)
 	}
 }

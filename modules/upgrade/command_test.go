@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// fakeAction 记下自己被怎么调用过：只看了几次、真跑了几次。
+// fakeAction records how it was called: how many checks, how many real runs.
 type fakeAction struct {
 	id       string
 	kind     Kind
@@ -46,7 +46,7 @@ func newSession(input string, interactive bool) (*session, *strings.Builder) {
 	}, &out
 }
 
-// 缺省：先看、再**分两次**问（二进制一次、数据一次），只做点了头的那一半。
+// Default: check first, then ask **twice** (binary once, data once), doing only the approved half.
 func TestUpgradeAsksTwiceAndDoesOnlyWhatWasConfirmed(t *testing.T) {
 	bin := &fakeAction{id: "binary", kind: KindProgram}
 	data1 := &fakeAction{id: "data-a"}
@@ -71,7 +71,7 @@ func TestUpgradeAsksTwiceAndDoesOnlyWhatWasConfirmed(t *testing.T) {
 	}
 }
 
-// 已经是最新的不追问：问一句「要升级吗」然后什么都不做，是在浪费确认。
+// Already-latest ones are not asked about: asking "upgrade?" then doing nothing wastes a confirm.
 func TestUpToDateIsNotAsked(t *testing.T) {
 	bin := &fakeAction{id: "binary", kind: KindProgram, upToDate: true}
 	s, out := newSession("", true)
@@ -81,7 +81,7 @@ func TestUpToDateIsNotAsked(t *testing.T) {
 	}
 }
 
-// 读不到回答（EOF）= 不。
+// Unreadable answer (EOF) = no.
 func TestNoAnswerMeansNo(t *testing.T) {
 	bin := &fakeAction{id: "binary", kind: KindProgram}
 	s, _ := newSession("", true)
@@ -91,7 +91,7 @@ func TestNoAnswerMeansNo(t *testing.T) {
 	}
 }
 
-// 没有终端又没给 -y：不执行，并以 1 退出（脚本要看得出「其实没升」）。
+// No terminal and no -y: do not run, exit 1 (scripts must see "not upgraded").
 func TestNoTerminalWithoutYesRefuses(t *testing.T) {
 	bin := &fakeAction{id: "binary", kind: KindProgram}
 	s, _ := newSession("y\n", false)
@@ -100,7 +100,7 @@ func TestNoTerminalWithoutYesRefuses(t *testing.T) {
 	}
 }
 
-// -y / -f：不问，直接跑；-f 还带上 Force。
+// -y / -f: no prompt, run directly; -f also sets Force.
 func TestYesAndForceSkipTheQuestions(t *testing.T) {
 	for _, flag := range []string{"-y", "--yes", "-f", "--force"} {
 		parsed, err := parseArgs([]string{flag})
@@ -122,7 +122,7 @@ func TestYesAndForceSkipTheQuestions(t *testing.T) {
 	}
 }
 
-// --check 不问也不跑。
+// --check asks nothing and runs nothing.
 func TestCheckNeverRuns(t *testing.T) {
 	bin := &fakeAction{id: "binary", kind: KindProgram}
 	s, out := newSession("y\ny\n", true)

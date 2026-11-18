@@ -8,15 +8,18 @@ import (
 	agentapi "github.com/rzbdz/newgate-ext/modules/confighook"
 )
 
-// facts 是本模块交给内核的运行期事实（见 confighook.AgentFacts）。
+// facts are the runtime facts this module hands the kernel (see confighook.AgentFacts).
 //
-// Codex 是 npm 管理的 Node 工具。通用 OnPath 仍然是第一判据；这里再认标准 nvm
-// 的版本 bin 目录，是因为 daemon 的 PATH 不是启动它的交互 shell 的 PATH：2026-09-22
-// 实测 daemon 的 PATH 没有 `/root/.nvm/versions/node/v24.13.0/bin`，而 codex 正是
-// `/root/.nvm/versions/node/v24.13.0/bin/codex`。这不是把 OnPath 改成「猜文件」：
-// 只有 Codex 这个知道 npm 渠道的发行版模块认这个目录，其他客户端仍走内核的通用判据。
-// 不调用 `npm prefix -g` 或 shell：卡片状态会被频繁轮询，文件探测必须便宜且不产生
-// 外部进程；安装器仍继承 daemon 的 PATH，找不到 npm 时照实报错。
+// Codex is an npm-managed Node tool. Generic OnPath is still the first
+// test; recognizing nvm's standard version bin directory here is because the daemon's
+// PATH is not the interactive shell's PATH that started it: measured 2026-09-22,
+// the daemon's PATH had no `/root/.nvm/versions/node/v24.13.0/bin`, and codex
+// is exactly `/root/.nvm/versions/node/v24.13.0/bin/codex`. This is not turning OnPath
+// into "guess a file": only the Codex module of this distribution, which knows the npm
+// channel, recognizes this directory, and other clients still go through the kernel's
+// generic test. It does not call `npm prefix -g` or a shell: the card status is polled
+// often, and file probing must be cheap and spawn no external process; the installer
+// still inherits the daemon's PATH and reports honestly when npm is not found.
 type facts struct{}
 
 var _ agentapi.AgentFacts = facts{}
@@ -46,10 +49,11 @@ func codexOnNVMPath() bool {
 	return false
 }
 
-// SlotTier 这个槽位此刻走哪个档位：用户改过就用改的，没改返回空串（内核据此回落到
-// 描述符里的缺省）。**不在这里兜底**——「没改过就用缺省」只有一份实现（内核的
-// confighook.TierOf）。
+// SlotTier: which tier this slot takes right now -- the user's change if any, else the empty
+// string (the kernel then falls back to the descriptor's default). **No fallback here** --
+// "unchanged means default" has exactly one implementation (confighook.TierOf in the kernel).
 //
-// 它同时被两处问：接管写 config.toml 那一刻（takeover.go 的 tierOf），以及界面
-// 上那张卡显示的此刻值。同一个实现保证了两边不会分家。
+// It is asked in two places: the moment takeover writes config.toml
+// (tierOf in takeover.go), and the current value this card shows
+// in the UI. One implementation guarantees the two cannot diverge.
 func (facts) SlotTier(s agentapi.Slot) string { return slotsOf().Tier(s) }

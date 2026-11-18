@@ -40,7 +40,7 @@ const realistic = `{
   "stream": true,
   "messages": [
     {"role":"system","content":[{"type":"text","text":"long prefix","cache_control":{"type":"ephemeral"}}]},
-    {"role":"user","content":"计算 1e10 和 \"引号\" 与 \\ 反斜杠"}
+    {"role":"user","content":"compute 1e10 and \"quotes\" and \\ backslashes"}
   ],
   "tools": [
     {"type":"function","function":{
@@ -81,23 +81,23 @@ func TestOnlyModelChanges(t *testing.T) {
 	}
 
 	if len(in) != len(got) {
-		t.Fatalf("顶层键数量变了: %d -> %d", len(in), len(got))
+		t.Fatalf("the number of top-level keys changed: %d -> %d", len(in), len(got))
 	}
 	for k, v := range in {
 		g, ok := got[k]
 		if !ok {
-			t.Errorf("键 %q 丢了", k)
+			t.Errorf("key %q was lost", k)
 			continue
 		}
 		if k == "model" {
 			if string(g) != `"model-large"` {
-				t.Errorf("model 应被改写，得到 %s", g)
+				t.Errorf("model should be rewritten, got %s", g)
 			}
 			continue
 		}
 		// 其余每个顶层值必须语义完全相同（含数字字面量与 key 顺序）
 		if compact(v) != compact(g) {
-			t.Errorf("键 %q 被改动了:\n 原: %s\n 新: %s", k, v, g)
+			t.Errorf("key %q was changed:\n original: %s\n now: %s", k, v, g)
 		}
 	}
 }
@@ -122,11 +122,11 @@ func TestInterfaceRoundTripWouldCorrupt(t *testing.T) {
 		}
 		if compact(v) != compact(b[k]) {
 			changed++
-			t.Logf("interface{} 往返破坏了 %q:\n 原: %s\n 后: %s", k, v, b[k])
+			t.Logf("the interface{} round trip broke %q:\n original: %s\n after: %s", k, v, b[k])
 		}
 	}
 	if changed == 0 {
-		t.Skip("这个 Go 版本下 interface{} 往返恰好没破坏——但仍不该依赖它")
+		t.Skip("under this Go version the interface{} round trip happens not to break anything - but we must still not rely on it")
 	}
-	t.Logf("interface{} 往返共破坏 %d 个顶层字段，这就是必须用 RawMessage 的原因", changed)
+	t.Logf("the interface{} round trip broke %d top-level fields, which is why RawMessage is mandatory", changed)
 }

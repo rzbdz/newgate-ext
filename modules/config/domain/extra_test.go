@@ -5,25 +5,28 @@ import (
 	"testing"
 )
 
-// TestExtraRolesSurvivesConcurrentRefresh 动态角色键的读写必须并发安全。
+// TestExtraRolesSurvivesConcurrentRefresh: reads and
+// writes of dynamic role keys must be concurrency-safe.
 //
-// 这不是一条假想的并发：**生产里就是两个协程**。写的是 daemon 的配置
-// watcher（每秒一次 store.Reload → store.Load → roleprov.Refresh →
-// SetExtraRoles），读的是请求协程（resolve.BuildChain → CandidatesFor →
-// DefaultBindingFor → ExtraRoleOf），凡是请求里带了 omo 槽位键的每一发都走
-// 那条读路径。
+// This is not a hypothetical concurrency: **production really has two goroutines**.
+// The writer is the daemon's config watcher (once a second: store.Reload ->
+// store.Load -> roleprov.Refresh -> SetExtraRoles), the reader is request goroutines
+// (resolve.BuildChain -> CandidatesFor -> DefaultBindingFor -> ExtraRoleOf), and
+// every exchange carrying an omo slot key in the request takes that read path.
 //
-// 2026-09-18 之前 extraRoles 是一句裸赋值，这里会命中 DATA RACE。后果不只是
-// 「读到旧值」：slice header 是三个机器字，撕裂的头让 range 越界遍历，轻则把
-// 垃圾判成已知角色键解析出错误绑定，重则 panic 在请求协程里。
+// Before 2026-09-18 extraRoles was one bare assignment, and this would hit DATA RACE.
+// The consequence is not just "reads a stale value": a slice header is three machine
+// words, and a torn header makes range walk out of bounds, at best judging garbage as
+// a known role key into a wrong binding, at worst panicking in a request goroutine.
 //
-// 所以这条测试**必须在 -race 下跑**（`make test-race`）；不带 -race 时它依然
-// 有用——它锁住的是「换页之后旧切片不许再被改写」这条无锁读的前提。
+// So this test **must run under -race** (`make test-race`); without -race it is still useful -- it
+// pins "the old slice must not be rewritten after the page swap", the premise of lock-free reads.
 func TestExtraRolesSurvivesConcurrentRefresh(t *testing.T) {
 	defer SetExtraRoles(nil)
 
-	// 每轮换一份**新的**切片（不是复用同一个）：无锁读的前提是旧切片换页后
-	// 永不改写，如果哪天实现改成原地改切片内容，这条测试会跟着 -race 一起红。
+	// Each round swaps in a **new** slice (not reusing the same one): the premise of lock-free
+	// reads is that the old slice is never rewritten after the swap; if the implementation ever
+	// changes to modifying slice contents in place, this test goes red together with -race.
 	batch := func(i int) []ExtraRole {
 		return []ExtraRole{
 			{Key: "omo-sisyphus", Default: "@normal", Source: "omo"},
@@ -48,7 +51,7 @@ func TestExtraRolesSurvivesConcurrentRefresh(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for i := 0; i < rounds; i++ {
-				// 这三条就是热路径上的读法。
+				// These three are the reads on the hot path.
 				_, _ = ExtraRoleOf("omo-sisyphus")
 				_, _ = DefaultBindingFor("omo-librarian")
 				_ = IsKnownRole("normal")
@@ -58,42 +61,44 @@ func TestExtraRolesSurvivesConcurrentRefresh(t *testing.T) {
 	}
 	wg.Wait()
 
-	// 换页之后读到的必须是完整的最后一份，不是半份。
+	// After the page swap, what is read must be the complete last copy, not half of one.
 	SetExtraRoles(batch(7))
 	roles := ExtraRoles()
 	if len(roles) != len(builtinAliases)+3 {
-		t.Fatalf("最后一份快照应完整可见，实际 %d 条: %v", len(roles), roles)
+		t.Fatalf("the last snapshot should be fully visible, actual %d entries: %v", len(roles), roles)
 	}
 	if _, ok := ExtraRoleOf("omo-sisyphus"); !ok {
-		t.Error("写入之后 omo-sisyphus 应当可见")
+		t.Error("after writing, omo-sisyphus should be visible")
 	}
 }
 
-// TestExtraRolesCallerCannotMutateTheSnapshot 读者拿到的切片是只读快照：
-// 改它不许影响下一次读。这条守的是无锁读的另一个前提——没有第三方会写。
+// TestExtraRolesCallerCannotMutateTheSnapshot: the slice a reader gets is a
+// read-only snapshot; changing it must not affect the next read. This guards
+// the other premise of lock-free reads -- no third party will write to it.
 func TestExtraRolesCallerCannotMutateTheSnapshot(t *testing.T) {
 	defer SetExtraRoles(nil)
 
 	source := []ExtraRole{{Key: "omo-sisyphus", Default: "@normal", Source: "omo"}}
 	SetExtraRoles(source)
 
-	// 写入方之后复用同一个切片（roleprov.Refresh 每轮重新构建，但这是契约）
-	source[0].Key = "改坏了"
+	// The writer reuses the same slice afterwards (roleprov.Refresh
+	// rebuilds every round, but this is the contract)
+	source[0].Key = "was corrupted"
 
 	got, ok := ExtraRoleOf("omo-sisyphus")
 	if !ok {
-		t.Fatal("SetExtraRoles 应当把切片拷走，写入方之后改它不该影响已存的快照")
+		t.Fatal("SetExtraRoles should copy the slice, so the writer changing it later must not affect the stored snapshot")
 	}
 	if got.Key != "omo-sisyphus" {
-		t.Errorf("快照被写入方改动了: %q", got.Key)
+		t.Errorf("the snapshot was changed by the writer: %q", got.Key)
 	}
 
-	// 读者改自己拿到的那份，也不该影响下一次读。
+	// A reader changing its own copy should not affect the next read either.
 	all := ExtraRoles()
 	for i := range all {
-		all[i].Key = "改坏了"
+		all[i].Key = "was corrupted"
 	}
 	if _, ok := ExtraRoleOf("omo-sisyphus"); !ok {
-		t.Error("ExtraRoles 应当返回副本，读者改它不该影响快照")
+		t.Error("ExtraRoles should return a copy, so the reader changing it must not affect the snapshot")
 	}
 }

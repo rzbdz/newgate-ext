@@ -39,9 +39,9 @@ func (t thinking) Match(request *special.Request) bool {
 }
 
 func (thinking) Apply(body []byte, r *special.Request) ([]byte, []string, error) {
-	// 这一手可以被单独关掉（`newgate plugin claudecode_deepseek.inject-thinking off`）。
-	// 关掉之后 Claude Code 的请求会按缺省进 DeepSeek 思考模式，下一轮就是
-	// 「thinking 块没回传」的 400——所以它是 quirk 级而不是 safe 级。
+	// This move can be turned off on its own (`newgate plugin claudecode_deepseek.inject-thinking
+	// off`). With it off, Claude Code's requests go into DeepSeek's thinking mode by default, and the
+	// next round is the 400 for "thinking block not replayed" -- so it is quirk-level, not safe-level.
 	if pluginmanager.Off(stateOf(r), SwitchInjectThinking) {
 		return body, nil, nil
 	}

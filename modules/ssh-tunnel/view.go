@@ -12,15 +12,15 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// registerView 把这一节挂进概念账本。
+// registerView mounts this section into the concept ledger.
 //
-// 两张卡，各自回答一个问题：
+// Two cards, each answering one question:
 //
-//	targets  —— 配了哪些（可写，整份替换）
-//	status   —— 此刻连着没有、两条路的地址在哪（只读，跟着刷新走）
+//	targets  -- what is configured (writable, whole-table replace)
+//	status   -- connected now, and both paths' addresses (read-only, follows refresh)
 //
-// 为什么不是一张：可写的那半会让整张卡带上「你有草稿没保存」的状态，而用户常常
-// 只是想看一眼「连上没有」——两件事的节奏完全不同。
+// Why not one: the writable half would put "you have an unsaved draft" on the whole card,
+// while users often just want a glance at "is it connected" - the two have different rhythms.
 func registerView(v viewapi.Service, m *manager) (modules.Release, error) {
 	section := viewapi.Title(func() string { return i18n.T("Remote", nil) }).
 		In(func() string { return i18n.T("Routing", nil) }).
@@ -30,7 +30,7 @@ func registerView(v viewapi.Service, m *manager) (modules.Release, error) {
 	})
 }
 
-// targetsConcept 是那张可写的配置卡。
+// targetsConcept is the writable config card.
 func targetsConcept(loaded Loaded) viewapi.Concept {
 	items := make([]viewapi.Record, 0, len(loaded.Targets))
 	for _, t := range loaded.Targets {
@@ -50,17 +50,17 @@ func targetsConcept(loaded Loaded) viewapi.Concept {
 			Base:     loaded.Base,
 			CanAdd:   true,
 			AddLabel: i18n.T("add a target", nil),
-			// 新增一条时的形状。**必须有**：这份记录集的常态就是「一条都没有」
-			// （一台还没配过远端的机器），而界面过去只能去抄一条现成的记录——
-			// 没有可抄的时候，点「新增」得到的是一张一个输入框都没有的空卡片。
+			// The shape when adding one. **Required**: the normal state of this record set is
+			// "not a single one" (a machine never configured for a remote), and the UI used to
+			// copy an existing record - with nothing to copy, "add" gave an empty card, no inputs.
 			Blank: targetFields(Target{}.normalize()),
 		},
 		Apply: applyTargets,
 		Order: 10,
 	}
 	if len(loaded.Rejected) > 0 {
-		// 读不出来的那几条**必须出现在这里**：它们唯一的出口就是这张卡。只写日志
-		// 等于「这条配置坏了」这件事只对会翻日志的人可见。
+		// Entries that cannot be read **must appear here**: this card is their only outlet.
+		// Logging only makes "this entry is broken" visible to whoever reads logs.
 		lines := make([]string, 0, len(loaded.Rejected))
 		for _, bad := range loaded.Rejected {
 			lines = append(lines, bad.Line)
@@ -70,11 +70,11 @@ func targetsConcept(loaded Loaded) viewapi.Concept {
 	return c
 }
 
-// targetFields 是一条 target 的字段表。
+// targetFields is one target's field table.
 //
-// 抽出来是因为它有两个用处，而两份必须**逐字相同**：一条已有记录的字段、以及
-// 「新增一条」时的字段形状（Records.Blank）。抄成两份的后果是「新增的行」少几个
-// 输入框——那种错看起来只像「这个字段本来就没法配」。
+// Extracted because it has two uses, and the two must be **verbatim identical**: the
+// fields of an existing record, and the field shape when adding one (Records.Blank).
+// Two copies make "add" rows lose inputs - which just looks like "that field is not configurable".
 func targetFields(t Target) []viewapi.Field {
 	return []viewapi.Field{
 		{ID: "id", Label: i18n.T("id", nil), Kind: viewapi.FieldText, Value: t.ID,
@@ -109,7 +109,7 @@ func targetFields(t Target) []viewapi.Field {
 	}
 }
 
-// statusConcept 是那张只读的状态表。
+// statusConcept is the read-only status table.
 func statusConcept(m *manager) viewapi.Concept {
 	st := m.Status()
 	rows := make([]viewapi.Row, 0, len(st))
@@ -145,8 +145,8 @@ func statusConcept(m *manager) viewapi.Concept {
 			},
 			Rows: rows,
 		},
-		// Live：读的是**内存里的状态**（不拨号、不碰盘），几秒一次刷新很便宜。
-		// 与 home 那一节同一条判据（见 lib/view 的 Concept.Live）。
+		// Live: it reads **in-memory state** (no dialing, no disk), so a few-second refresh is cheap.
+		// Same criterion as the home section (see lib/view's Concept.Live).
 		Live:  true,
 		Order: 20,
 		Note: &viewapi.Note{
@@ -156,11 +156,11 @@ func statusConcept(m *manager) viewapi.Concept {
 	}
 }
 
-// rowActions 是每一行上那两个按钮。
+// rowActions are the two buttons on each row.
 //
-// 「连上/断开」而不是「启用/禁用」：这个模块里**没有一个持久的开关键**——连接是
-// 一个当下的东西（懒连接的默认行为就是它自己会断）。所以按下的那一下就该发生一件
-// 立刻看得见的事，而不是写一个配置等下一次生效。
+// "Connect/disconnect" rather than "enable/disable": this module has **no persistent
+// switch** - a connection is a thing of the moment (lazy connect drops on its own). So a
+// press should cause something immediately visible, not write config that takes effect later.
 func rowActions(m *manager, t Target, s TargetStatus) []viewapi.Action {
 	if s.Conn.State == StateUp || s.Conn.State == StateConnecting {
 		return []viewapi.Action{{
@@ -177,9 +177,9 @@ func rowActions(m *manager, t Target, s TargetStatus) []viewapi.Action {
 		ID:    "connect",
 		Label: func() string { return i18n.T("connect", nil) },
 		Run: func() (string, error) {
-			// 30 秒的预算：这个动作是用户点出来的，他就在等，而一次 SSH 握手在
-			// 内网是几十毫秒。给够余量，但别让他等到浏览器自己超时——先失败的那
-			// 一方能给出理由。
+			// A 30s budget: the user triggered this and is waiting, and an SSH handshake on a
+			// LAN takes tens of milliseconds. Give slack, but do not make them wait for the
+			// browser to time out - whoever fails first can give a reason.
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 			l, err := m.pool.Acquire(ctx, t)
@@ -192,10 +192,10 @@ func rowActions(m *manager, t Target, s TargetStatus) []viewapi.Action {
 	}}
 }
 
-// applyTargets 是那张配置卡的写入口：界面交回来的是**全部记录**，没交的就是删了。
+// applyTargets is the config card's write entry: **all records** come back, missing = deleted.
 //
-// 与 config 的 applyProviders 同一个契约（见 core/modules/config/view.go）：整份
-// 替换而不是逐条改，因为两处的数据都是**人写的配置**，不是一张会被并发增量更新的表。
+// Same contract as config's applyProviders (see core/modules/config/view.go): whole-table
+// replace, not per-row edits - the data is **hand-written config**, not a concurrently updated one.
 func applyTargets(edit json.RawMessage, base string) (string, error) {
 	var patch struct {
 		Items []struct {
@@ -225,15 +225,15 @@ func applyTargets(edit json.RawMessage, base string) (string, error) {
 			HostKey:     strings.TrimSpace(v["host_key"]),
 		}
 		if why := validate(t.normalize()); why != "" {
-			// **在这里就拒**，不要存下去等到下次读的时候再跳过：用户刚敲完的那一格
-			// 就是他正看着的东西，此刻说「id 里不能有斜杠」他立刻知道改哪儿；存下去
-			// 之后再报，那一格已经不在他眼前了。
+			// **Reject right here**, do not store and skip on the next read: the field they just
+			// typed is what they are looking at, and "no slashes in id" tells them exactly where to
+			// fix it; report after saving and that field is no longer in front of them.
 			return "", i18n.E("target {id}: {why}", i18n.A{"id": t.ID, "why": why})
 		}
 		out = append(out, t.normalize())
 	}
-	// 重名的在这里就报：save 之后再读会跳过其中一条，而「我明明加了两条」与
-	// 「界面上只有一条」之间的差别，用户是看不出来的。
+	// Duplicate names are reported here too: after save, reading skips one of them, and the
+	// user cannot tell "I added two" from "only one shows".
 	if dup := firstDuplicate(out); dup != "" {
 		return "", i18n.E("two targets are both called \"{id}\"", i18n.A{"id": dup})
 	}
@@ -251,7 +251,7 @@ func firstDuplicate(ts []Target) string {
 	return ""
 }
 
-// ---------- 表格里那几格 ----------
+// ---------- the cells in the table ----------
 
 func stateText(s TargetStatus) string {
 	switch s.Conn.State {
@@ -260,8 +260,8 @@ func stateText(s TargetStatus) string {
 	case StateConnecting:
 		return i18n.T("connecting", nil)
 	case StateDown:
-		// 原因**必须在格子里**：这一格是用户唯一能看见「为什么连不上」的地方，
-		// 而「failed」两个字会把人送去翻日志。
+		// The reason **must be in the cell**: this is the only place the user can see "why not
+		// connected", and the word "failed" just sends them to the logs.
 		return i18n.T("failed: {err}", i18n.A{"err": s.Conn.LastErr})
 	default:
 		return i18n.T("idle", nil)
@@ -291,10 +291,10 @@ func forwardText(s TargetStatus) string {
 	return s.Forward.Addr
 }
 
-// forwardHref 是转发端口那一格的可点地址。
+// forwardHref is the clickable address in the forward-port cell.
 //
-// 端口没起来、或者这个 target 压根没要端口时留空——**那正是「这不是一个链接」**。
-// 给一个点开就是连不上的地址，比不给链接更糟：用户会以为自己配错了。
+// Empty when the port is not up, or this target never asked for one - **that means "not a link"**.
+// Giving an address that fails when clicked is worse than no link: users think they misconfigured.
 func forwardHref(s TargetStatus) string {
 	if s.ForwardErr != "" || s.Forward.Addr == "" {
 		return ""

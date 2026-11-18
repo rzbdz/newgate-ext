@@ -1,74 +1,74 @@
-// Package configshare 让一个人手上的多台开发机共享**同一套** LLM API 订阅。
+// Package configshare lets one person's dev machines share **one set** of LLM API subscriptions.
 //
-// 解决的问题很具体：一个人有几台机器负责不同项目，但他的所有订阅都是同一套。
-// 现状是每台机器各自维护一份 providers.json + mappings/——加一个上游要改 N 台
-// 机器，改错一台就不一致，而且实际已经在漂移。
+// The problem is concrete: one person has several machines for different projects, yet
+// all subscriptions are the same set. Today each machine keeps its own providers.json +
+// mappings/, so adding an upstream means touching N machines, and slips make them drift.
 //
-// # 权威模型（这是这个功能的地基）
+// # Authority model (the foundation of this feature)
 //
-// **单写者**：一台机器是宿主（role=host），是唯一权威；其余是副本（role=client），
-// 只读。多个宿主**不支持**——两台都发布就会打架，代数也会互相覆盖。
+// **Single writer**: one machine is the host (role=host), the sole authority; the rest
+// are replicas (role=client), read-only. Several hosts are **not supported**: they fight.
 //
-// 为什么"设计好宿主"这件事排在最前面：一旦副本上也能改配置，"权威"就没了，
-// 于是每个副本都成了潜在的漂移源，而漂移是**静默**的（远端同步成功了、本机
-// 行为不变）。所以：
+// Why "design the host properly" comes first: once a replica can edit config, "authority"
+// is gone, every replica becomes a potential drift source, and drift is **silent** (the
+// remote sync succeeded, local behavior unchanged). So:
 //
-//   - 副本上的本地改动不是错误，但必须被**看见**（漂移守卫，见 proto/drift.go）；
-//   - 想要"本机专属的配置"有正式的**本地层**（不归宿主管的文件），而不是去改
-//     托管的那些；
-//   - `publish` 只有宿主能做。
+//   - local edits on a replica are not errors, but must be **seen** (drift guard, proto/drift.go);
+//   - "machine-specific config" gets a formal **local layer** (files the host does not
+//     own) rather than editing the managed ones;
+//   - `publish` is host-only.
 //
-// # 拓扑（决定了所有其他选择）
+// # Topology (decides every other choice)
 //
-//	权威宿主（tailscale 后面）        代理宿主（以后）        副本（可能无入站）
-//	git 仓库 ◀─ 人改 ──▶ 快照          同协议转发（以后）      只发起出站拉取
-//	/__newgate/config  ◀──────── tailnet ────────────────────  last-known-good 缓存
+//	authority host (behind tailscale)      proxy host (later)      replica (no inbound?)
+//	git repo <-- human edits --> snapshot  same protocol relay     outbound pull only
+//	/__newgate/config  <------- tailnet ---------------------      last-known-good cache
 //	/__newgate/secrets
 //
-// 三条硬约束：
+// Three hard constraints:
 //
-//  1. **副本只出站**。受限节点不允许入站，所以只有 pull、没有 push。这也正好
-//     躲开了长连推送要处理的一堆断线重连问题。
-//  2. **不用 ssh**。宿主要放到跳板链路后面，那条链路上 ssh 的信任模型不成立
-//     （也因此 `git clone ssh://` 一起出局）。传输是我们自己的一条拉取。
-//  3. **git 留在宿主**，只做版本管理/回滚/审计（人用的工具）；线上跑的是
-//     我们自己的协议，传带单调 generation 的快照。副本不装 git、不 clone。
+//  1. **Replicas are outbound-only**. Restricted nodes forbid inbound, so pull only, no
+//     push; that also dodges the reconnect handling a long-lived push would need.
+//  2. **No ssh**. The host goes behind a jump chain where ssh's trust model does not
+//     hold (hence `git clone ssh://` is out too). Transport is our own pull.
+//  3. **git stays on the host**, for versioning/rollback/audit only (a tool for humans);
+//     the wire is our own protocol, replicas install no git and clone nothing.
 //
-// # 为什么不是"远端网关"
+// # Why not a "remote gateway"
 //
-// 另一条被否掉的路是"所有 CLI 都指向一台远端 daemon、本机零 daemon"。它把脆弱
-// 的 WAN 跳放进**每一条请求的热路径**，要额外造 mosh 式的断流续传，而且引入
-// **单点故障**——一个专为"上游挂了能沿链换人"而存在的系统，不该自己造一只
-// 倒下就全灭的替死鬼。设计记录留在 docs/12-newgate-remote.md。
+// The other rejected path: "every CLI points at one remote daemon, no local daemon". It
+// puts a fragile WAN hop on **every request's hot path**, needs mosh-style resumable
+// streams, and adds a **single point of failure**: a system whose point is switching
+// upstreams when one dies should not build its own point of collapse (docs/12).
 //
-// 关键认识是：**"一处改动全局生效"是配置分发的性质，不是流量中心化的性质**。
-// 标准形状是控制面/数据面分离 + last-known-good 缓存（Kong / Envoy / Istio /
-// Consul）：数据面本地缓存配置、自己转发流量、**从不穿过控制面去取配置**。
-// 宿主挂了，各机用最后一份可用配置照常转发——请求路径上不增加任何新依赖。
+// The key insight: **"one change takes effect everywhere" is a property of config
+// distribution, not of centralizing traffic**. Standard shape: control-plane/data-plane
+// separation plus a last-known-good cache (Kong / Envoy / Istio / Consul); the data
+// plane caches locally and fetches nothing through it, so a dead host is survivable.
 //
-// # 代码在哪
+// # Where the code is
 //
-//   - proto/ —— 线上协议、加密封装、副本侧的拉取与应用。只认 paths/store/
-//     domain 和标准库，不认识任何端口模块（这是 cli 能 import 它而不成环的
-//     原因，也是它能脱离组件图单独测的原因）。
-//   - module.go（本文件）、host.go、cli.go、diagnostics.go —— 组件、宿主侧
-//     分发、`newgate config` 命令与诊断。
+//   - proto/ -- wire protocol, sealed envelope, replica-side pull and apply. It only
+//     knows paths/store/domain and the standard library, and no port module (which is
+//     why cli can import it without a cycle, and why it can be tested off the graph).
+//   - module.go (this file), host.go, cli.go, diagnostics.go -- the component, host-side
+//     distribution, the `newgate config` command and diagnostics.
 //
-// # 本文件当前的状态
+// # Current state of this file
 //
-// 只有这份说明，**还没有 `New()`**。这不是遗漏：`tools/genmodules` 认一个
-// 组件的确切判据是"目录里有 module.go **且**它导出一个返回 modules.Component
-// 的 New 函数"（见 tools/genmodules 的注释，判据刻意收得很紧），所以 `New()`
-// 尚未出现的目录**不会**被装进 app/modules_gen.go，二进制装配出来的东西一个
-// 字节都没变。app/modules_gen_test.go 的 moduleDirs 也显式跳过这类目录——
-// 它是被支持的中间状态，不是漏配。
+// Only this comment, **no `New()` yet**. Not an omission: `tools/genmodules` recognizes
+// a component by the exact criterion "the directory has module.go **and** it exports a
+// New function returning modules.Component" (see the tools/genmodules comment; the
+// criterion is deliberately tight), so a directory where `New()` has not appeared **is
+// not** wired into app/modules_gen.go, and not a byte of the assembled binary changes.
+// app/modules_gen_test.go's moduleDirs skips such directories too - a supported state.
 //
-// 本文件先存在，是因为 app/layout_test.go 锁着一条没有例外的目录规则：
-// modules/ 下每个目录都必须暴露根 module.go。`New()` 与组件本身在加入
-// `newgate config` 命令的那个提交里一起出现——在那之前，这个模块对二进制
-// 是不可见的。
+// This file exists first because app/layout_test.go locks a directory rule with no
+// exceptions: every directory under modules/ must expose a root module.go. `New()` and
+// the component appear in the commit that adds the `newgate config` command; until then,
+// this module is invisible to the binary.
 //
-// 注意：上面几段里**不要**原样写出那个 New 的完整签名。moduleDirs 是用
-// bytes.Contains 做子串匹配的，注释里出现那个字面串会让这个目录被当成一个
-// 组件目录，于是"装配 15 个、目录 16 个"当场失败。这是 2026-09-17 实际踩到的。
+// Note: **do not** spell out the full signature of that New anywhere in this comment.
+// moduleDirs matches substrings with bytes.Contains; that literal string makes this
+// directory a component directory, and "15 assembled, 16 directories" fails (2026-09-17).
 package configshare

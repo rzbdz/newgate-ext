@@ -20,49 +20,49 @@ import (
 	"golang.org/x/crypto/ssh/knownhosts"
 )
 
-// Session 是一条已经建立、可以往里要通道的 SSH 连接。
+// Session is an established SSH connection one can ask for channels on.
 //
-// 它是一个**接口**，理由只有一个但足够：测试里不需要一台真的 sshd。假实现用
-// net.Pipe 就能把「请求来了才拨号」「连上之后复用」「空闲了断开」这些**这个模块
-// 自己的**行为验干净；而「真的能连上一台 OpenSSH」是另一件事，它由那条真 sshd 的
-// 端到端锁住（见 mock/e2e_tunnel.sh）。前者跑在每次提交里，后者跑在本地。
+// It is an **interface**, for one reason that suffices: tests need no real sshd. A fake
+// with net.Pipe verifies **this module's own** behavior (dial on demand, reuse, idle
+// close) cleanly; "really connects to OpenSSH" is another thing, locked by the real-sshd
+// e2e (see mock/e2e_tunnel.sh). The former runs on every commit, the latter locally.
 type Session interface {
-	// Dial 在连接上开一条到 addr 的通道（等价于 ssh.Client.Dial）。
+	// Dial opens a channel to addr on the connection (like ssh.Client.Dial).
 	Dial(network, addr string) (net.Conn, error)
-	// SendRequest 是 ssh.Client.SendRequest 的转发：keepalive 要用它。
+	// SendRequest forwards to ssh.Client.SendRequest: keepalive needs it.
 	SendRequest(name string, wantReply bool, payload []byte) (bool, []byte, error)
 	Close() error
 }
 
-// Dialer 拨一条到目标机器的 SSH 连接。
+// Dialer dials one SSH connection to the target machine.
 type Dialer interface {
 	Dial(ctx context.Context, t Target) (Session, error)
 }
 
-// ---------- 真实现 ----------
+// ---------- the real implementation ----------
 
-// sshDialer 是拨号的全部知识：怎么认证、信不信那台机器、怎么把 home 目录里的
-// 那些约定接起来。
+// sshDialer is all the dialing knowledge: how to authenticate, whether to trust the
+// machine, how to wire up the conventions found in the home directory.
 type sshDialer struct {
 	home string
-	// agentFn 是测试用的接缝（真实路径走 SSH_AUTH_SOCK）。留 nil = 按环境找。
+	// agentFn is a seam for tests (the real path uses SSH_AUTH_SOCK). nil = look in the env.
 	agentFn func() ([]ssh.Signer, error)
 
 	mu sync.Mutex
-	// loggedKeys 记住已经打过日志的已知主机写入，避免每条连接都刷屏。
+	// loggedKeys remembers known-host writes already logged, so each connection does not spam.
 	loggedKeys map[string]bool
 
 	cfgOnce sync.Once
 	cfg     map[string]sshAlias
 
-	// handshake 是「TCP 连上之后等握手做完」的上限。留 0 = 用 handshakeBudget。
-	// 做成字段只有一个理由：**测试要能在几百毫秒里验完这件事**——那个 20 秒的
-	// 值在真实使用里是对的，在一个每次提交都跑的测试里是灾难（实测：一条 20 秒，
-	// 而它验的是一条时间上限，不是那个具体的数）。
+	// handshake is the cap on "wait for the handshake after TCP connects". 0 = handshakeBudget.
+	// A field for one reason: **tests must verify this in hundreds of ms** - 20s is right
+	// in real use, a disaster in a per-commit test (measured: one 20s test, and it checks
+	// a time cap, not that particular number).
 	handshake time.Duration
 }
 
-// handshakeOr 是这次要用的握手期限。
+// handshakeOr is the handshake deadline for this dial.
 func (d *sshDialer) handshakeOr() time.Duration {
 	if d.handshake > 0 {
 		return d.handshake
@@ -78,12 +78,12 @@ func newSSHDialer() *sshDialer {
 	return &sshDialer{home: home, loggedKeys: map[string]bool{}}
 }
 
-// Dial 建立一条连接。
+// Dial establishes one connection.
 //
-// 每一步的失败都带着**是哪一步**回出去：DNS 解析不了、TCP 连不上、握手被拒、
-// 密钥不对、known_hosts 不认识这台机器——这五种在用户眼里天差地别，而它们对应的
-// 补救动作完全不同（改地址 / 开防火墙 / 看 sshd 日志 / 加公钥 / 先 ssh 一次）。
-// 合成一句「连接失败」等于把排查成本整个推给用户。
+// Every step's failure comes back with **which step**: DNS unresolved, TCP refused,
+// handshake rejected, bad key, known_hosts unknown - five very different things to a
+// user, each with its own remedy (address / firewall / sshd logs / key / ssh once).
+// One "connection failed" pushes the whole debugging cost onto the user.
 func (d *sshDialer) Dial(ctx context.Context, t Target) (Session, error) {
 	client, err := d.dialOnce(ctx, t.normalize())
 	if err != nil {
@@ -92,7 +92,7 @@ func (d *sshDialer) Dial(ctx context.Context, t Target) (Session, error) {
 	return &sshSession{client: client}, nil
 }
 
-// sshSession 把 *ssh.Client 收成 Session。
+// sshSession wraps *ssh.Client as a Session.
 type sshSession struct{ client *ssh.Client }
 
 func (s *sshSession) Dial(network, addr string) (net.Conn, error) {
@@ -105,20 +105,20 @@ func (s *sshSession) SendRequest(name string, wantReply bool, payload []byte) (b
 
 func (s *sshSession) Close() error { return s.client.Close() }
 
-// resolved 是「把 ~/.ssh/config 合完之后」的那组值。
+// resolved is the set of values after merging in ~/.ssh/config.
 type resolved struct {
 	Host     string
 	Port     int
 	User     string
 	Identity string
-	// Notices 是 ssh_config 里我们**认不出但会影响连通性**的键，原样报给用户。
+	// Notices are ssh_config keys we **do not know but that affect connectivity**, reported as is.
 	Notices []string
 }
 
-// resolve 把配置里那几个字段与 ~/.ssh/config 合起来，得到这次真正要用的值。
+// resolve merges the config's fields with ~/.ssh/config into the values really used.
 //
-// 顺序是 ssh 自己的顺序：**显式给的压过 ssh_config**。这里没有「命令行」这一层
-// （配置就在 state.json 里），所以判据是「state.json 里写了没有」。
+// Order is ssh's own: **explicit values beat ssh_config**. There is no "command line"
+// layer here (config lives in state.json), so the criterion is "was it written in state.json".
 func (d *sshDialer) resolve(t Target) resolved {
 	r := resolved{
 		Host: t.Host, Port: t.Port, User: t.User,
@@ -128,12 +128,12 @@ func (d *sshDialer) resolve(t Target) resolved {
 	if !ok {
 		return r
 	}
-	// 用户写的是 `snode1` 这种别名时，HostName 才是真地址。写的是真地址时别名表里
-	// 通常没有它，走不到这里。
+	// When the user wrote an alias like `snode1`, HostName is the real address. Writing a
+	// real address usually finds no alias entry, so this is not reached.
 	if alias.HostName != "" {
 		r.Host = alias.HostName
 	}
-	// 只在用户**没显式写端口**时采用。22 就是默认值，写成 22 与没写等价。
+	// Adopted only when the user **did not write a port explicitly**. 22 is the default anyway.
 	if alias.Port != 0 && t.Port == DefaultSSHPort {
 		r.Port = alias.Port
 	}
@@ -147,17 +147,17 @@ func (d *sshDialer) resolve(t Target) resolved {
 	return r
 }
 
-// auth 是这次要试的认证方式。
+// auth is the authentication to try this time.
 //
-// 顺序照 ssh 的老规矩：先身份文件，最后 agent。密钥文件在前是因为它更「具体」——
-// 用户显式指了一把钥匙，就该先用它。
+// ssh's old rule: key files first, agent last. Key files first because they are more
+// specific - the user named a key explicitly, so try it first.
 func (d *sshDialer) auth(r resolved) ([]ssh.AuthMethod, error) {
 	var methods []ssh.AuthMethod
 	for _, path := range d.keyPaths(r) {
 		signer, err := readSigner(path)
 		if err != nil {
-			// 文件在、但用不了（权限不对 / 有口令 / 不是密钥）：这是用户该知道的事，
-			// 不能咽下去——咽下去的症状是「明明配了密钥，它却说没有可用密钥」。
+			// The file exists but is unusable (bad perms / passphrase / not a key): the user
+			// should know, never swallowed - else "a key is configured, it says none available".
 			return nil, i18n.E("cannot use the private key {path}: {err}",
 				i18n.A{"path": path, "err": err})
 		}
@@ -167,7 +167,7 @@ func (d *sshDialer) auth(r resolved) ([]ssh.AuthMethod, error) {
 		methods = append(methods, ssh.PublicKeys(signers...))
 	}
 	if len(methods) == 0 {
-		// 空列表交给 ssh 的后果是一句「no auth methods」，用户不知道下一步做什么。
+		// An empty list to ssh means "no auth methods"; the user does not know what to do next.
 		return nil, i18n.E("no usable key for {host}: look in {dir} or start ssh-agent "+
 			"(passwords are not supported — this module only does keys and the agent)",
 			i18n.A{"host": r.Host, "dir": d.sshDir()})
@@ -175,10 +175,10 @@ func (d *sshDialer) auth(r resolved) ([]ssh.AuthMethod, error) {
 	return methods, nil
 }
 
-// keyPaths 是这次要按顺序试的身份文件。
+// keyPaths is the identity files to try in order this time.
 //
-// 显式给了就**只**试那一个：用户指了钥匙，别自作主张再试别的——试出来的结果不是
-// 他想要的那把。没给就试 ~/.ssh 下那几个，按 ssh 自己的顺序。
+// Given explicitly, try **only** that one: the user named a key, do not try others - a
+// different one succeeding is not what they wanted. Not given: try those in ~/.ssh, ssh's order.
 func (d *sshDialer) keyPaths(r resolved) []string {
 	if r.Identity != "" {
 		return []string{r.Identity}
@@ -200,13 +200,13 @@ func (d *sshDialer) sshDir() string {
 	return filepath.Join(d.home, ".ssh")
 }
 
-// knownHostsPath 是这次要读写的 known_hosts。
+// knownHostsPath is the known_hosts to read and write this time.
 func (d *sshDialer) knownHostsPath() string { return filepath.Join(d.sshDir(), "known_hosts") }
 
-// agentSigners 找 agent 里的钥匙。
+// agentSigners finds keys in the agent.
 //
-// 走 SSH_AUTH_SOCK（ssh 自己的约定）。找不到 agent 不是错误——没有 agent 的人
-// 本该用密钥文件，那条路在调用方已经先试过了。
+// Via SSH_AUTH_SOCK (ssh's own convention). No agent is not an error - those without
+// an agent should use key files, which the caller already tried first.
 func (d *sshDialer) agentSigners() ([]ssh.Signer, error) {
 	if d.agentFn != nil {
 		return d.agentFn()
@@ -219,12 +219,12 @@ func (d *sshDialer) agentSigners() ([]ssh.Signer, error) {
 	if err != nil {
 		return nil, err
 	}
-	// **不关**这条连接：agent 的签名者是按需去连它签的，关了之后签名会失败。
-	// 量是每个 target 一条（不是每个请求一条），跟着进程走。
+	// **Do not close** this connection: the agent's signers connect on demand to sign, and
+	// closing breaks signing. One per target (not per request), living with the process.
 	return agent.NewClient(conn).Signers()
 }
 
-// hostKeyCallback 决定信不信这台机器。
+// hostKeyCallback decides whether to trust this machine.
 func (d *sshDialer) hostKeyCallback(t Target) (ssh.HostKeyCallback, error) {
 	known := d.knownHostsPath()
 	base, err := knownhosts.New(known)
@@ -232,8 +232,8 @@ func (d *sshDialer) hostKeyCallback(t Target) (ssh.HostKeyCallback, error) {
 		return nil, i18n.E("cannot read {path}: {err}", i18n.A{"path": known, "err": err})
 	}
 	if err != nil {
-		// 文件还不存在是**全新机器**的常态，不是错误。造一个「谁都没见过」的判据，
-		// 让下面那两层能照常工作（strict 拒、accept-new 记）。
+		// A missing file is **a fresh machine**'s normal state, not an error. Build an
+		// "nobody has seen it" criterion so the layers below work (strict refuses, accept-new records).
 		base = unknownHost
 	}
 
@@ -241,8 +241,8 @@ func (d *sshDialer) hostKeyCallback(t Target) (ssh.HostKeyCallback, error) {
 	case HostKeyAcceptNew:
 		return d.acceptNew(known, base), nil
 	default:
-		// strict：不认识就拒。错误文案要给**下一步**——只说「host key verification
-		// failed」的话，用户的第一反应是关掉校验，那是更坏的选择。
+		// strict: refuse if unknown. The message must give **the next step** - "host key
+		// verification failed" alone makes users disable verification, which is worse.
 		return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
 			err := base(hostname, remote, key)
 			if err == nil {
@@ -261,16 +261,16 @@ func (d *sshDialer) hostKeyCallback(t Target) (ssh.HostKeyCallback, error) {
 	}
 }
 
-// unknownHost 是「known_hosts 里谁都没见过」的判据。
+// unknownHost is the criterion for "nobody in known_hosts has seen it".
 func unknownHost(hostname string, remote net.Addr, key ssh.PublicKey) error {
 	return &knownhosts.KeyError{Want: nil}
 }
 
-// acceptNew 是 accept-new：第一次见到就记下来，之后仍然要一致。
+// acceptNew is accept-new: record on first sight, must match afterwards.
 //
-// 每次都打一条日志：**信任一台机器是一个事件**，不是一次内部状态变化。用户第一次
-// 连上去之后该在日志里看见「我记下了这台机器的钥匙」，否则他没有任何机会发现
-// 「我以为连的是 A，其实连的是 B」。
+// Log every time: **trusting a machine is an event**, not an internal state change. On
+// first connect users should see "I saved this machine's key", or they never get a
+// chance to notice "I thought I was connecting to A, but it was B".
 func (d *sshDialer) acceptNew(known string, base ssh.HostKeyCallback) ssh.HostKeyCallback {
 	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
 		err := base(hostname, remote, key)
@@ -279,8 +279,8 @@ func (d *sshDialer) acceptNew(known string, base ssh.HostKeyCallback) ssh.HostKe
 		}
 		var ke *knownhosts.KeyError
 		if !errors.As(err, &ke) || len(ke.Want) != 0 {
-			// 记录里有、但对不上：**不覆盖**。accept-new 的语义是「没见过就记」，
-			// 不是「变了也认」——后者是最危险的那种静默降级（TOFU 被撤掉）。
+			// Present but mismatched: **do not overwrite**. accept-new means "record if unseen",
+			// not "accept changes" - the latter is the most dangerous silent downgrade (TOFU revoked).
 			return err
 		}
 		if werr := appendKnownHost(known, hostname, key); werr != nil {
@@ -299,7 +299,7 @@ func (d *sshDialer) acceptNew(known string, base ssh.HostKeyCallback) ssh.HostKe
 	}
 }
 
-// appendKnownHost 往 known_hosts 追加一行（照 knownhosts.Line 的格式）。
+// appendKnownHost appends one line to known_hosts (in knownhosts.Line's format).
 func appendKnownHost(path, hostname string, key ssh.PublicKey) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
@@ -313,7 +313,7 @@ func appendKnownHost(path, hostname string, key ssh.PublicKey) error {
 	return err
 }
 
-// readSigner 读一把私钥。
+// readSigner reads one private key.
 func readSigner(path string) (ssh.Signer, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -325,15 +325,15 @@ func readSigner(path string) (ssh.Signer, error) {
 	}
 	var pe *ssh.PassphraseMissingError
 	if errors.As(err, &pe) {
-		// 有口令的密钥 ssh 自己会弹提示，但我们是一个 daemon，没有终端可弹。
-		// 说清楚该走哪条路（agent），比让它在后台永远卡着好。
+		// A passphrase-protected key would prompt, but we are a daemon with no terminal.
+		// Say which way to go (the agent) rather than hang in the background forever.
 		return nil, i18n.E("it is protected by a passphrase; add it to ssh-agent "+
 			"(`ssh-add {path}`) and leave identity empty", i18n.A{"path": path})
 	}
 	return nil, err
 }
 
-// dialOnce 真的拨一次，把每一步的失败都标出来。
+// dialOnce really dials once, tagging each step's failure.
 func (d *sshDialer) dialOnce(ctx context.Context, t Target) (*ssh.Client, error) {
 	r := d.resolve(t)
 	methods, err := d.auth(r)
@@ -352,10 +352,10 @@ func (d *sshDialer) dialOnce(ctx context.Context, t Target) (*ssh.Client, error)
 		User:            user,
 		Auth:            methods,
 		HostKeyCallback: cb,
-		// 握手与认证的总预算。**这个字段只有在走 ssh.Dial 时才生效**——我们用的是
-		// ssh.NewClientConn（为了能把 context 与自己的拨号器接上），那条路上它被
-		// 完全忽略。真正管住「黑洞机器」的是下面那个 conn 上的 deadline；这里留着
-		// 是为了「读的人以为它管用」这件事不成立——见 handshakeBudget 的注释。
+		// Total budget for handshake and auth. **This field only works via ssh.Dial** - we use
+		// ssh.NewClientConn (to attach the context and our dialer), where it is ignored. What
+		// really guards a "black hole" is the conn deadline below; it stays so that "the
+		// reader thinks it works" does not hold - see the handshakeBudget note.
 		Timeout: d.handshakeOr(),
 	}
 	for _, n := range r.Notices {
@@ -368,11 +368,11 @@ func (d *sshDialer) dialOnce(ctx context.Context, t Target) (*ssh.Client, error)
 	if err != nil {
 		return nil, i18n.E("cannot reach {addr}: {err}", i18n.A{"addr": addr, "err": err})
 	}
-	// 握手要有期限。一台 TCP 连得上、但永远不回 banner 的机器（防火墙的
-	// 「黑洞」模式、或者一个卡死的 sshd）在这里会让整个请求挂到天荒地老——而
-	// 浏览器那边看起来只是「一直在转」。ClientConfig.Timeout 在这条路上不管用
-	// （见上），所以期限只能设在 conn 上，握手完再清掉：**它之后是一条长连接，
-	// 带着 deadline 的话每几分钟就会自己断一次**。
+	// The handshake needs a deadline. A machine that accepts TCP but never sends a banner
+	// (a firewall's black-hole mode, or a stuck sshd) hangs the request forever - the
+	// browser just shows a spinner. ClientConfig.Timeout does not work here (see above),
+	// so the deadline goes on conn and is cleared after: **it is a long-lived connection
+	// then; with a deadline it reconnects every few minutes**.
 	if err := conn.SetDeadline(time.Now().Add(d.handshakeOr())); err != nil {
 		_ = conn.Close()
 		return nil, err
@@ -389,11 +389,11 @@ func (d *sshDialer) dialOnce(ctx context.Context, t Target) (*ssh.Client, error)
 	return ssh.NewClient(c, chans, reqs), nil
 }
 
-// handshakeBudget 是「TCP 连上之后，等它把 SSH 握手做完」的上限。
+// handshakeBudget caps "after TCP connects, wait for the SSH handshake to finish".
 //
-// 20 秒：公钥运算在内网是几十毫秒，跨公网也是几百毫秒；给到 20 秒是为了容忍
-// 一次慢的 DNS/路由，同时短到让用户在浏览器自己超时之前先看到一个说得清的错误
-// （而「先失败的那一方能给出理由」是这里的全部意义）。
+// 20s: key ops are tens of ms on a LAN, hundreds across the internet; 20s tolerates one
+// slow DNS/route while short enough for the user to see a clear error before the browser
+// times out ("whoever fails first can give the reason" is the whole point here).
 const handshakeBudget = 20 * time.Second
 
 func currentUserName() string {
@@ -405,8 +405,8 @@ func currentUserName() string {
 	return "root"
 }
 
-// expandHome 把 ~ 展开。**只认裸 ~ 与 ~/ 开头**，不认 ~other——那要查 passwd，
-// 而配置里出现它的概率远低于「写错一个字符却看着像对的」的风险。
+// expandHome expands ~. **Only bare ~ and ~/ prefixes**, never ~other - that needs
+// passwd, and its odds in config are far below "one wrong char that looks right".
 func expandHome(p, home string) string {
 	if p == "" || home == "" {
 		return p
@@ -422,36 +422,36 @@ func expandHome(p, home string) string {
 
 // ---------- ~/.ssh/config ----------
 
-// sshAlias 是 ssh_config 里一个 Host 块里我们认的那几个键。
+// sshAlias is the keys we recognize inside one ssh_config Host block.
 type sshAlias struct {
 	HostName      string
 	Port          int
 	User          string
 	IdentityFiles []string
-	// Notices 是认不出、但会影响连通性的键（ProxyJump / ProxyCommand / Match…）。
+	// Notices are unrecognized keys that affect connectivity (ProxyJump / ProxyCommand / Match...).
 	Notices []string
 }
 
-// loudUnknown 是**必须报出来**的那几个键：它们的语义都是「这次连接不是直连」，
-// 而我们只做直连。静默忽略的后果是用户以为自己在走跳板机，实际直连了一个不可达的
-// 地址——而那种失败看起来像网络问题。
+// loudUnknown is the keys that **must be reported**: they all mean "not a direct connection",
+// and we only do direct. Ignoring them silently makes the user think they go through a
+// jump host while connecting directly to an unreachable address - which looks like a network fault.
 var loudUnknown = []string{"ProxyJump", "ProxyCommand", "Match", "LocalCommand", "RemoteCommand"}
 
-// sshConfig 读 ~/.ssh/config，按 Host 建索引。
+// sshConfig reads ~/.ssh/config, indexing by Host.
 //
-// 自己写解析器而不是引第三方：我们只认四个键，而这个文件的格式（Key Value、
-// 大小写不敏感的键名、# 注释、Host 可以写好几个模式）几句话就说完。为了「读一个
-// 文本文件」多一个依赖不划算。
+// A hand-written parser instead of a third party: we know four keys, and this file's
+// format (Key Value, case-insensitive keys, # comments, several patterns per Host) fits
+// in a few sentences. One more dependency to "read a text file" is not worth it.
 //
-// **缓存**（sync.Once）：这个函数在每条连接、每次快照里都会被调。代价是改了
-// ssh_config 要重启 daemon 才生效——这条写在 README 里，不然它就是一条静默的
-// 「我改了它没反应」。
+// **Cached** (sync.Once): called per connection and per snapshot. The cost is that
+// ssh_config edits need a daemon restart - stated in the README, or it is a silent
+// "I changed it and nothing happened".
 func (d *sshDialer) sshConfig() map[string]sshAlias {
 	d.cfgOnce.Do(func() { d.cfg = parseSSHConfig(filepath.Join(d.sshDir(), "config")) })
 	return d.cfg
 }
 
-// parseSSHConfig 是那个解析器，独立出来是为了能单测（给它一个文件路径就行）。
+// parseSSHConfig is that parser, split out so it can be unit-tested (give it a file path).
 func parseSSHConfig(path string) map[string]sshAlias {
 	out := map[string]sshAlias{}
 	f, err := os.Open(path)
@@ -465,15 +465,15 @@ func parseSSHConfig(path string) map[string]sshAlias {
 	flush := func() {
 		for _, p := range patterns {
 			if p == "*" || strings.ContainsAny(p, "*?!") {
-				// 通配块（含 `Host *`）是拿来给默认值的，而默认值的继承规则
-				// （先出现的赢、Host * 垫底）比我们这个解析器愿意承担的复杂。
-				// **不实现它**，而不是实现一半——实现一半的那种错是「某些机器
-				// 悄悄用了 `Host *` 里的 User」，看起来完全正常。
+				// Wildcard blocks (including `Host *`) are meant for defaults, and their
+				// inheritance rules (first wins, Host * last) are more complex than this parser
+				// will take on. **Not implemented** rather than half-implemented - the half-done
+				// error is "some machines silently use `Host *`'s User", and it looks normal.
 				continue
 			}
 			if existing, ok := out[p]; ok {
-				// 后出现的块**补**前面缺的键（ssh 的语义是先出现的赢，
-				// 「已经有的不覆盖」是同一个效果）。
+				// A later block **fills** keys the earlier one lacks (ssh semantics: first
+				// occurrence wins, "do not overwrite what exists" is the same effect).
 				if existing.HostName == "" {
 					existing.HostName = cur.HostName
 				}
@@ -535,7 +535,7 @@ func parseSSHConfig(path string) map[string]sshAlias {
 	return out
 }
 
-// splitDirective 拆一行 `Key Value`（值里可能有引号、可能有行尾注释）。
+// splitDirective splits one `Key Value` line (quotes maybe, trailing comments maybe).
 func splitDirective(line string) (key, val string, ok bool) {
 	i := strings.IndexAny(line, " \t=")
 	if i <= 0 {
@@ -543,7 +543,7 @@ func splitDirective(line string) (key, val string, ok bool) {
 	}
 	key = line[:i]
 	val = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line[i+1:]), "="))
-	// 引号内的内容整体算值（路径带空格时用得上）。
+	// Content inside quotes counts whole (useful for paths with spaces).
 	if strings.HasPrefix(val, `"`) {
 		if j := strings.Index(val[1:], `"`); j >= 0 {
 			val = val[1 : 1+j]
@@ -556,22 +556,22 @@ func splitDirective(line string) (key, val string, ok bool) {
 	return key, val, val != ""
 }
 
-// ---------- 诊断 ----------
+// ---------- diagnostics ----------
 
-// Step 是一次探测里的一步。
+// Step is one step of a probe.
 type Step struct {
 	Name  string
 	State string // ok / warn / bad（与 cli 那套语气同一份词汇）
 	Line  string
 }
 
-// Probe 真拨一次，并把每一步的结论报出来。
+// Probe really dials once and reports every step's conclusion.
 //
-// 与 Dial 的区别：它**不只回答成败**，它回答卡在哪一步。`newgate tunnel test` 是
-// 用户在「连不上」时唯一能自己跑的诊断，而它最有用的输出是「DNS 解析到 X、TCP 通、
-// 认证被拒」——不是一个红叉。
+// Difference from Dial: it **does not just answer success/failure**, it says where it
+// stopped. `newgate tunnel test` is the one diagnostic users can run on "cannot connect",
+// and its most useful output is "DNS resolved to X, TCP open, auth rejected" - not a cross.
 //
-// 名字不叫 Test：这个包里所有大写 Test 开头的东西都会被读成测试函数。
+// Not named Test: any capitalized Test prefix in this package reads as a test function.
 func Probe(ctx context.Context, t Target, d Dialer) []Step {
 	t = t.normalize()
 	var steps []Step
@@ -596,7 +596,7 @@ func Probe(ctx context.Context, t Target, d Dialer) []Step {
 		} else {
 			add("identity", "ok", i18n.T("keys {list}", i18n.A{"list": strings.Join(keys, ", ")}))
 		}
-		// DNS 单独一步：解析不了与连不上是两件事，而它们的下一步动作完全不同。
+		// DNS is its own step: unresolved and refused are two things with different next actions.
 		if _, err := net.DefaultResolver.LookupHost(ctx, host); err != nil {
 			add("dns", "bad", i18n.T("cannot resolve {host}: {err}", i18n.A{"host": host, "err": err}))
 			return steps
@@ -612,9 +612,9 @@ func Probe(ctx context.Context, t Target, d Dialer) []Step {
 	defer sess.Close()
 	add("ssh", "ok", i18n.T("handshake and authentication succeeded", nil))
 
-	// 最后一跳：从远端那台机器去看 webui 的端口。这一步能区分「SSH 通了」与
-	// 「SSH 通了但远端那个 webui 不在」——后者是最常见的一种，而它在上一步
-	// 完全看不出来。
+	// Last hop: from the remote machine, check the webui port. This separates "SSH works"
+	// from "SSH works but the remote webui is not there" - the most common one, invisible
+	// in the previous step.
 	conn, err := sess.Dial("tcp", t.RemoteAddr())
 	if err != nil {
 		add("remote", "bad", i18n.T("SSH is fine, but {remote} refuses connections from this "+

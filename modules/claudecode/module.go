@@ -1,11 +1,12 @@
-// Package claudecode 描述 Claude Code 这个客户端家族。
+// Package claudecode describes the Claude Code client family.
 //
-// 客户端模块只拥有 Claude Code 自身的事实：二进制名、环境槽位、协议以及
-// 客户端普遍需要的 request treatments。它把 Agent 注册到 confighook，
-// 把插件注册到 gateway，并提供一个很小的 Client capability 供交叉组件识别。
+// A client module owns only Claude Code's own facts: binary name, environment
+// slots, protocol, and the request treatments a client generally needs. It
+// registers the Agent with confighook, the plugins with gateway, and offers
+// a tiny Client capability for cross-cutting components to recognize it.
 //
-// DeepSeek 或 GLM 的特殊回传规则不属于这里；只有“Claude Code 遇到某模型”
-// 才成立的行为放在 claudecode_deepseek / claudecode_glm。
+// DeepSeek's or GLM's special replay rules do not belong here; behavior that only holds
+// for "Claude Code meets some model" goes in claudecode_deepseek / claudecode_glm.
 package claudecode
 
 import (
@@ -22,8 +23,9 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// New 声明 Claude Code 客户端组件。它注册客户端描述符和状态字段，
-// 再将客户端专属处理器接入网关；所有注册句柄都由 Stop 统一释放。
+// New declares the Claude Code client component. It registers the client
+// descriptor and state fields, then wires the client-specific handlers
+// into the gateway; every registration handle is released by Stop.
 func New() modules.Component {
 	var releases []modules.Release
 	return modules.Component{
@@ -34,12 +36,13 @@ func New() modules.Component {
 			modules.Need(gatewayapi.Capability),
 			modules.Need(confighookapi.ConfigHooksCapability),
 			modules.Need(thinkingapi.Capability),
-			// ui 是**弱依赖**（见 component.Optional）：`newgate naked` 是本模块的
-			// 命令，装着界面就注册进去，没装就跳过。依赖方向是**本模块 → cli**：
-			// cli 不认识任何业务模块，模块反过来认识它。
+			// ui is a **weak dependency** (see component.Optional): `newgate naked` is this module's
+			// command, registered if a UI is installed and skipped if not. The dependency direction is
+			// **this module -> cli**: cli knows no business module, and the module knows it instead.
 			modules.Optional(cliapi.Capability),
-			// web 界面同理（另一条 ui）：只装 dashboard 的装配里没有终端界面，
-			// 「裸奔现在开着吗」照样该看得见——而在那份装配里它是唯一的入口。
+			// Same for the web UI (another ui edge): in an assembly with only the
+			// dashboard there is no terminal UI, and "is naked mode on right now" should
+			// still be visible -- and in that assembly it is the only entry point.
 			modules.Optional(viewapi.Capability),
 		},
 		Provides: []modules.Provision{
@@ -53,17 +56,17 @@ func New() modules.Component {
 				return err
 			}
 			releases = append(releases, release)
-			// 运行期事实（装没装、槽位此刻走哪儿）**另注册**，不塞进描述符：
-			// 描述符说「这个客户端是什么」，事实说「它此刻怎么样」。见
-			// confighookapi.AgentFacts。
+			// Runtime facts (installed or not, which tier a slot takes right now) are **registered
+			// separately** and not stuffed into the descriptor: the descriptor says "what this
+			// client is", the facts say "how it is right now". See confighookapi.AgentFacts.
 			release, err = config.RegisterAgentFacts(ID, facts{})
 			if err != nil {
 				return err
 			}
 			releases = append(releases, release)
-			// 安装方式：`newgate config` 或 `newgate claude -y` 在没装的机器上
-			// 走的就是它。命令写在这里而不是内核里——换渠道是这家客户端的事
-			// （见内核 confighook 的 AgentInstaller）。
+			// Installation: `newgate config` or `newgate claude -y` on a machine without it goes
+			// through this. The command is written here rather than in the kernel -- changing the
+			// channel is this client's business (see AgentInstaller in the kernel's confighook).
 			release, err = config.RegisterAgentInstaller(ID, confighookapi.ExecInstaller(
 				"npm", "install", "--global", NpmPackage))
 			if err != nil {
@@ -95,10 +98,10 @@ func New() modules.Component {
 			}
 			releases = append(releases, release)
 
-			// web 界面那一份（分类器现在被怎么对待）**先**注册：它不依赖 cli，
-			// 只装 dashboard 的装配里也要有——下面那段一旦 return，这里就永远不会跑。
-			// 而那份装配里这张卡是**唯一**能看见裸奔的地方（status 与 naked 命令
-			// 都是 cli 的），见 view.go 的注释。
+			// The web UI copy (how the classifier is treated right now) registers **first**: it does not
+			// depend on cli and must be there in an assembly with only the dashboard -- once the block below
+			// returns, this would never run. And in that assembly this card is the **only** place naked mode
+			// can be seen (status and the naked command both belong to cli); see the comment in view.go.
 			if v, ok := modules.Get(ctx, viewapi.Capability); ok {
 				release, err = v.Register("claudecode",
 					viewapi.Title(func() string { return i18n.T("Claude Code", nil) }).
@@ -113,8 +116,8 @@ func New() modules.Component {
 				releases = append(releases, release)
 			}
 
-			// 自己的命令自己贡献：界面不认识本模块，是本模块认识界面。
-			// ui 没装就跳过（见上面那条 Optional）：模块功能照常。
+			// Contribute your own command yourself: the UI does not know this module, this module knows
+			// the UI. Skipped if ui is not installed (see the Optional above): module features as usual.
 			cli, ok := modules.Get(ctx, cliapi.Capability)
 			if !ok {
 				return nil

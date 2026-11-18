@@ -2,36 +2,40 @@ package breaker
 
 import i18n "github.com/rzbdz/newgate/lib/i18n"
 
-// Kind 是「上游这一发到底怎么了」的归类，由调用方从实际发生的事构造。
+// Kind is the classification of "what actually happened to this
+// upstream request", built by the caller from what really happened.
 //
-// 这里只有**事实**，没有判断：数据面说「连接失败了」「上游回了 500」
-// 「已经往客户端写过字节了」，不解释这意味着什么。解释在 Classify 里。
+// There are only **facts** here, no judgment: the data plane says "the connection
+// failed", "the upstream returned 500", "bytes have already been written to the
+// client", without interpreting what that means. Interpretation is in Classify.
 type Kind int
 
 const (
-	// KindUpstreamSuccess 上游正常回了响应（含 3xx：客户端会自己跟）。
+	// KindUpstreamSuccess: the upstream returned a response
+	// normally (including 3xx: the client follows it itself).
 	KindUpstreamSuccess Kind = iota
-	// KindConnError dial/DNS/TLS/reset/EOF 失败，或首字节超时。
+	// KindConnError: a dial/DNS/TLS/reset/EOF failure, or a time-to-first-byte timeout.
 	KindConnError
-	// KindClientCancel 客户端自己取消了。跟上游无关，不算任何人的账。
+	// KindClientCancel: the client cancelled itself. Unrelated to the upstream; charged to nobody.
 	KindClientCancel
-	// KindUpstreamStatus 上游回了一个 >= 400 的状态码。
+	// KindUpstreamStatus: the upstream returned a status code >= 400.
 	KindUpstreamStatus
-	// KindStreamTruncated 首字节已经拿到、字节也已经开始往客户端写，
-	// 中途上游断了。换不了站（已经写出去的东西收不回），但这是实打实的
-	// 可用性问题。
+	// KindStreamTruncated: the first byte had arrived and bytes had started flowing
+	// to the client, and the upstream broke mid-stream. Cannot switch hops (what
+	// is written out cannot be taken back), but it is a real availability problem.
 	KindStreamTruncated
 )
 
-// Bucket 是这笔失败该记进哪本账。不同账本有不同阈值与冷却——把它们混成一本
-// 「连续失败两次就摘」是 2026-09-17 之前的核心毛病：
+// Bucket is which ledger this failure should be charged to. Different ledgers
+// have different thresholds and cooldowns -- lumping them into one "delist
+// after two consecutive failures" was the core flaw before 2026-09-17:
 //
-//   - 可用性：连接失败/超时/5xx/流中断，真的是「这家现在不行」；
-//   - 限流：429 是秒级恢复的，用 60s×2 退避去摘它过重；
-//   - 配置：401/403/404 是确定性的，一次即摘，且不必退避（重试只是等用户改
-//     配置/换模型）；
-//   - 形状：请求形状错误（同一份 body 换谁都一样错）跟「这家能不能用」无关，
-//     **永不摘牌**，只计数。
+//   - availability: connection failure/timeout/5xx/stream truncation, really "this one is down now";
+//   - rate limit: 429 recovers in seconds, and delisting it with 60s x 2 backoff is too heavy;
+//   - config: 401/403/404 are deterministic, delist on the first one, no backoff
+//     needed (retrying only waits for the user to fix config or switch model);
+//   - shape: a request-shape error (the same body is equally wrong whoever sends it)
+//     has nothing to do with "can this one be used", so **never delist**, only count.
 type Bucket int
 
 const (
@@ -42,11 +46,12 @@ const (
 	BucketShape
 )
 
-// ruleToken 是这本账在 wire 与磁盘上的名字：`Status.Rule`、`health.json`。
+// ruleToken is this ledger's name on the wire and on disk: `Status.Rule`, `health.json`.
 //
-// 它是**机器标记**，所以不翻（见 lib/i18n 的包注释与 tools/i18n/check 的 forbidden）：
-// 这个值会被 persist.bucketFromName 读回来对账，一旦跟着语言变，用户在 zh 下写的
-// health.json 到了 en 下就认不出来了——存的是一份数据，不是一句话。
+// It is a **machine marker**, so it is not translated (see the package comment of lib/i18n and
+// the forbidden list in tools/i18n/check): this value is read back by persist.bucketFromName
+// for reconciliation, and once it changed with the language, a health.json written
+// under zh would be unrecognizable under en -- what is stored is data, not a sentence.
 func (b Bucket) ruleToken() string {
 	switch b {
 	case BucketAvailability:
@@ -61,7 +66,8 @@ func (b Bucket) ruleToken() string {
 	return ""
 }
 
-// ruleName 是给人看的名字：表格的「账本」列、以及摘牌原因里的那一句。
+// ruleName is the human-facing name: the "ledger" column
+// of the table, and the sentence inside a delisting reason.
 func (b Bucket) ruleName() string {
 	switch b {
 	case BucketAvailability:
@@ -76,87 +82,93 @@ func (b Bucket) ruleName() string {
 	return ""
 }
 
-// Input 是分类需要的全部事实。**没有隐藏输入**：Shape 由 Report 事先算好塞
-// 进来，所以 Classify 是纯函数，能被一张表穷举测完。
+// Input is all the facts classification needs. **No hidden inputs**:
+// Shape is computed beforehand by Report and put in, so Classify is
+// a pure function that can be exhaustively tested with one table.
 type Input struct {
 	Kind   Kind
 	Status int
-	// Body 是上游回的错误原文（已截断）。只有 Report 读它——用来问形状检测器。
+	// Body is the upstream's raw error text (already truncated).
+	// Only Report reads it -- to ask the shape detectors.
 	Body []byte
-	// Written 已经往客户端写过字节了吗。写过就不能换站：客户端已经收到半截
-	// 响应，换个人接着写只会得到拼接的垃圾。
+	// Written: have bytes already been written to the client? If so,
+	// cannot switch hops: the client has already received half a response,
+	// and having someone else continue writing just yields spliced garbage.
 	Written bool
-	// IsLast 链上还有没有下一站。
+	// IsLast: is there another hop on the chain.
 	IsLast bool
-	// FallbackOn400 是 chain.fallback_on_400 开关。
+	// FallbackOn400 is the chain.fallback_on_400 switch.
 	FallbackOn400 bool
 
-	// Shape 命中注册的形状检测器（由 Report 填，Classify 只读）。
+	// Shape: a registered shape detector matched (filled by Report; Classify only reads it).
 	Shape bool
 }
 
-// Verdict 是分类的判决。数据面据此决定「继续沿链走」还是「把这一手交给客户端」。
+// Verdict is the classification's verdict. The data plane decides from it
+// whether to "keep going along the chain" or "hand this round to the client".
 //
-// 没有 Record 字段：`Bucket == BucketNone` 就是「不记账」。两个字段表达同一件
-// 事必然漂移——留一个。
+// No Record field: `Bucket == BucketNone` means "do not record". Two
+// fields expressing the same thing will inevitably drift -- keep one.
 type Verdict struct {
-	// Advance 换下一站。
+	// Advance: switch to the next hop.
 	Advance bool
-	// Bucket 归到哪本账；BucketNone 表示什么都不记（成功、客户端取消、
-	// 以及「请求本身有问题，换谁都一样」的 4xx）。
+	// Bucket: which ledger it goes to; BucketNone means record nothing (success, client
+	// cancel, and the 4xx of "the request itself is bad, so it is equally wrong anywhere").
 	Bucket Bucket
 }
 
-// Result 是 Report 的返回：判决 + 这次记账产生的副作用（只给日志用）。
+// Result is Report's return: the verdict + side effects
+// produced by this recording (for logging only).
 type Result struct {
 	Verdict
-	// Opened 这次失败把闸打开了。
+	// Opened: this failure tripped the breaker.
 	Opened bool
-	// Spared 连续失败已经数到阈值，但**上闸前的诊断探活**证明这条 binding
-	// 仍然可用，于是没有摘牌、计数清零。见 Breaker.SetVerifier。
+	// Spared: consecutive failures reached the threshold, but the
+	// **diagnostic probe before tripping** proved this binding still usable,
+	// so it was not delisted and the count was reset. See Breaker.SetVerifier.
 	Spared bool
-	// Shape 认领这次 400 的检测器名（BucketShape 时非空）。
+	// Shape is the name of the detector that claimed this 400 (non-empty when BucketShape).
 	//
-	// 数据面用它打专属日志、存证据，**同时保持对上游专有字符串的无知**：名字
-	// 是检测器自己起的（"deepseek"），core 里没有任何一处写着
-	// "must be passed back"。2026-09-17 之前 forward 自己认那两句文案
-	// （当时那个函数叫 IsRequestShapeError，住在 core 里），等于把上游方言
-	// 抄进了转发路径。
+	// The data plane uses it for dedicated logging and evidence saving, **while staying ignorant of
+	// the upstream's proprietary strings**: the name is chosen by the detector itself ("deepseek"),
+	// and nowhere in core does "must be passed back" appear. Before 2026-09-17, forward
+	// itself recognized those two sentences (the function was then called IsRequestShapeError
+	// and lived in core), which copied the upstream dialect into the forwarding path.
 	Shape string
 }
 
-// Classify 是**唯一**的失败分类表。纯函数：同样的 Input 永远同样的 Verdict。
+// Classify is the **single** failure classification table. Pure function: same Input, same Verdict.
 //
-// 这张表穷举了数据面上游交互的每一种收场。逐条理由：
+// This table exhausts every way an upstream interaction on the data plane can end. The reasons:
 //
-//	连接失败/首字节超时   → 走 + 记可用性：明确的「这家现在不行」
-//	流中途断（已写字节）   → 不换站（写出去收不回）+ 记可用性
-//	客户端取消            → 什么都不做：不是上游的错，也不该再往下撞
-//	400 + 形状命中        → **走** + 只计数：同一份 body 换谁发都一样错，
-//	                        所以不该记在这家头上；但换个校验更松的 provider
-//	                        是有可能收下的，所以继续往下试。注意这一条**不受
-//	                        fallback_on_400 约束**——那个开关是拦「拿坏请求撞遍
-//	                        所有上游」的，而形状错误恰恰是「只有这家挑食」。
-//	429                   → 走 + 记限流
-//	401/402/403/404       → 走 + 记配置（402 insufficient balance 是确定性的
-//	                        配置问题：这一家没钱了，重试它没有意义，换下一家是
-//	                        唯一可能成功的方向）
-//	408/409/5xx           → 走 + 记可用性
-//	其它 4xx（含非形状 400）→ 不记不换：请求本身有问题，换谁都一样
-//	3xx / 2xx             → 什么都不做（成功路径由 KindUpstreamSuccess 表达）
+//	connection failure/TOFB timeout  -> advance + record availability: a clear "down now"
+//	stream broken (bytes written)     -> no switch (cannot unsend) + record availability
+//	client cancel                     -> do nothing: not upstream's fault, no point going on
+//	400 + shape hit                   -> **advance** + count only: same body is equally
+//	                                     wrong whoever sends it, so not charged here; but a
+//	                                     looser-validating provider may accept it, so keep
+//	                                     trying. **Not** subject to fallback_on_400: that
+//	                                     stops ramming bad requests everywhere, while a
+//	429                               -> advance + record rate limit
+//	401/402/403/404                   -> advance + record config (402 insufficient balance is a
+//	                                     deterministic config problem: this one is out of money,
+//	                                     so switch; that is the only direction that can succeed)
+//	408/409/5xx                       -> advance + record availability
+//	other 4xx (incl. non-shape 400)   -> record nothing, switch nothing: the request is bad
+//	3xx / 2xx                         -> do nothing (the success path is KindUpstreamSuccess)
 //
-// 链预算耗尽不在这里：它不是上游的收场，数据面把 IsLast 置位即可——预算没了
-// 就只试当前这一站，失败照样记账。
+// No chain-budget exhaustion here: that is not an upstream outcome; the data plane sets
+// IsLast -- with no budget only the current hop is tried, and a failure is still recorded.
 func Classify(in Input) Verdict {
-	// 已经往客户端写过字节：无论如何都不能换站。
+	// Bytes have already been written to the client: under no circumstances can the hop change.
 	advance := !in.Written && !in.IsLast
 
 	switch in.Kind {
 	case KindUpstreamSuccess:
 		return Verdict{}
 	case KindClientCancel:
-		// 客户端自己走了，对面已经没人接。再沿链重试只是拿别人的钱打水漂，
-		// 而且真去重试了也没人能收到结果。
+		// The client left on its own; nobody is there to receive. Retrying along the chain would
+		// only burn someone else's money, and even if it retried nobody could receive the result.
 		return Verdict{}
 	case KindConnError:
 		return Verdict{Advance: advance, Bucket: BucketAvailability}
@@ -175,10 +187,11 @@ func Classify(in Input) Verdict {
 	case in.Status == 408, in.Status == 409, in.Status >= 500:
 		return Verdict{Advance: advance, Bucket: BucketAvailability}
 	case in.Status == 400 && in.FallbackOn400:
-		// 用户明确要求 400 也往下试。仍然不记账——请求本身的问题不是
-		// 上游的可用性问题。
+		// The user explicitly asked to try further down even on 400. Still record nothing
+		// -- a problem with the request itself is not an upstream availability problem.
 		return Verdict{Advance: advance}
 	}
-	// 其它 4xx：请求本身有问题。往下走就是拿坏请求撞遍所有上游。
+	// Other 4xx: the request itself is bad. Going further
+	// means ramming a bad request into every upstream.
 	return Verdict{}
 }

@@ -33,22 +33,25 @@ func (askCommand) Help() cliapi.HelpLine {
 		Summary: i18n.T("send one prompt through the proxy and print the answer", nil)}
 }
 
-// Unstyled 说这一次的输出**不是 newgate 的版式**：它是模型的正文字，逐字打出去。
+// Unstyled says this run's output **is not newgate's
+// layout**: it is the model's body text, printed verbatim.
 //
-// 少了这一条，界面的版式审计会把模型的每一句话都当成「排版不合规」——而那些字是
-// 上游给的，我们没有资格替它排版（见 cliapi.Unstyled）。
+// Without this, the UI's layout audit would treat every sentence of the model
+// as "non-compliant formatting" -- and those words come from the upstream;
+// we are in no position to lay them out for it (see cliapi.Unstyled).
 func (askCommand) Unstyled([]string) bool { return true }
 
-// defaultTier 是没给 `--tier` 时用的档位。
+// defaultTier is the tier used when `--tier` is not given.
 //
-// 选 normal 而不是最便宜的 light：`normal` 是这个产品定义的**主力档位**
-// （见 docs/04-configuration.md 的档位阶梯），而 `ask` 的默认期待是「问一句正常
-// 问题」。想省钱的人会自己写 `--tier light`，反过来（默认给最便宜的、要用好的
-// 再显式要）会让第一次用的人以为这个工具很笨。
+// normal rather than the cheapest light: `normal` is the **main tier** this product
+// defines (see the tier ladder in docs/04-configuration.md), and `ask`'s default
+// expectation is "ask a normal question". People who want to save money will write
+// `--tier light` themselves; the reverse (default to the cheapest, and require asking
+// explicitly for a good one) would make first-time users think this tool is dumb.
 const defaultTier = "normal"
 
-// defaultMaxTokens 是没给 `--max-tokens` 时的上限。Anthropic 方言**必须**带这个
-// 字段，所以它不是一个可以省略的选项。
+// defaultMaxTokens is the cap used when `--max-tokens` is not given. The Anthropic
+// dialect **must** carry this field, so it is not an option that can be omitted.
 const defaultMaxTokens = 4096
 
 func (askCommand) Run(host cliapi.Host, args []string) int {
@@ -78,9 +81,9 @@ func (askCommand) Run(host cliapi.Host, args []string) int {
 	}
 
 	if !host.DaemonRunning() {
-		// **不自己把代理拉起来**：`ask` 的语义是「走那个正在跑的代理」，而悄悄起
-		// 一个守护进程会把一次提问变成一次状态改变（接管、端口、pidfile）。
-		// 说清楚要跑什么，比替用户决定强。
+		// **Do not bring the proxy up itself**: `ask` means "go through the proxy that is
+		// running", and quietly starting a daemon would turn one question into a state change
+		// (takeover, port, pidfile). Saying clearly what to run beats deciding for the user.
 		return host.Die(69, i18n.T("the proxy is not running — start it with newgate start", nil))
 	}
 
@@ -99,13 +102,14 @@ func (askCommand) Run(host cliapi.Host, args []string) int {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if profile != "" {
-		// 单次 profile 覆盖（见 docs/05-gateway.md 的 /p/<profile>）：这一发走那条链，
-		// **不动全局状态**。用 `ask` 试一条链不该把整个机器的默认改掉。
+		// One-off profile override (see /p/<profile> in docs/05-gateway.md): this
+		// request takes that chain and **does not touch global state**. Trying
+		// a chain with `ask` should not change the whole machine's default.
 		req.URL.Path = "/p/" + profile + "/v1/messages"
 	}
 
-	// 不设整体超时：一次长回答本来就要几分钟。要中断就 Ctrl-C——它会把连接断掉，
-	// 而代理那边对客户端取消是有处理的（不记失败、不摘牌）。
+	// No overall timeout: one long answer legitimately takes minutes. To interrupt, Ctrl-C -- it drops
+	// the connection, and the proxy handles client cancellation (no failure recorded, no delisting).
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -115,8 +119,8 @@ func (askCommand) Run(host cliapi.Host, args []string) int {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		// 上游/代理的错误原样带出来：那句话是唯一能说明「为什么没答」的东西，
-		// 而它常常是上游的报错原文（见「不静默」）。
+		// Upstream/proxy errors are carried out as is: that sentence is the only thing explaining
+		// "why there was no answer", and it is often the upstream's error text (see "never silent").
 		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<10))
 		return host.Die(69, i18n.T("the proxy answered HTTP {status}: {body}",
 			i18n.A{"status": resp.StatusCode, "body": strings.TrimSpace(string(raw))}))
@@ -126,13 +130,13 @@ func (askCommand) Run(host cliapi.Host, args []string) int {
 		fmt.Fprintln(os.Stderr)
 		return host.Die(70, i18n.T("the answer broke off: {err}", i18n.A{"err": err}))
 	}
-	// 正文之后补一个换行：流式的正文自己不带结尾换行，不补的话 shell 提示符会
-	// 贴在最后一句后面。
+	// Add a newline after the body: streamed body text carries no trailing
+	// newline, and without it the shell prompt sticks to the last sentence.
 	fmt.Println()
 	return 0
 }
 
-// ---------- 请求与流 ----------
+// ---------- Request and stream ----------
 
 type askMessage struct {
 	Role    string `json:"role"`
@@ -140,8 +144,8 @@ type askMessage struct {
 }
 
 type askRequest struct {
-	// Model 是**档位名**（`light` / `normal` / …），不是模型名——解析成哪家哪个
-	// 模型是代理的事（见包注释）。
+	// Model is the **tier name** (`light` / `normal` / …), not a model name -- resolving
+	// it to which provider's which model is the proxy's job (see the package comment).
 	Model     string       `json:"model"`
 	MaxTokens int          `json:"max_tokens"`
 	Stream    bool         `json:"stream"`
@@ -149,19 +153,20 @@ type askRequest struct {
 	Messages  []askMessage `json:"messages"`
 }
 
-// streamAnswer 边读边打：正文进 out，思维链进 thinking。
+// streamAnswer prints as it reads: the body goes to out, the reasoning chain goes to thinking.
 //
-// # 为什么思维链走另一个流
+// # Why the reasoning chain takes another stream
 //
-// 因为**这一条命令是给脚本用的**：`answer=$(newgate ask …)` 必须拿到干净的正文。
-// 思维链是给人看的（想知道模型怎么绕过来的），所以它走 stderr——人在终端上照样
-// 看得见，被 `$( )` 捕获时则一个字节都不进正文。
+// Because **this command is for scripts**: `answer=$(newgate ask …)` must get clean body text.
+// The reasoning chain is for humans (who want to know how the model got around), so it goes to
+// stderr -- still visible on a terminal, while `$( )` captures not one byte of it into the body.
 //
-// 这在 reasoning 模型上是实打实的差别：deepseek / glm 的一发回答里，思维链常常
-// 比正文长好几倍（实测见 docs/06-reasoning.md）。
+// On reasoning models this is a real difference: in one answer from deepseek / glm the reasoning
+// chain is often several times longer than the body (measured; see docs/06-reasoning.md).
 //
-// 认不出来的事件一律跳过，不让整发断掉：上游加字段、换事件类型都是常事，而
-// 「因为一个没见过的事件名，回答打了一半就停了」是最不该有的失败方式。
+// Unknown events are always skipped, never allowed to break the whole run: the upstream
+// adding fields or changing event types is routine, and "the answer stopped halfway
+// because of an event name we had never seen" is the failure mode we least want.
 func streamAnswer(r io.Reader, out, thinking io.Writer) error {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64<<10), 8<<20)
@@ -211,18 +216,18 @@ type streamEvent struct {
 	} `json:"error"`
 }
 
-// ---------- 小工具 ----------
+// ---------- Little helpers ----------
 
-// flagsWithValues 是**本命令自己的**选项里那些「后面跟一个值」的。
+// flagsWithValues are the "followed by a value" ones among **this command's own** options.
 //
-// 剥掉它们是为了拿到 prompt：`cliapi.Positional` 只跳过以 `-` 开头的参数，而
-// `--tier normal` 里的 `normal` 不带 `-`，于是它会被当成第一个位置参数——
-// `newgate ask --tier light 今天天气如何` 就会把 `light` 当成问题问出去。
+// They are stripped to get the prompt: `cliapi.Positional` only skips arguments starting with `-`,
+// and the `normal` in `--tier normal` has no `-`, so it would be taken as the first positional
+// -- `newgate ask --tier light what is the weather today` would send `light` out as the question.
 var flagsWithValues = [][]string{
 	{"--tier", "-t"}, {"--profile", "--preset"}, {"--system"}, {"--max-tokens"},
 }
 
-// leftover 返回「剥掉本命令自己的选项之后」剩下的位置参数。
+// leftover returns the positional arguments left after stripping this command's own options.
 func leftover(args []string) []string {
 	out := make([]string, 0, len(args))
 	for i := 0; i < len(args); i++ {
@@ -242,7 +247,7 @@ func leftover(args []string) []string {
 	return out
 }
 
-// flagOr 取一个带值选项，取不到就用 fallback。
+// flagOr takes a value-taking option, or fallback when absent.
 func flagOr(args []string, fallback string, names ...string) string {
 	if v := cliapi.FlagValue(args, names...); v != "" {
 		return v
@@ -250,7 +255,8 @@ func flagOr(args []string, fallback string, names ...string) string {
 	return fallback
 }
 
-// matchesAnyFlag 说这个参数是不是「本命令的某个带值选项」（含 `--x=y` 写法）。
+// matchesAnyFlag says whether this argument is "one of this
+// command's value-taking options" (including the `--x=y` form).
 func matchesAnyFlag(a string, groups [][]string) bool {
 	for _, names := range groups {
 		for _, n := range names {
@@ -262,8 +268,9 @@ func matchesAnyFlag(a string, groups [][]string) bool {
 	return false
 }
 
-// parsePositiveInt 只收正整数：`--max-tokens 0` 与 `--max-tokens 很多` 都该当场
-// 报错，而不是发出去让上游回一个看不懂的 400。
+// parsePositiveInt accepts only positive integers: `--max-tokens 0`
+// and `--max-tokens many` should both error on the spot, rather than
+// being sent and getting an incomprehensible 400 from the upstream.
 func parsePositiveInt(s string) (int, error) {
 	n := 0
 	for _, r := range s {
@@ -278,10 +285,12 @@ func parsePositiveInt(s string) (int, error) {
 	return n, nil
 }
 
-// readPipedStdin 在**管道/重定向**时把 stdin 读完；终端上则什么都不读。
+// readPipedStdin reads stdin to the end when it is
+// **a pipe/redirect**; on a terminal it reads nothing.
 //
-// 判据是「stdin 是不是字符设备」而不是「有没有东西可读」：在终端上 ReadAll 会
-// 一直等下去，而那正是「用户没给 prompt、我们该报错」的情形。
+// The test is "is stdin a character device", not "is there something
+// to read": ReadAll on a terminal would wait forever, and that is
+// exactly the case of "the user gave no prompt, so we should error".
 func readPipedStdin() (string, error) {
 	st, err := os.Stdin.Stat()
 	if err != nil {
@@ -297,7 +306,7 @@ func readPipedStdin() (string, error) {
 	return string(raw), nil
 }
 
-// proxyPort 是代理监听的端口（配置里的那个，没配就是 domain.ProxyPort）。
+// proxyPort is the port the proxy listens on (the one from config, or domain.ProxyPort if unset).
 func proxyPort() int {
 	if p := store.LoadState().Port; p > 0 {
 		return p

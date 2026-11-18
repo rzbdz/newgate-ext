@@ -1,21 +1,21 @@
 package setup
 
-// 本文件是「用户只写一个 base 和 key，模型名从上游列出来挑」那一格。
+// This file is the cell "the user writes one base and key, models are listed upstream".
 //
-// 它问的是 OpenAI 兼容的 `GET {base}/models`——newapi / one-api / DeepSeek /
-// GLM / OpenRouter 那一片聚合网关都答这个。**问不到不是错误**：私有部署、只认
-// 自家 SDK 的服务、公司网关都可能没有这个接口，那时用户手填一个模型名就行
-// （那本来就是这条向导的最小要求）。
+// It asks the OpenAI-compatible `GET {base}/models` - newapi / one-api / DeepSeek /
+// GLM / OpenRouter aggregators all answer it. **A failed ask is not an error**: private
+// deployments, SDK-only services, corporate gateways may lack it; typing a model name
+// is fine then (that is the wizard's minimum requirement anyway).
 //
-// # 为什么不去 import modules/modellist
+// # Why not import modules/modellist
 //
-// modellist 是**发行版的另一个模块**：它把清单交给网页下拉（BFF 扩展端点）、
-// 带进程内缓存与分组。向导只要「此刻列一下」，而把它拉进来会让 setup 对一份
-// 别的模块的内部实现（service 结构、缓存策略）产生依赖——archmap 那条
-// 「import 了却没有任何依赖边」的探针正是为这种依赖准备的。
+// modellist is **another module of the distribution**: it feeds the web dropdown (a BFF
+// extension endpoint), with in-process cache and groups. The wizard only needs "list it
+// now", and pulling it in makes setup depend on another module's internals (service
+// struct, cache policy) - archmap's "imports with no dependency edge" probe exists for this.
 //
-// 两边共用的是**协议**（`/models` 的形状），不是代码。这一点与「内核与发行版
-// 共用同一把尺子但各自实现」是同一种取舍：协议是稳定的，实现会动。
+// What both share is the **protocol** (`/models`'s shape), not code. Same trade as
+// "kernel and distribution share one ruler but each implements it": protocol stable, impl moves.
 
 import (
 	"context"
@@ -38,16 +38,16 @@ const (
 	modelsMaxBody = 2 << 20
 )
 
-// probeModels 是问清单的那一次网络调用。
+// probeModels is the one network call that asks for the list.
 //
-// 留成一个可替换的函数，是为了**测试不出网**（见 docs/10-testing-security.md：
-// 单测一律 httptest，出网即失败）——向导的流程测试要验的是「拿到清单之后怎么
-// 选」，不该顺带把自己的 DNS 也验一遍。
+// It stays a replaceable function so **tests never go to the network** (see
+// docs/10-testing-security.md: unit tests use httptest only) - the wizard's flow tests
+// check "how to pick after getting the list", not the machine's DNS.
 var probeModels = listModels
 
-// listModels 问上游要模型名。返回名字（去重、已排序）与一句「为什么没问到」。
+// listModels asks upstream for model names. Returns names (deduped, sorted) plus why not.
 //
-// 第二个返回值非空 = 这次没问到（不是致命错误）；调用方提示用户手填。
+// Non-empty second return = could not ask (not fatal); the caller offers manual entry.
 func listModels(baseURL, apiKey, protocol string) ([]string, string) {
 	p := domain.Provider{BaseURL: baseURL, APIKey: apiKey, Protocol: protocol}
 	ctx, cancel := context.WithTimeout(context.Background(), modelsTimeout)
@@ -72,7 +72,7 @@ func listModels(baseURL, apiKey, protocol string) ([]string, string) {
 	return nil, last
 }
 
-// fetchModelList 问一个地址。retry=true 表示「这个地址没有这个接口，试下一个」。
+// fetchModelList asks one address. retry=true means "no such endpoint here, try the next".
 func fetchModelList(ctx context.Context, c *http.Client, url string, p domain.Provider) ([]string, string, bool) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -97,7 +97,7 @@ func fetchModelList(ctx context.Context, c *http.Client, url string, p domain.Pr
 		return nil, i18n.T("{url} has no model list (HTTP {status})",
 			i18n.A{"url": safeURL(url), "status": resp.StatusCode}), true
 	case http.StatusUnauthorized, http.StatusForbidden:
-		// 地址找对了、认证没过。这不是「换个地址再试」能解决的——直说。
+		// Right address, auth failed. Retrying another address will not fix it - say so.
 		return nil, i18n.T("{url} rejected the key (HTTP {status}); paste a model name by hand",
 			i18n.A{"url": safeURL(url), "status": resp.StatusCode}), false
 	}
@@ -115,11 +115,11 @@ func fetchModelList(ctx context.Context, c *http.Client, url string, p domain.Pr
 	return names, "", false
 }
 
-// parseModelNames 认三种形状：
+// parseModelNames knows three shapes:
 //
 //	{"data":[{"id":"…"}]}        OpenAI / newapi / DeepSeek / GLM / OpenRouter
-//	{"models":[{"name":"…"}]}    Ollama 一类
-//	["a","b"]                    最裸的那种
+//	{"models":[{"name":"…"}]}    Ollama and friends
+//	["a","b"]                    the barest one
 func parseModelNames(b []byte) []string {
 	seen := map[string]bool{}
 	var out []string
@@ -134,7 +134,7 @@ func parseModelNames(b []byte) []string {
 	var obj struct {
 		Data []struct {
 			ID string `json:"id"`
-			// newapi 有时把名字放在 name 里、id 是数字。
+			// newapi sometimes puts the name in name and a number in id.
 			Name string `json:"name"`
 		} `json:"data"`
 		Models []struct {
@@ -143,8 +143,8 @@ func parseModelNames(b []byte) []string {
 		} `json:"models"`
 	}
 	pick := func(id, name string) {
-		// newapi 一类有时把 `id` 写成一个数字序号、真名字在 `name` 里。数字 id
-		// 不是模型名（贴进绑定里上游不认），有 name 时用 name。
+		// newapi-type servers sometimes put a numeric index in `id`, the real name in `name`.
+		// A numeric id is not a model name (upstream rejects it); prefer name when present.
 		if id != "" && !allDigits(id) {
 			add(id)
 			return
@@ -180,7 +180,7 @@ func parseModelNames(b []byte) []string {
 	return out
 }
 
-// modelURLs 与 modellist 的同一套规则：base 带不带 /v1 两种写法都试。
+// modelURLs follows modellist's rule: try base with and without /v1.
 func modelURLs(base string) []string {
 	b := strings.TrimRight(strings.TrimSpace(base), "/")
 	if b == "" {
@@ -195,7 +195,7 @@ func modelURLs(base string) []string {
 	return []string{b + "/v1/models", b + "/models"}
 }
 
-// safeURL 去掉 URL 里的 userinfo（有人把凭据贴在地址里，那不该进终端）。
+// safeURL strips userinfo from a URL (people paste credentials in; it must not reach the terminal).
 func allDigits(s string) bool {
 	for _, r := range s {
 		if r < '0' || r > '9' {
@@ -217,14 +217,14 @@ func safeURL(raw string) string {
 	return raw
 }
 
-// pickModel 让用户在清单里挑一个，或者手填。
+// pickModel lets the user pick from the list, or type one.
 //
-// 默认光标停在**清单的第一个**；按 `m` 切到「自己填」。清单是上游此刻的真话
-// （有的聚合网关一次列几百个），而手填那一条必须永远在——它是「问不到清单」
-// 那个场景的正式出口，不是兜底。
+// The cursor starts on **the first list entry**; `m` switches to "type my own". The list
+// is upstream's truth right now (some aggregators list hundreds), and the manual entry
+// must always be there - it is the official exit for "no list", not a fallback.
 func pickModel(s Screen, models []string, why string) (string, bool) {
 	if len(models) == 0 {
-		// 没清单就直接问一句，不摆一个只有「自己填」的列表。
+		// With no list, just ask - do not show a list holding only "type my own".
 		f := []field{{
 			Label:       i18n.T("Model name", nil),
 			Placeholder: i18n.T("the exact name this endpoint accepts, e.g. deepseek-chat", nil),

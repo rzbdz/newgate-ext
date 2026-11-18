@@ -7,22 +7,22 @@ import (
 	"github.com/rzbdz/newgate/lib/i18n"
 )
 
-// SetSwitch 把一条开关点的期望态写进 state（**不落盘**：落盘与「要不要通知数据面」
-// 是调用方的事，命令行与 web 界面在这两件事上不同）。
+// SetSwitch writes one switch point's desired state into state (**not persisted**:
+// persisting, and "notify the data plane?", are the caller's call: CLI and web differ).
 //
-// 它是 `newgate plugin <path> on|off` 与浏览器界面共用的**那一份**语义，因为这条
-// 语义里全是容易写错第二遍的地方：
+// It is the **one** semantics shared by `newgate plugin <path> on|off` and the browser UI,
+// because it is full of places that are easy to get wrong a second time:
 //
-//   - 出厂态决定走哪张表：Default=true 的是 kill switch（用户的「关」写进 Off 表），
-//     Default=false 的是 mode（用户的「开」写进 On 表）；
-//   - **动作等于出厂态 = 撤销这条设定**（对一个出厂开着的开关点说 on，就是把它从
-//     Off 表里拿掉），而不是再写一条「打开」——写反了，出厂态一改，用户那条历史
-//     动作的意思就跟着反了；
-//   - footgun 不接受「永久」，而且它自己声明的 TTL 就是不给时长时的兜底时限
-//     （注册期强制 > 0，见 Switch.TTL）。
+//   - The factory state picks the table: Default=true is a kill switch (a user "off"
+//     goes into the Off table); Default=false is a mode (a user "on" goes into On);
+//   - **An action equal to the factory state = undo the setting** (saying on to a
+//     factory-on point means pulling it out of the Off table), not writing another "on" -
+//     get it backwards and a factory-state change flips what the old action means;
+//   - A footgun does not accept "forever", and its declared TTL is the fallback limit
+//     when no duration is given (enforced > 0 at registration, see Switch.TTL).
 //
-// 判据是「两个界面会不会给出不同答案」：上面三条任何一条写岔，用户就会看到 CLI
-// 说关着、浏览器说开着。所以它们只在这里写一次。
+// The criterion is "would the two UIs give different answers": get any of the three wrong
+// and the user sees the CLI say off while the browser says on. So they are written once, here.
 func SetSwitch(st *domain.State, sw Switch, on bool, ttl time.Duration, forever bool) error {
 	if sw.Danger == DangerFootgun && forever {
 		return i18n.E(
@@ -52,7 +52,7 @@ func SetSwitch(st *domain.State, sw Switch, on bool, ttl time.Duration, forever 
 	return nil
 }
 
-// effectiveTTL 这次该记多长时限：用户给了就用用户的，没给就用开关点声明的默认值。
+// effectiveTTL is the duration to record: the user's if given, else the declared default.
 func effectiveTTL(sw Switch, ttl time.Duration, forever bool) time.Time {
 	if forever {
 		return time.Time{}

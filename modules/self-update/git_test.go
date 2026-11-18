@@ -16,9 +16,9 @@ import (
 	upgradeapi "github.com/rzbdz/newgate-ext/modules/upgrade"
 )
 
-// git 模式的一整圈，全离线：一个裸仓库当 origin、一份开发者 checkout、一个假的
-// build/build.sh（照真脚本的约定：产物名 newgate-<发行版>-<os>-<arch>，版本号
-// <发行版>-<git describe>）。
+// A full git-mode round, all offline: a bare repo as origin, a developer checkout, and a
+// fake build/build.sh (following the real script's contract: artifact name
+// newgate-<distribution>-<os>-<arch>, version <distribution>-<git describe>).
 
 const fakeBuild = `#!/usr/bin/env bash
 set -e
@@ -75,7 +75,7 @@ func TestGitModeFastForwardsBuildsAndInstalls(t *testing.T) {
 	run(t, seed, "push", "-q", "origin", "HEAD:main", "--tags")
 	run(t, root, "clone", "-q", origin, dev)
 
-	// 上游又前进一个提交：开发者那份落后 1。
+	// Upstream moves one commit ahead: the developer's copy is 1 behind.
 	write(t, filepath.Join(seed, "README"), "two\n")
 	run(t, seed, "commit", "-q", "-am", "two")
 	run(t, seed, "push", "-q", "origin", "HEAD:main")
@@ -99,7 +99,7 @@ func TestGitModeFastForwardsBuildsAndInstalls(t *testing.T) {
 	if _, err := u.run(context.Background(), upgradeapi.Request{}); err != nil {
 		t.Fatalf("%v\n%s", err, out.String())
 	}
-	// v0.1.0 之后 1 个提交——也就是拉下来的那个。
+	// One commit after v0.1.0 - the one just pulled.
 	got, err := smoke(context.Background(), target)
 	if err != nil || !strings.HasPrefix(got, "default-v0.1.0-1-g") {
 		t.Fatalf("installed %q (%v), want default-v0.1.0-1-g…\n%s", got, err, out.String())
@@ -108,14 +108,14 @@ func TestGitModeFastForwardsBuildsAndInstalls(t *testing.T) {
 		t.Fatalf("the pull was not reported:\n%s", out.String())
 	}
 
-	// 同一个提交再来一次：不编。
+	// Same commit again: no build.
 	u.current = got
 	msg, err := u.runMsg(context.Background(), upgradeapi.Request{})
 	if err != nil || !strings.Contains(msg, "already at") {
 		t.Fatalf("second run: %q %v", msg, err)
 	}
 
-	// 开发者改着东西、上游又前进了：不拉、照编手上这份（-dirty）。
+	// The developer has changes, upstream moved: no pull, build what is at hand (-dirty).
 	write(t, filepath.Join(dev, "README"), "local edit\n")
 	write(t, filepath.Join(seed, "README"), "three\n")
 	run(t, seed, "commit", "-q", "-am", "three")
@@ -135,9 +135,9 @@ func TestGitModeFastForwardsBuildsAndInstalls(t *testing.T) {
 	}
 }
 
-// `upgrade@<ref>` 的临时 clone 必须带着 tag 与通往它的历史：版本号来自 describe，
-// 浅 clone 只剩一个提交号，之后的 upgrade 就没法再比新旧。分支、tag、提交号三种
-// ref 都要 clone 得出来。
+// A temporary clone of `upgrade@<ref>` must carry the tag and the history leading to it:
+// the version comes from describe, and a shallow clone has only a commit id, so a later
+// upgrade cannot compare old and new. Branch, tag and commit refs must all clone.
 func TestCloneRefKeepsDescribableHistory(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip(err)

@@ -1,15 +1,18 @@
-// 开发期的**假模型清单**：只挂在 `vite dev` 的中间件上（`apply: "serve"`），
-// 产物里一个字都不会出现。
+// A **fake model list** for development: mounted only on the `vite dev` middleware
+// (`apply: "serve"`), not one word of it appears in the output.
 //
-// # 为什么先有它
+// # Why it came first
 //
-// 模型选择器是**先于后端**做出来的：它的交互（打开时问一次、模糊搜索、分组、失败
-// 回落到声明清单）不该等到后端模块编好才能验。这个中间件按真后端要给的形状回答
-// `POST /ui/api/ext/modellist`，于是 `pnpm dev` 里点开下拉就能看到完整行为。
+// The model selector was built **before the backend**: its interactions (ask once on open,
+// fuzzy search, grouping, fall back to the declared list on failure) should not have to wait
+// for the backend module to be built to be verified. This middleware answers
+// `POST /ui/api/ext/modellist` in the shape the real backend would give, so opening the
+// dropdown under `pnpm dev` shows the complete behavior.
 //
-// 形状的真相在 `src/api.ts` 的 `ModelList`；后端实现是 `modules/modellist`。
-// 这里只造样例：真实上游返回的字段名各不相同，但适配器那一层会把它们收敛成这
-// 一个形状——这正是前端只需要认识一种形状的原因。
+// The truth about the shape is in `ModelList` in `src/api.ts`; the backend implementation is
+// `modules/modellist`. This only fabricates samples: real upstreams return all sorts of field
+// names, but the adapter layer converges them into this one shape -- which is exactly why the
+// front end only needs to know one shape.
 import type { Plugin } from "vite";
 
 type Mock = {
@@ -74,7 +77,8 @@ const CATALOGS: Record<string, Mock> = {
   ]),
 };
 
-// 「不支持列表」也是要演的一态：下拉必须**回落到声明清单**并把原因写在顶上。
+// "Does not support listing" is a state that must be demonstrated too: the dropdown has to
+// **fall back to the declared list** and write the reason at the top.
 const UNSUPPORTED: Mock = {
   provider: "",
   supported: false,
@@ -87,9 +91,10 @@ export function mockModelList(): Plugin {
     name: "newgate-mock-modellist",
     apply: "serve",
     configureServer(server) {
-      // Vite 的 connect 中间件在这里只给了 `IncomingMessage` 的**最小**形状
-      // （这份工程没有 @types/node，见 tsconfig 的注释）。dev-only 的假端点不需要
-      // 那一整套类型，所以这里显式收窄成 any——它不是产品代码。
+      // Vite's connect middleware only gives the **minimal** shape of IncomingMessage here
+      // (this project has no @types/node, see the comment in tsconfig). A dev-only fake
+      // endpoint does not need that whole set of types, so it is explicitly narrowed to any
+      // here -- it is not product code.
       server.middlewares.use("/ui/api/ext/modellist", (req: any, res: any) => {
         if (req.method !== "POST") {
           res.statusCode = 405;
@@ -100,7 +105,8 @@ export function mockModelList(): Plugin {
         let raw = "";
         req.on("data", (chunk: string) => {
           raw += chunk;
-          // 与真 BFF 同一条上限：请求体只有 provider/refresh 两个字段。
+          // Same cap as the real BFF: the request body only has the two fields
+          // provider/refresh.
           if (raw.length > 1 << 20) req.destroy();
         });
         req.on("end", () => {
@@ -108,7 +114,7 @@ export function mockModelList(): Plugin {
           try {
             provider = JSON.parse(raw || "{}").provider ?? "";
           } catch {
-            /* 空体 / 坏 JSON：下面按「没点名」处理 */
+            /* empty body / bad JSON: handled below as "no provider named" */
           }
           res.setHeader("Content-Type", "application/json; charset=utf-8");
           if (!provider) {
@@ -116,8 +122,9 @@ export function mockModelList(): Plugin {
             res.end(JSON.stringify({ error: "no provider named in the request (mock)" }));
             return;
           }
-          // 名字里带 "-offline" 的那几家演示「不支持」：把 provider 叫成
-          // `anything-offline` 即可看到回落那一态（它们不必在样例表里）。
+          // The ones whose names end in "-offline" demonstrate "unsupported": call the
+          // provider `anything-offline` to see the fallback state (they need not be in the
+          // sample table).
           if (provider.endsWith("-offline")) {
             res.end(JSON.stringify({ ...UNSUPPORTED, provider }));
             return;

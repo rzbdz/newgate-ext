@@ -20,7 +20,7 @@ func TestCacheRoundTripAndCrossProcessRead(t *testing.T) {
 	if err := c.put(e); err != nil {
 		t.Fatal(err)
 	}
-	// 另一个实例（= 另一个进程）必须能立刻读到：cache 不把文件读进内存就不再回看。
+	// Another instance (= another process) reads it at once: the cache never holds the file in memory.
 	other := newCacheStore()
 	got, ok, err := other.get("relay", "model")
 	if err != nil || !ok {
@@ -33,7 +33,7 @@ func TestCacheRoundTripAndCrossProcessRead(t *testing.T) {
 		t.Fatalf("probability = %v", got.Probability)
 	}
 
-	// 并集：第二条不该把第一条抹掉。
+	// Union: the second must not erase the first.
 	if err := other.put(Entry{Provider: "relay", Model: "two", Match: MatchMismatch}); err != nil {
 		t.Fatal(err)
 	}

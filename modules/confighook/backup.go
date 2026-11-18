@@ -12,44 +12,48 @@ import (
 	"github.com/rzbdz/newgate/lib/i18n"
 )
 
-// 本文件是**每个配置接管都要走的那几步**：接管前存一份原件、原子地写回、以及
-// 从原件还原。
+// This file is **the few steps every config takeover must take**: save an
+// original before takeover, write back atomically, and restore from the original.
 //
-// # 为什么它在内核而不是在某一家客户端的模块里
+// # Why it is in the kernel rather than in some client's module
 //
-// 它 2026-09-21 之前长在发行版的 modules/opencodeomo 里，而 codex 的接管要写的
-// 是同一套东西（先备份再改、写回要原子、逃生舱要能还原）。判据还是那一条
-// ——**换个发行版，这东西还该在吗？** 该在：任何一家客户端的任何一份配置文件，
-// 接管它的人都要做这三步，步骤本身不含任何一家的知识（哪份文件、算什么「已被
-// 接管」，由调用方给）。
+// Before 2026-09-21 it grew inside the distribution's modules/opencodeomo, while codex's
+// takeover writes the same set of things (back up before changing, write back atomically,
+// an escape hatch that really restores). The criterion is still that one -- **would this
+// still belong here under another distribution?** Yes: for any config file of any client,
+// whoever takes it over must do these three steps, and the steps themselves contain no one's
+// knowledge (which file, what counts as "already taken over", are given by the caller).
 //
-// 留在 opencodeomo 里的代价是实测过的：codex 的接管只能把这三步抄一遍，而**抄
-// 来的那份会漂移**——这里是 `original/` 的写入防护，漂移掉之后症状是「用户的原
-// 配置永久丢失」，而它在测试里一点声音都没有。
+// The cost of leaving it in opencodeomo was measured: codex's takeover
+// had to copy the three steps, and **the copy drifts** -- here it is the write
+// protection on `original/`, and after drifting the symptom is "the user's
+// original config is lost permanently", while in tests it makes not one sound.
 
-// TakenOver 判断一份文件的**当前内容**是不是已经被我们接管过。
+// TakenOver judges whether a file's **current content** has already been taken over by us.
 //
-// 判据必须由调用方给，因为「被接管过」长什么样是各家格式的事：opencode.json 里是
-// 一个 `"newgate"` provider 键，codex 的 config.toml 里是一个 `[model_providers.newgate]`
-// 段。内核不认识这两种格式，也不该认识。
+// The criterion must come from the caller, because what "taken over" looks like is each
+// format's business: in opencode.json it is a `"newgate"` provider key, in codex's config.toml a
+// `[model_providers.newgate]` section. The kernel does not know these two formats, and should not.
 type TakenOver func(content []byte) bool
 
-// OriginalPath 是这个目标文件「没被碰过的那一份」存在哪。
+// OriginalPath is where this target file's "untouched copy" lives.
 //
-// 按**文件名**索引（不带目录）：目标文件常常散落在各处（`~/.codex/config.toml`、
-// `~/.config/opencode/opencode.json`），把整条路径搬到 backups/ 底下会长出一棵
-// 与用户目录同构的树，而那份树只是给 `off` 用的内部记账。
+// Indexed by **file name** (without the directory): target files are often
+// scattered (`~/.codex/config.toml`, `~/.config/opencode/opencode.json`),
+// and moving the whole path under backups/ would grow a tree isomorphic to
+// the user's home, while that tree is internal bookkeeping only for `off`.
 func OriginalPath(target string) string {
 	return filepath.Join(paths.BackupDir(), "original", filepath.Base(target))
 }
 
-// BackupFile 接管前把原文件存成 original/（用于还原），同时每次都留一份带时间戳
-// 的历史。
+// BackupFile saves the original file as original/ before takeover
+// (for restore), and also keeps a timestamped history every time.
 //
-// 关键防护：**original/ 只允许写「未被接管」的内容**。否则一旦 original/ 被误删，
-// 下次接管就会把已接管的文件当成「原始」存进去，之后还原出来的就是被污染的版本
-// ——用户的原配置永久丢失。这条不是理论风险：`off` 之后再 `on`、或者用户手工
-// 删掉 backups/ 里的某个目录，都能走到这里。
+// The crucial protection: **original/ may only be written with "not yet taken over"
+// content**. Otherwise, once original/ is deleted by mistake, the next takeover would store the
+// already-taken-over file as the "original", and what is later restored is the polluted version
+// -- the user's original config is lost permanently. This is not a theoretical risk: `off`
+// then `on` again, or the user manually deleting some directory in backups/, both reach here.
 func BackupFile(target string, isTakenOver TakenOver) error {
 	b, err := ioutil.ReadFile(target)
 	if err != nil {
@@ -84,8 +88,9 @@ func BackupFile(target string, isTakenOver TakenOver) error {
 	return nil
 }
 
-// PruneSnapshots 只保留最近 keep 份时间戳快照，别让备份目录无限长。
-// original/ 永不删——那是逃生舱，删了就没得还原了。
+// PruneSnapshots keeps only the most recent keep timestamped snapshots, so
+// the backup directory does not grow forever. original/ is never deleted
+// -- that is the escape hatch, and deleting it leaves nothing to restore.
 func PruneSnapshots(keep int) {
 	ents, err := ioutil.ReadDir(paths.BackupDir())
 	if err != nil {
@@ -106,9 +111,9 @@ func PruneSnapshots(keep int) {
 	}
 }
 
-// RestoreFile 把 original/ 那份写回目标。返回是否真的还原过。
+// RestoreFile writes original/'s copy back to the target. Returns whether it really restored.
 //
-// 没备份 = 没接管过，不是错误（`off` 对一份我们从没碰过的文件应当无事发生）。
+// No backup = never taken over, not an error (`off` on a file we never touched should do nothing).
 func RestoreFile(target string) (bool, error) {
 	b, err := ioutil.ReadFile(OriginalPath(target))
 	if err != nil {
@@ -117,28 +122,30 @@ func RestoreFile(target string) (bool, error) {
 	return true, WriteAtomic(target, b, 0o600)
 }
 
-// WriteAtomic 原子地写一份文件：先写同目录的临时文件，再 rename 换目录项。
+// WriteAtomic writes a file atomically: first write a temporary file
+// in the same directory, then rename to swap the directory entry.
 //
-// 为什么不能直接覆盖：这些文件是**别人家的程序正在读**的（codex 起一次读一次
-// config.toml）。写一半被读到，轻则那一次启动报一个莫名其妙的解析错误，重则
-// 我们把用户的配置截断了——而截断的那一份还是我们写的。
+// Why not overwrite directly: these files are **being read by someone else's
+// program** (codex reads config.toml on each start). Read halfway through a
+// write, at best that one start reports a baffling parse error, at worst we
+// truncated the user's config -- and the truncated copy is the one we wrote.
 func WriteAtomic(path string, content []byte, mode os.FileMode) error {
 	tmp := path + ".newgate.tmp"
 	if err := ioutil.WriteFile(tmp, content, mode); err != nil {
 		return err
 	}
-	// WriteFile 的 mode 会被 umask 削（root 建的目录给 claude 用时就是 0640），
-	// 所以显式 Chmod 一次——与 docs 里那条多用户权限坑同源。
+	// WriteFile's mode gets stripped by umask (a root-created directory handed to claude is
+	// 0640), so Chmod once explicitly -- same origin as the multi-user permission pit in the docs.
 	if err := os.Chmod(tmp, mode); err != nil {
 		return err
 	}
 	return os.Rename(tmp, path)
 }
 
-// ContainsMarker 是给 TakenOver 用的小工具：内容里有没有这段字节。
+// ContainsMarker is a small helper for TakenOver: is this piece of bytes in the content.
 //
-// 它存在只是为了别让每个调用方自己写一遍 bytes.Contains（那行本身没信息量，
-// 而写错的形式——比如拿 string 转一遍——会在大文件上多一次全量分配）。
+// It exists only so each caller need not write bytes.Contains itself (that line has no information,
+// and the wrong forms -- going through a string conversion, say -- add a full copy on big files).
 func ContainsMarker(content []byte, marker string) bool {
 	return bytes.Contains(content, []byte(marker))
 }

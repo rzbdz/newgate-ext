@@ -6,42 +6,42 @@ import (
 	"github.com/rzbdz/newgate/lib/i18n"
 )
 
-// 本模块上报的运行期开关点。
+// This module's runtime switch points.
 //
-// 为什么要细到这个程度：这个模块的 Apply 里压着**四手**互不相干的修补（补
-// reasoning_content、补 thinking 块、修 messages 尾部形状、修 Responses 尾部
-// 形状），而它们在 `newgate st` 那层只有一个名字 "deepseek"——「要么全要要么
-// 全不要」。排查时最常需要的就是「只关掉第 4 手看看 400 还在不在」，那正是
-// 粒度不够时会卡住的动作。
+// Why such fine granularity: this module's Apply carries **four** unrelated patches
+// (fill reasoning_content, insert a thinking block, fix the messages tail shape, fix
+// the Responses tail shape), yet at the `newgate st` level they have one name,
+// "deepseek" - all or nothing. What you most often need when debugging is "turn off
+// only pass 4 and see if the 400 remains", precisely what coarse granularity blocks.
 //
-// 路径前缀必须是模块名，由 pluginmanager 在注册期强制（见它的 validateSwitches）。
+// The path prefix must be the module name, enforced by pluginmanager (see validateSwitches).
 const (
-	// SwitchBackfillReasoning 第 2 手：给 assistant 消息补 reasoning_content
-	// （OpenAI 方言那句 400）。
+	// SwitchBackfillReasoning is pass 2: add reasoning_content to assistant messages
+	// (the OpenAI dialect 400).
 	SwitchBackfillReasoning = "deepseek.backfill-reasoning"
-	// SwitchBackfillThinkingBlock 第 3 手：Anthropic 方言下给 assistant 消息的
-	// content[] 开头补 thinking 块。
+	// SwitchBackfillThinkingBlock is pass 3: in the Anthropic dialect, put a thinking
+	// block at the start of the assistant message's content[].
 	SwitchBackfillThinkingBlock = "deepseek.backfill-thinking-block"
-	// SwitchTailShape 第 4 手：最后一条 user 消息只有 tool_result 时追加一条最简
-	// 指令（messages 方言）。它和第 5 手是修**根因**的两手。
+	// SwitchTailShape is pass 4: when the last user message is tool_result-only, append a
+	// minimal instruction (messages dialect). Passes 4 and 5 are the root-cause ones.
 	SwitchTailShape = "deepseek.tail-shape"
-	// SwitchTailShapeResponses 第 5 手：Responses 方言（/v1/responses）的
-	// input[] 以别家产的 function_call_output 收尾时，往 input[] 末尾追加一条
-	// 最简指令。与第 4 手是同一件事在另一个方言里的版本，各自可关。
+	// SwitchTailShapeResponses is pass 5: in the Responses dialect (/v1/responses), when
+	// input[] ends with a foreign function_call_output, append a minimal instruction at
+	// the end of input[]. The same thing as pass 4 in another dialect, switchable apart.
 	SwitchTailShapeResponses = "deepseek.tail-shape-responses"
 )
 
-// Switches 本模块上报的开关点清单，供 module.go 注册。
+// Switches is this module's switch point list, for module.go to register.
 //
-// 四条都是 quirk 而不是 footgun：关掉它们**不会**破坏 newgate 自己，只会让
-// DeepSeek 那边开始回 400（因为它们是来修上游怪癖的）。所以不设默认时限——
-// 排查时经常需要开着观察一阵。这也是它们与 gateway.passthrough 的区别：
-// 那个是把这一层整个拆掉，所以必须限时。
-// 文案在这里现算而不做成包级变量：**包初始化早于装语言**（`modules/locale`
-// 在它的 Start 里才把目录装进 lib/i18n），而 Switches 只在 Start 里被调一次
-// ——装配序里 locale 排在 deepseek 之前（本模块排在最末），所以这一刻目录已经
-// 就绪。`reasoning_content` / `content[].thinking` / `tool_result` / `user` /
-// `assistant` 是协议字段名，留在消息外面。
+// All four are quirks, not footguns: turning them off does **not** break newgate
+// itself, it only makes DeepSeek start answering 400 (they fix an upstream quirk).
+// So no default time limit - when debugging you often want one off for a while.
+// That is also how they differ from gateway.passthrough, which tears down the whole
+// layer and therefore must be time-limited.
+// The text is computed here, not in a package-level var: **package init runs before
+// languages are installed** (`modules/locale` installs catalogs in Start), while
+// Switches runs once in Start, after locale (deepseek is last). `reasoning_content` /
+// `content[].thinking` / `tool_result` / `user` / `assistant` stay outside the text.
 func Switches() []pluginmanager.Switch {
 	return []pluginmanager.Switch{
 		{
@@ -86,10 +86,10 @@ func Switches() []pluginmanager.Switch {
 	}
 }
 
-// enabled 这条开关点现在是开着的吗。
+// enabled says whether this switch point is on now.
 //
-// **r.State 为 nil 时一律算开着**：开关点默认就是开的，缺席的快照不该把补丁
-// 关掉——那方向反了（fail-closed）。旧调用面与单测里 State 常常是 nil。
+// **r.State nil counts as on**: switch points default to on; a missing snapshot must
+// not turn patches off - that is fail-closed, the wrong direction (old callers, tests).
 func enabled(r *special.Request, path string) bool {
 	if r == nil {
 		return true

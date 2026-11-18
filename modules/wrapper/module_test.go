@@ -13,15 +13,15 @@ import (
 	"github.com/rzbdz/newgate/component/entry"
 )
 
-// launchCall 记录一次 Runtime.Launch 的入参。
+// launchCall records the arguments of one Runtime.Launch.
 type launchCall struct {
 	agent   string
 	args    []string
 	profile string
 }
 
-// fakeRuntime 是 Runtime 端口的桩：只记录调用，不 exec 任何东西。
-// 真实的 Launch 会 syscall.Exec 掉整个测试进程，所以这里必须换成桩。
+// fakeRuntime is a stub for the Runtime port: records calls, execs nothing.
+// The real Launch syscall.Execs the whole test process away, so a stub is mandatory.
 type fakeRuntime struct{ calls []launchCall }
 
 func (f *fakeRuntime) Launch(agent *agentapi.Agent, _ agentapi.AgentFacts, args []string, profile string) int {
@@ -35,11 +35,11 @@ func (f *fakeRuntime) Launch(agent *agentapi.Agent, _ agentapi.AgentFacts, args 
 
 var _ runtimeapi.Runtime = (*fakeRuntime)(nil)
 
-// harness 装出「wrapper + 它的两个依赖」这张最小图。
+// harness assembles the minimal graph "wrapper + its two dependencies".
 //
-// 这正是 testkit 存在的理由：被测模块不必知道依赖从哪来，只要图上有人提供
-// 那两个端口就能启动。这里用桩替掉 runtime（真 Launch 会 exec 掉进程），
-// 但 wrapper 模块本身是**真的**——它的 Requires/Provides/Start 全走真实路径。
+// This is why testkit exists: the module under test need not know where deps come from;
+// its Start works if the graph provides the ports. Here runtime is stubbed (real Launch
+// execs the process), but the wrapper module itself is **real** - Requires/Provides/Start.
 func harness(t *testing.T, agents ...*agentapi.Agent) (entry.Registry, *fakeRuntime) {
 	t.Helper()
 	runtime := &fakeRuntime{}
@@ -55,18 +55,18 @@ func harness(t *testing.T, agents ...*agentapi.Agent) (entry.Registry, *fakeRunt
 			Type:     "test",
 			Provides: []modules.Provision{modules.Provide(agentapi.AgentCatalogCapability, catalog.AsCatalog())},
 		},
-		// 入口账本的提供者是 modules/entry——内核唯一认识、也唯一摘不掉的那个
-		// 模块：本模块在自己的 Start 里往它申报，所以测试图里必须有它——缺了
-		// 就该当场 panic，那正是「申报口没了」的现场。
+		// The entry ledger's provider is modules/entry - the one module the kernel knows and
+		// cannot remove: this module declares into it in Start, so the test graph needs it -
+		// missing, it should panic on the spot: that is "the declaration door is gone".
 		entrymod.New(),
 		wrapperapi.New(),
 	)
-	// 依赖顺序：wrapper 必须在两个提供者之后启动，否则 Start 里的 MustGet 会 panic。
+	// Dependency order: wrapper must start after both providers, or MustGet panics in Start.
 	graph.Before("stub-runtime", "wrapper")
 	graph.Before("stub-catalog", "wrapper")
-	// 交出去的是**入口账本**而不是 Wrapper 接口：本模块暴露给进程的那一面现在是
-	// 「我申报过一次入口」，而测试要走的就是这条路（问账本 → 拿到认领者 → 调它），
-	// 不是绕过账本直接点模块——那样测出来的行为线上根本不会发生。
+	// What is handed out is **the entry ledger**, not the Wrapper interface: this module's
+	// process side now says "I declared an entry once", and the test walks that way (ask
+	// the ledger -> claimant -> call it), not poking the module directly.
 	return testkit.Get(graph, entry.Capability), runtime
 }
 
@@ -84,50 +84,50 @@ func TestDispatchClaimsAgentInvocations(t *testing.T) {
 		wantArgs []string
 	}{
 		{
-			name:     "PATH shim 转过来的绝对路径",
+			name:     "an absolute path passed in by the PATH shim",
 			argv:     []string{"/home/u/.config/newgate/bin/claude", "--resume", "abc"},
 			claimed:  true,
 			wantID:   "claude",
 			wantArgs: []string{"--resume", "abc"},
 		},
 		{
-			name:     "argv0 就是裸名字",
+			name:     "argv0 is the bare name",
 			argv:     []string{"opencode"},
 			claimed:  true,
 			wantID:   "opencode",
 			wantArgs: []string{},
 		},
 		{
-			// npm 装的兜底脚本会以 claude.exe 出现，剥后缀是历史行为。
-			// 用 POSIX 路径而不是 `C:\bin\claude.exe`：反斜杠只在 Windows 上是
-			// 分隔符，在 Linux 上 filepath.Base 会把整串当文件名——那样测的是
-			// Windows 语义，在 Linux 上必然失败，属于测试写错而不是代码写错。
-			name:     "Windows 风格 .exe 后缀要剥掉",
+			// The npm-installed fallback script appears as claude.exe; stripping is historical.
+			// Use a POSIX path, not `C:\bin\claude.exe`: backslash is a separator only on
+			// Windows; on Linux filepath.Base keeps the whole string - that tests Windows
+			// semantics and always fails on Linux: a broken test, not broken code.
+			name:     "a Windows-style .exe suffix must be stripped",
 			argv:     []string{"/usr/local/bin/claude.exe", "hi"},
 			claimed:  true,
 			wantID:   "claude",
 			wantArgs: []string{"hi"},
 		},
 		{
-			name:     "裸的 .exe 名字也要认",
+			name:     "a bare .exe name should be recognized too",
 			argv:     []string{"claude.exe"},
 			claimed:  true,
 			wantID:   "claude",
 			wantArgs: []string{},
 		},
 		{
-			name:    "控制 CLI 自己不该被认领",
+			name:    "the control CLI itself must not be claimed",
 			argv:    []string{"/usr/local/bin/newgate", "status"},
 			claimed: false,
 		},
 		{
-			name:    "不认识的命令名不该被认领",
+			name:    "an unknown command name must not be claimed",
 			argv:    []string{"/usr/bin/ls", "-la"},
 			claimed: false,
 		},
 		{
-			// 空 argv 是内核理论上不会给但防御性要处理的情况（比如测试里手构造）。
-			name:    "空 argv 不 panic",
+			// Empty argv: theory says the kernel never gives it; defend anyway (e.g. hand-built).
+			name:    "empty argv does not panic",
 			argv:    nil,
 			claimed: false,
 		},
@@ -136,9 +136,9 @@ func TestDispatchClaimsAgentInvocations(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			before := len(runtime.calls)
-			// argv0 归一是**组合根那一趟**（entry.MakeProcess）做的，所以这里走
-			// 真管道而不是手构造 Process：绝对路径、.exe 后缀这些形态的归一
-			// 才算被测到。
+			// argv0 normalization is **the composition root's pass** (entry.MakeProcess), so
+			// use the real pipeline, not hand-built Process: absolute paths and .exe forms must
+			// be normalized to actually be under test.
 			p := entry.MakeProcess(tt.argv, nil, "", "", "")
 			handler, why, claimed := registry.Resolve(p)
 			if claimed != tt.claimed {
@@ -146,18 +146,18 @@ func TestDispatchClaimsAgentInvocations(t *testing.T) {
 			}
 			if !tt.claimed {
 				if len(runtime.calls) != before {
-					t.Fatalf("未被认领却调了 Launch: %v", runtime.calls[before:])
+					t.Fatalf("Launch was called although not claimed: %v", runtime.calls[before:])
 				}
 				return
 			}
 			if handler.Name() != "wrapper" {
-				t.Fatalf("认领者 = %q, want wrapper", handler.Name())
+				t.Fatalf("claimer = %q, want wrapper", handler.Name())
 			}
 			if code := handler.Handle(p); code != 0 {
-				t.Fatalf("Handle 退出码 = %d, want 0", code)
+				t.Fatalf("Handle exit code = %d, want 0", code)
 			}
 			if len(runtime.calls) != before+1 {
-				t.Fatalf("认领了但 Launch 调用次数 = %d, want %d", len(runtime.calls)-before, 1)
+				t.Fatalf("claimed, but Launch call count = %d, want %d", len(runtime.calls)-before, 1)
 			}
 			call := runtime.calls[before]
 			if call.agent != tt.wantID {
@@ -166,30 +166,30 @@ func TestDispatchClaimsAgentInvocations(t *testing.T) {
 			if !reflect.DeepEqual(call.args, tt.wantArgs) {
 				t.Errorf("Launch args = %v, want %v", call.args, tt.wantArgs)
 			}
-			// argv0 分发是**动态模式**：不钉 profile，让代理按请求时的当前配置解析。
-			// 钉死了的话 newgate --set-profile 对跑着的会话就不生效了。
+			// argv0 dispatch is **dynamic mode**: no pinned profile; the proxy resolves from
+			// the config current at request time. Pinning would make --set-profile inert for live sessions.
 			if call.profile != "" {
-				t.Errorf("Launch profile = %q, want 空（argv0 分发必须走动态模式）", call.profile)
+				t.Errorf("Launch profile = %q, want empty (argv0 dispatch must use dynamic mode)", call.profile)
 			}
 		})
 	}
 }
 
-// TestDispatchStripsArgv0 锁住「argv0 不进透传参数」。
-// 真实启动是 syscall.Exec(real, [real]+args, env)，多带一个 argv0 会让
-// claude 把 `claude` 当成要打开的目录。
+// TestDispatchStripsArgv0 pins "argv0 does not enter the passthrough args".
+// The real launch is syscall.Exec(real, [real]+args, env); an extra argv0 makes
+// claude treat `claude` as the directory to open.
 func TestDispatchStripsArgv0(t *testing.T) {
 	registry, runtime := harness(t, &agentapi.Agent{ID: "claude"})
 	p := entry.MakeProcess([]string{"claude", "a", "b"}, nil, "", "", "")
 	handler, why, ok := registry.Resolve(p)
 	if !ok {
-		t.Fatalf("没有任何入口认领 %v（%s）", p.Argv0, why)
+		t.Fatalf("no entry point claimed %v (%s)", p.Argv0, why)
 	}
 	handler.Handle(p)
 	if len(runtime.calls) != 1 {
-		t.Fatalf("Launch 调用次数 = %d, want 1", len(runtime.calls))
+		t.Fatalf("Launch call count = %d, want 1", len(runtime.calls))
 	}
 	if got := runtime.calls[0].args; !reflect.DeepEqual(got, []string{"a", "b"}) {
-		t.Fatalf("透传参数 = %v, want [a b]（argv0 不该出现）", got)
+		t.Fatalf("passthrough args = %v, want [a b] (argv0 must not appear)", got)
 	}
 }

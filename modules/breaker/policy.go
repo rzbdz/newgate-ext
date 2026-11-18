@@ -2,40 +2,46 @@ package breaker
 
 import "time"
 
-// Rule 是一本账的策略。
+// Rule is one ledger's policy.
 type Rule struct {
-	// Threshold 连续失败几次开闸。**0 = 永不摘牌**（只计数），形状账本用。
+	// Threshold: how many consecutive failures open the breaker.
+	// **0 = never delist** (count only), used by the shape ledger.
 	Threshold int
-	// Cooldown 首次隔离时长。
+	// Cooldown: the first quarantine duration.
 	Cooldown time.Duration
-	// Backoff 半开试探又失败时，下次隔离时长乘以它。1 = 不退避。
+	// Backoff: when a half-open trial fails again, the next
+	// quarantine duration is multiplied by it. 1 = no backoff.
 	Backoff float64
-	// MaxCooldown 退避上限。
+	// MaxCooldown: the backoff ceiling.
 	MaxCooldown time.Duration
 }
 
-// Policy 是全部熔断策略。整份可替换（SetPolicy），方便以后挂到 state.json
-// 的热更新上；现在留在 Go 里，因为这一轮要先把机制改对，旋钮后面再说。
+// Policy is the whole breaker policy. The whole thing is replaceable (SetPolicy),
+// so it can later be hung on state.json hot reload; for now it stays in Go,
+// because this round needs the mechanism fixed first, and the knobs come later.
 type Policy struct {
 	Rules map[Bucket]Rule
-	// TrialTTL 是半开试探的存活期。试探发出后这么久还没有结论（客户端中途
-	// 取消、进程被换掉），就当这次试探丢了，允许再放一次——否则一个没回报的
-	// 试探会把 binding 永远卡在「半开、有人正在试」的状态里。
+	// TrialTTL is the lifetime of a half-open trial. If there is no conclusion this long
+	// after the trial was issued (the client cancelled midway, the process was replaced),
+	// the trial is considered lost and another may be let through -- otherwise an
+	// unreported trial would pin the binding forever in "half-open, someone is trying".
 	TrialTTL time.Duration
 }
 
-// DefaultPolicy 是出厂策略。
+// DefaultPolicy is the factory policy.
 //
-// 三本账的数字不是随手取的：
+// The numbers of the three ledgers are not arbitrary:
 //
-//   - 可用性 2 次 / 60s：连续两次真失败基本能排除偶发。60s 是「上游抖一下」
-//     的量级，退避到 10 分钟封顶，避免坏上游被反复放回来撞用户请求。
-//   - 限流 3 次 / 20s：429 是秒级恢复的，用可用性那套 60s×2 去摘它过重——
-//     2026-09-17 之前就是这么干的，一个限流中的 provider 会被摘到 2 分钟。
-//   - 配置 1 次 / 5m / 不退避：401/403 是 key 坏了，404 是这家没这个模型。
-//     两者都是确定性的，试第二次纯属浪费；退避也没意义——重试只是在等用户
-//     去改配置，改成什么样不由我们决定。
-//   - 形状 Threshold 0：永不摘牌。
+//   - availability 2 times / 60s: two real failures in a row basically rule out
+//     flakiness. 60s is the scale of "the upstream hiccups", backing off to a 10-minute
+//     ceiling, so a bad upstream is not repeatedly let back to hit user requests.
+//   - rate limit 3 times / 20s: 429 recovers in seconds, and delisting it
+//     with availability's 60s x 2 is too heavy -- that is what was done before
+//     2026-09-17, and a rate-limited provider was delisted for 2 minutes.
+//   - config 1 time / 5m / no backoff: 401/403 is a bad key, 404 is this one has no such model.
+//     Both are deterministic, a second try is pure waste; backoff is meaningless too -- retrying
+//     is only waiting for the user to change config, and we do not decide what to change it to.
+//   - shape Threshold 0: never delist.
 func DefaultPolicy() Policy {
 	return Policy{
 		Rules: map[Bucket]Rule{
@@ -57,7 +63,7 @@ func DefaultPolicy() Policy {
 	}
 }
 
-// rule 取某本账的策略；表里没写就当「不记」。
+// rule takes one ledger's policy; if the table does not list it, treat it as "record nothing".
 func (p Policy) rule(b Bucket) Rule {
 	if r, ok := p.Rules[b]; ok {
 		return r
@@ -65,7 +71,8 @@ func (p Policy) rule(b Bucket) Rule {
 	return Rule{}
 }
 
-// normalized 补齐零值，让 SetPolicy 的调用方只需要写想改的那几项。
+// normalized fills in zero values, so SetPolicy
+// callers only write the few items they want to change.
 func (p Policy) normalized() Policy {
 	out := DefaultPolicy()
 	if p.TrialTTL > 0 {

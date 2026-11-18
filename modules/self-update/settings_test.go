@@ -11,7 +11,7 @@ import (
 	"github.com/rzbdz/newgate-ext/testing/testkit"
 )
 
-// fakeRepo 造一个「看起来是发行版仓库」的目录：checkRepo 只看这三样。
+// fakeRepo makes a dir that "looks like a distribution repo": checkRepo looks at these three.
 func fakeRepo(t *testing.T, dir string) {
 	t.Helper()
 	for _, p := range []string{".git", "build"} {
@@ -29,8 +29,8 @@ func fakeRepo(t *testing.T, dir string) {
 func TestInfer(t *testing.T) {
 	repo := t.TempDir()
 	fakeRepo(t, repo)
-	// 测试的临时目录本来就在 TMPDIR 下，而 infer 不信临时目录里的源码（那是
-	// `upgrade@<ref>` 的临时 clone）。把 TMPDIR 挪开，repo 才像一份正常的 checkout。
+	// The test temp dir is under TMPDIR, and infer distrusts sources in temp dirs (those
+	// are `upgrade@<ref>` temp clones). Move TMPDIR away, and the repo looks like a checkout.
 	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "elsewhere"))
 
 	if s, sure := infer(repo, "dist.json"); !sure || s.Mode != modeGit || s.Repo != repo {
@@ -42,7 +42,7 @@ func TestInfer(t *testing.T) {
 	if _, sure := infer("", "dist.json"); sure {
 		t.Fatal("no injected source (go run / tests) must not decide anything")
 	}
-	// snode1 的现场：/root 存在但 0700，普通用户 stat 里面的路径是 EACCES。
+	// snode1's live case: /root exists but is 0700, and an ordinary user stat gets EACCES.
 	locked := filepath.Join(repo, "locked")
 	if err := os.MkdirAll(filepath.Join(locked, "src"), 0o755); err != nil {
 		t.Fatal(err)
@@ -69,8 +69,8 @@ func TestInferDistrustsTempDirs(t *testing.T) {
 	}
 }
 
-// 第一次运行时写下决定，但**只在 state.json 已经存在时**：抢在 `newgate init`
-// 之前写一份，会让 init 以为状态已经初始化过了，于是不种端口与缺省 profile。
+// First run writes down its decision, but **only if state.json already exists**:
+// writing one ahead of `newgate init` makes init think state is set up and seed nothing.
 func TestSettingsPersistOnlyIntoAnExistingState(t *testing.T) {
 	testkit.Sandbox(t)
 	if err := paths.EnsureDirs(); err != nil {
@@ -84,7 +84,7 @@ func TestSettingsPersistOnlyIntoAnExistingState(t *testing.T) {
 		t.Fatalf("round trip = %+v, %v", got, ok)
 	}
 
-	// 别人的字段不能被这一段的写入盖掉。
+	// Other people's fields must not be clobbered by this section's write.
 	st := store.LoadState()
 	st.DefaultProfile = "work"
 	if err := store.SaveState(st); err != nil {

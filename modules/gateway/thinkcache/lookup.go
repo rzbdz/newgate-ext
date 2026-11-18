@@ -43,7 +43,7 @@ func keysForAssistantMessage(item []byte) ([]string, bool) {
 
 	ok := true
 	var keys []string
-	for _, tc := range m.ToolCalls { // OpenAI 方言
+	for _, tc := range m.ToolCalls { // the OpenAI dialect
 		if k := ToolKey(tc.ID); k != "" {
 			keys = append(keys, k)
 		}
@@ -52,11 +52,11 @@ func keysForAssistantMessage(item []byte) ([]string, bool) {
 	text := ""
 	if len(m.Content) > 0 {
 		switch m.Content[0] {
-		case '"': // content 是字符串
+		case '"': // content is a plain string
 			if json.Unmarshal(m.Content, &text) != nil {
 				ok = false
 			}
-		case '[': // content 是块数组（Anthropic 方言）
+		case '[': // content is an array of blocks (the Anthropic dialect)
 			var blocks []struct {
 				Type string `json:"type"`
 				Text string `json:"text"`

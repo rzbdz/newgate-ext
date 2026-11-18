@@ -1,25 +1,25 @@
 package runtime
 
-// 本文件是接管状态贡献给 web 界面的那一面：**哪些客户端在走 newgate**。
+// This file is takeover state's face for the web UI: **which clients go through newgate**.
 //
-// 为什么是 runtime 报：接管是本模块写出来的东西——`on/off` 改哪个文件、PATH 里
-// 放了什么、state.json 里记了什么意愿，全是本模块的词汇。界面自己去读那些文件的话，
-// 它就得认识 shim 与 config 两种机制的区别（见 takeover 包），而那正是「谁写的东西
-// 谁自己说」这条规矩要避免的（与 diagnostics.go 把两条体检留在这里同一个理由）。
+// Why runtime reports it: takeover is this module's output - which file `on/off`
+// rewrites, what goes into PATH, what intent state.json holds, are all this module's
+// vocabulary. If the UI read those files it would have to know the shim/config split
+// (see the takeover package), which is what "whoever writes it reports it" avoids.
 //
-// # 四态判据只留一份
+// # The four-state criterion has one copy
 //
-// 「接管没有」不是一个布尔值，是**四种**状态——意愿与现实各有真假，两种不一致
-// 各自对应一个真实故障现场：
+// "Taken over or not" is not a boolean but **four** states - intent and reality each
+// true or false, and both kinds of mismatch map to a real fault scene:
 //
-//	意愿有、现实有  = 接管生效了
-//	意愿有、现实没有 = 声明了却没生效——那个工具在**静默直连**（危险的那一个）
-//	意愿没有、现实有 = 关掉过却没放开——用户以为直连了，其实还在走网关
-//	意愿没有、现实没有 = 直连（正常，用户没想接管它）
+//	wanted, present     = takeover in effect
+//	wanted, absent      = declared but not in effect - the tool connects direct, **silently**
+//	unwanted, present   = turned off but not released - the user thinks direct, still proxied
+//	unwanted, absent    = direct (normal, the user never wanted it taken over)
 //
-// 两种不一致都是「看起来一切正常」的那类错，所以判据写在一个地方（phaseOf），
-// CLI 那行汇总与这张表都从它出发——两个界面对同一份磁盘状态给出不同答案，
-// 比其中一个不显示更糟。
+// Both mismatches are of the "looks perfectly normal" kind, so the criterion lives in
+// place (phaseOf), feeding the CLI summary and this table - two UIs differing on one
+// disk state is worse than one not showing it.
 
 import (
 	"github.com/rzbdz/newgate-ext/lib/view"
@@ -27,49 +27,49 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// takeoverPhase 是一个 agent 此刻处在四种状态的哪一种。
+// takeoverPhase is which of four states an agent is in right now.
 //
-// 四种，不是两种：「接管没有」听起来像二选一，实际上意愿与现实各有真假，而**两种
-// 不一致各自对应一个真实故障现场**（CLI 那行汇总的注释一直把它们称作「两个对称
-// 故障」，但代码从来只为其中一个亮过灯——另一个是 2026-09-20 补上的）。
+// Four, not two: "taken over or not" sounds binary, but intent and reality each have
+// truth values, and **both mismatches map to a real fault scene** (the CLI summary's
+// note always called them "two symmetric faults", yet only one was lit - 2026-09-20).
 type takeoverPhase int
 
 const (
-	// phaseDirect 没接管，也没打算接管。正常态，不是错误。
+	// phaseDirect is not taken over, not meant to be. Normal, not an error.
 	phaseDirect takeoverPhase = iota
-	// phaseActive 接管生效了：磁盘上的现实与用户的意愿一致。
+	// phaseActive is takeover in effect: the reality on disk matches the user's intent.
 	phaseActive
-	// phasePending 用户要求接管，磁盘上却没生效。
+	// phasePending is wanted but not in effect on disk.
 	//
-	// 这是**危险的那一个**：工具会静默直连（请求不经过 newgate），而任何一处单看
-	// 都「正常」。典型成因是 start/build 之后漏了一步 `newgate on`。
+	// This is **the dangerous one**: the tool connects direct, silently (requests bypass
+	// newgate), while everything looks normal. Usually a missed `newgate on` after start.
 	phasePending
-	// phaseStale 用户明确关掉过它，磁盘上却还装着。
+	// phaseStale is explicitly turned off but still on disk.
 	//
-	// 成因是**释放失败**（权限坑：接管时写下的文件被 umask 削成别的用户写不动，
-	// 见 CLAUDE.md §3.1——`Off` 先记意愿再动手，动手失败就留下这个状态）。
+	// Cause: a **failed release** (the permission trap: files written under a umask another
+	// user cannot write, see CLAUDE.md §3.1 - `Off` records intent first, then acts).
 	//
-	// 它不如上一个危险（流量仍然经过网关，是安全的那一侧），但它同样**看不出来**：
-	// 用户以为这个工具直连了，而屏幕上一切正常。所以它是 warn 而不是 bad。
+	// Less dangerous than the last (traffic still goes through the gateway, the safe side),
+	// but equally **invisible**: the user thinks it is direct, and all looks fine. So warn, not bad.
 	phaseStale
-	// phaseAbsent 这台机器上**没有这个工具**。
+	// phaseAbsent: **this tool is not on this machine**.
 	//
-	// 它比另外三种都靠前：没有工具的时候，「接管了没有」这个问题不成立——而磁盘上
-	// 那点痕迹（我们改过的配置文件、我们放的 shim）**照样在**，所以不单独判它的话，
-	// 一个早就卸掉的工具会一直显示 ✓。2026-09-21 实测到：`which opencode` 什么都没有，
-	// 而 status 报「opencode ✓」——因为 opencode 走 config 机制，那一格判的是我们改过
-	// 的 ~/.config/opencode/*.json 在不在。
+	// It outranks the other three: with no tool, "is it taken over" does not apply - while
+	// the traces on disk (the rewritten config, our shim) **remain**, so without a separate
+	// judgment a long-uninstalled tool shows ✓ forever. Measured 2026-09-21: `which
+	// opencode` was empty while status said "opencode ✓" - opencode uses config, and that
+	// cell judged whether our rewritten ~/.config/opencode/*.json exists.
 	//
-	// 判据是 `which` 那一条（见 confighook.Agent.Installed），**排除我们自己的 shim**
-	// ——不排除的话它永远为真，正好退化成它要修的那个 bug。
+	// The criterion is `which`'s (see confighook.Agent.Installed), **excluding our own
+	// shim** - not excluded, it is always true, degrading into the very bug being fixed.
 	phaseAbsent
 )
 
-// phaseOf 是四种状态**唯一**的判据（CLI 的 status 行与 web 那张表都走它）。
+// phaseOf is the **only** criterion for the four states (CLI status and web table).
 //
-// `Wanted` 的缺省是 true（没表过态就算想要，见 domain.State.TakeoverWanted），
-// 所以「没表态」不会落进 phaseStale——这个状态只可能来自用户**明确**关掉过它。
-// 没有这一条的话，从老版本升上来的机器会集体误报（那时的接管没记进 state.json）。
+// `Wanted` defaults to true (no stance counts as wanting it, see
+// domain.State.TakeoverWanted), so "no stance" never lands in phaseStale - it only
+// comes from an **explicit** off. Without this, upgraded old machines would misreport.
 func phaseOf(s takeover.Status) takeoverPhase {
 	switch {
 	case !s.Installed:
@@ -85,11 +85,11 @@ func phaseOf(s takeover.Status) takeoverPhase {
 	}
 }
 
-// takeoverConcepts 是接管这一刻的样子。
+// takeoverConcepts is takeover as of this moment.
 //
-// 报**全部** agent（不只是异常的）：这张表回答的是「谁在走 newgate」，而
-// 「claude 在走、opencode 没在走」是同一个答案的两半——只报异常的话，用户看不出
-// 「另一个工具是不是也被接管了」。
+// Reports **every** agent (not just anomalies): the table answers "who goes through
+// newgate", and "claude does, opencode does not" are two halves of one answer -
+// anomalies only, and the user cannot tell whether the other tool was taken over.
 func takeoverConcepts() ([]view.Concept, error) {
 	return []view.Concept{{
 		ID:    "runtime.takeover",
@@ -99,18 +99,18 @@ func takeoverConcepts() ([]view.Concept, error) {
 	}}, nil
 }
 
-// takeoverTable 把一组接管状态摆成一张表。
+// takeoverTable lays a set of takeover states out as a table.
 //
-// 它是**纯函数**（喂一组状态进去），因为要钉住的东西正好与机器无关：四态怎么翻、
-// 危险的那一种有没有颜色。环境那半边（`takeover.List()` 怎么算出这些行）由
-// takeover 包自己的测试守。
+// It is a **pure function** (feed it states), because what must be pinned is
+// machine-independent: how the four states translate, and whether the dangerous one has
+// color. The environment half (`takeover.List()`) is guarded by the takeover package's tests.
 func takeoverTable(rows []takeover.Status) view.Table {
 	table := view.Table{
 		Columns: []view.Column{
 			{ID: "agent", Label: i18n.T("agent", nil)},
 			{ID: "state", Label: i18n.T("State", nil)},
-			// 机制名（shim / config）是机器标记：它同时也是 `newgate doctor`
-			// 与 takeover 包里的取值，翻它等于造一套只有界面认识的词汇。
+			// The mechanism name (shim / config) is a machine tag: also the value in
+			// `newgate doctor` and the takeover package, so translating it invents vocabulary.
 			{ID: "mechanism", Label: i18n.T("Mechanism", nil)},
 			{ID: "detail", Label: i18n.T("How", nil)},
 		},
@@ -128,34 +128,34 @@ func takeoverTable(rows []takeover.Status) view.Table {
 	return table
 }
 
-// stateCell 把四种状态翻成人话 + 语义色。
+// stateCell turns the four states into plain words plus a semantic color.
 func stateCell(s takeover.Status) (string, string) {
 	switch phaseOf(s) {
 	case phaseActive:
 		return i18n.T("taken over", nil), view.ToneOK
 	case phasePending:
-		// 危险的是**没生效**那一半，所以文案要点明「没生效」，而不是只说
-		// 「要求接管」——后者读起来像已经成了。
+		// The dangerous half is **not in effect**, so the wording must say that, not just
+		// "wanted" - the latter reads as if it already worked.
 		return i18n.T("declared but not in effect", nil), view.ToneBad
 	case phaseStale:
-		// 同样要点明「没生效」，而且要说明**是哪一半没生效**：用户关过它，
-		// 所以「还接着」才是那个意外。tone 是 warn 不是 bad——流量仍然经过
-		// 网关，是安全的那一侧（见 phaseStale 的注释）。
+		// Also say **not in effect**, and **which half**: the user turned it off, so "still
+		// connected" is the surprise. Tone is warn, not bad - traffic still goes through the
+		// gateway, the safe side (see phaseStale).
 		return i18n.T("turned off but still in effect", nil), view.ToneWarn
 	case phaseAbsent:
-		// 不画成错：没装不是什么故障，只是这台机器上没有它。但它也**不能**画成
-		// 「直连」（那读起来像「它在，只是没接管」）。所以给一句自己的话、不给颜色
-		// ——Tone 只有 ok/warn/bad 三个值，硬套一个都是在说「这出事了」。
+		// Not drawn as an error: not installed is no fault, just absent here. But it also
+		// **must not** read "direct" ("it is here, just not taken over"). So: its own words,
+		// no color - Tone only has ok/warn/bad, and any of them says "something happened".
 		return i18n.T("not installed", nil), ""
 	default:
 		return i18n.T("direct", nil), ""
 	}
 }
 
-// dashIfEmpty 给空值一个显式的占位符。
+// dashIfEmpty gives an empty value an explicit placeholder.
 //
-// 空格子与「这一格是空的」在界面上长得一样，而它们的意思不同：前者读起来像
-// 「这里出了问题」或者「没加载出来」。横杠说清楚「这里就是没有」。
+// An empty cell and "this cell is empty" look alike on screen but mean different things:
+// the former reads like "something broke here" or "it did not load". A dash says "none".
 func dashIfEmpty(s string) view.Cell {
 	if s == "" {
 		return view.Cell{Text: "-"}

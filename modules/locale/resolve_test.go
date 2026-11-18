@@ -23,44 +23,44 @@ func TestResolveOrder(t *testing.T) {
 		wantSource Source
 	}{
 		{
-			name:       "NEWGATE_LANG 压过一切",
+			name:       "NEWGATE_LANG beats everything",
 			env:        map[string]string{"NEWGATE_LANG": "zh-Hans", "LANG": "en_US.UTF-8"},
 			configured: "de",
 			wantTag:    "zh-Hans", wantSource: SourceEnvOverride,
 		},
 		{
-			name:       "配置压过 LANG（英文系统想读中文就靠这条）",
+			name:       "config beats LANG (this is how an English system reads Chinese)",
 			env:        map[string]string{"LANG": "en_US.UTF-8"},
 			configured: "zh-Hans",
 			wantTag:    "zh-Hans", wantSource: SourceConfig,
 		},
 		{
-			name:    "没有配置时跟随 LANG",
+			name:    "follow LANG when there is no config",
 			env:     map[string]string{"LANG": "zh_CN.UTF-8"},
 			wantTag: "zh-CN", wantSource: SourceSystem,
 		},
 		{
-			name:    "LC_ALL 压过 LC_MESSAGES 压过 LANG",
+			name:    "LC_ALL beats LC_MESSAGES beats LANG",
 			env:     map[string]string{"LC_ALL": "zh_TW.UTF-8", "LC_MESSAGES": "en_US.UTF-8", "LANG": "de_DE.UTF-8"},
 			wantTag: "zh-TW", wantSource: SourceSystem,
 		},
 		{
-			name:    "LANG=C 等于没意见",
+			name:    "LANG=C means no opinion",
 			env:     map[string]string{"LANG": "C"},
 			wantTag: "en", wantSource: SourceDefault,
 		},
 		{
-			name:    "LANG=POSIX 等于没意见",
+			name:    "LANG=POSIX means no opinion",
 			env:     map[string]string{"LANG": "POSIX"},
 			wantTag: "en", wantSource: SourceDefault,
 		},
 		{
-			name:    "什么都没有 → 源语言",
+			name:    "nothing at all -> the source language",
 			env:     map[string]string{},
 			wantTag: "en", wantSource: SourceDefault,
 		},
 		{
-			name:    "空串的 NEWGATE_LANG 不算数",
+			name:    "an empty NEWGATE_LANG does not count",
 			env:     map[string]string{"NEWGATE_LANG": "", "LANG": "zh_CN.UTF-8"},
 			wantTag: "zh-CN", wantSource: SourceSystem,
 		},
@@ -69,7 +69,7 @@ func TestResolveOrder(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			got := resolve(env(tc.env), tc.configured)
 			if got.Tag != tc.wantTag || got.Source != tc.wantSource {
-				t.Errorf("resolve = {%q, %q}，期望 {%q, %q}",
+				t.Errorf("resolve = {%q, %q}, want {%q, %q}",
 					got.Tag, got.Source, tc.wantTag, tc.wantSource)
 			}
 		})

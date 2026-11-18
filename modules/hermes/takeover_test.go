@@ -50,7 +50,7 @@ func TestCatalogListsTiersAndEachProfilesModels(t *testing.T) {
 		keys = append(keys, e.K)
 	}
 	if strings.Join(keys, ",") != "newgate,newgate-ds,newgate-complex" {
-		t.Fatalf("行 = %v", keys)
+		t.Fatalf("lines = %v", keys)
 	}
 	models := func(i int) []string {
 		var out []string
@@ -64,19 +64,19 @@ func TestCatalogListsTiersAndEachProfilesModels(t *testing.T) {
 		return out
 	}
 	if got := strings.Join(models(0), ","); got != strings.Join(domain.Roles, ",") {
-		t.Errorf("跟着走那一行只列档位：%s", got)
+		t.Errorf("the follow line should list tiers only: %s", got)
 	}
 	got := strings.Join(models(2), ",")
 	if !strings.Contains(got, "smt-claude/claude-opus-5-5") || !strings.Contains(got, "smt-codex/gpt-5.6-luna") {
-		t.Errorf("钉住那一行要列出具体模型：%s", got)
+		t.Errorf("the pin line must list concrete models: %s", got)
 	}
 	// 模型名自己带 `/` 的点不中（NormalizeRole 取最后一段），不许列出来。
 	if strings.Contains(got, "gemini-3-pro") {
-		t.Errorf("带 / 的模型名不该列：%s", got)
+		t.Errorf("model names containing / must not be listed: %s", got)
 	}
 	skipped := strings.Join(c.Skipped, "|")
 	if !strings.Contains(skipped, "google/gemini-3-pro") || !strings.Contains(skipped, `"has space"`) {
-		t.Errorf("跳过的要报出来：%v", c.Skipped)
+		t.Errorf("skipped ones must be reported: %v", c.Skipped)
 	}
 }
 
@@ -92,7 +92,7 @@ func TestPinnedRowsCarryTheProfileInTheURL(t *testing.T) {
 		}
 		want := "/a/hermes/p/" + strings.TrimPrefix(e.K, "newgate-") + "/v1"
 		if !strings.HasSuffix(url, want) {
-			t.Errorf("%s 的 base_url = %s，想要 …%s", e.K, url, want)
+			t.Errorf("base_url of %s = %s, want ...%s", e.K, url, want)
 		}
 	}
 }
@@ -109,7 +109,7 @@ func TestFullEditsPointEverythingAtTheProxy(t *testing.T) {
 	}
 	out := d.String()
 	if _, err := verifyEdits(sampleYAML, out, edits, ""); err != nil {
-		t.Fatalf("复核没过：%v\n%s", err, out)
+		t.Fatalf("verification failed: %v\n%s", err, out)
 	}
 	r := parseDoc(out)
 	for path, want := range map[string]string{
@@ -132,12 +132,12 @@ func TestFullEditsPointEverythingAtTheProxy(t *testing.T) {
 		if want == "" {
 			s, found := r.lookup(strings.Split(path, ".")...)
 			if !found || valueOf(r.lines[s.head]) != `""` {
-				t.Errorf("%s 该清空成 \"\"", path)
+				t.Errorf("%s should be cleared to \"\"", path)
 			}
 			continue
 		}
 		if !ok || got != want {
-			t.Errorf("%s = %q，想要 %q", path, got, want)
+			t.Errorf("%s = %q, want %q", path, got, want)
 		}
 	}
 	// 别人的东西：一字不动。
@@ -148,14 +148,14 @@ func TestFullEditsPointEverythingAtTheProxy(t *testing.T) {
 		"  max_iterations: 50",
 	} {
 		if !strings.Contains(out, keep) {
-			t.Errorf("这一行不该被动：%q", keep)
+			t.Errorf("this line must not be touched: %q", keep)
 		}
 	}
 	// 幂等：再算一次没有任何改动。
 	again, _ := fullEdits(r, sampleInputs())
 	for _, e := range again {
 		if changed, _ := r.put(e); changed {
-			t.Errorf("第二次接管不该再改 %v", e.Path)
+			t.Errorf("a second takeover must not change %v again", e.Path)
 		}
 	}
 }
@@ -172,10 +172,10 @@ func TestCatalogKeepsAReferencedStaleRow(t *testing.T) {
 		}
 	}
 	if strings.Join(removed, ",") != "newgate-gone" {
-		t.Errorf("只该删没人用的那一行，实际删 %v", removed)
+		t.Errorf("only the unused line should be deleted, actually deleted %v", removed)
 	}
 	if !strings.Contains(strings.Join(c.Skipped, "|"), "newgate-old") {
-		t.Errorf("留下的那一行要报出来：%v", c.Skipped)
+		t.Errorf("the kept line must be reported: %v", c.Skipped)
 	}
 }
 
@@ -208,11 +208,11 @@ func TestTakeoverRoundTripKeepsWhatHermesWroteMeanwhile(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !(Takeover{}).IsTakenOver(target) {
-		t.Fatal("接管完该认得出来")
+		t.Fatal("after takeover it should be recognizable")
 	}
 	b, _ := ioutil.ReadFile(target)
 	if !strings.Contains(string(b), "newgate-ds:") {
-		t.Fatalf("profile 那一行该在\n%s", b)
+		t.Fatalf("the profile line should be there\n%s", b)
 	}
 	// 用户在接管期间改了一个与我们无关的键（hermes config set 那种）。
 	b = []byte(strings.Replace(string(b), "  max_turns: 90", "  max_turns: 120", 1))
@@ -231,13 +231,13 @@ func TestTakeoverRoundTripKeepsWhatHermesWroteMeanwhile(t *testing.T) {
 		got = strings.Replace(got, "  "+t+": {}\n", "", 1)
 	}
 	if got != want {
-		t.Errorf("还原之后应 = 原件 + 用户那一处改动\n--- got ---\n%s\n--- want ---\n%s", got, want)
+		t.Errorf("after restore it should be original + that one user change\n--- got ---\n%s\n--- want ---\n%s", got, want)
 	}
 	if (Takeover{}).IsTakenOver(target) {
-		t.Error("还原之后不该再认成已接管")
+		t.Error("after restore it must no longer be recognized as taken over")
 	}
 	if _, err := os.Stat(agentapi.OriginalPath(target)); err != nil {
-		t.Errorf("原件要留着（逃生舱）：%v", err)
+		t.Errorf("the original must be kept (escape hatch): %v", err)
 	}
 }
 
@@ -259,19 +259,19 @@ func TestSyncLeavesTheSlotsAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 	if stale, err := staleCatalog(); err != nil || !stale {
-		t.Fatalf("加了 profile 之后清单该过期（stale=%v err=%v）", stale, err)
+		t.Fatalf("after adding a profile the list should be stale (stale=%v err=%v)", stale, err)
 	}
 	syncOnce()
 	after, _ := ioutil.ReadFile(target)
 	s := string(after)
 	if !strings.Contains(s, "newgate-kimi:") || !strings.Contains(s, "kimi/kimi-k3") {
-		t.Errorf("新 profile 该同步进来\n%s", s)
+		t.Errorf("the new profile should be synced in\n%s", s)
 	}
 	if !strings.Contains(s, "  default: smt-deepseek/deepseek-flash") || !strings.Contains(s, "model:\n  provider: newgate-ds\n") {
-		t.Errorf("用户选的主模型不许被改回去\n%s", s)
+		t.Errorf("the main model the user chose must not be changed back\n%s", s)
 	}
 	if stale, _ := staleCatalog(); stale {
-		t.Error("同步之后不该还是过期")
+		t.Error("after syncing it should no longer be stale")
 	}
 }
 
@@ -282,10 +282,10 @@ func TestApplyWithoutAConfigDoesNotCreateOne(t *testing.T) {
 	t.Setenv("HERMES_HOME", dir)
 	reps, err := (Takeover{}).Apply(8899)
 	if err != nil || len(reps) != 1 || reps[0].Skipped == "" {
-		t.Fatalf("该跳过并说明原因：%+v %v", reps, err)
+		t.Fatalf("it should skip and state the reason: %+v %v", reps, err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "config.yaml")); err == nil {
-		t.Error("不该替 hermes 建配置")
+		t.Error("it must not create a config for hermes")
 	}
 }
 
@@ -295,11 +295,11 @@ func TestWriteIfUnchangedRefusesARacingWriter(t *testing.T) {
 	p := filepath.Join(dir, "c.yaml")
 	_ = ioutil.WriteFile(p, []byte("a: 2\n"), 0o600)
 	if err := writeIfUnchanged(p, []byte("a: 1\n"), []byte("a: 3\n")); err == nil {
-		t.Error("基线对不上该拒绝")
+		t.Error("a stale baseline should be refused")
 	}
 	b, _ := ioutil.ReadFile(p)
 	if string(b) != "a: 2\n" {
-		t.Errorf("文件不该被动：%s", b)
+		t.Errorf("the file must not be touched: %s", b)
 	}
 }
 
@@ -311,12 +311,12 @@ func TestAuxiliaryWithStrayScalarsIsStillTakenOver(t *testing.T) {
 	edits, _ := fullEdits(d, sampleInputs())
 	for _, e := range edits {
 		if _, err := d.put(e); err != nil {
-			t.Fatalf("混进来的标量不该挡住接管：%v", err)
+			t.Fatalf("a stray scalar must not block takeover: %v", err)
 		}
 	}
 	out := d.String()
 	if !strings.Contains(out, "  compact: false\n  skin: default\n") {
-		t.Errorf("那两个标量要原样留着\n%s", out)
+		t.Errorf("those two scalars must be kept as is\n%s", out)
 	}
 	if _, err := verifyEdits(src, out, edits, ""); err != nil {
 		t.Fatal(err)
@@ -328,16 +328,16 @@ func TestModelsListerMatchesTheCatalog(t *testing.T) {
 	sandbox(t)
 	ids, ok := modelsLister{}.ListModels(ID, "ds")
 	if !ok || strings.Join(ids, ",") != strings.Join(domain.Roles, ",")+",smt-deepseek/deepseek-flash" {
-		t.Errorf("钉住 ds = %v %v", ids, ok)
+		t.Errorf("pinning ds = %v %v", ids, ok)
 	}
 	if ids, ok := (modelsLister{}).ListModels(ID, ""); !ok || strings.Join(ids, ",") != strings.Join(domain.Roles, ",") {
-		t.Errorf("跟着走那一行只列档位：%v", ids)
+		t.Errorf("the follow line should list tiers only: %v", ids)
 	}
 	if _, ok := (modelsLister{}).ListModels("claude", ""); ok {
-		t.Error("别的客户端不归它答")
+		t.Error("other clients are not its business")
 	}
 	if _, ok := (modelsLister{}).ListModels(ID, "nope"); ok {
-		t.Error("不存在的 profile 交回缺省清单")
+		t.Error("a nonexistent profile gets the default list")
 	}
 }
 
@@ -361,7 +361,7 @@ func TestSyncOnlyByTheDaemonTheFilePointsAt(t *testing.T) {
 	syncOnce()
 	after, _ := ioutil.ReadFile(target)
 	if string(after) != string(before) {
-		t.Errorf("文件指着 8899，18950 那个守护进程不该动它")
+		t.Errorf("the file points at 8899; the daemon on 18950 must not touch it")
 	}
 }
 
@@ -392,7 +392,7 @@ func TestHermesPythonRejectsANonPythonLauncher(t *testing.T) {
 	// 把它当解释器拿去跑一段 python，就是 2026-11-17 那次卡住的现场。
 	sh := writeLauncher("#!/bin/sh\nexec \"$HOME/.hermes/hermes-agent/.hermes/bin/hermes\" \"$@\"\n")
 	if got := pythonFor(sh); got != "" {
-		t.Fatalf("把 %q 当成了 hermes 的 python 解释器（那会让 verify 卡住）", got)
+		t.Fatalf("it treated %q as the hermes python interpreter (that would hang verify)", got)
 	}
 
 	// 真的 python 入口：认它（两种 shebang 写法都要认——venv 用绝对路径，
@@ -404,10 +404,10 @@ func TestHermesPythonRejectsANonPythonLauncher(t *testing.T) {
 		p := writeLauncher(body)
 		got := pythonFor(p)
 		if got == "" {
-			t.Fatalf("认不出 %q 那种 shebang", strings.TrimSpace(body))
+			t.Fatalf("cannot recognize that kind of shebang: %q", strings.TrimSpace(body))
 		}
 		if base := filepath.Base(got); !strings.HasPrefix(base, "python") {
-			t.Fatalf("返回的不是 python：%q", got)
+			t.Fatalf("it did not return python: %q", got)
 		}
 	}
 }

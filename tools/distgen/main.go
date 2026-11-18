@@ -1,25 +1,25 @@
-// Command distgen 在构建期把仓库根的规格书（dist*.json）编译成装配清单。
+// Command distgen compiles the repo-root specs (dist*.json) into the assembly manifest.
 //
-// 它是内核 tools/genmodules 的**发行版那一半**：内核的生成器扫自己的 modules/
-// 得到「内核有哪些模块」（app.CoreModules()），本工具把规格书点名的那几个自己的
-// 模块 + 要关掉的内核模块，编译成一张 map[规格书名]app.Selection。
+// It is the **distribution half** of the kernel's tools/genmodules: the kernel's
+// generator scans its own modules/ for the module list (app.CoreModules()); this tool
+// compiles the spec-named own modules + the kernel modules to disable into a
+// map[spec name]app.Selection.
 //
-// 为什么要有这一步（而不是让 main 手写一行行 app.Entry）
+// Why this step (rather than main hand-writing app.Entry lines)
 //
-// 同内核那条理由：「装哪些模块」从目录结构里就能读出来，手抄一遍没有信息量，
-// 却有三个地方要同步（加目录、加 import、加一行）。装一个模块 = 把目录复制进
-// modules/、把名字写进规格书、重新编译。
+// Same reason as the kernel: "which modules are installed" is readable from the
+// directory structure; a hand copy has no information and three places to sync.
+// Install a module = copy the dir into modules/, write its name into the spec, rebuild.
 //
-// 判据与内核共用一把尺子（tools/genmodules/scan）——「哪些目录算组件」与
-// 「目录名怎么拧成 import 别名」都只有一份实现，否则同一个目录名会在两个仓库里
-// 得到两种解释。
+// The criterion shares one ruler with the kernel (tools/genmodules/scan) - "which
+// dirs count as components" and "how a dir name twists into an import alias" have one
+// implementation, or one dir name gets two readings in two repos.
 //
-// # 一份生成物装下全部规格书
+// # One artifact holds every spec
 //
-// 每份规格书各得一条 app.Selection，**同时**生成在 manifest/modules_gen.go 里，
-// 构建时用 -ldflags -X distinfo.spec=<文件名> 选一份。这样 -check 一次就能校验全部
-// 变体：一份坏掉的 dist-simple-cli.json 会让默认构建就红——而不是等到有人真的
-// 编那个变体时才发现，那时离「谁改坏了哪一行」已经很远了。
+// Each spec gets an app.Selection, **all** generated into manifest/modules_gen.go; the
+// build picks one with -ldflags -X distinfo.spec=<file>, so -check validates all
+// variants at once: a broken dist-simple-cli.json reddens the default build, not later.
 package main
 
 import (
@@ -41,75 +41,75 @@ import (
 )
 
 const (
-	// importPath 是本 module 的路径：生成的清单 import 自己的模块时用它。
+	// importPath is this module's path: the generated manifest imports its own modules with it.
 	importPath = "github.com/rzbdz/newgate-ext"
-	// coreImportPath 是内核 module 的路径（生成物 import app 与 component 用它）。
+	// coreImportPath is the kernel module's path (the output imports app and component).
 	coreImportPath = "github.com/rzbdz/newgate"
-	// modulesRelDir 是自己的模块目录（相对模块根 = 仓库根）。
+	// modulesRelDir is the own modules directory (relative to module root = repo root).
 	modulesRelDir = "modules"
-	// genPkgDir/genFileName 是生成物的位置。刻意**不叫** dist/：那个目录是
-	// build/build.sh 的二进制输出口，两个东西同名会让人对着 gitignore 猜。
+	// genPkgDir/genFileName is where the output goes. Deliberately **not** dist/: that is
+	// build/build.sh's binary output, and two things of one name make people guess at .gitignore.
 	genPkgDir   = "manifest"
 	genFileName = "modules_gen.go"
-	// orderGenFileName 是**第二份**生成物：启动顺序（见 renderOrder）。
+	// orderGenFileName is **the second** artifact: start order (see renderOrder).
 	orderGenFileName = "order_gen.go"
-	// infoPkgDir/infoFileName 是**第三份**生成物：每份规格书的身份（叫什么、从哪个
-	// GitHub 仓库发布）。它单独成一个叶子包，因为读它的是**模块**（self-update
-	// 要知道自己该下哪个产物），而 manifest 包 import 了每一个模块——模块抬头
-	// import manifest 就是编译环（arch-diagram 实测撞过同一堵墙）。
+	// infoPkgDir/infoFileName is **the third** artifact: each spec's identity (its name,
+	// which GitHub repo it ships from). A separate leaf package because **modules**
+	// read it (self-update needs to know which artifact to download), and manifest
+	// imports every module - module -> manifest is a compile cycle (arch-diagram hit it).
 	infoPkgDir   = "manifest/distinfo"
 	infoFileName = "specs_gen.go"
-	// orderProbeDir 是算顺序的那个探针程序（见它的包注释）。
+	// orderProbeDir is the probe program that computes order (see its package doc).
 	orderProbeDir = "tools/distgen/orderprobe"
-	// specGlob 是规格书的文件名模式（dist.json / dist-simple-cli.json）。
+	// specGlob is the spec file pattern (dist.json / dist-simple-cli.json).
 	specGlob = "dist*.json"
-	// defaultSpec 是没注入 -ldflags -X distinfo.spec 时用的那一份。
+	// specGlob is the spec file pattern (dist.json / dist-simple-cli.json).
 	defaultSpec = "dist.json"
-	// disableAllToken 是规格书里「内核自带的全都不要」的写法：`"disable": ["*"]`。
+	// disableAllToken is the spec spelling for "all of the kernel's off", `["*"]`.
 	//
-	// 为什么要有它：列满目录名的写法带一份**会腐坏的副本**——内核往 CoreModules()
-	// 里加一个模块时，那份名单不会跟着长，于是「我以为全关掉了」的发行版悄悄多装了
-	// 一个模块，而且不报错。`*` 编成 app.Selection.AllCore，跟着内核的模块表一起长。
+	// Why: listing directory names carries **a copy that rots** - a module added to
+	// CoreModules() does not grow that list, so a distribution meant to be off
+	// silently gains one module, with no error. `*` compiles to app.Selection.AllCore.
 	//
-	// 它只在**规格书**这一层（产品数据）：内核那边的字段叫 AllCore，是个布尔值，
-	// 不需要认识任何字符串记号。
+	// It lives only at the **spec** level (product data): the kernel field AllCore is
+	// a bool and needs to know no string token.
 	disableAllToken = "*"
 )
 
-// githubRepo 是 `owner/repo` 的形状。宽松到 GitHub 自己允许的字符，严格到拒掉
-// 最常见的两种写法错误：整条 URL 与带 `.git` 的克隆地址。
+// githubRepo is the shape of `owner/repo`. Loose as GitHub itself allows, strict enough to
+// reject the two commonest mistakes: a full URL, and a clone address with `.git`.
 var githubRepo = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+$`)
 
-// spec 是规格书（Spec）：本发行版由哪些模块组成、关掉内核的哪几个。
+// spec is a spec (Spec): which modules this distribution consists of, which kernel ones are off.
 //
-// DisallowUnknownFields 是刻意的：写错一个键名（"module" / "disabled"）如果被
-// 静默忽略，症状是「我明明配了，怎么没生效」——那要等到运行期少了个功能才暴露。
+// DisallowUnknownFields is deliberate: a misspelled key ("module" / "disabled") silently
+// ignored gives "I configured it, why no effect" - only visible at runtime as a missing feature.
 type spec struct {
 	Distribution string   `json:"distribution"`
 	Modules      []string `json:"modules"`
 	Disable      []string `json:"disable"`
-	// GitHub 是这份发行版**发布在哪**（`owner/repo`）：自更新从这个仓库的 Release
-	// 下产物、从它的源码编某个 tag。可以不写——不写的规格书就没有「从 Release
-	// 升级」这条路，只能在本地仓库里编（见 modules/self-update）。
+	// GitHub is **where this distribution ships** (`owner/repo`): self-update downloads
+	// artifacts from this repo's Release and builds a tag from its source. Optional -
+	// without it there is no "upgrade from Release", only a local build (see modules/self-update).
 	//
-	// 它在规格书里而不是在模块里，因为「发在哪」是**发行版**的事实：fork 的人
-	// 改这一行就把升级通道接到自己的仓库，不用碰任何 Go 代码。
+	// It is in the spec, not the module, because "where it ships" is a **distribution**
+	// fact: forking changes this line to point the upgrade channel at your repo, no Go code.
 	GitHub string `json:"github,omitempty"`
 }
 
-// module 是一个待装配的自有模块目录。
+// module is one own module directory to assemble.
 type module struct {
-	dir   string // modules/ 下的目录名
-	path  string // 相对模块根的 import 路径后缀
-	alias string // 生成的 import 别名
+	dir   string // the directory name under modules/
+	path  string // import path suffix relative to the module root
+	alias string // the generated import alias
 }
 
 func main() {
 	check := flag.Bool("check", false,
-		"只校验生成结果是否与规格书一致，不写文件（CI/测试用）")
+		"only check whether the generated output matches the spec, do not write files (for CI/tests)")
 	flag.Parse()
 
-	// 摊平之后（2026-09-20）：模块根就是仓库根——Go 代码在仓库根，规格书也在。
+	// Flattened (2026-09-20): the module root is the repo root - Go code and specs live there.
 	root, err := moduleRoot()
 	repoRoot := root
 	if err != nil {
@@ -130,20 +130,20 @@ func main() {
 
 	content, err := format.Source(render(mods, specs, names))
 	if err != nil {
-		fail(fmt.Errorf("生成的源码不合法（这是生成器的 bug）: %w", err))
+		fail(fmt.Errorf("the generated source is invalid (this is a generator bug): %w", err))
 	}
 	target := filepath.Join(root, genPkgDir, genFileName)
 	orderTarget := filepath.Join(root, genPkgDir, orderGenFileName)
 	infoTarget := filepath.Join(root, infoPkgDir, infoFileName)
 	infoContent, err := format.Source(renderInfo(specs, names))
 	if err != nil {
-		fail(fmt.Errorf("生成的源码不合法（这是生成器的 bug）: %w", err))
+		fail(fmt.Errorf("the generated source is invalid (this is a generator bug): %w", err))
 	}
 
-	// **先后问题**：上面那份清单会引用 order_gen.go 里的 startOrder（把构建期算好的
-	// 启动顺序贴回每份规格书）。而第一次生成时它还不存在——那样这个包根本编不过，
-	// 下面那个探针也就跑不起来。所以先放一份空的进去占位，探针跑完再写真的。
-	// 空表是完全合法的：Selection.Order 为空 = 运行期自己排序。
+	// **Ordering problem**: the listing above references startOrder from order_gen.go
+	// (pasting build-time order back into each spec). On the first run it does not
+	// exist, the package does not compile, the probe cannot run - so an empty
+	// placeholder first. Empty is legal: no order = sort at runtime.
 	if _, err := os.Stat(orderTarget); err != nil {
 		if !*check {
 			if err := os.MkdirAll(filepath.Dir(orderTarget), 0o755); err != nil {
@@ -162,7 +162,7 @@ func main() {
 		}{{target, content}, {infoTarget, infoContent}} {
 			current, err := os.ReadFile(f.path)
 			if err != nil || !bytes.Equal(current, f.want) {
-				fail(fmt.Errorf("%s 已过期：运行 `go run ./tools/distgen` 后重新提交", f.path))
+				fail(fmt.Errorf("%s is stale: run `go run ./tools/distgen` and commit again", f.path))
 			}
 		}
 	}
@@ -181,11 +181,11 @@ func main() {
 		}
 	}
 
-	// 第二趟：**新起一个进程**跑真的装配解析，拿回每份规格书的启动顺序。
+	// Second pass: **start a new process** running the real assembly resolution for order.
 	//
-	// 为什么必须是新进程：本进程里那份 manifest 是编译进来的，也就是上一次生成的
-	// 结果。规格书刚改过时（加了模块、换了 disable），用旧清单算出来的顺序会悄悄
-	// 地错——而「顺序错了」的症状离「清单过期」非常远。
+	// Why a new process: this process's manifest is **compiled in** - the previous
+	// generation. A just-edited spec gets silently wrong order from the old manifest,
+	// and "wrong order" is miles from "stale manifest".
 	orderContent, err := renderOrder(root, names)
 	if err != nil {
 		fail(err)
@@ -193,50 +193,52 @@ func main() {
 	if *check {
 		current, err := os.ReadFile(orderTarget)
 		if err != nil || !bytes.Equal(current, orderContent) {
-			fail(fmt.Errorf("%s 已过期：运行 `go run ./tools/distgen` 后重新提交", orderTarget))
+			fail(fmt.Errorf("%s is stale: run `go run ./tools/distgen` and commit again", orderTarget))
 		}
-		fmt.Printf("distgen: %d 份规格书 × %d 个自有模块，三份生成物都是新的\n",
+		fmt.Printf("distgen: %d specs x %d own modules, all three generated files are fresh\n",
 			len(names), len(mods))
 		return
 	}
 	if err := os.WriteFile(orderTarget, orderContent, 0o644); err != nil {
 		fail(err)
 	}
-	fmt.Printf("distgen: %d 份规格书 × %d 个自有模块 → %s, %s, %s\n",
+	fmt.Printf("distgen: %d specs x %d own modules -> %s, %s, %s\n",
 		len(names), len(mods), target, orderTarget, infoTarget)
 }
 
-// renderOrder 跑 tools/distgen/orderprobe，把它打出来的顺序编成 order_gen.go。
+// renderOrder runs tools/distgen/orderprobe and compiles its printed order into order_gen.go.
 func renderOrder(root string, names []string) ([]byte, error) {
 	cmd := exec.Command("go", "run", "./"+orderProbeDir)
 	cmd.Dir = root
 	cmd.Stderr = os.Stderr
 	raw, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("跑 %s 失败（规格书装不起来？）: %w", orderProbeDir, err)
+		return nil, fmt.Errorf("running %s failed (does the spec not assemble?): %w", orderProbeDir, err)
 	}
 	var order map[string][]string
 	if err := json.Unmarshal(raw, &order); err != nil {
-		return nil, fmt.Errorf("读不懂 %s 的输出: %w", orderProbeDir, err)
+		return nil, fmt.Errorf("cannot parse the output of %s: %w", orderProbeDir, err)
 	}
 
 	var b bytes.Buffer
 	b.WriteString("// Code generated by tools/distgen. DO NOT EDIT.\n")
 	b.WriteString("//\n")
-	b.WriteString("// 每份规格书的**启动顺序**，构建期算好。生成方式是跑一遍 `component.Resolve`\n")
-	b.WriteString("// （见 tools/distgen/orderprobe）——也就是**同一份实现**算完之后冻下来，\n")
-	b.WriteString("// 不是另写一份算出来的，所以不存在「两份实现漂移」那种故障。\n")
+	b.WriteString("// Each spec's **start order**, computed at build time. It is produced by running\n")
+	b.WriteString("// `component.Resolve` once (see tools/distgen/orderprobe) -- the **same implementation**\n")
+	b.WriteString("// is computed once and then frozen, not reimplemented here, so there is no\n")
+	b.WriteString("// \"two implementations drift apart\" failure mode.\n")
 	b.WriteString("//\n")
-	b.WriteString("// 为什么要有它：启动顺序只跟「装了哪些模块」有关，而那在这一层是编译期事实。\n")
-	b.WriteString("// 每次进程调用再推一遍是白算的，而这件事**每次都要付**（每敲一条 CLI、\n")
-	b.WriteString("// 每次起 web 后端）。见 app.Selection.Order 与 component.resolve 的快路径。\n")
+	b.WriteString("// Why it exists: the start order depends only on which modules are installed, and\n")
+	b.WriteString("// at this layer that is a compile-time fact. Recomputing it on every process\n")
+	b.WriteString("// invocation is wasted work that **is paid every time** (every CLI command, every\n")
+	b.WriteString("// web backend start). See app.Selection.Order and component.resolve's fast path.\n")
 	b.WriteString("package manifest\n\n")
-	b.WriteString("// startOrder 是规格书名 → 按启动顺序排好的组件名。\n")
+	b.WriteString("// startOrder is spec name -> component names in start order.\n")
 	b.WriteString("var startOrder = map[string][]string{\n")
 	for _, name := range names {
 		comps, ok := order[name]
 		if !ok {
-			return nil, fmt.Errorf("探针没给出 %s 的顺序——它在那里被跳过了？", name)
+			return nil, fmt.Errorf("the probe gave no order for %s -- was it skipped there?", name)
 		}
 		fmt.Fprintf(&b, "\t%q: {\n", name)
 		for _, c := range comps {
@@ -248,17 +250,17 @@ func renderOrder(root string, names []string) ([]byte, error) {
 	return format.Source(b.Bytes())
 }
 
-// formatSeed 是「order_gen.go 还不存在」时放进去的占位：一张空表。
+// formatSeed is the placeholder when order_gen.go does not exist yet: an empty table.
 func formatSeed() []byte {
 	return []byte("// Code generated by tools/distgen. DO NOT EDIT.\n" +
 		"//\n" +
-		"// 占位：真正的顺序由 `go run ./tools/distgen` 的第二趟写进来。\n" +
+		"// Placeholder: the real order is written by the second pass of `go run ./tools/distgen`.\n" +
 		"package manifest\n\n" +
 		"var startOrder = map[string][]string{}\n")
 }
 
-// moduleRoot 从当前工作目录向上找到含 go.mod 的目录（`go run ./tools/distgen`
-// 在 module 根跑，测试可能在别处跑，靠 go.mod 定位而不是相对路径）。
+// moduleRoot walks up from cwd to the directory holding go.mod (`go run ./tools/distgen`
+// runs at module root, tests may run elsewhere; locate via go.mod, not relative paths).
 func moduleRoot() (string, error) {
 	dir, err := os.Getwd()
 	if err != nil {
@@ -270,22 +272,22 @@ func moduleRoot() (string, error) {
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return "", fmt.Errorf("向上找不到 go.mod（从 %s 开始）", dir)
+			return "", fmt.Errorf("cannot find go.mod upward (starting from %s)", dir)
 		}
 		dir = parent
 	}
 }
 
-// loadSpecs 读仓库根的全部规格书，按文件名排序返回。
+// loadSpecs reads every spec at the repo root, sorted by file name.
 //
-// 排序是为了生成物稳定：map 的遍历序是随机的，直接渲染会让每次生成的 diff 都飘。
+// Sorting keeps output stable: random map order makes every generated diff jitter.
 func loadSpecs(repoRoot string) (map[string]spec, []string, error) {
 	paths, err := filepath.Glob(filepath.Join(repoRoot, specGlob))
 	if err != nil {
 		return nil, nil, err
 	}
 	if len(paths) == 0 {
-		return nil, nil, fmt.Errorf("%s 下没有规格书（%s）——发行版至少要有 `distribution` 与 `modules`", repoRoot, specGlob)
+		return nil, nil, fmt.Errorf("no specs under %s (%s) -- a distribution must have at least `distribution` and `modules`", repoRoot, specGlob)
 	}
 	out := make(map[string]spec, len(paths))
 	names := make([]string, 0, len(paths))
@@ -298,17 +300,17 @@ func loadSpecs(repoRoot string) (map[string]spec, []string, error) {
 		dec := json.NewDecoder(bytes.NewReader(raw))
 		dec.DisallowUnknownFields()
 		if err := dec.Decode(&s); err != nil {
-			return nil, nil, fmt.Errorf("%s 解不出来: %w", filepath.Base(p), err)
+			return nil, nil, fmt.Errorf("cannot decode %s: %w", filepath.Base(p), err)
 		}
 		name := filepath.Base(p)
 		if s.Distribution == "" {
-			return nil, nil, fmt.Errorf("%s 没有 distribution 字段", name)
+			return nil, nil, fmt.Errorf("%s has no distribution field", name)
 		}
 		if len(s.Modules) == 0 {
-			return nil, nil, fmt.Errorf("%s 的 modules 是空的——一个模块都不装的发行版没有意义", name)
+			return nil, nil, fmt.Errorf("%s has an empty modules list -- a distribution that installs no modules is pointless", name)
 		}
 		if s.GitHub != "" && !githubRepo.MatchString(s.GitHub) {
-			return nil, nil, fmt.Errorf("%s 的 github 是 %q——要写成 `owner/repo`（不带 https://、不带 .git）", name, s.GitHub)
+			return nil, nil, fmt.Errorf("%s has github %q -- write it as `owner/repo` (no https://, no .git)", name, s.GitHub)
 		}
 		out[name] = s
 		names = append(names, name)
@@ -317,7 +319,7 @@ func loadSpecs(repoRoot string) (map[string]spec, []string, error) {
 	return out, names, nil
 }
 
-// scan 列出 modules/ 下所有「是组件」的目录，按字母序返回。
+// scan lists every "is a component" directory under modules/, alphabetically.
 func scan(componentsDir string) ([]module, error) {
 	dirs, err := modscan.Dirs(componentsDir)
 	if err != nil {
@@ -331,16 +333,16 @@ func scan(componentsDir string) ([]module, error) {
 	return out, nil
 }
 
-// validate 把两份**互相不知道对方存在**的名单对起来，全部响亮报错。
+// validate matches two lists that **know nothing of each other**, failing loudly on all.
 //
-// 这三条错都会伪装成别的问题，所以宁可在这里红：
+// All three errors disguise themselves, so fail here:
 //
-//   - modules 点名了一个 modules/ 下不存在的目录 ⇒ 拼错了，或者忘了把目录
-//     复制进来。症状本来是「编译期少一个包」，而那看起来像生成器的 bug。
-//   - modules 里有目录没被任何规格书点名 ⇒ **不报错**（那是正常的：simple-cli
-//     就是只给 dist-simple-cli.json 用的），但要让它可见。
-//   - disable 点名了内核没有的模块 ⇒ 最坏的一种：用户以为关掉了，它其实在跑
-//     （内核侧的 Selection.Load 也会再拦一道，这里是构建期更早的一道）。
+//   - modules names a directory not under modules/ => a typo, or a forgotten copy.
+//     The symptom would be "a package missing at compile", which looks like a generator bug.
+//   - a modules/ directory no spec names => **no error** (that is normal: simple-cli exists
+//     only for dist-simple-cli.json), but make it visible.
+//   - disable names a module the kernel lacks => the worst: the user thinks it is off,
+//     but it runs (Selection.Load also catches it, this is the earlier build-time catch).
 func validate(specs map[string]spec, mods []module) error {
 	own := make(map[string]bool, len(mods))
 	for _, m := range mods {
@@ -356,7 +358,7 @@ func validate(specs map[string]spec, mods []module) error {
 		s := specs[name]
 		for _, want := range s.Modules {
 			if !own[want] {
-				return fmt.Errorf("%s 点名了 %q，但 modules/%s 不是一个组件（缺 module.go 或没导出 New()）",
+				return fmt.Errorf("%s names %q, but modules/%s is not a component (missing module.go or no exported New())",
 					name, want, want)
 			}
 			named[want] = true
@@ -364,22 +366,22 @@ func validate(specs map[string]spec, mods []module) error {
 		for i, off := range s.Disable {
 			if off == disableAllToken {
 				if len(s.Disable) > 1 {
-					return fmt.Errorf("%s 的 disable 里同时写了 %q 和具体名字（%v）——"+
-						"%q 已经包含它们了。要全关就只留 %q；只想关几个就别写它",
+					return fmt.Errorf("%s has both %q and concrete names in disable (%v) --"+
+						"%q already covers them. To disable everything, keep only %q; to disable only a few, do not write it",
 						name, disableAllToken, s.Disable[i+1:], disableAllToken, disableAllToken)
 				}
 				continue
 			}
 			if !core[off] {
-				return fmt.Errorf("%s 的 disable 点名了 %q，但内核没有这个模块"+
-					"（写的是**目录名**吗？比如 claudecode_deepseek 而不是 claudecode-deepseek。"+
-					"要关掉内核自带的全部，写 %q）", name, off, disableAllToken)
+				return fmt.Errorf("%s disable names %q, but the kernel has no such module"+
+					"(did you write the **directory name**? e.g. claudecode_deepseek rather than claudecode-deepseek."+
+					"To disable everything the kernel ships, write %q)", name, off, disableAllToken)
 			}
 		}
 	}
 	for _, m := range mods {
 		if !named[m.dir] {
-			fmt.Printf("distgen: 注意：modules/%s 没有被任何规格书点名（不装它）\n", m.dir)
+			fmt.Printf("distgen: note: modules/%s is not named by any spec (it is not installed)\n", m.dir)
 		}
 	}
 	return nil
@@ -394,8 +396,8 @@ func sortedKeys(m map[string]spec) []string {
 	return out
 }
 
-// render 生成装配清单源码。生成物必须**自己**就是 gofmt 干净的（同内核那条理由：
-// check-fmt 独立跑，没对齐的 import 块报的是「格式不对」，离真因隔着好几步）。
+// render generates the assembly manifest source. It must be **gofmt-clean itself**
+// (check-fmt runs separately; a misaligned import block is steps from the cause).
 func render(mods []module, specs map[string]spec, names []string) []byte {
 	byDir := make(map[string]module, len(mods))
 	for _, m := range mods {
@@ -405,12 +407,14 @@ func render(mods []module, specs map[string]spec, names []string) []byte {
 	var b bytes.Buffer
 	b.WriteString("// Code generated by tools/distgen. DO NOT EDIT.\n")
 	b.WriteString("//\n")
-	b.WriteString("// 由仓库根的规格书（dist*.json）编译而来：每条 app.Selection 就是一份规格书\n")
-	b.WriteString("// 要装的东西——自己的模块 + 要关掉的内核模块。构建时用\n")
-	b.WriteString("// -ldflags -X distinfo.spec=<文件名> 选一份，DefaultSpec 是没注入时的兜底。\n")
+	b.WriteString("// Compiled from the specs at the repository root (dist*.json): each app.Selection is\n")
+	b.WriteString("// everything one spec installs -- its own modules plus the kernel modules it turns\n")
+	b.WriteString("// off. A build picks one with -ldflags -X distinfo.spec=<file name>; DefaultSpec is\n")
+	b.WriteString("// the fallback when nothing was injected.\n")
 	b.WriteString("//\n")
-	b.WriteString("// 规格书里的 `\"disable\": [\"*\"]` 编成 app.Selection.AllCore：内核自带的全都不要，\n")
-	b.WriteString("// 只留关不掉的那些（组合根自己要用的端口）。\n")
+	b.WriteString("// `\"disable\": [\"*\"]` in a spec compiles to app.Selection.AllCore: none of the\n")
+	b.WriteString("// kernel's own modules, only the ones that cannot be turned off (the ports the\n")
+	b.WriteString("// composition root itself uses).\n")
 	b.WriteString("\npackage " + genPkgDir + "\n\n")
 	b.WriteString("import (\n")
 	b.WriteString("\t\"fmt\"\n")
@@ -422,20 +426,20 @@ func render(mods []module, specs map[string]spec, names []string) []byte {
 	}
 	b.WriteString(")\n\n")
 
-	b.WriteString("// DefaultSpec 是没注入 -X distinfo.spec 时用的规格书。\n")
+	b.WriteString("// DefaultSpec is the spec used when -X distinfo.spec was not injected.\n")
 	b.WriteString("//\n")
-	b.WriteString("// 它让 `go run ./cmd/newgate` 与 `go test ./...` 不用先编一遍就能跑——\n")
-	b.WriteString("// 默认那份就是仓库根的主规格书，与正式产物一致。\n")
+	b.WriteString("// It lets `go run ./cmd/newgate` and `go test ./...` run without building first --\n")
+	b.WriteString("// the default is the repository's main spec, the same one the real binary uses.\n")
 	fmt.Fprintf(&b, "const DefaultSpec = %q\n\n", defaultSpec)
 
-	b.WriteString("// Specs 是仓库根每份规格书各自的装配选择。\n")
+	b.WriteString("// Specs is each spec's assembly selection.\n")
 	b.WriteString("func Specs() map[string]app.Selection {\n")
 	b.WriteString("\treturn map[string]app.Selection{\n")
 	for _, name := range names {
 		s := specs[name]
 		fmt.Fprintf(&b, "\t\t%q: {\n", name)
 		if len(s.Disable) == 1 && s.Disable[0] == disableAllToken {
-			// 一句话，而不是十几个目录名：AllCore 跟着内核的模块表一起长。
+			// One word, not a dozen directory names: AllCore grows with the kernel's module table.
 			b.WriteString("\t\t\tAllCore: true,\n")
 		} else if len(s.Disable) > 0 {
 			fmt.Fprintf(&b, "\t\t\tDisable: []string{%s},\n", quoteList(s.Disable))
@@ -450,20 +454,21 @@ func render(mods []module, specs map[string]spec, names []string) []byte {
 	}
 	b.WriteString("\t}\n}\n\n")
 
-	b.WriteString("// SpecNames 列出全部规格书名，按文件名排序。\n")
+	b.WriteString("// SpecNames lists every spec name, sorted by file name.\n")
 	fmt.Fprintf(&b, "func SpecNames() []string { return []string{%s} }\n\n", quoteList(names))
 
-	b.WriteString("// Loader 按规格书名装图。名字认不出来就**报错**，不退回默认那份：\n")
-	b.WriteString("// 「我明明编的是简单版，怎么界面上有两个 ui」这种问题，值得在启动的第一秒\n")
-	b.WriteString("// 就说清楚，而不是让用户自己去比对二进制。\n")
+	b.WriteString("// Loader installs the graph named by a spec. An unknown name **errors**; it does not\n")
+	b.WriteString("// fall back to the default -- \"I built the simple one, why does the UI show two\"\n")
+	b.WriteString("// deserves an answer in the first second of startup, not a manual binary diff.\n")
 	b.WriteString("type Loader struct{ Spec string }\n\n")
-	// 图纸（见 component.Precomputed）：装的模块是**构建期**定死的，顺序只是那个
-	// 集合的函数，所以运行期不该再推一遍——每敲一条 CLI 都要付的那一笔。
-	b.WriteString("// PrecomputedOrder 交出发行版在构建期算好的启动顺序。\n")
+	// The blueprint (see component.Precomputed): installed modules are fixed at **build**
+	// time; order is a function of that set, so runtime should not redo it - a per-CLI cost.
+	b.WriteString("// PrecomputedOrder hands over the start order the distribution computed at build time.\n")
 	b.WriteString("//\n")
-	b.WriteString("// 有它，运行期就不必建端口表、建依赖边、拓扑排序、查环——那些事在构建期\n")
-	b.WriteString("// 做过一遍了（tools/distgen 跑真的 Resolve 算出来，见 order_gen.go）。\n")
-	b.WriteString("// 清单与集合对不上时框架会当场报错，不会闷着。\n")
+	b.WriteString("// With it, the runtime does not build a port table, build dependency edges, topo-sort\n")
+	b.WriteString("// or look for cycles -- all that happened at build time (tools/distgen runs a real\n")
+	b.WriteString("// Resolve; see order_gen.go). A manifest that disagrees with the selection errors on\n")
+	b.WriteString("// the spot instead of staying quiet.\n")
 	b.WriteString("func (l Loader) PrecomputedOrder() []string {\n")
 	b.WriteString("\tname := l.Spec\n")
 	b.WriteString("\tif name == \"\" {\n")
@@ -478,28 +483,29 @@ func render(mods []module, specs map[string]spec, names []string) []byte {
 	b.WriteString("\t}\n")
 	b.WriteString("\tsel, ok := Specs()[name]\n")
 	b.WriteString("\tif !ok {\n")
-	b.WriteString("\t\treturn nil, fmt.Errorf(\"没有叫 %q 的规格书（可用：%s）\", name, strings.Join(SpecNames(), \", \"))\n")
+	b.WriteString("\t\treturn nil, fmt.Errorf(\"no spec named %q (available: %s)\", name, strings.Join(SpecNames(), \", \"))\n")
 	b.WriteString("\t}\n")
 	b.WriteString("\treturn sel.Load()\n")
 	b.WriteString("}\n")
 	return b.Bytes()
 }
 
-// renderInfo 生成 manifest/distinfo 的规格书身份表。
+// renderInfo generates the spec identity table in manifest/distinfo.
 //
-// 只放「这份规格书叫什么、发在哪」——**不放模块表**：这个包要被模块 import，
-// 而模块表 import 模块（见 infoPkgDir 的注释）。
+// Only "this spec's name and where it ships" - **not the module table**: this package
+// is imported by modules, and the module table imports modules (see infoPkgDir).
 func renderInfo(specs map[string]spec, names []string) []byte {
 	var b bytes.Buffer
 	b.WriteString("// Code generated by tools/distgen. DO NOT EDIT.\n")
 	b.WriteString("//\n")
-	b.WriteString("// 每份规格书的身份：distribution（产物名与版本号前缀）与 github（发布仓库）。\n")
-	b.WriteString("// 与 manifest/modules_gen.go 同源（仓库根的 dist*.json），分开放是为了让模块\n")
-	b.WriteString("// 能读它而不成环——见 tools/distgen 的 infoPkgDir。\n")
+	b.WriteString("// Each spec's identity: distribution (artifact name and version prefix) and github\n")
+	b.WriteString("// (the release repository). Same source as manifest/modules_gen.go (the dist*.json\n")
+	b.WriteString("// at the repository root); kept apart so modules can read it without a cycle -- see\n")
+	b.WriteString("// tools/distgen's infoPkgDir.\n")
 	b.WriteString("\npackage distinfo\n\n")
-	b.WriteString("// DefaultSpec 是没注入 -X 时用的规格书（与 manifest.DefaultSpec 同一个值）。\n")
+	b.WriteString("// DefaultSpec is the spec used when -X was not injected (same value as manifest.DefaultSpec).\n")
 	fmt.Fprintf(&b, "const DefaultSpec = %q\n\n", defaultSpec)
-	b.WriteString("// specs 是规格书文件名 → 身份。\n")
+	b.WriteString("// specs is spec file name -> identity.\n")
 	b.WriteString("var specs = map[string]Info{\n")
 	for _, name := range names {
 		s := specs[name]
@@ -513,7 +519,7 @@ func renderInfo(specs map[string]spec, names []string) []byte {
 	return b.Bytes()
 }
 
-// quoteList 把一串名字渲染成 Go 字面量列表（`"a", "b"`）。
+// quoteList renders names into a Go literal list (`"a", "b"`).
 func quoteList(xs []string) string {
 	parts := make([]string, 0, len(xs))
 	for _, x := range xs {
@@ -522,7 +528,7 @@ func quoteList(xs []string) string {
 	return strings.Join(parts, ", ")
 }
 
-// fail 是生成器的出口：一句话说清哪里错，退出码 1。
+// fail is the generator's exit: one sentence on what is wrong, exit code 1.
 func fail(err error) {
 	fmt.Fprintln(os.Stderr, "distgen:", err)
 	os.Exit(1)

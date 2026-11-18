@@ -5,77 +5,77 @@ import (
 	"github.com/rzbdz/newgate/lib/i18n"
 )
 
-// 本文件是**一个客户端「从哪条链起步」的那一格**。
+// This file is **the one field: which chain a client starts from**.
 //
-// # 它为什么是机制
+// # Why it is mechanism
 //
-// 链头（profile）本来只有全局一个，per-agent 那张表（`state.json` 的 `active`，
-// 见 domain.State.Active）从 M1 起就在——`claude` 用贵的、`opencode` 用便宜的，
-// 各切各的。但那条路一直**只有 CLI 有**（`newgate --set-profile <名> --agent <x>`），
-// 界面上一个字都看不到：用户在浏览器里能改这个客户端的每一个槽位走哪一档，却改不了
-// 「它整条链从哪儿开始」——而后者更靠前，它是那些档位最终落到哪家模型上的前提。
+// The chain head (profile) was global only; the per-agent table (`state.json`'s `active`,
+// see domain.State.Active) has existed since M1: `claude` on the pricey one, `opencode`
+// on the cheap, each switching its own. But that path **only existed in the CLI**
+// (`newgate --set-profile <name> --agent <x>`); the UI showed none of it: you could
+// change every slot's tier, but not where its chain starts - the premise for the rest.
 //
-// 每一家客户端都要这一格（claude / codex / opencode），所以它住内核：留在某一个
-// 模块里，另外两家只能各抄一遍，而里面有两条规矩是**抄错了不会红**的：
-// 「空 = 跟随全局缺省」（而不是一份写死的 profile 名），以及写之前要验那个 profile
-// 真的存在（打错一个名字的后果是这个客户端的每一次请求都起不来）。
+// Every client needs this field (claude / codex / opencode), so it lives in the kernel:
+// stay in one module and the other two just copy it; and two rules in it are **wrong
+// without going red**: "empty = follow the global default" (not a hardcoded profile
+// name), plus validating before the write that it exists (a typo breaks every request).
 
-// AgentProfile 是某一个客户端的链头。
+// AgentProfile is one client's chain head.
 type AgentProfile struct {
-	// AgentID 是这个客户端的 id（`claude` / `codex` / …）。
+	// AgentID is this client's id (`claude` / `codex` / ...).
 	AgentID string
 }
 
-// Active 是这个客户端此刻**实际走**的 profile（解析之后的那一个）。
+// Active is the profile this client is **actually on** (the resolved one).
 //
-// **它总是有一个值**：没单独设过时返回全局默认。它回答的是「这个客户端的请求
-// 落到哪条链上」，所以写给人看的那句话（Note）用它。
+// **It always has a value**: never set apart means the global default. It answers which
+// chain this client's requests land on, so the human-facing note (Note) uses it.
 //
-// 界面上的**取值**不要用它——用 Stored。两者的差别是这一格存在的全部理由。
+// Do **not** use it for the **value** the UI shows - use Stored; that is the whole point.
 func (p AgentProfile) Active() string {
 	return store.LoadState().ActiveFor(p.AgentID)
 }
 
-// Stored 是这个客户端**存下来的**那个选择；空串 = 没单独设过、跟随全局默认。
+// Stored is the choice this client **has saved**; empty = never set, follow the default.
 //
-// 为什么界面要的是它、不是 Active：两者在「用户选了 ds」与「用户什么都没选、
-// 而此刻全局默认正好是 ds」这两种情形下**返回同一个字符串**（`ds`），而这两件事
-// 配置上完全不同（一个在 state.json 里记着一条，一个没有；行为差别是「以后改全局
-// 默认时它跟不跟着走」）。
+// Why the UI wants it, not Active: for "the user picked ds" and "the user picked nothing
+// while the global default happens to be ds", the two **return the same string** (`ds`)
+// yet differ completely in config (one has a record in state.json, one does not; the
+// difference is whether it follows later default changes).
 //
-// 这一条是实测踩出来的（2026-09-21）：第一版把 Active 当取值端出去，于是那一格
-// 永远显示 `ds`——「跟随缺省」那个标签一次都没露过面，用户的原话是「我点击 apply
-// 之后，还是显示没有缺省的啊」。
+// Learned the hard way (2026-09-21): v1 exposed Active, so the field always showed `ds` -
+// the "follow default" label never appeared; the user's words were "I clicked apply and
+// it still shows no default".
 func (p AgentProfile) Stored() string {
 	return store.LoadState().Active[p.AgentID]
 }
 
-// IsOverride 说这个客户端是不是**单独设过**（而不是跟着全局默认走）。
+// IsOverride says whether this client was **set apart** (rather than following the default).
 //
-// 界面拿它说一句「跟随全局缺省」：不说的话，用户看到下拉里有一个值，会以为那是
-// 自己设的——而他改全局默认时发现这个客户端没跟着变，就会以为哪儿坏了。
+// The UI uses it to say "follow global default": otherwise the user sees a value in the
+// dropdown, takes it as self-set, and later finds it not moving on a default change.
 //
-// # 判据是「有没有一条记录」，不是「它跟缺省一不一样」
+// # The criterion is "is there a record", not "does it differ from the default"
 //
-// 与 Write 那边同一条（见那里的长注释）。用户明确选了 ds、而此刻全局默认**也正好
-// 是 ds** 时，这两件事在配置上完全不同：一条在 state.json 里记着、以后改全局默认
-// 它**不会**跟着走，另一条什么都没记、改全局它跟着走。
+// Same rule as on the Write side (see the long comment there). When the user explicitly
+// picked ds and the global default **also happens to be ds**, the record still matters:
+// later default changes will not move it, whereas a client with no record follows.
 //
-// 用「跟缺省一不一样」当判据的症状实测过（2026-09-29）：在网页首屏上给某一家点
-// 「就用 ds」，而自动恰好也是 ds——那一下**明明写进了一条记录**，界面却把这一家
-// 报成「跟随自动」，高亮于是从这张卡跳到「自动」那张上。用户的原话是「我点 ds，
-// 怎么跳到选中自动了」。Write 那边 2026-09-21 就为同一个理由改对了，这一条漏了。
+// The wrong criterion's symptom was observed (2026-09-29) on the web first screen:
+// clicking "use ds" while auto was also ds did write a record, yet the UI reported
+// "follow auto" and the highlight jumped to that card. Write got this right on
+// 2026-09-21 for the same reason; this one was missed.
 func (p AgentProfile) IsOverride() bool {
 	st := store.LoadState()
 	v, ok := st.Active[p.AgentID]
 	return ok && v != ""
 }
 
-// Options 是可选的 profile 名。
+// Options is the list of selectable profile names.
 //
-// 读不出来时返回空表（没有 mappings 目录、目录读不了）：界面拿到一个空下拉，
-// 而不是一个报错的卡片——一个读不了的目录不该让整张卡消失（同 lib/view 里
-// Concept.Broken 那条：坏消息要显示出来，不是把东西藏起来）。
+// When unreadable it returns an empty list (no mappings dir, unreadable dir): the UI
+// gets an empty dropdown, not an erroring card - an unreadable directory must not make
+// the card vanish (as Concept.Broken in lib/view: show bad news, do not hide things).
 func (p AgentProfile) Options() []string {
 	names, err := store.ListProfiles()
 	if err != nil {
@@ -84,27 +84,27 @@ func (p AgentProfile) Options() []string {
 	return names
 }
 
-// Write 改这个客户端的链头。**空串 = 回到全局默认**（那个键消失）。
+// Write sets this client's chain head. **Empty string = back to global default** (key gone).
 //
-// 与槽位表那条同规矩：留下一份「和缺省一样」的记录，会让以后改缺省的人发现自己的
-// 改动对一部分用户不生效——而那些用户从没配过任何东西。
+// Same rule as the slot table: a record "same as the default" would make later default
+// changes miss some users - users who never configured anything at all.
 func (p AgentProfile) Write(profile string) error {
-	// 空串 = 回到「跟随全局默认」（那个键消失）。
+	// Empty string = back to "follow the global default" (that key disappears).
 	if profile == "" {
 		return store.ClearActiveProfile(p.AgentID)
 	}
-	// 别的值一律**记下来**，哪怕它恰好等于此刻的全局默认。
+	// Any other value is **recorded**, even if it happens to equal the global default.
 	//
-	// 曾经这里写的是「与全局默认同名 = 没设过」（与槽位表那条同规矩）。那是错的，
-	// 因为这一格的取值是**存下来的那个**（见 Stored）：用户明确选了 `ds` 之后，
-	// 那一格会显示回 `ds（缺省）`——他想固定住的东西看起来像没固定，而界面上
-	// 再没有任何办法表达「我就是要它」。
+	// This used to read "same name as the global default = never set" (the slot-table
+	// rule). That was wrong: this field's value is **the stored one** (see Stored), so
+	// after the user explicitly picks `ds` the field shows `ds (default)` again - what
+	// they meant to pin looks unpinned, with no UI left to say "this is it".
 	//
-	// 槽位表那边不一样：那边的取值本来就是「此刻实际走哪一档」，没有第二种读法。
+	// The slot table differs: its value is "which tier runs now", with no second reading.
 	return store.SetActiveProfile(p.AgentID, profile)
 }
 
-// Note 是给界面的一句话：这个客户端此刻是跟着全局默认，还是单独设过。
+// Note is one sentence for the UI: follows the global default, or was set apart.
 func (p AgentProfile) Note() string {
 	if p.IsOverride() {
 		return i18n.T("set for this client only (other clients follow the global default)", nil)
@@ -112,9 +112,9 @@ func (p AgentProfile) Note() string {
 	return i18n.T("following the global default ({profile})", i18n.A{"profile": p.Active()})
 }
 
-// ProfileItemID 是那一格在界面载荷里的键（形状见 view.go 的 ProfileItem）。
+// ProfileItemID is that field's key in the UI payload (shape: ProfileItem in view.go).
 //
-// 它必须与槽位名**不可能**撞上：界面一次交全部格子（见 kinds/Toggles.svelte），
-// 而槽位表那边是按名字取值的——撞上就会把一个槽位的档位当成 profile 写下去。
-// 槽位名是客户端自己的模型键（`model` / `sonnet`），所以一个带前缀的词就够。
+// It must be **impossible** to collide with a slot name: the UI submits all fields at
+// once (see kinds/Toggles.svelte) and the slot table looks up by name - a collision
+// writes a tier as the profile. Slot names are model keys, so a prefix is enough.
 const ProfileItemID = "profile"

@@ -1,21 +1,21 @@
-// Package launch 是「启动一个被接管的 agent」这件事的唯一实现。
+// Package launch is the only implementation of "launch a taken-over agent".
 //
-// 它同时服务两个入口：
+// It serves two entries at once:
 //
-//   - argv0 分发：`claude`（PATH shim 指向 newgate 二进制）→ main 检测到
-//     basename 是 agent，转到这里；
-//   - CLI 包装启动：`newgate claude --profile=ds` → cli 解析出 agent 与
-//     profile，也转到这里。
+//   - argv0 dispatch: `claude` (the PATH shim points at the newgate binary) -> main sees
+//     the basename is an agent and forwards here;
+//   - CLI wrapped launch: `newgate claude --profile=ds` -> cli resolves agent and profile,
+//     and forwards here too.
 //
-// 它做的事（docs/07-clients-runtime.md）：解析真实可执行文件、必要时懒起代理、往子进程
-// 注入 env（含真实模型名）、exec。除此之外不碰任何文件、不发任何网络请求。
+// What it does (docs/07-clients-runtime.md): resolve the real executable, lazily start the
+// proxy if needed, inject env into the child, exec - no file touched, no network request.
 //
-// 槽位命名是这一层的核心决策（2026-09-09 定稿，见 buildInject 注释）：
-// 默认注入**档位名**（heavy/mid/…）——会话发档位名回来，代理按请求时的
-// 当前配置解析，`newgate --set-profile` 对跑着的会话立刻生效（动态）；
-// 显式 --profile 钉死本次调用时才注入**真实模型名**（glm-5.3），显示的
-// 就是这次真用的（钉死才配真名）。窗口声明（CLAUDE_CODE_*）两种模式
-// 都注入，与命名无关。
+// Slot naming is this layer's core decision (settled 2026-09-09, see buildInject):
+// by default inject the **tier name** (heavy/mid/...) - the session sends the tier name
+// back, the proxy resolves it against the config current at request time, so
+// `newgate --set-profile` applies at once to running sessions (dynamic);
+// only an explicit --profile pins this call and injects the **real model name**
+// (glm-5.3), showing what is really used. Window decls (CLAUDE_CODE_*) go in both modes.
 package launch
 
 import (
@@ -36,14 +36,14 @@ import (
 	"github.com/rzbdz/newgate/lib/i18n"
 )
 
-// Options 一次启动的覆盖项。零值 = 用 agent 的默认 profile。
+// Options are one launch's overrides. Zero value = the agent's default profile.
 type Options struct {
-	// Profile 本次调用的 profile 覆盖（不写全局状态）。空 = 走 agent 默认。
+	// Profile is this call's profile override (no global state written). Empty = the agent default.
 	Profile string
 }
 
-// Launch 注入 env 并 exec 真实 agent。成功时进程被替换、不再返回；
-// 返回的 int 是进程退出码（仅在失败路径返回）。
+// Launch injects env and execs the real agent. On success the process is replaced and this
+// never returns; the int returned is the exit code (returned only on failure paths).
 func Launch(a *agentapi.Agent, facts agentapi.AgentFacts, args []string, o Options) int {
 	depth, _ := strconv.Atoi(os.Getenv("NEWGATE_DEPTH"))
 	if depth >= 2 || os.Getenv("NEWGATE_DISABLE") == "1" {
@@ -56,11 +56,11 @@ func Launch(a *agentapi.Agent, facts agentapi.AgentFacts, args []string, o Optio
 		return 69
 	}
 
-	// 代理懒启动；否则 agent 一进来就 connection refused。
-	// （EnsureControlToken：别的用户停这个懒起的 daemon 也得有令牌可用）
+	// Lazy-start the proxy; else the agent gets connection refused on entry.
+	// (EnsureControlToken: others must be able to stop this lazily started daemon too.)
 	if daemon.Running() == nil {
-		// 写不出去只警告不拦：用户此刻要的是「把客户端拉起来」，为一行令牌
-		// 拒绝启动更糟。但后果要说清楚——那个 daemon 没法被别人停。
+		// A failed write only warns, no block: the user wants the client up, and refusing over
+		// a token is worse. But say the cost - that daemon cannot be stopped by others.
 		if _, err := store.EnsureControlToken(); err != nil {
 			fmt.Fprintf(os.Stderr, "newgate: %s\n", i18n.T(
 				"Cannot write the control token (a cross-user newgate stop will not work): {err}",
@@ -75,7 +75,7 @@ func Launch(a *agentapi.Agent, facts agentapi.AgentFacts, args []string, o Optio
 		waitProxy(st.Port)
 	}
 
-	// 解析本次的链头：命令行 --profile > NEWGATE_PROFILE/PRESET > agent 默认。
+	// Resolve this call's chain head: command-line --profile > NEWGATE_PROFILE/PRESET > agent default.
 	explicit := o.Profile
 	if explicit == "" {
 		explicit = firstNonEmpty(os.Getenv("NEWGATE_PROFILE"), os.Getenv("NEWGATE_PRESET"))
@@ -93,33 +93,33 @@ func Launch(a *agentapi.Agent, facts agentapi.AgentFacts, args []string, o Optio
 	return execReal(a, args, inject)
 }
 
-// buildInject 算出要叠加给子进程的整组 env（NEWGATE_DEPTH 除外）。
+// buildInject computes the whole env set to layer onto the child (except NEWGATE_DEPTH).
 //
-// facts 是这个客户端交上来的**运行时事实**（见 agentapi.AgentFacts），由调用方从
-// 目录端口取来注入——本函数不认识它是怎么算出来的。nil = 槽位全走描述符里的缺省。
-// 单独成函数是为了可测：只依赖读盘快照和入参，不 exec、不碰 daemon。
+// facts are **runtime facts** the client reports (agentapi.AgentFacts), fetched by the
+// caller from the catalog port - this function does not know how they are derived.
+// nil = all slots use the descriptor defaults. Separate to be testable: disk + inputs only.
 //
-// 槽位命名有两种模式（2026-09-09 定稿）：
+// Slot naming has two modes (settled 2026-09-09):
 //
-//   - 动态（默认）：槽位保持**档位名**（heavy/mid/…）。会话把档位名发
-//     回来，代理按**请求时**的当前配置解析——`newgate --set-profile`
-//     对跑着的会话立刻生效。界面显示的是语义层名字，实际模型看
-//     X-Newgate-Route / `newgate tier`，两边各自为真、互不冒充。
-//   - 钉死（显式 --profile / NEWGATE_PROFILE / argv0 分发）：注入**真实
-//     模型名**。本次调用已被用户钉在这个 profile 上，显示的就是这次
-//     真用的——钉死才配得上真名。
+//   - dynamic (default): slots keep the **tier name** (heavy/mid/...). The session sends
+//     the tier name back and the proxy resolves it against the config current **at
+//     request time** - `newgate --set-profile` applies at once to running sessions. The
+//     UI shows the semantic name; the actual model is in X-Newgate-Route / `newgate tier`.
+//   - pinned (explicit --profile / NEWGATE_PROFILE / argv0 dispatch): inject the **real**
+//     model name. This call is pinned to that profile, so what is shown is what is used.
 //
-// 窗口声明两条模式都注入：窗口 env 走客户端的「未知模型」分支（档位名和真实名
-// 对它都是未知，效果相同），compact env 无条件优先级最高——窗口修复不依赖命名模式。
-// **两个变量的名字来自 agent 定义**（`ContextWindowEnv` / `AutoCompactEnv`）：
-// 那是客户端的知识，内核不认识任何一家的变量名（2026-09-20 之前这里是写死的）。
-// 返回的第二项是「本该注入但没注入成」的话，由调用方打到 stderr。读配置失败
-// 不影响启动（fail-open：代理仍能按档位名路由），但它会让这次调用少注入真实
-// 模型名与窗口声明——后者不给的话 Claude Code 会按 200k 假设提前 compact，是
-// 用户能直接感觉到的行为变化。所以不能一声不响（同文件上面那条控制令牌的写法）。
+// Window declarations are injected in both modes: the window env takes the client's
+// "unknown model" branch (both names are unknown there); compact env has top priority.
+// **Both variable names come from the agent definition** (`ContextWindowEnv` /
+// `AutoCompactEnv`): client knowledge; the kernel knows no vendor's names (2026-09-20).
+// The second value is "should have been injected but was not", printed to stderr by the
+// caller. A config read failure does not block launch (fail-open: tier routing still
+// works), but it drops the real model name and the profile's windows from this call -
+// without them Claude Code assumes 200k and compacts early, which the user feels. So it
+// must not be silent (like the control token above in this file).
 func buildInject(a *agentapi.Agent, facts agentapi.AgentFacts, st *domain.State, active, explicit string) (map[string]string, []string) {
-	// 槽位默认 = 档位名（动态模式）。facts 是这个客户端交上来的运行时事实
-	// （用户改过的槽位映射住在它那儿），nil = 全用描述符里的缺省。
+	// Slot default = the tier name (dynamic mode). facts are the runtime facts this client
+	// reports (user-modified slot mappings live there); nil = all use the descriptor defaults.
 	inject := a.BuildEnv(st.Port, "newgate-local", facts)
 	var warns []string
 
@@ -128,10 +128,10 @@ func buildInject(a *agentapi.Agent, facts agentapi.AgentFacts, st *domain.State,
 			"cannot read the config, so this run injects no real model names and no window declaration (the proxy still routes by tier name): {err}",
 			i18n.A{"err": err}))
 	} else {
-		// 钉死模式：槽位换成该 profile 链头的真实模型名。解析不出就保留
-		// 档位名（fail-open，docs/05-gateway.md）：代理仍能按档位路由。
-		// 两者都过 Slot.Apply——客户端的能力标记（`[1m]` 那类）必须跟着走，
-		// 否则钉死模式恰好把它丢了，而这正是用户点名要的那条路（--profile=xx）。
+		// Pinned mode: slots become the profile chain head's real model names. Unresolvable
+		// keeps the tier name (fail-open, docs/05-gateway.md): the proxy still routes by tier.
+		// Both go through Slot.Apply - client capability markers (`[1m]` and such) must ride
+		// along, else pinned mode loses exactly what the user named (--profile=xx).
 		if explicit != "" {
 			for _, s := range a.EnvSlots() {
 				if b, ok := resolve.PrimaryBinding(agentapi.TierOf(facts, s), snap.Profiles, snap.Providers, active); ok {
@@ -140,24 +140,24 @@ func buildInject(a *agentapi.Agent, facts agentapi.AgentFacts, st *domain.State,
 			}
 		}
 
-		// 主力模型的真实窗口（profile 里声明）。不给 Claude Code 声明的
-		// 话，它对不认识的模型名（档位名或真实名都一样）按 200k 窗口假设
-		// 提前 compact（2026-09 实测）。两个 env 都只在得到 >0 的数时注入；
-		// 客户端可以在描述符里封顶（ContextWindowCap / AutoCompactCap），
-		// 那时窗口即便 profile 没声明也用上限值——缺省的 200k 假设更小，
-		// 而这台客户端明确接受更大的窗口。其他 agent（如 opencode）不认识
-		// 这些变量，忽略之，无害。
+		// The main model's real window (declared in the profile). Without it Claude Code
+		// assumes a 200k window for model names it does not know (tier or real, same) and
+		// compacts early (measured 2026-09). Both envs are injected only for a value > 0;
+		// the client may cap them in its descriptor (ContextWindowCap / AutoCompactCap), and
+		// then the cap is used even if the profile declares nothing - 200k is smaller, and
+		// this client explicitly accepts a bigger window. Other agents (opencode) ignore
+		// these variables, harmless.
 		//
-		// 这两个是**数字**，所以永远不过 Slot.Apply：把客户端的模型名标记
-		// 拼到窗口上会写进去一个解析不了的值，而失败的样子是「窗口声明静默
-		// 失效、又回到 200k 假设」——看起来像这条注入根本不存在。
+		// These two are **numbers**, so they never go through Slot.Apply: appending the
+		// client's model marker to a window writes an unparseable value, and the failure
+		// looks like "the window declaration silently died, back to 200k" - as if absent.
 		for _, p := range snap.Profiles {
 			if p.Name != active {
 				continue
 			}
-			// 客户端的封顶（见 agentapi.Agent.ContextWindowCap）。profile
-			// 声明得更大时**说一声**——把用户要的 1M 悄悄换成 512K，正是
-			// 「配置看着对、行为不一样」那一类最难归因的故障。
+			// The client's cap (agentapi.Agent.ContextWindowCap). **Say so** when the profile
+			// declares more: quietly swapping the user's 1M for 512K is the hardest-to-place
+			// kind of fault - "config looks right, behavior differs".
 			window := p.ContextWindow
 			if a.ContextWindowCap > 0 && (window == 0 || window > a.ContextWindowCap) {
 				if window > a.ContextWindowCap {
@@ -181,8 +181,8 @@ func buildInject(a *agentapi.Agent, facts agentapi.AgentFacts, st *domain.State,
 		}
 	}
 
-	// per-invocation 覆盖：把 profile 编码进 base URL 路径（/p/<profile>）。
-	// 代理从路径读出覆盖，完全不改全局状态（docs/07-clients-runtime.md）。
+	// per-invocation override: encode the profile into the base URL path (/p/<profile>).
+	// The proxy reads the override from the path and writes no global state (docs/07).
 	if explicit != "" && a.BaseURLEnv != "" {
 		inject[a.BaseURLEnv] = fmt.Sprintf("http://127.0.0.1:%d/a/%s/p/%s", st.Port, a.ID, active)
 	}
@@ -198,7 +198,7 @@ func firstNonEmpty(vals ...string) string {
 	return ""
 }
 
-// execReal 找到真实可执行文件并用注入后的 env 覆盖进程。
+// execReal finds the real executable and replaces the process with the injected env.
 func execReal(a *agentapi.Agent, args []string, inject map[string]string) int {
 	real, err := a.FindReal(injection.Dir())
 	if err != nil {
@@ -206,7 +206,7 @@ func execReal(a *agentapi.Agent, args []string, inject map[string]string) int {
 		return 69
 	}
 
-	// 受控的 env 白名单：继承 → 丢掉干扰项 → 叠加我们的。
+	// The controlled env allowlist: inherit -> drop interference -> layer ours on top.
 	drop := map[string]bool{}
 	for _, k := range a.UnsetEnv {
 		drop[k] = true
@@ -231,10 +231,10 @@ func execReal(a *agentapi.Agent, args []string, inject map[string]string) int {
 
 	execArgs := append([]string{real}, args...)
 	if err := syscall.Exec(real, execArgs, env); err != nil {
-		// 没有 shebang 的脚本（例如 npm 的 claude.exe 兜底脚本、或 CRLF
-		// 行尾损坏的 shebang）会让内核返回 ENOEXEC（exec format error）。
-		// 交给 /bin/sh 执行，让它打印脚本自己那清晰明了的错误信息，
-		// 而不是给用户一个神秘的 "exec format error"。
+		// A script with no shebang (npm's claude.exe fallback, or a CRLF-broken
+		// shebang) makes the kernel return ENOEXEC (exec format error). Hand it to
+		// /bin/sh so it prints the script's own clear error, instead of handing the
+		// user a mysterious "exec format error".
 		if errors.Is(err, syscall.ENOEXEC) {
 			shArgs := append([]string{"/bin/sh", real}, args...)
 			if err2 := syscall.Exec("/bin/sh", shArgs, env); err2 != nil {
@@ -260,7 +260,7 @@ func indexByte(s string, b byte) int {
 	return -1
 }
 
-// waitProxy 轮询代理直到它响应，或约 3s 后放弃。
+// waitProxy polls the proxy until it answers, or gives up after about 3s.
 func waitProxy(port int) {
 	deadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(deadline) {

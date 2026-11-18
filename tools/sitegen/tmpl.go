@@ -8,11 +8,11 @@ import (
 	"strings"
 )
 
-// pageTmpl 是整站的唯一一份 HTML 外壳。
+// pageTmpl is the site's one HTML shell.
 //
-// 为什么是一个 Go 模板而不是拼接：这一份东西**每一页都要用**，而它里面有几处
-// 会重复出现的结构（导航的当前项、页脚的两条链）。拼字符串写下来，第一个改版
-// 就会漏掉某一页的某一段。
+// Why a Go template rather than string concatenation: this shell is **used by every page**
+// and contains structures that repeat (the current nav item, the two footer links). Hand-
+// concatenated, the first redesign misses one section of one page.
 var pageTmpl = template.Must(template.New("page").Parse(`<!doctype html>
 <html lang="{{.HTMLang}}">
 <head>
@@ -44,20 +44,20 @@ var pageTmpl = template.Must(template.New("page").Parse(`<!doctype html>
   </main>
 </div>
 <footer>
-  <p>这一页讲的是发行版 <strong>{{.Site.Name}}</strong> 的装配。内核机制的权威原文在
-     <a href="{{.Site.Kernel}}">rzbdz/newgate</a>。</p>
+  <p>This page describes the assembly of the <strong>{{.Site.Name}}</strong> distribution. The authoritative text on kernel
+     mechanisms is in <a href="{{.Site.Kernel}}">rzbdz/newgate</a>.</p>
   <p><a href="{{.Site.Kernel}}">内核</a> · <a href="{{.Site.Releases}}">版本发布</a></p>
 </footer>
 </body>
 </html>
 `))
 
-// landingTmpl 是首页那一页的外壳。与文档页共用头部/页脚的**语言切换**，但不共用
-// 侧栏文档壳——首页是产品门面，不是一篇文档。
+// landingTmpl is the home page's shell. It shares the header/footer **language switch**
+// with doc pages but not the sidebar doc shell - the home page is a product front.
 //
-// 演示怎么嵌进首页：包一行 `<iframe src="{base}demo/">`，外面套一个仿浏览器窗口的
-// 壳（.browser）。这不是截图，是**真的**界面在跑——演示页是同一个前端的第二个入口
-// （见 modules/web-dashboard/web/vite.demo.config.ts），它喂的是假数据、没有后端。
+// How the demo is embedded: wrap `<iframe src="{base}demo/">` in a browser-window shell
+// (.browser). That is not a screenshot; the **real** UI runs - the demo page is the same
+// front end's second entry point (see modules/web-dashboard/web/vite.demo.config.ts).
 var landingTmpl = template.Must(template.New("landing").Parse(`<!doctype html>
 <html lang="{{.HTMLang}}">
 <head>
@@ -88,16 +88,18 @@ var landingTmpl = template.Must(template.New("landing").Parse(`<!doctype html>
     <a class="button ghost" href="{{.Base}}docs/">文档</a>
   </p>
 
-  <!-- 首页那一个框子有**两个 tab**：跑着的界面（真组件，喂假数据）与装配图
-       （一张 SVG，静态文件）。
+  <!-- The one box on the home page has **two tabs**: the running UI (a real component fed
+       fake data) and the assembly map (one SVG, a static file).
 
-       为什么并排放在同一个框子里、而不是上下堆两截：它们回答的是同一个问题的两面
-       ——「这东西长什么样」与「这东西是怎么拼出来的」。拆成两截的话，首屏会连着
-       出现两个大块，第二个没人往下滚。
+       Why side by side in the same box instead of two stacked sections: they answer two
+       sides of the same question -- "what does this look like" and "how is this put
+       together". Split into two sections, the first screen would carry two big blocks in a
+       row and nobody scrolls to the second.
 
-       默认停在**界面**那一页（那是它的卖点）；role=tablist 与 aria-selected
-       是给读屏器的，键盘上左右箭头能切。两张都用同一圈 .browser 壳，所以切换时
-       外框不动、只有里面换内容——那一下才不至于像跳了一页。 -->
+       It opens on the **UI** tab (that is the selling point); role=tablist and
+       aria-selected are for screen readers, and the arrow keys switch. Both share the same
+       .browser frame, so switching moves nothing but the contents -- which is what keeps
+       it from feeling like a page jump. -->
   <div class="browser" data-tabs>
     <div class="browser-bar">
       <span class="dot"></span><span class="dot"></span><span class="dot"></span>
@@ -131,13 +133,13 @@ var landingTmpl = template.Must(template.New("landing").Parse(`<!doctype html>
   <p><a href="{{.Site.Kernel}}">内核</a> · <a href="{{.Site.Releases}}">版本发布</a></p>
 </footer>
 <script>
-  // 首页那个框子的两个 tab（见上面 .browser 那一段）。
+  // The home page box's two tabs (see .browser above).
   //
-  // 手写这十几行、不引任何东西：整站没有构建步骤、没有第三方脚本，而这是**唯一**
-  // 一处要 JS 的地方。二十行换来「引一个框架」，是把这一条规矩卖掉了。
+  // Hand-written, nothing pulled in: no build step, no third-party scripts, and this
+  // is the **only** place needing JS. Pulling in a framework would sell that rule.
   //
-  // 行为只做两件：点 tab 切页；点 tab 时把**焦点留在那一排按钮里**（不然按完键盘
-  // 就落到 body 上，读屏器要从头念）。左右箭头是 tablist 该有的规矩，一并给上。
+  // Two behaviors: tabs switch pages; a tab click **keeps focus in the button row**
+  // (else focus falls to body and screen readers restart). Arrow keys too.
   (function () {
     var box = document.querySelector('.browser[data-tabs]');
     if (!box) return;
@@ -167,11 +169,11 @@ var landingTmpl = template.Must(template.New("landing").Parse(`<!doctype html>
 </html>
 `))
 
-// renderLanding 渲染首页（路由 "/"）。
+// renderLanding renders the home page (route "/").
 //
-// 首页的正文也是 markdown（`site/src/zh-Hans/index.md`），body 与文档页走同一个
-// 渲染器——差别只在壳。这样就保住「内容在 markdown、样式在 CSS」这两条，首页要的
-// 「门面感」由壳 + CSS 出，不在正文里堆 div。
+// The home page body is markdown too (`site/src/zh-Hans/index.md`), going through the same
+// renderer as doc pages - only the shell differs. That keeps "content in markdown, styles
+// in CSS"; the front-page feel comes from shell + CSS, not divs piled into the body.
 func renderLanding(cfg site, l lang, p page) (string, error) {
 	base := basePath()
 	lvs := make([]langView, 0, len(cfg.Langs))
@@ -215,18 +217,18 @@ func renderLanding(cfg site, l lang, p page) (string, error) {
 		Langs: lvs,
 	})
 	if err != nil {
-		return "", fmt.Errorf("套首页模板失败: %w", err)
+		return "", fmt.Errorf("rendering the landing template failed: %w", err)
 	}
 	return b.String(), nil
 }
 
-// navView / langView 是模板吃的那两种行（比配置多几个算好的字段）。
+// navView / langView are the two row kinds the template eats (config plus computed fields).
 //
-// 算好再交给模板（而不是在模板里比字符串）的理由：**链接怎么拼**只有一处实现
-// ——站点的 base（GitHub Pages 上多一层 `/newgate-ext/`）、语言的段、路由的尾
-// 斜杠，三件事都是「拼错了页面上就是 404」的东西。模板里 `{{.Base}}{{.Route}}`
-// 那种写法看着也行，但它把规则散进了模板；将来加一个「子路径部署」就要在模板里
-// 再找一遍。
+// Computed before the template (not string compares inside it) because **how links are
+// built** has one implementation - the site's base (one more `/newgate-ext/` on GitHub
+// Pages), the language segment, the route's trailing slash: three things where "get it
+// wrong and 404". `{{.Base}}{{.Route}}` looks fine but scatters the rule into the
+// template; a future "subpath deploy" would need another search there.
 type navView struct {
 	Route   string
 	Title   string
@@ -241,12 +243,12 @@ type langView struct {
 	Current bool
 }
 
-// renderPage 把一页套进外壳。
+// renderPage wraps one page in the shell.
 func renderPage(cfg site, l lang, nav []navItem, p page) (string, error) {
 	if p.Route == "/" && strings.TrimPrefix(p.Route, "/") == "" {
-		// Landing 页（路由 "/"）：不用文档那套侧栏外壳，用专门的一页。
-		// 判据写在函数里而不是 config：网站的设计只有一个首页，这不是「每条路由
-		// 都可以各挑一套壳」的产品决策。
+		// Landing (route "/"): not the doc sidebar shell but a dedicated page.
+		// The criterion lives in the function, not config: a site has one home page; this is
+		// not a product decision each route can make for itself.
 		return renderLanding(cfg, l, p)
 	}
 	return renderDocs(cfg, l, nav, p)
@@ -266,21 +268,21 @@ func renderDocs(cfg site, l lang, nav []navItem, p page) (string, error) {
 		lvs = append(lvs, langView{
 			Label: other.Label,
 			Href:  base + hrefOf(other.Code, p.Route),
-			// Ready 由配置说了算，**不由「那一页存在」推**：英文站刚开时只有两页，
-			// 按「页在不在」推的话，英文页头上的语言切换会时有时无。
+			// Ready is decided by config, **not inferred from "the page exists"**: a new English
+			// site starts with two pages; inferred, the header's language switch would flicker.
 			Ready:   other.Ready,
 			Current: other.Code == l.Code,
 		})
 	}
 
 	var b strings.Builder
-	// pageData 的注释见下面那两处 template.HTML：**模板默认会转义**，而 Body 是
-	// 我们自己已经渲染好的 HTML 片段（md.go 的 esc 是它唯一的出口）。所以这里
-	// 显式声明那一格是可信的——反过来，正文里作者写的 `<` 早在 md.go 里就变成
-	// `&lt;` 了，不会走到这儿。
+	// pageData's comment is at the two template.HTML spots below: **templates escape by
+	// default**, and Body is HTML we already rendered (md.go's esc is its only exit). So
+	// this cell is declared trusted explicitly - conversely, a `<` in the body became
+	// `&lt;` back in md.go and never reaches here.
 	//
-	// Desc 取页面自己的第一段。**不取 site.json 那句**：文档页有十来张，每一张
-	// 分享出去都该说自己那一句（「排障」那一页的卡片写整站的 tagline，等于没有）。
+	// Desc takes the page's own first paragraph. **Not site.json's sentence**: a dozen doc
+	// pages each share their own (the troubleshooting card saying the tagline says nothing).
 	canon := cfg.URL + strings.TrimPrefix(hrefOf(l.Code, p.Route), "/")
 	err := pageTmpl.Execute(&b, struct {
 		Site      site
@@ -318,19 +320,19 @@ func renderDocs(cfg site, l lang, nav []navItem, p page) (string, error) {
 		Langs: lvs,
 	})
 	if err != nil {
-		return "", fmt.Errorf("套模板失败: %w", err)
+		return "", fmt.Errorf("rendering the template failed: %w", err)
 	}
 	return b.String(), nil
 }
 
-// pageTitle 是一页在 <title> 与分享卡片上的名字。
+// pageTitle is a page's name in <title> and on the share card.
 //
-// 两种页两种写法，因为两者读它的人不同：**首页**的名字就是整站那句（它是门面，
-// 别人转的是「newgate-ext 是什么」），**文档页**要页面自己的标题在前（「排障 ·
-// newgate-ext」——标签页一多，能分辨出哪一张是排障靠的就是前面那段）。
+// Two page kinds, two forms, two audiences: the **home page** uses the site sentence
+// (it is the front, shared as "what is newgate-ext"), **doc pages** put their own
+// title first ("Troubleshooting - newgate-ext" - with many tabs, that prefix tells).
 //
-// 它同时供 <title> 与 og:title。两处各写一遍的话，症状是分享出去的那张卡片与
-// 浏览器标签页上的名字不一样——而那种不一致只有把两者摆在一起才看得出来。
+// It feeds both <title> and og:title. Written twice, the card and the tab disagree -
+// an inconsistency no one sees unless the two sit side by side.
 func pageTitle(cfg site, p page) string {
 	if p.Route == "/" {
 		return cfg.Name + " — " + cfg.Tagline
@@ -338,28 +340,28 @@ func pageTitle(cfg site, p page) string {
 	return p.Title + " · " + cfg.Name
 }
 
-// socialMeta 是分享卡片那几行（Open Graph + Twitter Card）。
+// socialMeta is the share-card lines (Open Graph + Twitter Card).
 //
-// # 为什么要手写这几行
+// # Why hand-write these lines
 //
-// 链接贴进聊天软件、论坛、Slack 时，对方读的是这几行**而不是**页面——没有
-// og:title / og:description，一条链接就只有光秃秃一个地址。而这正好是这类工具的
-// 主要传播方式（「你看这个」）。所谓「抄 cc-switch 那一版」，能搬的结构里这是最
-// 实的一条：它的 og:* 一应俱全。
+// Pasted into a chat app, forum or Slack, the other side reads **these lines, not the
+// page** - without og:title / og:description a link is just a bare address. And that
+// is exactly how tools like this spread ("look at this"). Of the cc-switch structure
+// worth copying, its full og:* set is the most substantial: nothing else.
 //
-// # title / desc / canon 都从参数来，不在这里重新取
+// # title / desc / canon all come from parameters, never recomputed here
 //
-// 首页与文档页那三样**都不是同一个值**（首页的标题是整站的、文档页是它自己的；
-// 说明同理；canonical 按路由拼），调用方已经算好了。在这里重算一遍就是两份会
-// 漂移的真相——而且首页那一份会**悄悄变成错的那一份**（文档页十来张，标题都一样）。
+// Home and doc pages differ in all three; the caller already computed them (home title
+// is the site's, doc pages their own; description likewise; canonical per route).
+// Recomputing here is a second truth that drifts, and the home page's copy would
+// **silently become the wrong one** (a dozen doc pages, all titled alike).
 //
-// # 为什么没有 og:image
+// # Why no og:image
 //
-// 无图卡片（`summary`）比编一张图诚实。有一张 og:image 的卡片好看得多，但那要求
-// 仓库里有一份**光栅**图（1200×630），而本站今天只有 favicon.svg——SVG 各家
-// unfurl 器基本不认。做那份图要么引入一个图片库/截图工具（破了「构建离线、零
-// 第三方依赖」），要么手绘一张二进制（没人维护得起）。所以：**没有就是没有**，
-// 等真要做的时候再加一行，而不是先塞一个指向 404 的 og:image。
+// An image-less card (`summary`) is more honest than a made-up image. A card with an
+// og:image looks far better but needs a **raster** image (1200x630), and this site has
+// only favicon.svg - SVG unfurlers mostly reject it. Making one means an image library
+// or a hand-drawn binary. So: **none is none**, not an og:image pointing at a 404.
 func socialMeta(cfg site, title, desc, canon string) template.HTML {
 	var b strings.Builder
 	w := func(prop, content string) {
@@ -380,17 +382,17 @@ func socialMeta(cfg site, title, desc, canon string) template.HTML {
 	w("og:description", desc)
 	w("og:url", canon)
 	w("og:locale", ogLocale(cfg.Langs))
-	// summary 而不是 summary_large_image：没有图的那种卡片，后者的面积要求是白占的。
+	// summary, not summary_large_image: the latter's larger area is wasted without an image.
 	n("twitter:card", "summary")
 	n("twitter:title", title)
 	n("twitter:description", desc)
 	return template.HTML(b.String())
 }
 
-// ogLocale 把页头的语言表翻成 og:locale 认的写法（zh-Hans → zh_CN）。
+// ogLocale turns the header's language table into what og:locale expects (zh-Hans -> zh_CN).
 //
-// 认不出来的原样带过去：og:locale 本来就是 `<language>_<TERRITORY>` 的自由格式，
-// 猜错一个（把没声明过的地域写上去）比不写更糟。
+// Unrecognized values pass through as is: og:locale is `<language>_<TERRITORY>` free-form,
+// and guessing wrong (writing an undeclared territory) is worse than writing nothing.
 func ogLocale(langs []lang) string {
 	for _, l := range langs {
 		if !l.Ready {
@@ -411,13 +413,13 @@ var ogLocales = map[string]string{
 	"ja":      "ja_JP",
 }
 
-// pageDesc 是文档页那句说明：**这一页自己的第一段**，不是整站的 tagline。
+// pageDesc is a doc page's description: **that page's own first paragraph**, not site-wide.
 //
-// 十来页文档分享出去全写着同一句「为 vibecoding 而生的最佳网关」的话，那张卡片
-// 就不带任何信息——点进去之前读的人分不出「排障」和「写一个模块」。
+// A dozen doc pages all sharing "the best gateway for vibecoding" makes the card carry
+// no information - before clicking, readers cannot tell "Troubleshooting" from "write a module".
 //
-// 取不到第一段就退回整站那句（比如一页开篇就是一张表）：**有话说**比「说得最准」
-// 重要，一句泛泛的介绍也好过一张空卡片。
+// Without a first paragraph it falls back to the site sentence (a page opening with a
+// table): **having something to say** beats "saying it most accurately".
 func pageDesc(p page, fallback string) string {
 	body := p.Body
 	i := strings.Index(body, "<p>")
@@ -435,18 +437,18 @@ func pageDesc(p page, fallback string) string {
 	return truncateRunes(text, descLimit)
 }
 
-// descLimit 是那句说明的上限（按**字符**算，不是字节）。
+// descLimit is the description's cap (in **characters**, not bytes).
 //
-// 120 这个数按最坏情况挑的：中文一句话 120 字在搜索结果里刚好不截断，而英文同样
-// 120 个字符远在限制之内。搜索引擎与聊天软件各自还有自己的截断，这里只是别把
-// 整段正文塞进去。
+// 120 is the worst case: 120 Chinese characters fits search results unclipped, and 120
+// English characters is well under the limit. Search engines and chat apps truncate on
+// their own; this only keeps the whole body out.
 const descLimit = 120
 
-// plainText 把一小段 HTML 还原成纯文字：去掉标签、解开实体。
+// plainText turns a small HTML snippet back into plain text: strip tags, unescape entities.
 //
-// 它服务的只有「描述」这一个用处，所以**不追求正确解析**：正文是我们自己渲染的
-// （md.go 那几种构造，没有嵌套的怪东西），够用就行。写成一个完整 HTML 解析器的
-// 话，那台机器比它要解决的问题大。
+// It serves only "description", so **correct parsing is not a goal**: the body is ours
+// (md.go's handful of constructs, no odd nesting), enough is enough. A full HTML parser
+// would be a bigger machine than the problem it solves.
 func plainText(html string) string {
 	var b strings.Builder
 	inTag := false
@@ -460,14 +462,14 @@ func plainText(html string) string {
 			b.WriteRune(r)
 		}
 	}
-	// 标签之间会留下空隙（`<strong>` 被摘掉之后那句话还是连着的，但块级构造会断开
-	// 一行），把连续空白压成一个空格并且首尾去干净。
+	// Tags leave gaps (both `<strong>` removal keeps the sentence joined, but block constructs
+	// break a line); collapse consecutive whitespace to one space and trim both ends.
 	return strings.Join(strings.Fields(stdhtml.UnescapeString(b.String())), " ")
 }
 
-// truncateRunes 按字符截断，并且**不加省略号**：中文的「…」会占掉一格，而各家
-// 展示时本来就会自己截。截在半个词上不好看，但没有比「描述里自带一个省略号，
-// 后面又跟一个平台的省略号」更常见的小丑行为。
+// truncateRunes truncates by character and **adds no ellipsis**: a Chinese "..." takes
+// a cell, and each display truncates by itself. Cutting mid-word is ugly, but nothing
+// is more clownish than "an ellipsis in the description, then another from the platform".
 func truncateRunes(s string, n int) string {
 	r := []rune(s)
 	if len(r) <= n {
@@ -476,14 +478,14 @@ func truncateRunes(s string, n int) string {
 	return string(r[:n])
 }
 
-// basePath 是站点在域名下的挂载点。//
-// GitHub Pages 的项目站是 `https://<user>.github.io/<repo>/`，所以**所有**链接都
-// 得带那一层前缀。写死 `/newgate-ext/` 会让本地 `python3 -m http.server` 预览不了
-// （那是从根服务的）——这里读一个环境变量，本地预览时设成 `/`：
+// basePath is where the site is mounted under the domain. //
+// GitHub Pages project sites are `https://<user>.github.io/<repo>/`, so **all** links
+// must carry that prefix. Hardcoding `/newgate-ext/` breaks local `python3 -m http.server`
+// preview (which serves from the root) - so read an environment variable, `/` locally:
 //
 //	SITEGEN_BASE=/ go run ./tools/sitegen
 //
-// 默认值（项目站那一层）是 CI 与真实部署走的那条，因为它才是「用户看到的那份」。
+// The default (the project-site segment) is what CI and real deployment use.
 func basePath() string {
 	if b := os.Getenv("SITEGEN_BASE"); b != "" {
 		if !strings.HasSuffix(b, "/") {
@@ -494,7 +496,7 @@ func basePath() string {
 	return "/newgate-ext/"
 }
 
-// hrefOf 拼一个**指向站内**的地址（不含 base）：语言段 + 路由。
+// hrefOf builds an **in-site** address (no base): language segment + route.
 func hrefOf(langCode, route string) string {
 	p := langPrefix(langCode)
 	if p != "" {

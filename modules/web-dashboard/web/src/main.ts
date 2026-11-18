@@ -2,6 +2,7 @@ import { mount } from "svelte";
 import App from "./App.svelte";
 import "./app.css";
 
-// Svelte 5 的 mount（不是 new App）：组件实例与「挂载」是两件事，后者带目标
-// 与 props。写错的表现是页面空白、控制台一句 deprecation，很容易被忽略。
+// Svelte 5's mount (not new App): a component instance and "mounting" are two things; the
+// latter carries a target and props. A mistake here shows up as a blank page and one
+// deprecation line in the console, very easy to overlook.
 mount(App, { target: document.getElementById("app")! });

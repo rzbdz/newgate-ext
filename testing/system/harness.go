@@ -1,25 +1,25 @@
-// Package system 是进程内的**系统级**测试：真组件图 + 真转发服务 + 假上游。
+// Package system is the in-process **system-level** test: real graph, real forward, fake upstream.
 //
-// 它不是端到端。端到端在这份仓库里是 mock/ 下那两条 shell（真二进制、真进程、
-// 真接管配置、真还原），那是唯一能验「装出来的东西能不能跑」的地方——见
-// docs/10-testing-security.md 的分层表。这里跑的是**同一个进程里装起来的一张
-// 真组件图**：没有子进程、没有 PATH shim、没有 systemd。叫它 e2e 会误导人
-// 以为它覆盖了那些，所以叫 system。
+// Not end-to-end. End-to-end here is the two shell scripts in mock/ (real binary, real
+// process, real takeover config, real restore) - the only place to verify "the built
+// thing runs" - see docs/10-testing-security.md's layering table. Here it is **one real
+// component graph in one process**: no subprocess, no PATH shim, no systemd. Calling it
+// e2e would mislead people into thinking it covers those, so it is "system".
 //
-// 为什么这一层值得存在
+// # Why this layer exists
 //
-// 单测用 httptest 打桩，验的是「函数行为对不对」；shell 那份是黑盒，断言靠
-// grep 输出、失败时只能看日志。中间缺一层：能直接断言结构（哪个 provider 收到
-// 什么、响应头说什么），又能拿到真实的端到端数据面行为（路由、fallback、
-// thinkcache、流式分帧）。按「基础通用的功能可以做大测试」的原则，这一层覆盖
-// 的正是那些不常改、但一改就全线出问题的东西：档位解析、字节手术、转移。
+// Unit tests stub with httptest - "is the function right"; the shell is black box
+// (grep assertions, logs on failure). The missing middle: assert structure directly
+// (which provider got what, what the headers say) and real end-to-end data-plane
+// behaviour (routing, fallback, thinkcache, streaming framing). Per "stable foundations
+// deserve big tests": tier resolution, byte surgery, failover - rarely changed, breaks all.
 //
-// 各模块自己的特殊行为**不在这里**——那些放回模块内部，用 testing/testkit
-// 起一张只含该模块与其依赖的最小图去测（只有模块自己清楚它要什么、怎么动态
-// 更新）。这一层只测「合起来还对」。
+// Each module's own quirks **are not here** - those go back inside the module, using
+// testing/testkit to build a minimal graph of it and its dependencies (only the module
+// knows what it needs and how to update dynamically). This layer tests "together fine".
 //
-// 与线上 daemon 的关系：Harness 监听一个**向内核要来的临时端口**（不是 8899），
-// 所以它和跑着的线上 daemon 完全不冲突，可以一边用着 newgate、一边跑这套。
+// Relation to the live daemon: the Harness listens on a **temp port requested from
+// the kernel** (not 8899), so it never conflicts - use newgate while it runs.
 package system
 
 import (
@@ -47,15 +47,15 @@ import (
 	modules "github.com/rzbdz/newgate/component"
 )
 
-// logSink 收代理自己的日志，失败时才吐到测试输出。
+// logSink collects the proxy's own logs and dumps them only on failure.
 //
-// 为什么不直接 io.Discard：路由类断言失败时（404「没有可用候选」是典型），
-// 真正的证据在代理那一行 `跳过原因：…` 里——哪个候选、为什么被跳过。丢掉它，
-// 测试只告诉你「404 不是 200」，然后人要手工复现一遍才能知道原因。
+// Why not io.Discard: when a routing assertion fails (404 "no candidate" is typical), the
+// evidence is in the proxy's `skip reason: ...` line - which candidate, why skipped. Throw
+// it away and the test says "404 is not 200", and a human must reproduce by hand.
 //
-// 为什么先攒着而不是直接 t.Logf：日志来自服务端 goroutine，测试结束后再写
-// 会 panic。这里在 Start 里最先注册清理，于是它最后执行（t.Cleanup 是后进
-// 先出），那时服务端已经停干净了。成功时这些行是噪音，所以只在失败时倒。
+// Why buffer instead of t.Logf: logs come from server goroutines; writing after the test
+// ends panics. This registers cleanup first in Start, so it runs last (t.Cleanup is LIFO),
+// when the server is fully stopped. On success these lines are noise, so dump on failure.
 type logSink struct {
 	mu  sync.Mutex
 	buf bytes.Buffer
@@ -73,7 +73,7 @@ func (s *logSink) dump(t *testing.T) {
 	if s.buf.Len() == 0 {
 		return
 	}
-	t.Logf("代理日志：\n%s", s.buf.String())
+	t.Logf("proxy log:\n%s", s.buf.String())
 }
 
 func (s *logSink) String() string {
@@ -82,26 +82,26 @@ func (s *logSink) String() string {
 	return s.buf.String()
 }
 
-// Harness 是一个跑起来的 newgate 实例。
+// Harness is one running newgate instance.
 type Harness struct {
 	t *testing.T
 
-	// ProxyURL 是转发服务根地址，形如 http://127.0.0.1:34567。
+	// ProxyURL is the forwarding service root, like http://127.0.0.1:34567.
 	ProxyURL string
-	// Upstream 是它这次指向的假上游。
+	// Upstream is the fake upstream it points at this time.
 	Upstream *upstream.Server
-	// Env 是隔离出来的配置目录（NEWGATE_HOME 等）。
+	// Env is the isolated config directory (NEWGATE_HOME etc.).
 	Env *testkit.Env
-	// Components 是实际启动顺序，用来断言依赖。
+	// Components is the actual start order, for asserting dependencies.
 	Components []string
 
 	graph   *app.App
 	server  *forward.Server
 	watcher *store.Watcher
 	client  *http.Client
-	// health 是组件图里那一张健康表（它自己经 RegisterFilter 挂进了数据面）。
+	// health is the health table in the component graph (mounted via RegisterFilter).
 	health breakerapi.Breaker
-	// sink 攒着代理自己写的日志，供测试断言「不静默」那类要求。
+	// sink collects the proxy's own logs, for assertions about "not silent".
 	sink *logSink
 }
 
@@ -114,11 +114,11 @@ func DefaultGraph() modules.Loader {
 	return manifest.Specs()[manifest.DefaultSpec]
 }
 
-// Start 起一整套：沙箱配置 → 假上游 → 真组件图 → 真转发服务（临时端口）。
+// Start brings it up: sandbox config -> fake upstream -> real graph -> real forward (temp port).
 //
-// 端口是向内核要的（listen :0 再关掉），所以同一台机器上并行跑多份互不冲突。
-// 拿到端口后写进 state.json，再让 forward 监听它——顺序不能反，因为 forward
-// 的端口就来自配置。
+// The port is requested from the kernel (listen :0 then close), so parallel runs on one
+// machine never conflict. The port goes into state.json, then forward listens - the order
+// cannot reverse, since forward's port comes from config.
 //
 // It installs DefaultGraph(); pass StartWith to install a different one.
 func Start(t *testing.T) *Harness {
@@ -126,21 +126,21 @@ func Start(t *testing.T) *Harness {
 	return StartWith(t, DefaultGraph())
 }
 
-// StartWith 与 Start 逐字相同，只是装配清单由调用方给。
+// StartWith is Start verbatim, only the manifest comes from the caller.
 //
-// 为什么要有它（2026-09-20）：**测试跟着拥有者走**。发行版带的那几个模块的行为
-// （DeepSeek 的尾部形状修补之类）该由发行版自己断言，而它需要「真组件图 + 真转发
-// 服务」这套设施——那套设施是内核的（真图才有的副作用：special 插件注册、健康表
-// 挂进数据面、confighook 装客户端目录）。没有这个入口，发行版只有两条路：把内核
-// 的测试设施复制一份（必然漂移），或者把自己的模块塞进内核的默认图里（内核就再也
-// 测不干净）。两条都比多一个函数贵。
+// Why it exists (2026-09-20): **tests follow owners**. The distribution's modules (DeepSeek
+// tail-shape patching etc.) should be asserted by it, and that needs "real graph + real
+// forward" - the kernel's facility (side effects only a real graph has: special plugins,
+// health table on the data plane, confighook's client directory). Without this entrance the
+// distribution would copy the kernel's test facility (drifts) or stuff its modules into the
+// kernel's default graph (kernel no longer testable). Both cost more than one function.
 func StartWith(t *testing.T, loader modules.Loader) *Harness {
 	t.Helper()
 
 	env := testkit.Sandbox(t)
 	up := upstream.New(t)
 
-	// 代理日志攒起来，失败时倒出来（注册得最早 → 清理时最后执行）。
+	// Buffer the proxy's logs and dump on failure (registered first -> cleanup last).
 	sink := &logSink{}
 	t.Cleanup(func() {
 		if t.Failed() {
@@ -148,44 +148,44 @@ func StartWith(t *testing.T, loader modules.Loader) *Harness {
 		}
 	})
 
-	// 1. 铺一份默认配置，然后把上游指到假上游。
+	// 1. Lay down a default config, then point the upstream at the fake one.
 	if _, err := store.Init(false); err != nil {
-		t.Fatalf("system: 初始化沙箱配置: %v", err)
+		t.Fatalf("system: initializing sandbox config: %v", err)
 	}
 	pointAtUpstream(t, up.URL())
 
-	// 2. 端口必须在写 state 之前拿到，否则 forward 监听的端口和配置里写的
-	//    对不上（客户端按 state 里的端口来找我们）。
+	// 2. The port must be obtained before writing state, or forward's listen port and the
+	//    config disagree (clients find us by the port in state).
 	port := freePort(t)
 	st := store.LoadState()
 	st.Port = port
 	if err := store.SaveState(st); err != nil {
-		t.Fatalf("system: 写 state.json: %v", err)
+		t.Fatalf("system: writing state.json: %v", err)
 	}
 
-	// 3. 真组件图。这一步的副作用正是我们要测的东西：gateway 把 special 插件
-	//    注册进默认 registry、confighook 装出客户端目录、config 接上角色提供者。
+	// 3. Real component graph. Its side effects are what we test: gateway registers
+	//    special plugins, confighook builds the client directory, config wires roles.
 	graph, err := app.New(context.Background(), loader)
 	if err != nil {
-		t.Fatalf("system: 装配组件图: %v", err)
+		t.Fatalf("system: assembling the component graph: %v", err)
 	}
 	t.Cleanup(func() { _ = graph.Stop(context.Background()) })
 
-	// 4. 真转发服务。watcher 与生产一致（1 秒轮询），所以改配置热更新这条路径
-	//    也在这层覆盖范围里。
+	// 4. The real forward service. The watcher matches production (1 second poll), so the
+	//    config hot-reload path is covered here too.
 	//
-	//    策略账本取自**真组件图**里那一本（不是新 policy.New()）：这样贡献者的
-	//    注册才算真的走通了「模块 Start → gateway.RegisterFilter → 数据面」，
-	//    健康表也是生产用的那一张。forward 只是被注入方——它从不注册任何东西，
-	//    只读账本（见 forward.go 的 [shape-400] 分支）。
+	//    The policy ledger comes from **the real graph**'s (not a new policy.New()), so
+	//    contributor registration really goes "module Start -> gateway.RegisterFilter ->
+	//    data plane", and the health table is production's. forward is only injected - it
+	//    registers nothing, only reads the ledger (see the [shape-400] branch in forward.go).
 	//
-	//    取值走 policy.Default()（gateway 在 Start 里装上的实例），而不是
-	//    modules.MustGet(graph.Context(), gatewayapi.Capability)：后者拿到的是
-	//    *port，而数据面要的是那一本账。这条与健康表那条的取法不同，原因是
-	//    「账本」本身就是插入口（见 modules/gateway/policy），不需要再经一层。
+	//    Read via policy.Default() (the instance gateway installs in Start), not
+	//    modules.MustGet(graph.Context(), gatewayapi.Capability): the latter gives a
+	//    *port, while the data plane wants the ledger. Different from the health table
+	//    because the **ledger** itself is the insertion point (see modules/gateway/policy).
 	watcher, err := store.NewWatcher(time.Second)
 	if err != nil {
-		t.Fatalf("system: 配置 watcher: %v", err)
+		t.Fatalf("system: configuring the watcher: %v", err)
 	}
 	t.Cleanup(watcher.Close)
 	watcher.Start()
@@ -198,12 +198,12 @@ func StartWith(t *testing.T, loader modules.Loader) *Harness {
 		server.Shutdown()
 		select {
 		case err := <-serveErr:
-			// Shutdown 之后 Serve 返回 http.ErrServerClosed 是正常的。
+			// After Shutdown, Serve returning http.ErrServerClosed is normal.
 			if err != nil && !strings.Contains(err.Error(), "Server closed") {
-				t.Errorf("system: 转发服务异常退出: %v", err)
+				t.Errorf("system: the forwarding service exited unexpectedly: %v", err)
 			}
 		case <-time.After(3 * time.Second):
-			t.Errorf("system: 转发服务 3 秒内没退出")
+			t.Errorf("system: the forwarding service did not exit within 3 seconds")
 		}
 	})
 
@@ -218,34 +218,34 @@ func StartWith(t *testing.T, loader modules.Loader) *Harness {
 		watcher:    watcher,
 		health:     health,
 		sink:       sink,
-		// 显式绕开环境代理：CI 或开发机上常有 HTTP_PROXY，不绕的话
-		// 127.0.0.1 的请求会被劫到代理去（本机实测踩过）。
+		// Explicitly bypass the environment proxy: CI and dev boxes often have HTTP_PROXY,
+		// and 127.0.0.1 requests would be hijacked through it (hit locally once).
 		client: httpx.LocalClient(15 * time.Second),
 	}
 	h.waitReady()
 	return h
 }
 
-// Client 返回已经绕开环境代理的 HTTP 客户端，超时 15 秒。
+// Client returns an HTTP client with the env proxy bypassed, 15 second timeout.
 func (h *Harness) Client() *http.Client { return h.client }
 
-// Breaker 返回**组件图里那一张**健康表（就是数据面用的那一张）。
+// Breaker returns **the graph's** health table (the one the data plane uses).
 //
-// 为什么要有这个入口：形状判据是由模块在 Start 里注册进来的，测试若自己
-// newTable() 就绕过了注册，断言会变成「什么检测器都没有时 400 也不摘牌」——
-// 那是真的但没意义，恰是 2026-09-17 之前那条测试变成空转的原因。拿真表才能
-// 断言「判据真的被注册、真的认领了、转发路径真的把 Shape 读出来了」。
+// Why this entrance: shape criteria are registered by modules in Start; a test that calls
+// newTable() itself bypasses registration, and the assertion becomes "400 with no detector
+// also does not tri", true but meaningless - exactly why the pre-2026-09-17 test spun.
+// The real table lets us assert "the criterion is registered, claimed, and Shape reads out".
 func (h *Harness) Breaker() breakerapi.Breaker { return h.health }
 
-// Logs 返回代理到目前为止写下的日志（快照，调用后可继续追加）。
+// Logs returns the logs the proxy has written so far (a snapshot; appends may continue).
 //
-// 断言「不静默」用：形状判据认领一发 400 时，日志里必须有 [shape-400] 那一行，
-// 且那行要说出**是哪条判据**认的。只断言健康表计数器的话，日志掉了一句也没人
-// 发现——而排查现场时人手里只有日志。
+// For "not silent": when a shape criterion claims a 400, the log must carry the [shape-400]
+// line naming **which criterion** claimed it. Asserting only the health counter would let a
+// dropped log line slip by - and on site, the log is all a human has.
 func (h *Harness) Logs() string { return h.sink.String() }
 
-// WaitForLog 轮询等一段日志出现（代理写日志与客户端拿到响应之间没有顺序保证，
-// 尤其是上游回错、我们还要存证据的那种路径）。超时返回 false。
+// WaitForLog polls until a log line appears (no ordering guarantee between the proxy
+// writing and the client getting the response, especially on error paths). Timeout -> false.
 func (h *Harness) WaitForLog(t *testing.T, sub string) bool {
 	t.Helper()
 	deadline := time.Now().Add(3 * time.Second)
@@ -258,8 +258,8 @@ func (h *Harness) WaitForLog(t *testing.T, sub string) bool {
 	return false
 }
 
-// Post 发一个 JSON 请求到代理，返回响应。path 以 / 开头，例如
-// "/a/claude/v1/messages"。
+// Post sends a JSON request to the proxy and returns the response. path starts with /,
+// e.g. "/a/claude/v1/messages".
 func (h *Harness) Post(path, body string) *http.Response {
 	h.t.Helper()
 	resp, err := h.post(path, body)
@@ -269,7 +269,7 @@ func (h *Harness) Post(path, body string) *http.Response {
 	return resp
 }
 
-// PostRaw 同 Post，但把网络错误交回给调用方（测断连之类要用）。
+// PostRaw is Post but hands network errors back to the caller (for disconnect tests).
 func (h *Harness) PostRaw(path, body string) (*http.Response, error) {
 	return h.post(path, body)
 }
@@ -284,7 +284,7 @@ func (h *Harness) post(path, body string) (*http.Response, error) {
 	return h.client.Do(req)
 }
 
-// Get 发一个 GET。
+// Get sends a GET.
 func (h *Harness) Get(path string) *http.Response {
 	h.t.Helper()
 	resp, err := h.client.Get(h.ProxyURL + path)
@@ -294,19 +294,19 @@ func (h *Harness) Get(path string) *http.Response {
 	return resp
 }
 
-// ReadBody 读空响应体并关闭，返回字符串。
+// ReadBody reads and closes an empty response body, returning a string.
 func ReadBody(t *testing.T, resp *http.Response) string {
 	t.Helper()
 	defer resp.Body.Close()
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
-		t.Fatalf("system: 读响应体: %v", err)
+		t.Fatalf("system: reading the response body: %v", err)
 	}
 	return string(b)
 }
 
-// waitReady 轮询直到代理能应答。端口已经 listen 成功才返回，所以这里只等
-// HTTP 层就绪——但 socket 和 HTTP handler 之间有几毫秒差，不轮询会偶发失败。
+// waitReady polls until the proxy answers. The port listened before this, so only the HTTP
+// layer is awaited - but socket and handler differ by milliseconds, so polling avoids flakes.
 func (h *Harness) waitReady() {
 	h.t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
@@ -318,45 +318,45 @@ func (h *Harness) waitReady() {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	h.t.Fatalf("system: 代理 5 秒内没就绪（%s）", h.ProxyURL)
+	h.t.Fatalf("system: the proxy was not ready within 5 seconds (%s)", h.ProxyURL)
 }
 
-// pointAtUpstream 把所有 provider 指到假上游。
+// pointAtUpstream points every provider at the fake upstream.
 //
-// base_url 带 /v1（openai 方言拼 /chat/completions）；anthropic_url 不带 /v1
-// ——这正是两种字段的既定语义，也顺带验证了「客户端说哪种方言就走哪个 base」
-// 这条路径在集成层是通的。
+// base_url carries /v1 (openai dialect appends /chat/completions); anthropic_url does not
+// - the established semantics of the two fields, also verifying that "the client's dialect
+// picks the base" works at the integration layer.
 func pointAtUpstream(t *testing.T, url string) {
 	t.Helper()
 	providers, err := store.LoadProviders()
 	if err != nil {
-		t.Fatalf("system: 读 providers.json: %v", err)
+		t.Fatalf("system: reading providers.json: %v", err)
 	}
 	if len(providers.Providers) == 0 {
-		t.Fatal("system: 默认配置里没有 provider")
+		t.Fatal("system: no provider in the default config")
 	}
 	for name, p := range providers.Providers {
 		p.BaseURL = url + "/v1"
 		p.AnthropicURL = url
 		p.APIKey = "sk-fake-" + name
-		// key 走环境变量的话我们这里设不了，会被判成「没 key」而拒绝转发。
+		// A key read from an env var cannot be set here; we would judge "no key" and refuse.
 		p.APIKeyEnv = ""
-		// 必须写回 map：range 的 value 是拷贝，光改 p 是在改副本——
-		// 症状是所有候选都被判「provider 没有 api_key」，请求 404 而不是转发。
+		// Must write back into the map: range's value is a copy; editing p edits the copy -
+		// the symptom is every candidate judged "provider has no api_key", 404 instead of forward.
 		providers.Providers[name] = p
 	}
 	if err := store.SaveProviders(providers); err != nil {
-		t.Fatalf("system: 写 providers.json: %v", err)
+		t.Fatalf("system: writing providers.json: %v", err)
 	}
 }
 
-// freePort 向内核要一个当前空闲的端口。有 TOCTOU 窗口（关掉到重新 listen 之间
-// 别人可能抢），但并行测试里每个进程各要一个，实际不会撞。
+// freePort asks the kernel for a currently free port. There is a TOCTOU window (someone
+// may grab it before re-listen), but parallel tests each take one; in practice no clash.
 func freePort(t *testing.T) int {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		t.Fatalf("system: 要空闲端口: %v", err)
+		t.Fatalf("system: asking for an idle port: %v", err)
 	}
 	port := ln.Addr().(*net.TCPAddr).Port
 	_ = ln.Close()

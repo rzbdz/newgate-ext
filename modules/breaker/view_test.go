@@ -10,14 +10,16 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// TestHealthTableCellsMatchColumns 是这张表的形状棘轮。
+// TestHealthTableCellsMatchColumns is this table's shape ratchet.
 //
-// 格子是按**列 ID** 索引的（见 view.Table 的注释：行是 map，不是数组），于是
-// 键名写错不会报错——前端按列去取，取不到就是空白。一张少了半列的表看起来
-// 完全正常，只有对着终端里的 `newgate breaker` 逐格比才会发现。
+// Cells are indexed by **column ID** (see the comment on view.Table: rows are maps, not
+// arrays), so a misspelled key does not error -- the frontend looks it up by column,
+// misses, and it is blank. A table missing half a column looks perfectly normal;
+// only comparing cell by cell against `newgate breaker` in the terminal reveals it.
 //
-// 同一个理由适用 tone：它不是 view.Tone* 里的词时，前端一律当没给（不着色），
-// 于是「这条摘了」在网页上是一片灰。两种错都静默，所以在这里拦。
+// The same reason applies to tone: when it is not a word from view.Tone*, the
+// frontend treats it as not given (no color), so "this one is delisted" shows
+// as gray on the web page. Both errors are silent, so they are blocked here.
 func TestHealthTableCellsMatchColumns(t *testing.T) {
 	b, _ := clocked()
 	trip(t, b, "relay", "slow")                            // 摘牌：State=open
@@ -25,60 +27,61 @@ func TestHealthTableCellsMatchColumns(t *testing.T) {
 
 	concepts, err := healthConcepts(b, nil)
 	if err != nil {
-		t.Fatalf("贡献健康表出错: %v", err)
+		t.Fatalf("contributing the health table failed: %v", err)
 	}
 	if len(concepts) != 1 {
-		t.Fatalf("该恰好贡献一张表，实际 %d 个概念", len(concepts))
+		t.Fatalf("should contribute exactly one table, got %d concepts", len(concepts))
 	}
 	c := concepts[0]
 	if c.Kind != view.KindTable {
-		t.Fatalf("Kind 该是 %q，实际 %q", view.KindTable, c.Kind)
+		t.Fatalf("Kind should be %q, actual %q", view.KindTable, c.Kind)
 	}
 	if c.Apply != nil {
-		t.Fatal("这张表是可写的——它报的是 daemon 内存里的状态，没有「写回去」这回事")
+		t.Fatal("this table is writable - it reports the state in daemon memory, there is no such thing as writing it back")
 	}
 
 	table, ok := c.Data.(view.Table)
 	if !ok {
-		t.Fatalf("Data 该是 view.Table，实际 %T", c.Data)
+		t.Fatalf("Data should be a view.Table, got %T", c.Data)
 	}
 	if len(table.Columns) == 0 {
-		t.Fatal("一列都没有——表头没了，前端画不出东西")
+		t.Fatal("no columns at all - the header is gone, the front end has nothing to draw")
 	}
 
 	columns := map[string]bool{}
 	for _, col := range table.Columns {
 		if col.ID == "" || col.Label == "" {
-			t.Errorf("列缺 ID 或 Label: %+v（ID 是格子的索引键，Label 才是给人看的）", col)
+			t.Errorf("a column is missing ID or Label: %+v (ID is the cell index key, Label is what people read)", col)
 		}
 		columns[col.ID] = true
 	}
 
 	if len(table.Rows) != 2 {
-		t.Fatalf("两个 binding 该有两行，实际 %d 行", len(table.Rows))
+		t.Fatalf("two bindings should be two rows, got %d rows", len(table.Rows))
 	}
 	for _, row := range table.Rows {
 		for id, cell := range row.Cells {
 			if !columns[id] {
-				t.Errorf("格子 %q 没有对应的列——前端取不到，这一格是空白", id)
+				t.Errorf("cell %q has no matching column - the front end cannot fetch it, so this cell is blank", id)
 			}
 			switch cell.Tone {
 			case "", view.ToneOK, view.ToneWarn, view.ToneBad:
 			default:
-				t.Errorf("格子 %q 的 tone=%q 不是已知语义色，前端会当没给（静默不着色）", id, cell.Tone)
+				t.Errorf("cell %q has tone=%q which is not a known semantic color; the front end treats it as unset (silently uncolored)", id, cell.Tone)
 			}
 			if cell.Text == "" {
-				t.Errorf("格子 %q 是空的——该显示「没有」时请显式写一个占位符", id)
+				t.Errorf("cell %q is empty - when it should show 'none', write an explicit placeholder", id)
 			}
 		}
 	}
 }
 
-// TestHealthTableReportsHealthyBindingsToo 锁住「报全部，不只报出事的」。
+// TestHealthTableReportsHealthyBindingsToo pins "report all, not just the troubled".
 //
-// CLI 的 `newgate breaker` 刻意只报出问题的（终端里没问题的行是噪音），网页
-// 这张表刻意全报：一张能停在屏幕上的表，好坏是相对的——一条能用的 binding
-// 卡顿到什么程度，只有跟旁边那些比才看得出来。
+// The CLI's `newgate breaker` deliberately reports only the troubled ones
+// (healthy lines are noise in a terminal), while this web table deliberately
+// reports all: for a table that can sit on screen, good and bad are relative
+// -- how laggy a usable binding is can only be seen next to its neighbors.
 func TestHealthTableReportsHealthyBindingsToo(t *testing.T) {
 	b, _ := clocked()
 	trip(t, b, "relay", "slow")
@@ -86,50 +89,51 @@ func TestHealthTableReportsHealthyBindingsToo(t *testing.T) {
 	concepts, _ := healthConcepts(b, nil)
 	table := concepts[0].Data.(view.Table)
 	if len(table.Rows) != 1 {
-		t.Fatalf("只报出事的那些了？实际 %d 行", len(table.Rows))
+		t.Fatalf("only the broken ones are reported? got %d rows", len(table.Rows))
 	}
 	if got := table.Rows[0].Cells["binding"].Text; got != "relay/slow" {
-		t.Fatalf("binding 那一格该是 provider/model，实际 %q", got)
+		t.Fatalf("the binding cell should be provider/model, got %q", got)
 	}
-	// 摘了就该是红的（bad），而不是「有值但没颜色」。
+	// Delisted should be red (bad), not "has a value but no color".
 	if tone := table.Rows[0].Cells["state"].Tone; tone != view.ToneBad {
-		t.Fatalf("摘牌的 state 该是 %q，实际 %q", view.ToneBad, tone)
+		t.Fatalf("the state of a dropped one should be %q, got %q", view.ToneBad, tone)
 	}
 }
 
-// TestHealthTableIsEmptyWhenNothingIsKnown 是空白装配的那条：一条 binding 都
-// 没记过时，表头照在。空表不是错误——「什么都没出问题」与「这张表坏了」在
-// 界面上必须是两种样子。
+// TestHealthTableIsEmptyWhenNothingIsKnown is the empty-assembly one: with not a single
+// binding ever recorded, the header is still there. An empty table is not an error -- "nothing
+// went wrong" and "this table is broken" must look like two different things in the UI.
 func TestHealthTableIsEmptyWhenNothingIsKnown(t *testing.T) {
 	b, _ := clocked()
 	concepts, err := healthConcepts(b, nil)
 	if err != nil {
-		t.Fatalf("没有 binding 时不该出错: %v", err)
+		t.Fatalf("with no bindings it should not error: %v", err)
 	}
 	table := concepts[0].Data.(view.Table)
 	if len(table.Rows) != 0 {
-		t.Fatalf("空表该没有行，实际 %d", len(table.Rows))
+		t.Fatalf("an empty table should have no rows, got %d", len(table.Rows))
 	}
 	if len(table.Columns) == 0 {
-		t.Fatal("空表也该有表头，否则前端连「这张表在说哪几件事」都显示不出来")
+		t.Fatal("an empty table should still have a header, or the front end cannot even show what this table is about")
 	}
-	// 空表要序列化成 `[]`，不是 `null`：nil 切片在 JSON 里是 null，而这一格的
-	// 契约是「一个列表」。前端靠 `?? []` 兜住了，但协议不该指望每个消费者都
-	// 这么小心。
+	// An empty table must serialize as `[]`, not `null`: a nil slice is null in
+	// JSON, and this cell's contract is "a list". The frontend's `?? []` covers
+	// it, but a protocol should not expect every consumer to be that careful.
 	raw, err := json.Marshal(table)
 	if err != nil {
-		t.Fatalf("表序列化失败: %v", err)
+		t.Fatalf("serializing the table failed: %v", err)
 	}
 	if !strings.Contains(string(raw), `"rows":[]`) {
-		t.Fatalf("空表的 rows 该是 []，实际: %s", raw)
+		t.Fatalf("the rows of an empty table should be [], got: %s", raw)
 	}
 }
 
-// TestHealthCardIsLive：这张表声明了 `Live`，界面才会每隔几秒重问一次。
+// TestHealthCardIsLive: this table declares `Live`, so the UI re-asks every few seconds.
 //
-// 掉掉它**不会有任何东西报错**：页面安静地停在打开那一刻，而这张表说的全是
-// 「现在」——谁在失败、还要等多久。`untilText` 那几个相对时间尤其如此：一个
-// 不动的页面上，「还要等 42s」过一分钟就成了假话。
+// Dropping it **would make nothing error**: the page sits quietly
+// at the moment it was opened, while this table is all about "now" -- who is
+// failing, how long until retry. `untilText`'s relative times especially: on
+// a page that does not move, "42s until retry" becomes a lie a minute later.
 func TestHealthCardIsLive(t *testing.T) {
 	b, _ := clocked()
 	concepts, err := healthConcepts(b, nil)
@@ -137,23 +141,25 @@ func TestHealthCardIsLive(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(concepts) == 0 {
-		t.Fatal("一张卡都没有——这条断言等于没跑")
+		t.Fatal("there is not a single card - this assertion is a no-op")
 	}
 	for _, c := range concepts {
 		if !c.Live {
-			t.Errorf("%s 没有声明 Live：它的内容由流量决定，而读一次只是内存里一把快照", c.ID)
+			t.Errorf("%s does not declare Live: its content is decided by traffic, and one read is just a snapshot in memory", c.ID)
 		}
 	}
 }
 
-// TestPollingTheCardDoesNotAdvanceTheBreaker 是「把这张卡设成 Live」的安全性
-// 那一半：**每隔几秒被问一次的那条路，绝不能推进状态机**。
+// TestPollingTheCardDoesNotAdvanceTheBreaker is the safety half of "make this card
+// Live": **the path asked every few seconds must never advance the state machine**.
 //
-// 熔断器有一条会改状态的读路径——`Available`：冷却期满时它顺手把 binding 推进
-// 半开、发放本轮的试探名额（见 state.go 的注释）。那扇门是**数据面**走的：
-// 谁要发请求，谁去领名额。如果这张卡改成调 `Available`，症状会是「有人把界面
-// 开着」就让冷却中的 binding 一轮轮地拿到试探名额——准入决定被一次页面浏览改掉，
-// 而且没有任何东西会红。所以这里把两半都钉住：轮询**不动**它，`Available` 才动。
+// The breaker has one read path that changes state -- `Available`: when the
+// cooldown expires it moves the binding to half-open along the way and issues this round's
+// trial slot (see the comment in state.go). That door belongs to the **data plane**:
+// whoever wants to send a request goes and gets the slot. If this card changed to call
+// `Available`, the symptom would be "someone left the UI open" and bindings in cooldown
+// get trial after trial -- the admission decision changed by a page view, and nothing goes
+// red. So both halves are pinned here: polling does **not** move it, `Available` does.
 func TestPollingTheCardDoesNotAdvanceTheBreaker(t *testing.T) {
 	b, adv := clocked()
 	trip(t, b, "relay", "slow") // 摘牌（trip 内部走的是 Available，那是写路径）
@@ -167,38 +173,40 @@ func TestPollingTheCardDoesNotAdvanceTheBreaker(t *testing.T) {
 		return concepts[0].Data.(view.Table).Rows[0].Cells["state"]
 	}
 
-	// 冷却期满。此刻表里显示的是**由时钟推导**出来的半开（state(now) 那条判据），
-	// 谁都没写任何东西——要紧的是**名额还在不在**：那才是 Available 会动的东西。
+	// Cooldown expired. What the table shows right now is the half-open **derived
+	// from the clock** (the state(now) test), and nobody wrote anything -- what
+	// matters is **whether the slot is still there**: that is what Available moves.
 	adv(24 * time.Hour)
 
 	awaiting := view.Cell{Text: i18n.T("half-open · awaiting trial", nil), Tone: view.ToneWarn}
 	if got := state(); got != awaiting {
-		t.Fatalf("前提不成立：冷却期满该显示「等着试探」，实际 %q/%q", got.Text, got.Tone)
+		t.Fatalf("precondition does not hold: after the cooldown it should show 'waiting for a trial', got %q/%q", got.Text, got.Tone)
 	}
-	// 界面那一侧：问几次都不许变，而且**一次名额都不许领走**。
+	// The UI side: ask any number of times, nothing may change, and **no slot may be taken**.
 	for i := 0; i < 3; i++ {
 		if got := state(); got != awaiting {
-			t.Fatalf("第 %d 次轮询之后状态变了：%q → %q —— 看一眼界面就推进了状态机",
+			t.Fatalf("the state changed after poll #%d: %q -> %q - glancing at the UI advanced the state machine",
 				i+1, awaiting.Text, got.Text)
 		}
 	}
 	if !b.Available("relay", "slow") {
-		t.Fatal("轮询把这一轮的试探名额领走了——数据面的准入决定被一次页面浏览改掉")
+		t.Fatal("the poll took this round's trial slot - one page view changed the data plane's admission decision")
 	}
 
-	// 对照：真正会动它的是 Available（数据面领名额那条路）——领走之后表里看得出来。
+	// Contrast: what really moves it is Available (the data plane's
+	// slot-taking path) -- after a slot is taken the table shows it.
 	if got := state(); got.Text != i18n.T("half-open · trial in flight", nil) {
-		t.Fatalf("Available 领走名额之后该显示「试探在飞」，实际 %q", got.Text)
+		t.Fatalf("after Available takes the slot it should show 'trial in flight', got %q", got.Text)
 	}
 }
 
-// trip 把一条 binding 连续打失败到开闸（阈值见策略默认值）。
+// trip fails one binding consecutively until the breaker opens (thresholds: see policy defaults).
 func trip(t *testing.T, b Breaker, provider, model string) {
 	t.Helper()
 	for i := 0; i < 2; i++ {
 		b.Report(provider, model, Input{Kind: KindConnError})
 	}
 	if b.Available(provider, model) {
-		t.Fatalf("%s/%s 打了两发连接失败还没被摘", provider, model)
+		t.Fatalf("%s/%s took two connection failures and was not dropped", provider, model)
 	}
 }

@@ -7,38 +7,38 @@ import (
 	"strings"
 )
 
-// 托管文件集合——**这是唯一的契约**。
+// The managed file set - **this is the single contract**.
 //
-// 只有这里列出的文件会被搬来搬去。`~/.config/newgate/` 下其余的一切都是
-// **机器本地**：state.json、health.json、thinkcache.bin、dump/、backups/、
-// probe-capabilities.json、omo-slots.json、bin/、.newgate.pid、.newgate.lock、
-// newgate.log，以及 secrets.json（它另走密钥通道，见 secrets.go）。
+// Only the files listed here move around. Everything else under `~/.config/newgate/` is
+// **machine-local**: state.json, health.json, thinkcache.bin, dump/, backups/,
+// probe-capabilities.json, omo-slots.json, bin/, .newgate.pid, .newgate.lock,
+// newgate.log, and secrets.json (its own channel, see secrets.go).
 //
-// # 为什么必须是显式 allowlist，不能扫目录
+// # Why an explicit allowlist, never a directory scan
 //
-// 两个已核实的坑，都会让"扫目录"这个偷懒做法出事：
+// Two verified pitfalls, both of which break the lazy "scan the directory" approach:
 //
-//  1. **`newgate profile kv --write` 会留下 `name.json.bak`**（它转换时把旧
-//     json 改名）。而 store.readProfileFile 只认 `.kv` 和 `.json`，所以那个
-//     `.bak` 是死文件——扫目录会把它搬到每台机器上，变成一堆既不被读、
-//     又会被下一轮漂移守卫当成"本地改动"的垃圾。
-//  2. **`omo-slots.json` 必须留在本地**。它被 roleprov.WatchFiles() 盯着，
-//     由 `newgate on opencode` 按**本机**情况生成（每个 intra-agent 稳定分到
-//     哪个键）。它进共享会与本地接管互相打架：A 机的槽位分配搬到 B 机，B 机
-//     的 opencode 就会引用一批本机不存在的键——症状是 unknown-role，不是崩溃，
-//     所以会很难查。
+//  1. **`newgate profile kv --write` leaves `name.json.bak`** (it renames the old
+//     json during conversion). store.readProfileFile only knows `.kv` and `.json`, so
+//     that `.bak` is dead - a scan would ship it to every machine, as junk that is
+//     never read and counts as a "local change" for the next drift guard.
+//  2. **`omo-slots.json` must stay local**. roleprov.WatchFiles() watches it, and
+//     `newgate on opencode` generates it per **machine** (which key each intra-agent
+//     stably gets). Sharing it would fight local takeover: A's slots copied to B
+//     would reference keys B lacks - the symptom is unknown-role, not a crash, so
+//     it is very hard to debug.
 const (
-	// ProvidersName 是托管集合里的 provider 表。
+	// ProvidersName is the provider table in the managed set.
 	ProvidersName = "providers.json"
-	// MappingsDir 是托管集合里的档位目录。
+	// MappingsDir is the tier directory in the managed set.
 	MappingsDir = "mappings"
 )
 
-// ManagedPath 判断一个**相对配置目录的斜杠路径**是否属于托管集合，并且是
-// 安全的（不会跑出配置目录）。返回规范化后的路径。
+// ManagedPath decides whether a **slash path relative to the config dir** is in the
+// managed set and is safe (cannot escape the config dir). Returns the cleaned path.
 //
-// 这个函数是唯一的判据：宿主侧生成快照、副本侧校验快照、漂移检测枚举本地文件
-// 都走它。三处共用一条规则，才不会出现"发得出去、收不下来"这类错位。
+// This function is the only criterion: host snapshot generation, replica validation
+// and drift enumeration all use it. One shared rule, so nothing "sends but won't take".
 func ManagedPath(rel string) (string, bool) {
 	clean, ok := cleanRel(rel)
 	if !ok {
@@ -47,7 +47,7 @@ func ManagedPath(rel string) (string, bool) {
 	if clean == ProvidersName || clean == MetaFileName {
 		return clean, true
 	}
-	// mappings/<名字>.<json|kv>
+	// mappings/<name>.<json|kv>
 	if !strings.HasPrefix(clean, MappingsDir+"/") {
 		return "", false
 	}
@@ -55,13 +55,13 @@ func ManagedPath(rel string) (string, bool) {
 	if name == "" || strings.Contains(name, "/") {
 		return "", false // mappings 下不再有子目录
 	}
-	// 点开头的是临时/隐藏文件（我们自己的原子写会造 `.<名字>.tmp`）。
+	// Leading dots are temp/hidden files (our atomic writes make `.<name>.tmp`).
 	if strings.HasPrefix(name, ".") {
 		return "", false
 	}
 	switch {
 	case strings.HasSuffix(name, ".json"):
-		// 注意 `.json.bak` 不以 `.json` 结尾，天然被排除——这正是上面坑 1 要的。
+		// Note `.json.bak` does not end in `.json`, so it is excluded - exactly pitfall 1.
 		return clean, true
 	case strings.HasSuffix(name, ".kv"):
 		return clean, true
@@ -69,10 +69,10 @@ func ManagedPath(rel string) (string, bool) {
 	return "", false
 }
 
-// cleanRel 把一个相对路径规范化，并拒绝一切可能跑出配置目录的形状。
+// cleanRel normalizes a relative path and rejects shapes that could escape the config dir.
 //
-// 落盘最终还有 os.Root 把关（materialize.go），这里是第一道：坏路径要在
-// **校验阶段**就被拦下（那时还什么都没写），而不是等到写的时候才发现。
+// os.Root is the final gate on write (materialize.go); this is the first: bad paths
+// must be stopped at **validation** (nothing written yet), not at write time.
 func cleanRel(rel string) (string, bool) {
 	if rel == "" || strings.ContainsRune(rel, 0) {
 		return "", false
@@ -87,17 +87,17 @@ func cleanRel(rel string) (string, bool) {
 	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") {
 		return "", false
 	}
-	// path.Clean 之后还带 // 或结尾 / 的原文一律不接受（避免 "mappings//x.json"
-	// 这种"看着一样、字符串不同"的键在清单里产生两条记录）。
+	// After path.Clean, a path still containing // or a trailing / is rejected (else
+	// "mappings//x.json" and "mappings/x.json" would become two ledger entries).
 	if clean != rel {
 		return "", false
 	}
 	return clean, true
 }
 
-// ListManagedFiles 枚举**本机现存**的托管文件（相对斜杠路径，已排序）。
+// ListManagedFiles lists the managed files **present locally** (relative, sorted).
 //
-// 给漂移检测用：它要能看见"托管集合里多出来的本地文件"（= 本地层）。
+// For drift detection: it must see "extra local files in the managed set" (local layer).
 func ListManagedFiles(dir string) ([]string, error) {
 	var out []string
 	if _, ok := ManagedPath(ProvidersName); ok {
@@ -130,11 +130,11 @@ func ListManagedFiles(dir string) ([]string, error) {
 	return out, nil
 }
 
-// shadowOf 返回会**盖住**某个托管文件的本地文件的相对路径。
+// shadowOf returns the relative path of a local file that **shadows** a managed file.
 //
-// 只有一种形状：store.readProfileFile 先看 `name.kv`，再看 `name.json`——所以
-// 一个非托管的 `mappings/x.kv` 会让托管的 `mappings/x.json` **写了也不生效**。
-// 这是最阴的一种漂移：远端明明同步成功了，本机行为不变，且没有任何报错。
+// One shape only: store.readProfileFile checks `name.kv`, then `name.json` - so a
+// non-managed `mappings/x.kv` makes the managed `mappings/x.json` **take no effect**.
+// The nastiest drift: the remote synced, local behavior unchanged, and no error.
 func shadowOf(rel string) string {
 	if !strings.HasPrefix(rel, MappingsDir+"/") || !strings.HasSuffix(rel, ".json") {
 		return ""

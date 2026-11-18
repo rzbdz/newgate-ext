@@ -1,21 +1,21 @@
-// Package archmap 把这张架构的**两份来源**画成一张可以翻的 HTML。
+// Package archmap draws the **two sources** of this architecture as one browsable HTML.
 //
-// # 两份来源为什么要放在一起看
+// # Why the two sources belong together
 //
-//   - **装配图（resolve）**：真跑一遍组件框架的解析，得到「谁需要谁、谁提供了
-//     什么」。它是**声明**：写在 Requires/Provides 里的东西。
-//   - **import 图（scan）**：扫一遍所有包的 import。它是**事实**：编译器眼里
-//     的东西。
+//   - **assembly map (resolve)**: really run the component framework's resolution and
+//     get "who needs whom, who provides what". It is **declaration**: Requires/Provides.
+//   - **import map (scan)**: scan every package's imports. It is **fact**: what the
+//     compiler sees.
 //
-// 两张图对不上就是问题所在——声明了 Need 却没 import（那多半是走 capability
-// 拿的，正常），或者 import 了却没有任何依赖边（**那是一条没人声明的依赖**，
-// 藏得最深的那种：编译过、测试过、review 时看不出来，改动时才发现拆不动）。
-// 分开画、并排看，这件事才有个抓手。
+// Where the maps disagree is the problem - Need declared but no import (usually
+// taken via capability, fine), or an import with no dependency edge (**a dependency
+// nobody declared**, the best-hidden kind: compiles, tests, review misses it, only a
+// change shows it cannot be split). Drawn apart, side by side, that gets a handle.
 //
-// # 方向
+// # Direction
 //
-// 两张图都按「**依赖在下，依赖者在上面**」摆：最底下是叶子机制（没人依赖它、
-// 它也不依赖别人），往上是被它们撑起来的东西，最上面是组合根。边从下往上指。
+// Both maps go **deps below, dependents above**: leaf mechanisms at the very bottom
+// (nothing depends on them, they on nothing), dependents above them, root on top; arrows up.
 package archmap
 
 import (
@@ -24,16 +24,16 @@ import (
 	modules "github.com/rzbdz/newgate/component"
 )
 
-// Node 是图上的一个点。
+// Node is a point on the map.
 type Node struct {
 	ID    string `json:"id"`
 	Label string `json:"label"`
-	// Group 决定配色与图例（模块类型 / 仓库归属）。
+	// Group decides color and legend (module type / repo ownership).
 	Group string `json:"group"`
-	// Note 是悬停时那行小字（谁提供的、装在哪）。
+	// Note is the small line on hover (who provides it, where it is installed).
 	Note string `json:"note"`
-	// Missing 标记「被需要、但这个装配里没有」——Optional 依赖的常见下场，
-	// 画出来比省掉有用：它正是「关掉一个模块会怎样」的答案。
+	// Missing marks "needed, but not in this assembly" - the usual fate of an Optional
+	// dependency; drawing it beats omitting it: it answers "what happens if a module is off".
 	Missing bool `json:"missing,omitempty"`
 
 	Layer int     `json:"layer"`
@@ -44,22 +44,22 @@ type Node struct {
 	H     float64 `json:"h"`
 }
 
-// Edge 从 From（依赖者、画在上面）指向 To（被依赖者、画在下面）。
+// Edge points from From (dependent, drawn above) to To (depended on, drawn below).
 type Edge struct {
 	From  string `json:"from"`
 	To    string `json:"to"`
 	Style string `json:"style"` // solid = Need，dashed = Optional，cross = 跨仓库
 	Label string `json:"label"` // 走的是哪个 capability
-	// Cycle 标记「这条边在同一个强连通分量里」（两个目录互相可达）。
+	// Cycle marks "this edge is inside one strongly connected component" (two dirs
+	// reachable from each other).
 	//
-	// 它是**聚合的产物**，不是设计的毛病：内核里那些共享叶子（config/domain、
-	// cli/extension、gateway/policy…）谁都能直接 import，按文件看是个 DAG，
-	// 按目录聚合就成了环。画出来的时候标红——review 的人该看见它，然后知道
-	// 那是叶子契约在起作用（见 docs/03-architecture.md §3）。
+	// It is **a product of aggregation**, not a design flaw: shared leaves (config/domain,
+	// cli/extension, gateway/policy...) may be imported by anyone; by file a DAG,
+	// aggregated by directory a cycle. Marked red so reviewers see leaf contracts at work.
 	Cycle bool `json:"cycle,omitempty"`
 }
 
-// Graph 是一张画好的图（坐标已经算完，前端只画）。
+// Graph is one drawn map (coordinates computed; the front end only paints).
 type Graph struct {
 	ID     string  `json:"id"`
 	Title  string  `json:"title"`
@@ -70,15 +70,15 @@ type Graph struct {
 	Height float64 `json:"height"`
 	Layers int     `json:"layers"`
 
-	// Compact 让布局在分层之后**收紧**（把点往邻居那边挪，缩短边的总跨度）。
+	// Compact makes the layout **tighten** after layering (points move toward neighbors).
 	//
-	// 什么时候要它：**层号没有物理意义**、只是个分组的时候（import 图就是这样
-	// ——同一层不代表任何语义，能看清谁连着谁才是目的）。装配图不开：那里深度
-	// 就是故事本身（叶子机制在底下、组合根在上面），收紧会把那条阶梯压扁。
+	// When to use it: when **layer numbers have no physical meaning**, only grouping
+	// (the import map: same layer means nothing, seeing connections is the goal).
+	// Off for the assembly map: there depth is the story, and tightening flattens it.
 	Compact bool `json:"-"`
 }
 
-// Report 是整个产物：几张装配图（每份规格书一张）+ 一张 import 图。
+// Report is the whole artifact: several assembly maps (one per spec) + one import map.
 type Report struct {
 	GeneratedAt string   `json:"generatedAt"`
 	Specs       []Graph  `json:"specs"`
@@ -86,14 +86,14 @@ type Report struct {
 	Notes       []string `json:"notes"`
 }
 
-// ---------- 装配图 ----------
+// ---------- assembly map ----------
 
-// ResolveGraph 真跑一遍组件解析，把结果画成图。
+// ResolveGraph really runs component resolution and draws the result as a map.
 //
-// 走的是框架的 `component.Resolve`（**图纸**，不是 `New`）：校验与拓扑排序一步
-// 不少，但一个 Start 都不跑——不起端口、不写盘、不改全局注册表。所以同一个进程
-// 里可以连问几张图（每份规格书一张），而这是**框架给的能力**，不是这里自己解析
-// 一遍凑出来的。
+// It goes through the framework's `component.Resolve` (**the blueprint**, not `New`):
+// validation and topological sort included, but no Start runs - no ports, no writes,
+// no global registry changes. So one process can ask for several maps (one per
+// spec), and this is **a capability the framework gives**, not a re-parse here.
 func ResolveGraph(id, title, note string, loaders ...modules.Loader) (Graph, error) {
 	plan, err := modules.Resolve(loaders...)
 	if err != nil {
@@ -102,23 +102,23 @@ func ResolveGraph(id, title, note string, loaders ...modules.Loader) (Graph, err
 	return buildGraph(id, title, note, plan.Components(), plan.Dependencies()), nil
 }
 
-// CatalogGraph 画「**这个进程此刻装着什么**」。
+// CatalogGraph draws "**what this process has installed right now**".
 //
-// 与 ResolveGraph 的区别只在**来源**：那边跑一遍 Resolve（图纸：按 loader 声明出来
-// 的），这边用的是运行中的组件名单（事实：内核通过 CatalogAware 递的那份，见
-// modules/pluginmanager 的同款用法）。在线那张图只能走这条路——它手里没有 loader，
-// 而它要回答的问题本来就是「这里现在装着谁」。
-//
-// 依赖边两种来源都拿得到：它们是 Requires/Provides 里写着的东西，不需要解析器。
+// It differs from ResolveGraph only in the **source**: that one runs Resolve (the
+// blueprint: per the loader's declarations), this one uses the live component list
+// (the fact the kernel hands over via CatalogAware, as modules/pluginmanager does).
+// The online map can only take this road - it has no loader, and its question is
+// "who is installed here now". Dependency edges come from both sources: they are
+// what Requires/Provides say, and need no resolver.
 func CatalogGraph(id, title, note string, comps []modules.Component) Graph {
 	return buildGraph(id, title, note, comps, dependenciesOf(comps))
 }
 
-// dependenciesOf 从**已经装着的组件**里解出依赖边，形状与 Plan.Dependencies 一致。
+// dependenciesOf extracts dependency edges from the **installed components**, same
+// shape as Plan.Dependencies.
 //
-// 判据只有一条：Requires 里的端口名，在谁的 Provides 里出现过。没人提供就留空
-// （画成虚点，见 buildGraph）。Plan 那边做的是同一件事的更完整版本（它还校验
-// 缺端口、做拓扑排序）——这里只画图，不校验：名单是**已经装配成功**的结果。
+// One criterion: a Requires port name that appears in someone's Provides. Nobody ->
+// empty (dotted point, see buildGraph). Plan validates; here we draw a **succeeded** assembly.
 func dependenciesOf(comps []modules.Component) map[string][]modules.Dependency {
 	owner := map[string]string{}
 	for _, c := range comps {
@@ -141,7 +141,7 @@ func dependenciesOf(comps []modules.Component) map[string][]modules.Dependency {
 	return out
 }
 
-// buildGraph 是两种来源共用的那一半：名单 + 依赖边 → 画好的图。
+// buildGraph is the half both sources share: names + dependency edges -> a drawn map.
 func buildGraph(id, title, note string, comps []modules.Component, deps map[string][]modules.Dependency) Graph {
 	g := Graph{ID: id, Title: title, Note: note}
 	names := make([]string, 0, len(comps))
@@ -160,9 +160,9 @@ func buildGraph(id, title, note string, comps []modules.Component, deps map[stri
 		for _, d := range deps[c.Name] {
 			to := d.ProvidedBy
 			if to == "" {
-				// 没人提供：Optional 的常见下场（那一版的发行版关掉了它）。
-				// 画一个虚点，让「这一版少装了什么」看得见——review 装配时
-				// 这条边和实边一样有用。
+				// Nobody provides it: the usual fate of an Optional (this distribution turned it
+				// off). Draw a dotted point so "what this build left out" is visible - as useful
+				// as a solid edge when reviewing an assembly.
 				to = "?" + d.Capability
 				if !seen[to] {
 					seen[to] = true

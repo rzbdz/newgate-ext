@@ -73,7 +73,7 @@ func TestPutScalarTouchesOnlyThatLine(t *testing.T) {
 	out := apply(t, sampleYAML, edit{Path: []string{"model", "default"}, Value: "normal"})
 	want := strings.Replace(sampleYAML, "  default: claude-opus-5\n", "  default: normal\n", 1)
 	if out != want {
-		t.Errorf("只该改一行\n--- got ---\n%s", out)
+		t.Errorf("only one line should change\n--- got ---\n%s", out)
 	}
 }
 
@@ -81,13 +81,13 @@ func TestPutScalarTouchesOnlyThatLine(t *testing.T) {
 func TestPutNestedDoesNotConfuseSameNamedKeys(t *testing.T) {
 	out := apply(t, sampleYAML, edit{Path: []string{"auxiliary", "vision", "model"}, Value: "vision"})
 	if !strings.Contains(out, "  model: claude-opus-5\n") {
-		t.Errorf("顶层 model.model 不该动\n%s", out)
+		t.Errorf("the top-level model.model must not be touched\n%s", out)
 	}
 	if !strings.Contains(out, "    model: vision\n") || strings.Contains(out, "gpt-4o") {
-		t.Errorf("auxiliary.vision.model 该改\n%s", out)
+		t.Errorf("auxiliary.vision.model should change\n%s", out)
 	}
 	if !strings.Contains(out, "  compression:\n    provider: auto\n") {
-		t.Errorf("兄弟块不该动\n%s", out)
+		t.Errorf("sibling blocks must not be touched\n%s", out)
 	}
 }
 
@@ -96,7 +96,7 @@ func TestPutIntoEmptyFlowMapping(t *testing.T) {
 	out := apply(t, sampleYAML, edit{Path: []string{"providers", "newgate"},
 		Value: omap{{"name", "newgate"}, {"base_url", "http://127.0.0.1:8899/a/hermes/v1"}}})
 	if !strings.Contains(out, "providers:\n  newgate:\n    name: newgate\n    base_url: \"http://127.0.0.1:8899/a/hermes/v1\"\nfallback_providers: []\n") {
-		t.Errorf("provider 块该插在 providers 下\n%s", out)
+		t.Errorf("the provider block should be inserted under providers\n%s", out)
 	}
 }
 
@@ -105,10 +105,10 @@ func TestPutReplacesWholeBlock(t *testing.T) {
 	out := apply(t, sampleYAML, edit{Path: []string{"smart_model_routing", "cheap_model"},
 		Value: omap{{"provider", "newgate"}, {"model", "light"}}})
 	if strings.Contains(out, "gemini-3-flash-preview") || strings.Count(out, "cheap_model:") != 1 {
-		t.Errorf("旧块该整块换掉\n%s", out)
+		t.Errorf("the old block should be replaced entirely\n%s", out)
 	}
 	if !strings.Contains(out, "  cheap_model:\n    provider: newgate\n    model: light\ncustom_providers:") {
-		t.Errorf("新块的位置/缩进不对\n%s", out)
+		t.Errorf("the position/indentation of the new block is wrong\n%s", out)
 	}
 }
 
@@ -131,11 +131,11 @@ func TestPutIsIdempotent(t *testing.T) {
 	for _, e := range edits {
 		changed, err := d.put(e)
 		if err != nil || changed {
-			t.Errorf("第二次 put %v 不该再改（changed=%v err=%v）", e.Path, changed, err)
+			t.Errorf("a second put %v should not change anything again (changed=%v err=%v)", e.Path, changed, err)
 		}
 	}
 	if d.String() != once {
-		t.Errorf("两次结果不同")
+		t.Errorf("the two results differ")
 	}
 }
 
@@ -143,17 +143,17 @@ func TestPutIsIdempotent(t *testing.T) {
 func TestPutRefusesToTurnAValueIntoAMapping(t *testing.T) {
 	d := parseDoc("model: claude-opus-5\n")
 	if _, err := d.put(edit{Path: []string{"model", "default"}, Value: "normal"}); err == nil {
-		t.Errorf("model 是一个字符串（hermes 的旧写法），往里塞子键该拒绝")
+		t.Errorf("model is a string (the old hermes way); stuffing child keys into it should be rejected")
 	}
 }
 
 func TestRemove(t *testing.T) {
 	out := apply(t, sampleYAML, edit{Path: []string{"model", "api_key"}})
 	if strings.Contains(out, "api_key: sk-placeholder") {
-		t.Errorf("没删掉\n%s", out)
+		t.Errorf("not deleted\n%s", out)
 	}
 	if !strings.Contains(out, "  base_url: https://api.example.com:60000/\n  api_mode:") {
-		t.Errorf("邻居该原样接上\n%s", out)
+		t.Errorf("the neighbor should join up as is\n%s", out)
 	}
 }
 
@@ -169,7 +169,7 @@ func TestLitQuotesWhatYAMLWouldReinterpret(t *testing.T) {
 		"a: b":                       `"a: b"`,
 	} {
 		if got := lit(in); got != want {
-			t.Errorf("lit(%q) = %s，想要 %s", in, got, want)
+			t.Errorf("lit(%q) = %s, want %s", in, got, want)
 		}
 	}
 }
@@ -180,6 +180,6 @@ func TestChildrenAndGet(t *testing.T) {
 		t.Errorf("children = %s", got)
 	}
 	if v, _ := d.get("agent", "personalities", "pirate"); !strings.HasPrefix(v, "Arrr! Ye be talkin'") {
-		t.Errorf("带引号的值该去掉引号读回：%q", v)
+		t.Errorf("a quoted value should be read back without the quotes: %q", v)
 	}
 }

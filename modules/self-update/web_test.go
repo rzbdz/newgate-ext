@@ -24,8 +24,8 @@ func ext(t *testing.T, w *webState, action string) statusDoc {
 	return out.(statusDoc)
 }
 
-// 网页那一面：status 不出网、首次要求查一次；check 的结论被记住，后续 status 带着它，
-// 且不再要求自动查；查失败照样记下（面板上写原因，不是空白）。
+// The web side: status stays offline and asks for a check the first time; the check's
+// verdict is remembered and later statuses carry it; failures are recorded too, with the reason.
 func TestWebStatusAndCheck(t *testing.T) {
 	testkit.Sandbox(t)
 	if err := paths.EnsureDirs(); err != nil {
@@ -66,8 +66,8 @@ func TestPluginEntryIsEmbedded(t *testing.T) {
 	}
 }
 
-// 和 web-dashboard 一起装：插件的登记校验（入口在不在、槽位认不认）在 Start 里跑，
-// 任何一条不过这里就红——而不是等用户打开页面发现顶栏少一颗按钮。
+// Installed together with web-dashboard: the plugin's registration checks (entry exists,
+// slot accepted) run in Start; any failure is red here, not a missing button a user finds.
 func TestModuleStartsWithTheWebDashboard(t *testing.T) {
 	testkit.Sandbox(t)
 	g := testkit.Start(t, webapi.New(), New())

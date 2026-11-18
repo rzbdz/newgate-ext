@@ -7,18 +7,19 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// SwitchInjectThinking 第 1 手：Claude Code 没写 thinking 时补
-// thinking:{"type":"disabled"}，从根上不进 DeepSeek 思考模式。
+// SwitchInjectThinking is move 1: when Claude Code did not write thinking, add
+// thinking:{"type":"disabled"}, so DeepSeek's thinking mode is never entered in the first place.
 //
-// 它是这个交叉模块**唯一**的一手，所以它就是「整个插件」的开关——没必要再单独
-// 造一个模块级按钮。
+// It is the **only** move of this cross-cutting module, so it is the switch
+// for "the whole plugin" -- no need to invent a separate module-level button.
 //
-// 前缀是 `claudecode-deepseek`（连字符）：path 的前缀必须逐字等于 Component.Name，
-// 而组件名用连字符（config-hook / opencode-omo / plugin-manager 都是），目录名才用
-// 下划线。写错了 registration 会当场拒绝——这条是实测出来的（第一版写成下划线）。
+// The prefix is `claudecode-deepseek` (hyphen): the path prefix must equal Component.Name
+// verbatim, and component names use hyphens (config-hook / opencode-omo / plugin-manager
+// all do), while only directory names use underscores. A typo is rejected at
+// registration on the spot -- this was measured (the first version used an underscore).
 const SwitchInjectThinking = "claudecode-deepseek.inject-thinking"
 
-// Switches 本模块上报的开关点清单，供 module.go 注册。
+// Switches is the list of switch points this module reports, for module.go to register.
 func Switches() []pluginmanager.Switch {
 	return []pluginmanager.Switch{{
 		Path:  SwitchInjectThinking,
@@ -31,9 +32,9 @@ func Switches() []pluginmanager.Switch {
 	}}
 }
 
-// stateOf 从插件上下文里取配置快照。允许 nil（旧调用面与单测常见）——
-// pluginmanager.Off 对 nil 一律回 false，也就是「没关」。方向不能反：
-// 快照缺席不该把补丁关掉。
+// stateOf takes the config snapshot from the plugin context. nil is allowed (the old call surface
+// and unit tests often hit it) -- pluginmanager.Off always answers false for nil, i.e. "not
+// off". The direction must not be reversed: a missing snapshot should not turn the patch off.
 func stateOf(r *special.Request) *domain.State {
 	if r == nil {
 		return nil

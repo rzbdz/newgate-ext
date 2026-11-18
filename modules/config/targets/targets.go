@@ -1,15 +1,18 @@
-// Package targets 把 profile 配置解析成「这一轮要打的 (provider, model)」。
+// Package targets resolves profile config into "the (provider, model) to hit this round".
 //
-// # 为什么单独一个包
+// # Why a separate package
 //
-// 两条诊断走的是同一件事：`newgate probe`（连通性/方言）与 `newgate verify`
-// （指纹）。它们的**结论**完全不同，但「哪些 profile、哪些档位、去重之后是哪几个
-// 上游」这条知识只有一份。2026-10 之前它内联在 gateway/probe 里；发行版的 verify
-// 需要同一份名单，而内核的 probe 实现包不该被发行版 import（那是内部实现）。
-// 下沉到这里之后，两边共用这一份，profile 的解析规则也只有一处会漂移。
+// Two diagnostics do the same thing: `newgate probe` (connectivity/dialect) and
+// `newgate verify` (fingerprint). Their **conclusions** are completely different, but
+// the knowledge "which profiles, which tiers, and after dedup which upstreams" exists
+// in only one copy. Before 2026-10 it was inlined in gateway/probe; the distribution's
+// verify needs the same list, and the kernel's probe implementation package should not
+// be imported by the distribution (that is an internal implementation). Lowered here,
+// both share this one copy, and profile resolution rules drift in only one place.
 //
-// 它只依赖 config 的共享叶子（domain/store），只做读盘与解析，也不认识
-// probe/verify 任何一方——所以箭头是 `probe → targets` 与 `verify → targets`。
+// It depends only on config's shared leaves (domain/store), does just
+// disk reading and resolution, and knows neither probe nor verify
+// -- so the arrows are `probe -> targets` and `verify -> targets`.
 package targets
 
 import (
@@ -22,47 +25,51 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// Target 是去重后的最小身份：profile/role 只是**引用**它的配置视图。
+// Target is the deduped minimal identity: profile/role are just config views that **reference** it.
 type Target struct {
 	Provider string
 	Model    string
 }
 
-// String 返回稳定的 provider/model 标识，用于排序与诊断。
+// String returns a stable provider/model identifier, for sorting and diagnostics.
 func (t Target) String() string { return t.Provider + "/" + t.Model }
 
-// Row 是一条配置视图：某个 profile 的某个档位解析到了哪一条绑定。
+// Row is one config view: which binding some profile's some tier resolved to.
 //
-// 同一条 Target 可以出现在很多 Row 里（一份 binding 被好几个 profile 的档位
-// 共用），调用方按 Target 去重之后再打请求。
+// The same Target can appear in many Rows (one binding shared by several
+// profiles' tiers), and the caller dedups by Target before hitting requests.
 type Row struct {
 	Profile  string
 	Role     string
 	Provider string
 	Model    string
-	// Err 非空 = 这一档没有可打的目标（没绑、或 provider 没声明）。它仍然是一行：
-	// 用户要知道「这一档是空的」，而不是从表里消失。
+	// Err non-empty = this tier has no hittable target (unbound, or the
+	// provider is not declared). It is still a row: the user needs to
+	// know "this tier is empty", not to have it vanish from the table.
 	Err string
 }
 
-// Options 控制解析哪一段配置。
+// Options controls which slice of config to resolve.
 type Options struct {
-	// Only 是一个 profile 名；空 = 全部 profile。
+	// Only is one profile name; empty = all profiles.
 	Only string
-	// OnlyTarget 点名一条 binding，空 = 按 Only/全部 profile 走。
+	// OnlyTarget names one binding; empty = go by Only / all profiles.
 	//
-	// 与 Only 的区别是「按什么找」：Only 是一个 profile 名（那下面是整条链的
-	// 几个候选），而这个是某一条具体的 binding。设了它就**不看 profile**：
-	// 目标已经点名了，再去遍历配置只会让「点一下这条」顺带打一串别的。
+	// The difference from Only is "what to find by": Only is a profile name (under
+	// which are a chain's several candidates), while this is one specific binding.
+	// Set it and **profiles are not consulted**: the target is already named, and
+	// walking the config again would make "hit this one" also hit a string of others.
 	OnlyTarget *Target
 }
 
-// Enumerate 解析配置，返回配置视图（Rows）与去重后的目标（Targets）。
+// Enumerate resolves the config, returning the config
+// views (Rows) and the deduped targets (Targets).
 //
-// Targets 按 String 排序；Rows 按（profile, 档位顺序）排序。profile 文件坏掉时
-// **跳过它**（与 store.Load 同一条：一个手改坏的文件不该让全部诊断停摆）；
-// 哪个文件坏了由 doctor 报，这里只报「点名的 profile 不存在」——那是整轮无法
-// 进行的错误，沉默会让调用方以为配置是空的。
+// Targets are sorted by String; Rows by (profile, tier order). When a profile file
+// is broken it is **skipped** (same as store.Load: one hand-broken file should
+// not stall all diagnostics); which file is broken is reported by doctor, and here
+// only "the named profile does not exist" is reported -- that is an error blocking
+// the whole round, and silence would make the caller think the config is empty.
 func Enumerate(o Options) (rows []Row, uniq []Target, err error) {
 	provs, err := store.LoadProviders()
 	if err != nil {
@@ -97,7 +104,7 @@ func Enumerate(o Options) (rows []Row, uniq []Target, err error) {
 	}
 
 	if o.OnlyTarget != nil {
-		// 点名了一条：不遍历 profile（理由见 Options.OnlyTarget）。
+		// One was named: do not walk profiles (for the reason see Options.OnlyTarget).
 		add(*o.OnlyTarget)
 		sort.Slice(uniq, func(i, j int) bool { return uniq[i].String() < uniq[j].String() })
 		return nil, uniq, nil

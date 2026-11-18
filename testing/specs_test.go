@@ -10,43 +10,43 @@ import (
 	"testing"
 )
 
-// siteDefaultLang 是公开站里**排在根路径上**的那一种语言（详见 tools/sitegen 的
-// defaultLang）。写在这里而不是 import 过来：那一位住在 `package main` 里，
-// 而这条测试要读的是**盘上那个目录名**——两处都写一次，改语言时这里会读不到文件
-// 而报错（那正是想要的：静默地跳过检查才是坏的）。
+// siteDefaultLang is the language **mounted at the root path** of the public site (see
+// tools/sitegen's defaultLang). Written here, not imported: that one lives in `package
+// main`, and this test must read **the directory name on disk** - both written once; a
+// language change makes this fail to read the file (wanted: silently skipping is worse).
 const siteDefaultLang = "zh-Hans"
 
-// 这一条锁的是**规格书之间**的一处关系：dev 那一份必须恰好是旗舰那一份**加上**
-// arch-diagram。
+// This pins a **cross-spec** relation: the dev one must be exactly the flagship one
+// **plus** arch-diagram.
 //
-// # 为什么值得一条测试（它拦过一次真实的漂移）
+// # Why a test (it caught a real drift)
 //
-// CLAUDE.md 把 dev 定义成「默认模块 + arch-diagram」，而这不是一个描述、是一条
-// **要求**：dev 存在的全部意义是「让我看见**产品那份装配**的内部结构」。它把
-// `/arch` 挂出去，而那张图画的是**这个进程此刻装了什么**——dev 少装一个模块，
-// 这张图就不再是产品那张图了，而它恰恰是 review 架构时唯一在看的东西。
+// CLAUDE.md defines dev as "default modules + arch-diagram", which is not a description but
+// a **requirement**: dev exists so "I can see **the product assembly's** internals". It
+// serves `/arch`, and that graph shows **what this process installed** - one module missing
+// from dev and the graph is no longer the product's, the only thing reviewed.
 //
-// 漂移是怎么发生的（2026-09-20 → 09-21 实测）：`a7b7fde` 建 `dist-dev.json` 时
-// 抄的是**当时**的默认模块表 + arch-diagram；第二天 codex / codex_deepseek 加进
-// `dist.json`（`20aa52e` / `969ae33`），没有一条东西提醒「还有第二份规格书在抄
-// 这张表」。于是 dev 静默地少了两块，而两件事都没人报：dev 照样编得过、CI 照样绿、
-// 图上只是**少了两个模块**——少掉的东西在一张架构图上看起来和「这两个模块不存在」
-// 一模一样。
+// How the drift happened (measured 2026-09-20 -> 09-21): `a7b7fde` built `dist-dev.json`
+// copying **the then** default table + arch-diagram; the next day codex / codex_deepseek
+// joined `dist.json` (`20aa52e` / `969ae33`), and nothing reminded "a second spec copies
+// that table". So dev silently lost two blocks, unreported: dev built, CI was green, the
+// graph simply **lacked two modules** - on an architecture graph, missing looks like absent.
 //
-// 这正是「列满的名单是那份表的副本」那条判据的第二个实例（第一份是内核模块表，
-// 见 CLAUDE.md §3 关于 `"disable": ["*"]` 的那段）。区别是这一份**没有别的写法**
-// ——dev 与 default 的差集就是它的定义，所以副本只能存在，那就用一条测试把它钉住。
+// This is the second instance of "a full list is a copy of that table" (the first is the
+// kernel module table, see CLAUDE.md section 3 on `"disable": ["*"]`). The difference: this
+// one **has no other spelling** - dev = default + the difference - so the copy must exist,
+// and a test pins it.
 //
-// 判据按**集合**比，不按数组：规格书里写的次序对装配没有影响（启动顺序由
-// `tools/distgen` 跑真的 Resolve 算出来，见 manifest/order_gen.go），比次序只会
-// 让「有人调整了抄写顺序」这种无害的改动报红。
+// The criterion compares **sets**, not arrays: spec order does not affect assembly (start
+// order is computed by `tools/distgen` via a real Resolve, see manifest/order_gen.go), and
+// comparing order would redden a harmless reordering.
 func TestDevSpecIsTheDefaultPlusTheMap(t *testing.T) {
 	root := repoRoot(t)
 	def := readSpecModules(t, filepath.Join(root, "dist.json"))
 	dev := readSpecModules(t, filepath.Join(root, "dist-dev.json"))
 
-	// 期望：default 的每一个模块都在 dev 里，外加 arch-diagram；反向也成立——
-	// 多出来的是**这个差集本身**的一部分，多一个少一个都要说。
+	// Expectation: every default module is in dev, plus arch-diagram; and the reverse - what
+	// is extra is **the difference itself**; one more or less must be reported.
 	want := map[string]bool{archDiagram: true}
 	for _, m := range def {
 		want[m] = true
@@ -72,104 +72,104 @@ func TestDevSpecIsTheDefaultPlusTheMap(t *testing.T) {
 	sort.Strings(extra)
 
 	if len(missing) > 0 {
-		t.Errorf("dist-dev.json 少了 %v——dev 是「默认模块 + %s」，少装的模块在 /arch 那张图上"+
-			"看起来与「它不存在」一模一样（见这条测试的注释）。加进 dist-dev.json 再 "+
+		t.Errorf("dist-dev.json is missing %v -- dev is \"the default modules + %s\", and a module that is missing looks"+
+			"exactly like \"it does not exist\" on the /arch map (see the comment on this test). Add it to dist-dev.json then "+
 			"`go run ./tools/distgen`", missing, archDiagram)
 	}
 	if len(extra) > 0 {
-		t.Errorf("dist-dev.json 多了 %v——它只该比默认那份多一个 %s；多出来的那些会让 /arch "+
-			"画出一个**产品里并不存在**的装配，而那比少画更糟（它看起来是对的）",
+		t.Errorf("dist-dev.json has extra %v -- it should only have one more than the default spec, %s; the extras make /arch "+
+			"draw an assembly that **does not exist in the product**, which is worse than drawing too little (it looks right)",
 			extra, archDiagram)
 	}
 }
 
-// siteModuleCountRe 抓站点上那句「N 个模块」。
+// siteModuleCountRe grabs the site's "N modules" sentence.
 //
-// 用正则而不是整句比对：这句是**给人读的话**，措辞随时可以改（改句子不该让一条
-// 判据变红）；这条判据管的是**里面那个数**。
+// A regex rather than whole-sentence equality: this is **prose for humans**, wording may
+// change (that must not redden a criterion); the criterion is **the number in it**.
 var siteModuleCountRe = regexp.MustCompile(`(\d+) 个模块`)
 
-// TestTheSiteStatesTheDefaultSpecsModuleCount：公开站上那句「N 个模块」必须等于
-// `dist.json` 装了几个。
+// TestTheSiteStatesTheDefaultSpecsModuleCount: the public site's "N modules" must equal
+// what `dist.json` installs.
 //
-// # 为什么会漂（实测漂过一次）
+// # Why it drifts (measured once)
 //
-// `d5555a4` 写这一页时 `dist.json` 是 11 个，第二天 `969ae33` 把 codex_deepseek
-// 加进默认规格，那句话就变成了**假的**——而站点照样生成、CI 照样绿。它与
-// TestDevSpecIsTheDefaultPlusTheMap 是**同一类**漂移：一句从某份规格书抄来的事实，
-// 抄的时候是对的，源变了没人提醒。
+// `d5555a4` wrote the page when `dist.json` had 11; the next day `969ae33` added
+// codex_deepseek to the default spec, and the sentence became **false** - the site still
+// generated, CI still green. Same **class** of drift as TestDevSpecIsTheDefaultPlusTheMap:
+// a fact copied from a spec, true when copied, source changed silently.
 //
-// # 为什么不去掉那个数
+// # Why not drop the number
 //
-// 它是这一页的开场：「这个站讲的是哪一份装配」需要一个具体的量。含糊过去
-// （「装了一整排模块」）等于把那句话的用处删掉——**补上那个数**比删掉它好，
-// 前提是它不会再烂掉。
+// It is the page's opening: "which assembly this site talks about" needs a concrete
+// quantity. Vagueness ("a whole row of modules") deletes its use - **restoring the number**
+// beats deleting it, provided it cannot rot again.
 //
-// 站点是 markdown、数是代码，两者之间没有构建期的接缝（站点产物不进版本控制
-// ——见 tools/sitegen/main.go 的文件头），所以钉住它的唯一地方就是这里。
+// The site is markdown, the number is code, no build-time seam (site output is not in
+// version control - see tools/sitegen/main.go's header), so this is the only place to pin it.
 func TestTheSiteStatesTheDefaultSpecsModuleCount(t *testing.T) {
 	root := repoRoot(t)
 	mods := readSpecModules(t, filepath.Join(root, "dist.json"))
 
-	// 这一页是「文档」的落点页：它明说自己在讲 dist.json 那一份，所以数得对得上。
-	// 别的页不写这个数，真写了也不归这条管——那是另一个决定（要不要到处都断言）。
+	// This page is the "docs" landing page: it says it describes dist.json, so numbers must match.
+	// Other pages carry no number; if they do, that is another decision (assert everywhere?).
 	path := filepath.Join(root, "site", "src", siteDefaultLang, "docs", "index.md")
 	b, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("读不到站点那一页（%s）: %v", path, err)
+		t.Fatalf("cannot read the site page (%s): %v", path, err)
 	}
 	m := siteModuleCountRe.FindStringSubmatch(string(b))
 	if m == nil {
-		t.Fatalf("%s 里找不到「N 个模块」那句——"+
-			"这一页的开场就是在说「本站讲的是哪一份装配」，那句没了这条判据就空转了", path)
+		t.Fatalf("cannot find the \"N modules\" sentence in %s --"+
+			"the opening of this page says \"which assembly this site is about\"; without that sentence this check spins empty", path)
 	}
 	if m[1] != strconv.Itoa(len(mods)) {
-		t.Errorf("站点上写着 %s 个模块，而 dist.json 装了 %d 个——"+
-			"这是一句从规格书抄来的事实，改规格书的人不会记得去改文档（实测漂过一次："+
-			"11 → 12）。改 %s", m[1], len(mods), path)
+		t.Errorf("the site says %s modules, but dist.json installs %d --"+
+			"this is a fact copied from the spec, and whoever changes the spec will not remember to update the doc (it drifted once in practice:"+
+			"11 -> 12). Fix %s", m[1], len(mods), path)
 	}
 }
 
-// archDiagram 是 dev 相对 default **唯一**允许多出来的那一个。
+// archDiagram is the **only** thing dev may have over default.
 //
-// 写在这里而不是从某处读：它是这条判据的**全部内容**。「dev 那份是不是该装
-// arch-diagram」不是一个可以推导的问题——那是这个发行版的产品决定（见
-// CLAUDE.md §5），所以它只能被写下来一次，然后由测试守着。
+// Written here, not read from somewhere: it is this criterion's **whole content**. "Should
+// dev install arch-diagram" is not derivable - it is this distribution's product decision
+// (see CLAUDE.md section 5), so it can only be written down once, and a test guards it.
 const archDiagram = "arch-diagram"
 
-// readSpecModules 读一份规格书的 modules 列表。
+// readSpecModules reads a spec's modules list.
 //
-// **从盘上读，不从 manifest 读**：manifest/modules_gen.go 是这两份规格书的
-// *产物*，拿产物去校验源，两份一起错的时候（改了规格书忘了重新生成）它俩是一致
-// 的，这条测试就空转了。盘上那份 JSON 才是源。
+// **From disk, not from manifest**: manifest/modules_gen.go is these specs' *product*, and
+// validating a source with its product passes when both are wrong (edited spec, no regen),
+// making this test spin. The JSON on disk is the source.
 func readSpecModules(t *testing.T, path string) []string {
 	t.Helper()
 	b, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("读不到 %s: %v", filepath.Base(path), err)
+		t.Fatalf("cannot read %s: %v", filepath.Base(path), err)
 	}
 	var spec struct {
 		Modules []string `json:"modules"`
 	}
 	if err := json.Unmarshal(b, &spec); err != nil {
-		t.Fatalf("%s 不是合法 JSON: %v", filepath.Base(path), err)
+		t.Fatalf("%s is not valid JSON: %v", filepath.Base(path), err)
 	}
 	if len(spec.Modules) == 0 {
-		t.Fatalf("%s 的 modules 是空的——那份规格书什么都没装，判据会空转成绿的",
+		t.Fatalf("%s has an empty modules list -- that spec installs nothing, and the check would spin green",
 			filepath.Base(path))
 	}
 	return spec.Modules
 }
 
-// repoRoot 从测试的包目录往上找仓库根（同时有 go.mod 与 dist.json 的那一层）。
+// repoRoot walks up from the test's package directory to the repo root (go.mod + dist.json).
 //
-// 与 tools/sitegen 的 repoRoot 同一条判据：只认 go.mod 的话 `core/` 也是一个
-// module，会认到内核那一层去。
+// Same criterion as tools/sitegen's repoRoot: go.mod alone matches `core/` too -
+// it is a module, and we would stop at the kernel's level.
 func repoRoot(t *testing.T) string {
 	t.Helper()
 	dir, err := filepath.Abs("..")
 	if err != nil {
-		t.Fatalf("算仓库根: %v", err)
+		t.Fatalf("locating the repo root: %v", err)
 	}
 	for {
 		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
@@ -179,7 +179,7 @@ func repoRoot(t *testing.T) string {
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			t.Fatal("找不到仓库根（该同时有 go.mod 与 dist.json）")
+			t.Fatal("cannot find the repo root (it must have both go.mod and dist.json)")
 		}
 		dir = parent
 	}

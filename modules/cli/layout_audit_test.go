@@ -8,9 +8,9 @@ import (
 	"github.com/rzbdz/newgate-ext/lib/style"
 )
 
-// fakeDoc 是一条模块贡献的命令，用来把「模块自己声明的 help 行」也纳入宽度
-// 守护。真实贡献者（naked / plugin / omo）都在各自模块里，cli 的测试 import
-// 不到它们（会成环），所以这里造一条形状相同的。
+// fakeDoc is a command contributed by a module, used to bring "help lines declared by modules"
+// into the width guard too. Real contributors (naked / plugin / omo) are in their own modules, and
+// cli's tests cannot import them (that would be a cycle), so one with the same shape is made here.
 type fakeDoc struct {
 	name string
 	line HelpLine
@@ -20,29 +20,32 @@ func (f fakeDoc) Names() []string        { return []string{f.name} }
 func (f fakeDoc) Run(Host, []string) int { return 0 }
 func (f fakeDoc) Help() HelpLine         { return f.line }
 
-// usageFixture 装一个带模块贡献的 service：一条并进已有节，一条自开新节。
-// 名字故意取得长——上一版就是被一个 19 字符的模块名撑破过版面。
+// usageFixture installs a service with module contributions: one joins an
+// existing section, one opens a new section. The names are deliberately long --
+// the previous version was burst past the layout by one 19-character module name.
 //
-// 账本就在 service 上，直接用真的（不手写 stub）：这样 --help 的组装路径与
-// 线上是同一份代码，包括命令名查重。
+// The ledger is on the service, used for real (no hand-written stub): that way --help's
+// assembly path is the same code as production, including command-name duplicate checking.
 func usageFixture(t *testing.T) *service {
 	t.Helper()
 	s := &service{}
-	// 名字各不相同：账本按 Names 查重（撞名当场报错，这是它的不变量之一）。
+	// All names are distinct: the ledger checks duplicates by
+	// Names (a clash errors on the spot, one of its invariants).
 	for i, line := range []HelpLine{
-		{Section: SectionMaintenance, Usage: "claudecode-deepseek-thing on|off [时长]", Summary: "一个很长的模块名，用来把左列撑开"},
-		{Section: SectionModules, Usage: "plugin [模块[.路径]] [on|off] [时长]", Summary: "全部模块按分类列出；开关某个模块或某个开关点"},
+		{Section: SectionMaintenance, Usage: "claudecode-deepseek-thing on|off [duration]", Summary: "a very long module name, used to stretch the left column"},
+		{Section: SectionModules, Usage: "plugin [module[.path]] [on|off] [duration]", Summary: "list every module by category; toggle a module or one switch point"},
 	} {
 		if _, err := s.RegisterCommand(fakeDoc{name: fmt.Sprintf("fake%d", i), line: line}); err != nil {
-			t.Fatalf("注册失败: %v", err)
+			t.Fatalf("registration failed: %v", err)
 		}
 	}
 	return s
 }
 
-// TestUsageNeverExceedsLayoutWidth 守两件事：CLI 自己的帮助不超宽，**模块贡献
-// 的那些行也不超宽**。后者是关键——贡献行是别人写的，CLI 必须在渲染时兜住，
-// 否则一个模块把自己的 Usage 写长一点就能把整个 --help 撑破。
+// TestUsageNeverExceedsLayoutWidth guards two things: the CLI's own help does not
+// overflow, and **the lines modules contribute do not either**. The latter is the key one
+// -- contributed lines are written by others, and the CLI must hold the line at render
+// time, otherwise one module writing its Usage a bit longer bursts the whole --help.
 func TestUsageNeverExceedsLayoutWidth(t *testing.T) {
 	for _, text := range []string{usageText(nil), usageText(usageFixture(t))} {
 		for i, line := range strings.Split(text, "\n") {
@@ -53,22 +56,25 @@ func TestUsageNeverExceedsLayoutWidth(t *testing.T) {
 	}
 }
 
-// TestUsageIncludesModuleContributions 守「命令搬回模块之后 help 也跟着搬」。
+// TestUsageIncludesModuleContributions guards "commands
+// moved back into modules, and help moved with them".
 //
-// 上一版把 naked / plugin 从 usageText 的硬编码列表里删掉、却没有别的地方渲染
-// 模块贡献，结果是两条命令从 --help 里**彻底消失**——命令还在，但用户看不见等于
-// 不存在。这条测试拦的就是这个：贡献的 Usage 必须出现在最终文本里。
+// The previous version deleted naked / plugin from usageText's hardcoded list but
+// rendered module contributions nowhere else, and the result was that two commands **vanished
+// completely** from --help -- the command was there, but invisible to the user is as good as
+// nonexistent. This test blocks exactly that: a contributed Usage must appear in the final text.
 func TestUsageIncludesModuleContributions(t *testing.T) {
 	text := usageText(usageFixture(t))
-	for _, want := range []string{"claudecode-deepseek-thing", "plugin [模块"} {
+	for _, want := range []string{"claudecode-deepseek-thing", "plugin [module"} {
 		if !strings.Contains(text, want) {
-			t.Fatalf("--help 里没有 %q：\n%s", want, text)
+			t.Fatalf("--help has no %q:\n%s", want, text)
 		}
 	}
-	// 自开的节要有自己的标题，而不是被吞进上一节。标题断言的是**显示名**
-	// （源语言就是英文那句）：槽位的键是 ASCII 身份，文案归目录
-	// ——见 extension.Section.Display。
+	// A self-opened section must have its own heading, not be swallowed into the
+	// previous section. The heading asserted is the **display name** (the source
+	// language is that English sentence): the slot key is the ASCII identity,
+	// and copy goes through the catalog -- see extension.Section.Display.
 	if !strings.Contains(text, SectionModules.Display()+"\n") {
-		t.Fatalf("模块自开的节没有渲染出来：\n%s", text)
+		t.Fatalf("the section a module opens for itself was not rendered:\n%s", text)
 	}
 }

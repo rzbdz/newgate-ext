@@ -1,42 +1,51 @@
 /**
- * 演示页的**假数据**：一份完整的 `Snapshot`，就躺在旁边的 `snapshot.json` 里。
+ * The **fake data** of the demo page: one complete `Snapshot`, sitting right next to
+ * this file in `snapshot.json`.
  *
- * # 为什么要抄真快照，而不是手写一份「差不多的」
+ * # Why copy a real snapshot instead of hand-writing an "about right" one
  *
- * 站点上这一页嵌的是**真组件**（同一份 `../src/kinds/*`，同一个 `ConceptCard`），
- * 喂的却是假数据——所以数据的形状必须与后端给的**逐字一致**：Truth 一偏，屏幕上
- * 的表现是「这张卡画不出来」或者「少了半张」，而演示页不在 `web/dist` 里、
- * `web_test.go` 与 `i18n_test.go` 都看不见它，没有任何东西会红。
+ * What this page embeds on the site is the **real components** (the same `../src/kinds/*`,
+ * the same `ConceptCard`), yet it is fed fake data — so the shape of the data must be
+ * **byte-for-byte identical** to what the backend gives: once the truth drifts, what shows
+ * up on screen is "this card won't draw" or "half a card is missing", while the demo page
+ * is not in `web/dist`, and neither `web_test.go` nor `i18n_test.go` can see it, so nothing
+ * turns red.
  *
- * 2026-09-23 之前这里是一大坨手写的 `data.ts`（约 1700 行），只铺开五节十张卡。
- * 那一版的问题不是写得不好，而是**它必然会漂**：手抄一份真快照，等于给自己留了
- * 一份没有守卫的副本。所以现在改成：从真快照（`GET /ui/api/snapshot`）摘下来、
- * 把私密的那几样换掉，直接入库当数据文件。改渲染器时这份数据不用动；真形状变了
- * （比如内核加了新的 Kind 字段），重跑一次下面那条命令就同步。
+ * Before 2026-09-23 this was one big hand-written `data.ts` (about 1700 lines) that only
+ * laid out five sections and ten cards. The problem with that version was not that it was
+ * badly written, but that **it was bound to drift**: hand-copying a real snapshot leaves
+ * you a copy with no guard on it. So now it works like this: take it down from a real
+ * snapshot (`GET /ui/api/snapshot`), swap out the private bits, and commit it directly as
+ * a data file. Changing the renderer doesn't touch this data; when the real shape changes
+ * (say the kernel adds a new Kind field), rerunning the command below syncs it.
  *
- * # 摘录时换掉了什么（`tools/demo-snapshot.py` 里逐条写着）
+ * # What was swapped out when extracting (`tools/demo-snapshot.py` lists them one by one)
  *
- *   - 本机真的上游地址（`api.rvcompute.com…` / `ark.cn-beijing.volces.com…`）
- *     → `api.example-gateway.com` 这类示例地址。**凭据本来就不在里面**：BFF 对
- *     `api_key` 那几格只回 `***`（见 `core/modules/config/view.go` 的 redact），
- *     摘下来之后又扫过一遍 `sk-…` / `Bearer` / `control_token`，一个都没有。
- *   - 磁盘路径 `/root/.config/newgate` → `~/.config/newgate`。
- *   - CAS 指纹（`base: sha256:…`）与上游的 call id：形状留着，值换掉。
- *   - 代理日志留最后 60 行（一整份 400 行的尾巴在演示页上看不完，也没人看）。
+ *   - Real local upstream addresses (`api.rvcompute.com…` / `ark.cn-beijing.volces.com…`)
+ *     → example addresses such as `api.example-gateway.com`. **Credentials were never in
+ *     there to begin with**: the BFF only answers `***` for the `api_key` cells (see
+ *     redact in `core/modules/config/view.go`), and after extraction it was scanned once
+ *     more for `sk-…` / `Bearer` / `control_token`; not one was found.
+ *   - Disk path `/root/.config/newgate` → `~/.config/newgate`.
+ *   - CAS fingerprints (`base: sha256:…`) and upstream call ids: shape kept, values swapped.
+ *   - Proxy log keeps the last 60 lines (a full 400-line tail can't be read on the demo
+ *     page anyway, and nobody reads it).
  *
- * 仍然在这份数据里的、且是**有意保留**的：模型名与 provider 名（`smt-deepseek`、
- * `gpt-5.6-sol`…）。它们是这个产品在演示什么的一部分——一屏摊开的候选链讲的就是
- * 「这个名字落到那家模型上」，把名字抹掉这张卡就没有内容了。那些名字不是凭据，
- * 也不是可用的地址。
+ * What is still in this data and **intentionally kept**: model names and provider names
+ * (`smt-deepseek`, `gpt-5.6-sol`…). They are part of what this product is demonstrating —
+ * a candidate chain laid out on one screen tells the story of "this name lands on that
+ * model"; erase the names and the card has no content. Those names are not credentials,
+ * and not usable addresses.
  *
- * # 怎么重新摘一份
+ * # How to extract a fresh copy
  *
  *     curl -s http://127.0.0.1:8899/ui/api/snapshot -o /tmp/snap.json
  *     python3 tools/demo-snapshot.py /tmp/snap.json \
  *       modules/web-dashboard/web/demo/snapshot.json
  *
- * 脚本只做上面那张替换表 + 取尾 60 行日志 + 固定 `generated_at`（它每跑一次都
- * 会变，而这份数据进了版本控制——不固定的话每次重摘都是一整份 diff）。
+ * The script does only the replacement table above + taking the last 60 log lines +
+ * fixing `generated_at` (it changes on every run, and this data is in version control —
+ * without fixing it, every re-extraction is one whole diff).
  */
 import type { Snapshot, Themes } from "../src/api";
 import { setLang } from "../src/i18n";
@@ -45,27 +54,32 @@ import rawThemes from "./themes.json";
 
 export const DEMO_LANG = "zh-Hans";
 
-/** 那一份完整的快照。json 的形状由 api.ts 的 `Snapshot` 钉住（见下面的断言）。 */
+/** That one complete snapshot. Its json shape is pinned by `Snapshot` in api.ts (see the
+ * assertion below). */
 export function snapshot(): Snapshot {
   return raw as unknown as Snapshot;
 }
 
 /**
- * 皮肤表（`GET /ui/api/themes` 的原文）。
+ * The skin table (the verbatim body of `GET /ui/api/themes`).
  *
- * 它与快照**分开摘、分开存**，因为它们在真后端上本来就是两条口：皮肤是界面自己的
- * 偏好，不在概念账本里（见 modules/web-dashboard/api.go）。摘法与快照逐条相同——
- * `tools/demo-snapshot.py` 的第三个参数，同一张禁词表，同一份「不手抄」的理由。
+ * It is extracted and stored **separately** from the snapshot because on the real backend
+ * they are two different ports anyway: a skin is the UI's own preference and is not in the
+ * concept ledger (see modules/web-dashboard/api.go). The extraction is item-for-item the
+ * same as for the snapshot — the third argument of `tools/demo-snapshot.py`, the same
+ * banned-word table, the same "don't hand-copy" reason.
  *
- * 这份数据里 `active` 是空的：演示页没有后端可存「用户选了哪一套」，所以它跟真界面
- * 打开时一样——走出厂那套令牌，由访客自己在那个下拉里挑（挑了只在这个浏览器里生效，
- * 刷新就回到出厂）。
+ * `active` is empty in this data: the demo page has no backend to store "which one the
+ * user picked", so it behaves like the real UI when opened — it starts from the
+ * out-of-the-box tokens, and the visitor picks from that dropdown themselves (a pick only
+ * takes effect in this browser and a refresh returns to the factory default).
  */
 export function themes(): Themes {
   return rawThemes as unknown as Themes;
 }
 
-/** 让真组件按中文渲染（`t()` 查不到时回落英文，所以这一步不做的话界面上会中英混着）。 */
+/** Make the real components render in Chinese (`t()` falls back to English on a miss, so
+ * skipping this step leaves the UI mixing Chinese and English). */
 export function useDemoLanguage(): void {
   setLang(DEMO_LANG);
 }

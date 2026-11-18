@@ -1,14 +1,14 @@
 package setup
 
-// providers.json 的「原样读、改一处、写回去」。
+// providers.json's "read raw, change one place, write back".
 //
-// 内核的 store.LoadProviders 会把 api_key_env 解析成 api_key 明文（转发层要用），
-// 所以**它的结果不能写回磁盘**——那等于把每个用环境变量管 key 的用户都变成
-// 「密钥躺在文件里」（内核 SaveProviders 的注释专门警告了这一条）。
+// The kernel's store.LoadProviders resolves api_key_env into plaintext api_key (for
+// forwarding), so **its result must not go back to disk** - that turns every env-managed
+// key into "the key sits in a file" (the kernel's SaveProviders warns about this).
 //
-// 而向导又必须能更新 providers.json 里的**一个键**，同时一字不动别人那些。
-// 于是这里自己读一次原始 JSON：json.RawMessage 保住每一段原文，只替换我们那一格。
-// 字段名与内核 domain.Provider 的 tag 对齐（那是落盘 schema，见 core/.../domain）。
+// Yet the wizard must update **one key** in providers.json, leaving the others alone.
+// So read the raw JSON here: json.RawMessage keeps every segment verbatim, swap ours only.
+// Field tags match the kernel's domain.Provider (the on-disk schema, see core/.../domain).
 
 import (
 	"encoding/json"
@@ -20,12 +20,12 @@ import (
 	"github.com/rzbdz/newgate/lib/i18n"
 )
 
-// loadProvidersRaw 读 providers.json 的原始形态：
+// loadProvidersRaw reads providers.json's raw form:
 //
-//	provs  强类型视图（向导要往里加/改一个键）
-//	raw    原文（哪些 provider 用了 api_key_env —— 那几个的明文不能被写回去）
+//	provs  typed view (the wizard adds/edits one key here)
+//	raw    the raw text (which providers use api_key_env - their plaintext must not go back)
 //
-// 文件不存在时给一份空的表（首次 bootstrap 就是这种情形），不报错。
+// A missing file gives an empty table (first bootstrap), not an error.
 func loadProvidersRaw() (*domain.Providers, map[string]bool, error) {
 	resolved := map[string]bool{}
 	provs := &domain.Providers{Providers: map[string]domain.Provider{}}
@@ -60,12 +60,12 @@ func loadProvidersRaw() (*domain.Providers, map[string]bool, error) {
 	return provs, resolved, nil
 }
 
-// stripResolvedKeys 把「靠环境变量取 key」的那些 provider 的明文抹掉。
+// stripResolvedKeys erases the plaintext of providers that get their key from the environment.
 //
-// 为什么需要它：上面的 doc 走的是 json 解码，没有把 api_key_env 求值——但
-// **调用之前**如果同一份结构被 LoadProviders 碰过就会带上明文。向导里不碰它，
-// 这一道是给「将来有人改了这条路径却没看见这个注释」留的闸：宁可把明文丢掉
-// （环境变量仍在，行为不变），也不能把它写回磁盘。
+// Why it exists: the doc above decodes JSON without evaluating api_key_env - but if
+// LoadProviders touched the same struct **before the call**, plaintext comes along. The
+// wizard does not, so this is a gate for "someone later changes this path and misses the
+// comment": better lose the plaintext (env still there, behavior unchanged) than write it.
 func stripResolvedKeys(p *domain.Providers, resolved map[string]bool) {
 	for name := range resolved {
 		v, ok := p.Providers[name]

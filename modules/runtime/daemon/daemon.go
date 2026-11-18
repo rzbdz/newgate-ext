@@ -32,8 +32,8 @@ type Info struct {
 func ReadPid() (*Info, error) {
 	b, err := ioutil.ReadFile(paths.PidFile())
 	if err != nil && paths.LegacyPidFile() != "" {
-		// 老版本把 pid 写在 $HOME——升级后第一次 stop/status 靠它找到
-		// 还在跑的旧 daemon（找到后会顺手清掉）。
+		// Old versions wrote the pid in $HOME - the first stop/status after an upgrade uses
+		// it to find a still-running old daemon (and clears it once found).
 		b, err = ioutil.ReadFile(paths.LegacyPidFile())
 	}
 	if err != nil {
@@ -41,7 +41,7 @@ func ReadPid() (*Info, error) {
 	}
 	var i Info
 	if err := json.Unmarshal(b, &i); err != nil {
-		// 兼容纯数字 pid 文件
+		// Tolerate a plain-number pid file
 		if n, e := strconv.Atoi(strings.TrimSpace(string(b))); e == nil {
 			return &Info{PID: n}, nil
 		}
@@ -55,9 +55,9 @@ func WritePid(i *Info) error {
 	return ioutil.WriteFile(paths.PidFile(), append(b, '\n'), 0o660)
 }
 
-// RemovePid / RemoveLock 两处（共享目录 + 老的 $HOME 位置）都清：
-// stop 一个 legacy pid 指到的旧 daemon 时，老文件得一起带走，否则
-// 下次又把它当活实例读出来。
+// RemovePid / RemoveLock clear both places (the shared dir + the old $HOME spot):
+// when stopping an old daemon a legacy pid points to, the old files must go too,
+// or the next read takes them as a live instance again.
 func RemovePid() {
 	_ = os.Remove(paths.PidFile())
 	if p := paths.LegacyPidFile(); p != "" {
@@ -72,16 +72,16 @@ func RemoveLock() {
 	}
 }
 
-// Alive 判断进程还在不在。只比 pid 会误判复用，所以还额外看 /proc 的 cmdline。
+// Alive tells whether the process is alive; pids get reused, so /proc's cmdline is checked too.
 func Alive(pid int) bool {
 	if pid <= 0 {
 		return false
 	}
 	if err := syscall.Kill(pid, 0); err != nil {
-		// EPERM：进程**在**，只是不归我们管（共享部署里别的用户起的
-		// daemon）。「活没活着」和「能不能发信号」是两回事——后者由
-		// Stop 走控制端点兜底。把它误判成不在，claude 用户就永远看到
-		// 「代理没在跑」，这正是要修的「看不到状态」。
+		// EPERM: the process **is** there, just not ours to manage (a daemon started by
+		// another user in a shared deployment). "Alive" and "can I signal it" differ; the
+		// latter falls back to the control endpoint in Stop. Calling it dead means a claude
+		// user forever sees "proxy not running" - exactly the "no status" bug being fixed.
 		if err != syscall.EPERM {
 			return false
 		}
@@ -90,19 +90,19 @@ func Alive(pid int) bool {
 	if err != nil {
 		return true // 非 Linux 或读不到，退化为只看 kill(0)
 	}
-	// 空 cmdline 有两种含义，必须区分：
-	//   1. 正在 exec 的过渡态（换镜像的瞬间 /proc 短暂读出空串）——活着。
-	//      Spawn 刚返回就 Running()/Stop() 最容易撞上这个窗口，误判成
-	//      死会引发「明明刚拉起却报没在跑」；
-	//   2. 僵尸（死了没人收尸）——死。
+	// An empty cmdline means one of two things, and they must be told apart:
+	//   1. the transitional exec state (a /proc read of empty during an image swap) - alive.
+	//      Spawn returning straight into Running()/Stop() hits this window; calling it
+	//      dead yields "just started, but reports not running";
+	//   2. a zombie (dead, uncollected) - dead.
 	if len(b) == 0 {
 		return !isZombie(pid)
 	}
 	return strings.Contains(string(b), "newgate")
 }
 
-// isZombie 看 /proc/<pid>/stat 的状态位。stat 的 comm 字段可含空格和括号，
-// 所以从最后一个 ')' 之后取状态字符。
+// isZombie reads the state char of /proc/<pid>/stat. stat's comm field may hold spaces
+// and parentheses, so take the state char after the last ')'.
 func isZombie(pid int) bool {
 	st, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
 	if err != nil {
@@ -114,41 +114,41 @@ func isZombie(pid int) bool {
 	return false
 }
 
-// isServe 确认这个 pid 是**守护进程本体**，而不是另一个也叫 newgate 的进程
-// （CLI 自己、别的实例）。判据是 cmdline 里的 `__serve`——只有
-// `newgate __serve` 持有监听 socket。
+// isServe confirms this pid is **the daemon itself**, not another process also named
+// newgate (the CLI itself, another instance). The criterion is `__serve` in cmdline -
+// only `newgate __serve` holds the listening socket.
 //
-// 它只用在「从锁文件反推 daemon」这条**推断**路径上，所以要求比 Alive 更硬的
-// 证据；pidfile 那条路是写者自证身份，仍然只用 Alive。判不了（非 Linux，
-// 没有 /proc）时不猜、放过。
+// It is used only on the **inference** path deriving the daemon from the lock file, so
+// it demands harder evidence than Alive; the pidfile path is the writer proving itself,
+// and still uses only Alive. When it cannot tell (not Linux, no /proc) it does not guess.
 //
-// 「判不了」与「证据不足」在这条路径上是两种处理，别混：判不了 = 这台机器
-// 根本没给判据（放过）；证据不足 = 判据在、但读到的内容说明不了问题（**拒绝**，
-// 老实说「不知道」）。原先把后者也算成放过（`len(b) == 0 || …`），2026-09-20
-// 在 CI 上飘过一次：测试起的进程正在 exec 成另一个镜像，那个窗口里 cmdline 是
-// 空的，于是「刚 fork 出来的 bash」被当成了守护进程本体。
+// "Cannot tell" and "insufficient evidence" are handled differently here - do not mix:
+// cannot tell = this machine gives no criterion (let it pass); insufficient =
+// the criterion exists but says nothing (**refuse**, honestly say "don't know"). The
+// latter used to pass too (`len(b) == 0 || ...`), and flaked in CI on 2026-09-20: the
+// test's process was exec'ing into another image, cmdline empty, bash taken as the daemon.
 func isServe(pid int) bool {
 	b, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
 	if err != nil {
-		// 这台机器没有 /proc（非 Linux）：判据不存在，放过。
+		// This machine has no /proc (not Linux): no criterion exists, let it pass.
 		if _, e := os.Stat("/proc/self"); e != nil {
 			return true
 		}
-		// 有 /proc 却读不到这个 pid：它在 Alive 与这里之间没了。**刚死不是
-		// 是 daemon**——拿一个已经不存在的 pid 去当真身（status 报假 pid、
-		// stop 去 SIGTERM 别人的进程）正是这条路径要防的事。
+		// /proc is there but this pid is unreadable: it died between Alive and here. **Just
+		// died is not the daemon** - taking a gone pid as the real one (status reports a
+		// fake pid, stop SIGTERMs someone else's process) is exactly what this path guards.
 		return false
 	}
-	// 空 cmdline 是 exec 过渡态（同 Alive 的注释）。**推断**路径上它意味着
-	// 证据不足，而证据不足要说不知道，不能猜。
+	// An empty cmdline is the exec transition (see Alive). On the **inference** path it
+	// means insufficient evidence, and insufficient evidence says "don't know", never a guess.
 	return len(b) > 0 && strings.Contains(string(b), "__serve")
 }
 
-// LockHolder 读锁文件里的 pid（新老两个位置），读不出给 0。
+// LockHolder reads the pid in the lock file (both locations), 0 when unreadable.
 //
-// 锁是「谁在服务」这件事的**权威证据**：它由抢到监听权的进程用 O_EXCL 写下、
-// 写在它自己的生命周期里；优雅交接时由 AdoptRuntime 改写到新进程名下。
-// pidfile 只是它的缓存（见 Reconcile）。
+// The lock is the **authoritative evidence** of "who is serving": the process that won
+// the listener writes it with O_EXCL, and it lives as long as that process; during a
+// graceful handoff AdoptRuntime rewrites it to the new process. The pidfile is its cache.
 func LockHolder() int {
 	for _, f := range []string{paths.LockFile(), paths.LegacyLockFile()} {
 		if f == "" {
@@ -165,10 +165,10 @@ func LockHolder() int {
 	return 0
 }
 
-// AcquireLock 独占锁。发现死锁文件自动清理。
+// AcquireLock takes the exclusive lock. A dead lock file is cleaned up automatically.
 func AcquireLock() error {
-	// 新老两个位置都查：老 daemon 的活锁在 $HOME，不认它就会起出
-	// 第二个实例去撞端口。
+	// Check both locations: an old daemon's live lock is in $HOME, and ignoring it would
+	// start a second instance that then fights over the port.
 	for _, f := range []string{paths.LockFile(), paths.LegacyLockFile()} {
 		if f == "" {
 			continue
@@ -179,7 +179,7 @@ func AcquireLock() error {
 				return i18n.E("newgate is already running (pid {pid}). Use `newgate restart` or `newgate stop`",
 					i18n.A{"pid": pid})
 			}
-			// 陈旧锁
+			// Stale lock
 			RemoveLock()
 			RemovePid()
 		}
@@ -194,18 +194,18 @@ func AcquireLock() error {
 	return err
 }
 
-// Running 返回当前活着的实例信息。
+// Running returns info about the currently live instance.
 func Running() *Info {
 	i, _ := Reconcile()
 	return i
 }
 
-// LastHeal 报告本进程内最近一次「对账修好了 pidfile」，没有修过给空串。
+// LastHeal reports the last "reconcile repaired the pidfile" here, "" if none.
 //
-// 为什么需要它：修好之后 pidfile 就对了，**再对账是一片绿**。而 `newgate doctor`
-// 里排在前面那几项（链路、代理）都会读 Running()，于是它们先把 pidfile 修好，
-// 等到「守护进程」那一项跑的时候，那处不一致已经看不见了——体检全绿，用户永远
-// 不知道自己刚才经历的是什么。这一行就是「不静默」在自愈路径上的落点。
+// Why: once repaired, the pidfile is right and **the next reconcile is all green**. But
+// earlier `newgate doctor` items (chain, proxy) read Running(), repair the pidfile first,
+// and by the time the "daemon" item runs the mismatch is invisible - all green, and the
+// user never learns what happened. This is "not silent" on the self-healing path.
 func LastHeal() string {
 	healMu.Lock()
 	defer healMu.Unlock()
@@ -217,21 +217,21 @@ var (
 	healNote string
 )
 
-// Reconcile 回答「谁真的在跑」，顺手把 pidfile 修回真身；第二个返回值是发现的
-// 那处不一致（doctor 用来出人话，一切正常时为空）。
+// Reconcile answers "who is really running" and repairs the pidfile back to the real body;
+// the second value is the mismatch it found (doctor turns it into words; empty if all well).
 //
-// **为什么不能只看 pidfile**（2026-09-18，两次现场，都是重启后必现）：pidfile
-// 会躺着一个「撞锁失败、当场退出的子进程」的 pid，而 daemon 一直在服务——
-// 见 WriteOwn 记的那条完整链条。锁文件是这件事的权威证据，所以 pidfile 站不住
-// 时用锁对账。
+// **Why the pidfile alone is not enough** (2026-09-18, twice, both on restart): it holds
+// the pid of a child that "lost the lock race and exited on the spot" while the daemon
+// kept serving - see the full chain recorded in WriteOwn. The lock file is authoritative,
+// so when the pidfile does not stand, reconcile against the lock.
 //
-// 但**方向是单向的**：pidfile 指向活进程时一律信它，绝不反过来信锁。优雅交接的
-// 那一瞬间，父进程会先把 pidfile 改写到自己名下、随后才改锁（AdoptRuntime），
-// 此刻「pidfile = 新进程、锁 = 仍在排空的旧进程」——反过来信锁会把刚交出去的
-// pidfile 又改回旧进程，交接就此失败。
+// But the **direction is one-way**: when the pidfile points at a live process, believe it,
+// never the lock. At the instant of a graceful handoff the parent rewrites the pidfile to
+// itself first and the lock after (AdoptRuntime), so "pidfile = new, lock = old draining" -
+// believing the lock would rewrite the pidfile back to the old process, and handoff fails.
 //
-// 「pidfile 指向死进程」与「真的没在跑」必须分开：前者是不一致（要说出来、要
-// 修），后者是正常状态（一个字都不用说）。
+// "The pidfile points at a dead process" and "really not running" must be kept apart:
+// the former is a mismatch (say it, fix it), the latter a normal state (say nothing).
 func Reconcile() (*Info, []string) {
 	i, err := ReadPid()
 	if err == nil && i != nil && Alive(i.PID) {
@@ -258,7 +258,7 @@ func Reconcile() (*Info, []string) {
 	return healed, []string{note}
 }
 
-// describePid 把「pidfile 说了什么」讲成人话，用在上面那句不一致里。
+// describePid puts "what the pidfile says" into words, used in the mismatch line above.
 func describePid(i *Info, err error) string {
 	switch {
 	case err != nil || i == nil:
@@ -270,7 +270,7 @@ func describePid(i *Info, err error) string {
 	}
 }
 
-// portOf 优先用 pidfile 里记的端口；pidfile 不可用时退回配置里的端口。
+// portOf prefers the port recorded in the pidfile; when the pidfile is unusable, the config's.
 func portOf(i *Info) int {
 	if i != nil && i.Port > 0 {
 		return i.Port
@@ -288,9 +288,9 @@ func exeOf(pid int) string {
 	return ""
 }
 
-// procStartTime 反推进程的启动时刻：/proc 只给「开机后第几个 tick」
-// （stat 里去掉 pid/comm 之后的第 20 个字段），要加上 /proc/stat 的 btime
-// 才是墙钟时间。拿不到就给零值——它只进 pidfile 供人看，猜一个不如空着。
+// procStartTime derives a process's start time: /proc gives only "ticks since boot" (stat
+// field 20 after pid/comm), plus /proc/stat's btime for wall-clock time. Unavailable =
+// zero - it only goes into the pidfile for humans, and a guess is worse than a blank.
 func procStartTime(pid int) time.Time {
 	btime := int64(0)
 	if b, err := ioutil.ReadFile("/proc/stat"); err == nil {
@@ -314,24 +314,25 @@ func procStartTime(pid int) time.Time {
 	if err != nil {
 		return time.Time{}
 	}
-	// Linux 的 CLK_TCK 恒为 100（os.Sysconf 不在标准库，而这里只是给人看的时间戳）
+	// Linux CLK_TCK is always 100 (os.Sysconf is not in the std lib, and this is just a timestamp)
 	return time.Unix(btime+ticks/100, 0)
 }
 
-// WriteOwn 由守护进程**自己**写下 pidfile：它才是拥有监听 socket 的那个进程。
+// WriteOwn has the daemon **itself** write the pidfile: it holds the socket.
 //
-// 2026-09-18 两次实测（重启后必现，两个现场签名一模一样）：pidfile 里躺着一个
-// 「撞锁失败、当场退出的子进程」的 pid（4554 与 3080，两个僵尸），而真正的
-// daemon（1556 与 2069）一直在服务、锁文件也一直写着它们。链条是：
+// Two live cases 2026-09-18 (every restart, identical signature): the pidfile held a
+// child's pid that "lost the lock race and exited on the spot" (4554, 3080 - two
+// zombies) while the real daemon (1556, 2069) kept serving, and the lock named them.
+// The chain is:
 //
-//  1. 懒启动 → Spawn 起子进程 → **父进程抢先写 pidfile**；
-//  2. 子进程 AcquireLock 读到上个进程留下的**陈旧锁** → RemoveLock + RemovePid，
-//     把第 1 步刚写的那份 pidfile 一并删掉；
-//  3. 子进程建锁、开始服务，而**再没有任何人会写一次 pidfile**；
-//  4. 之后每个命令都读到「没在跑」→ 又懒启动一个注定撞锁的子进程 → 它的 pid
-//     被写进 pidfile（第 2 步不再发生，因为锁现在是活的）→ 死 pid 留在那儿。
+//  1. lazy start -> Spawn a child -> **the parent writes the pidfile first**;
+//  2. the child's AcquireLock sees the **stale lock** -> RemoveLock + RemovePid, deleting
+//     the pidfile just written in step 1;
+//  3. the child takes the lock and serves, and **nobody writes a pidfile again**;
+//  4. every later command reads "not running" -> lazy-starts another child doomed to
+//     lose the lock race -> its pid lands in the pidfile -> a dead pid stays there.
 //
-// 把「写」挪到**抢到锁之后、由持有者自己写**，就只剩一个写者，而且它一定活着。
+// Moving the write to **after the lock, done by the holder**, leaves just one writer - it lives.
 func WriteOwn(port int) error {
 	if port <= 0 {
 		if st := store.LoadState(); st != nil {
@@ -346,18 +347,18 @@ func WriteOwn(port int) error {
 		StartedAt: time.Now().Format(time.RFC3339), Exe: exe})
 }
 
-// Spawn 把自己以 __serve 模式重新拉起，作为后台守护进程。
+// Spawn relaunches self in __serve mode, as a background daemon.
 //
-// **pidfile 不在这里写**（2026-09-18）：写它的人必须是那个真正抢到锁、开始服务的
-// 进程，也就是子进程自己（见 WriteOwn 记的那条完整链条——父进程代写的每一份，
-// 都可能被子进程随后的「陈旧锁清理」删掉，而再没有人补回来）。返回的 Info 仍然
-// 是子进程的 pid，调用方拿它报「代理已启动 pid N」是对的：它就是刚起来的那个。
+// **The pidfile is not written here** (2026-09-18): the writer must be the process that
+// really took the lock and serves - the child itself (see WriteOwn's full chain: every
+// copy a parent writes may be deleted by the child's stale-lock cleanup, never refilled).
+// The returned Info is still the child's pid, so "proxy started, pid N" is right.
 func Spawn(port int) (*Info, error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return nil, err
 	}
-	// 0660：共享部署下别的用户也能读日志排查（目录 setgid 保证组一致）
+	// 0660: other users can read the log to troubleshoot (setgid dir keeps the group)
 	logf, err := os.OpenFile(paths.LogFile(), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o660)
 	if err != nil {
 		return nil, err
@@ -378,18 +379,18 @@ func Spawn(port int) (*Info, error) {
 	return info, nil
 }
 
-// SpawnHandoff 是 nginx 式优雅升级的核心动作：把监听 socket 作为 fd 交给
-// 新二进制，等它接管成功（ready 字节）后返回新进程信息。
+// SpawnHandoff is the core of an nginx-style graceful upgrade: hand the listening socket
+// to the new binary as an fd, wait for it to take over (ready byte), return its info.
 //
-// 为什么这能零停机：socket 的可用性由内核维护，和进程生死解耦。父进程
-// 把 fd dup 给子进程，两个进程短暂同时在同一个 socket 上 accept（内核
-// 分流），随后父进程只负责把在途请求流完——客户端自始至终没有任何一毫秒
-// 面对过「连接被拒」。开发 newgate 的 Claude Code 会话本身就穿行在代理
-// 里，restart 杀掉自己脚下这条线的事不能再发生。
+// Why this means zero downtime: socket availability is maintained by the kernel, decoupled
+// from process life. The parent dups the fd to the child, both momentarily accept on the
+// same socket (kernel spreads), then the parent only drains in-flight requests - the client
+// never faces a single millisecond of "connection refused". A Claude Code session
+// developing newgate crosses the proxy itself, so restart must never cut the line beneath.
 //
-// 约定（Serve 端配合）：
-//   - fd3 = 监听 socket；fd4 = ready 管道写端
-//   - 子进程绑好 socket、即将进入 accept 循环时往 fd4 写一个字节
+// Contract (Serve side cooperates):
+//   - fd3 = listening socket; fd4 = ready pipe write end
+//   - the child binds the socket and writes one byte to fd4 just before accept
 func SpawnHandoff(port int, ln net.Listener) (*Info, error) {
 	exe, err := os.Executable()
 	if err != nil {
@@ -400,22 +401,22 @@ func SpawnHandoff(port int, ln net.Listener) (*Info, error) {
 		return nil, i18n.E("handoff needs a TCP listener, got {type}",
 			i18n.A{"type": fmt.Sprintf("%T", ln)})
 	}
-	// File() 返回 dup 出来的新 fd——父进程自己的 listener 不受影响，
-	// 之后的 Shutdown 关的是父进程那份。
+	// File() returns a duped new fd - the parent's own listener is unaffected, and the
+	// later Shutdown closes the parent's copy.
 	listenerFile, err := tcp.File()
 	if err != nil {
 		return nil, i18n.Ef(err, "cannot extract the listener fd: {err}", nil)
 	}
 	defer listenerFile.Close()
 
-	// ready 管道：子进程接上 socket 的唯一凭证。等不到它就交棒失败。
+	// The ready pipe: the child's only proof that it is on the socket. No byte, no handoff.
 	readyR, readyW, err := os.Pipe()
 	if err != nil {
 		return nil, err
 	}
 	defer readyR.Close()
 
-	// 0660：共享部署下别的用户也能读日志排查（目录 setgid 保证组一致）
+	// 0660: other users can read the log to troubleshoot (setgid dir keeps the group)
 	logf, err := os.OpenFile(paths.LogFile(), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o660)
 	if err != nil {
 		return nil, err
@@ -433,7 +434,7 @@ func SpawnHandoff(port int, ln net.Listener) (*Info, error) {
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-	// 父进程立刻放下写端：否则子进程就算死了，读端也等不来 EOF。
+	// The parent drops the write end at once: else a dead child leaves the read end waiting.
 	readyW.Close()
 	if err := readyR.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
 		_ = cmd.Process.Kill()
@@ -441,7 +442,7 @@ func SpawnHandoff(port int, ln net.Listener) (*Info, error) {
 	}
 	var b [1]byte
 	if _, err := io.ReadFull(readyR, b[:]); err != nil {
-		// 新进程没接上：杀掉它，本进程继续独占 socket，服务未受任何影响
+		// The new process never got on the socket: kill it; this process keeps it, service unaffected
 		_ = cmd.Process.Kill()
 		return nil, i18n.E("the new process did not attach to the listening socket within 5 seconds: {err}",
 			i18n.A{"err": err})
@@ -452,8 +453,8 @@ func SpawnHandoff(port int, ln net.Listener) (*Info, error) {
 	return info, nil
 }
 
-// AdoptRuntime 把 pid 文件和锁的归属改到新进程——优雅交接后由它持有。
-// 只动共享目录：legacy 的 $HOME 位置在交接时早就迁移完了。
+// AdoptRuntime moves the pid file and lock ownership to the new process after a handoff.
+// Only the shared dir: the legacy $HOME location migrated during the handoff already.
 func AdoptRuntime(i *Info) error {
 	if err := WritePid(i); err != nil {
 		return err
@@ -462,19 +463,19 @@ func AdoptRuntime(i *Info) error {
 		[]byte(strconv.Itoa(i.PID)+"\n"), 0o660)
 }
 
-// Stop 优雅停，等不到就强杀。
+// Stop stops gracefully, then force-kills if it does not go.
 //
-// 共享部署的兜底：daemon 可能是别的用户起的（root 起的、claude 用户来停）。
-// 同一个组只给读文件的权限，不给 kill() 的权限——信号发不出去（EPERM）时
-// 走代理自己的控制端点（POST /__newgate/stop + ControlToken）让它自己退。
+// Shared-deployment fallback: the daemon may be another user's (root starts, claude stops).
+// The group grants reading files, not kill() - when the signal cannot go out (EPERM),
+// use the proxy's own control endpoint (POST /__newgate/stop + ControlToken) to make it quit.
 //
-// 杀谁由 Reconcile 决定，不是 pidfile 一个人说了算：pidfile 指向死进程时它会把
-// 真身（锁的持有者）认出来。否则 `newgate stop` 会在「pidfile 坏了」的现场报
-// 「本来没在跑」，顺手把活 daemon 的锁删掉——服务还在，锁没了（2026-09-18 现场）。
+// Reconcile decides whom to kill, not the pidfile alone: a dead pid still yields the body.
+// Otherwise `newgate stop` reports "not running anyway" at a broken pidfile and deletes
+// the live daemon's lock - service still up, lock gone (2026-09-18 live).
 func Stop() (int, error) {
 	i, _ := Reconcile()
 	if i == nil {
-		// 两边都没有活着的 daemon：把死文件清掉，免得下次又读到。
+		// No live daemon at either place: clear the dead files, so the next read does not see them.
 		RemovePid()
 		RemoveLock()
 		return 0, nil
@@ -496,10 +497,10 @@ func Stop() (int, error) {
 	return i.PID, nil
 }
 
-// stopViaHTTP 让别的用户起的 daemon 自己退出。
+// stopViaHTTP makes a daemon started by another user exit on its own.
 //
-// 令牌在 state.json 里，和 providers 的 key 同级保密（0660、组可读）——
-// 能读到它的组员本来就是这台机器的受信用户，停机权限给得合理。
+// The token lives in state.json, as secret as the providers' keys (0660, group-readable):
+// group members able to read it are trusted on this machine, so stop rights are fair.
 func stopViaHTTP(i *Info) (int, error) {
 	st := store.LoadState()
 	if st.ControlToken == "" {

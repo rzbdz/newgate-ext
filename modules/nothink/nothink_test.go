@@ -61,7 +61,7 @@ func TestParse(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			if _, on := Parse([]byte(c.raw)); on != c.want {
-				t.Errorf("Parse(%s) 判定为 %v，想要 %v", c.raw, on, c.want)
+				t.Errorf("Parse(%s) decided %v, want %v", c.raw, on, c.want)
 			}
 		})
 	}
@@ -88,37 +88,37 @@ func TestApply(t *testing.T) {
 		delegate bool
 	}{
 		{
-			name: "主循环写着 adaptive，被覆盖成 disabled",
+			name: "the main loop says adaptive, and it was overridden to disabled",
 			path: "/messages", config: forever, body: adaptive,
 			want: `{"model":"m","thinking":{"type":"disabled"}}`, matched: true, delegate: true,
 		},
 		{
-			name: "已经写着 disabled：不改写，但照样交给内核那一半",
+			name: "already disabled: not rewritten, but still handed to the kernel half",
 			path: "/messages", config: forever, body: off,
 			want: off, matched: true, delegate: true,
 		},
 		{
-			name: "没写 thinking：补的那一半在内核，这里只委托",
+			name: "no thinking written: the half that fills it lives in the kernel; here we only delegate",
 			path: "/messages", config: forever, body: bare,
 			want: bare, matched: true, delegate: true,
 		},
 		{
-			name: "count_tokens 也是这套方言",
+			name: "count_tokens speaks the same dialect",
 			path: "/messages/count_tokens", config: forever, body: adaptive,
 			want: `{"model":"m","thinking":{"type":"disabled"}}`, matched: true, delegate: true,
 		},
 		{
-			name: "开关关着（缺省）",
+			name: "the switch is off (default)",
 			path: "/messages", body: adaptive,
 			want: adaptive, matched: false, delegate: false,
 		},
 		{
-			name: "窗口过期了就等于没开",
+			name: "an expired window means off",
 			path: "/messages", config: `{"mode":"on","expires_at":"2020-01-01T00:00:00Z"}`,
 			body: adaptive, want: adaptive, matched: false, delegate: false,
 		},
 		{
-			name: "OpenAI 方言没有 thinking 可写",
+			name: "the OpenAI dialect has no thinking to write",
 			path: "/chat/completions", config: forever, body: bare,
 			want: bare, matched: false, delegate: false,
 		},
@@ -131,21 +131,21 @@ func TestApply(t *testing.T) {
 			r := request(c.path, c.config)
 
 			if got := p.Match(r); got != c.matched {
-				t.Errorf("Match = %v，想要 %v", got, c.matched)
+				t.Errorf("Match = %v, want %v", got, c.matched)
 			}
 			out, notes, err := p.Apply([]byte(c.body), r)
 			if err != nil {
-				t.Fatalf("Apply 报错: %v", err)
+				t.Fatalf("Apply errored: %v", err)
 			}
 			if string(out) != c.want {
-				t.Errorf("Apply 得到 %s，想要 %s", out, c.want)
+				t.Errorf("Apply gave %s, want %s", out, c.want)
 			}
 			if got := s.calls > 0; got != c.delegate {
-				t.Errorf("委托给内核那一半 = %v，想要 %v", got, c.delegate)
+				t.Errorf("the delegated kernel half = %v, want %v", got, c.delegate)
 			}
 			// 不静默：改写了就必须留下一条 note（它会被写进日志）。
 			if rewritten := string(out) != c.body; rewritten && len(notes) == 0 {
-				t.Error("改写了请求却没有一条 note——用户就无从知道自己的请求被动过哪一笔")
+				t.Error("it rewrote the request but left no note - the user has no way to know what was done to their request")
 			}
 		})
 	}
@@ -154,9 +154,9 @@ func TestApply(t *testing.T) {
 func TestStatusOnlyWhenOn(t *testing.T) {
 	var p nothink
 	if got := p.Status(request("/messages", "").State); len(got) != 0 {
-		t.Errorf("关着的时候 status 不该有这一行，得到 %v", got)
+		t.Errorf("while off, status should have no such line, got %v", got)
 	}
 	if got := p.Status(request("/messages", `{"mode":"forever"}`).State); len(got) != 1 {
-		t.Errorf("forever 的时候 status 该有一行，得到 %v", got)
+		t.Errorf("with forever, status should have one line, got %v", got)
 	}
 }

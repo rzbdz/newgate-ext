@@ -1,11 +1,13 @@
-// self-update 的网页那一面：顶栏一颗「更新」按钮 + 点开的面板。
+// The web face of self-update: one "update" button in the top bar plus the panel it opens.
 //
-// 这个文件属于 modules/self-update，不属于界面：界面（web-dashboard）只给一格顶栏
-// 和一个 host（契约见 web-dashboard/api.go 的「前端插件」），这里画什么、问什么、
-// 说什么话都是本模块的事。所有文案来自本模块的扩展端点（后端翻译），样式只用界面
-// 的设计令牌（换皮肤跟着换）。
+// This file belongs to modules/self-update, not to the UI: the UI (web-dashboard) only
+// gives one top-bar slot and a host (the contract is the "front-end plugin" section in
+// web-dashboard/api.go); what gets drawn here, what gets asked and what gets said is this
+// module's business. All copy comes from this module's extension endpoint (translated on
+// the backend), and the styles use only the UI's design tokens (a skin change carries
+// over).
 //
-// 不用任何框架、不需要构建：一个 ES module，嵌进二进制原样发出去。
+// No framework, no build step: one ES module, embedded in the binary and shipped as is.
 
 const STYLE = `
 .su { position: relative; }
@@ -97,7 +99,8 @@ export function mount(el, host) {
     try {
       doc = await host.ext("self-update", { action });
     } catch (err) {
-      // 端点本身不通（daemon 换成了没有本模块的版本）：在面板里说，不弹窗。
+      // The endpoint itself is unreachable (the daemon was swapped for a build without
+      // this module): say it in the panel, don't pop up a dialog.
       if (doc) doc = { ...doc, last: { error: String(err.message ?? err), ago: "" } };
     }
     render();
@@ -121,7 +124,8 @@ export function mount(el, host) {
   document.addEventListener("mousedown", outside);
 
   void call("status").then(() => {
-    // 很久没查过就自己查一次（间隔由后端定，见 web.go 的 autoCheckEvery）。
+    // If it hasn't been checked for a long time, check once on its own (the interval is
+    // decided by the backend, see autoCheckEvery in web.go).
     if (doc && doc.check_due) void runCheck();
   });
 

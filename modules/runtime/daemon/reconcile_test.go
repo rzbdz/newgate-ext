@@ -1,16 +1,16 @@
 package daemon
 
-// 本文件锁的是 2026-09-18 那个现场：**daemon 明明在服务，每个命令都说它没在跑**。
+// This file pins the 2026-09-18 live case: **the daemon serves, every command says it is not**.
 //
-// 两次实测（WSL 重启后必现，签名一模一样）：pidfile 里躺着一个「撞锁失败、当场
-// 退出的子进程」的 pid（4554 与 3080，两个僵尸），而真正的 daemon（1556 与
-// 2069）一直在服务、锁文件也一直写着它们。链条见 WriteOwn 的注释。
+// Twice (every WSL restart, identical signature): the pidfile held the pid of a child that
+// "lost the lock race and exited" (4554 and 3080, two zombies) while the real daemon (1556
+// and 2069) kept serving, and the lock kept naming them. See WriteOwn's note for the chain.
 //
-// 所以这里有两条互不相同的保证，缺一条都不算修好：
-//   - **写得对**：pidfile 由持有监听权的进程在抢到锁之后自己写（WriteOwn），
-//     父进程不再代笔——代笔的那一份会被随后的陈旧锁清理删掉；
-//   - **读得回来**：pidfile 站不住时，从锁文件把真身认出来（Reconcile），
-//     而不是报「没在跑」——已经坏在磁盘上的现场也得能自愈。
+// So there are two distinct guarantees here, and missing one is not a fix:
+//   - **written right**: the socket-holding process writes the pidfile itself, after the
+//     lock (WriteOwn); the parent no longer ghosts it - the cleanup would delete that one;
+//   - **read back**: when the pidfile does not stand, recover the body from the lock
+//     (Reconcile), not report "not running" - a scene already broken on disk must heal.
 
 import (
 	"fmt"
@@ -24,49 +24,49 @@ import (
 	"time"
 )
 
-// newgateServeProcess 起一个 argv0 和真 daemon 一样的进程：`newgate __serve`。
-// 两个判据都得命中——Alive 认 cmdline 里的 "newgate"，Reconcile 的**推断**路径
-// 还额外要求 "__serve"（见 isServe：那是「这是个 daemon」而不是「这也是个
-// newgate 进程」的证据）。
+// newgateServeProcess starts a process with the real daemon's argv0: `newgate __serve`.
+// Both criteria must hit - Alive wants "newgate" in cmdline, and Reconcile's **inference**
+// path additionally wants "__serve" (see isServe: proof that this is a daemon, not just
+// another newgate process).
 func newgateServeProcess(t *testing.T) int {
 	t.Helper()
-	// argv0 由 execve 直接设定（`cmd.Args[0]`），**完全不经过 shell**。
+	// argv0 is set by execve directly (`cmd.Args[0]`), **no shell at all**.
 	//
-	// 这里原来是 `/bin/bash -c 'exec -a "newgate __serve --port 1" sleep 30'`：
-	// 多出来的那一跳（bash 先起来，再 exec 成 sleep）本身就是一段窗口——那段时间
-	// 里 /proc/<pid>/cmdline 是 bash 自己那行 `-c …`（恰好也含 newgate 与
-	// __serve，两个判据都以为成立），而 bash 随时可能退出。2026-09-20 发行版 CI
-	// 上这个夹具连着让两个测试飘红（TestReconcileHealsFromTheLock、
-	// TestLastHealRecordsTheRepair），都是 0.00 秒、都报「本该发现不一致」。
-	// 换成直接设 argv0 之后，子进程**存在的那一刻**cmdline 就是它，没有窗口。
+	// This used to be `/bin/bash -c 'exec -a "newgate __serve --port 1" sleep 30'`: the
+	// extra hop (bash starts, then execs into sleep) is itself a window - /proc cmdline
+	// is then bash's own `-c ...` line (which holds newgate and __serve too, so both
+	// criteria seem to hold), and bash may exit any time. On 2026-09-20 the distribution
+	// CI saw this fixture red twice in a row (TestReconcileHealsFromTheLock,
+	// TestLastHealRecordsTheRepair), both at 0.00s, both reporting "should have found a
+	// mismatch". With argv0 set directly, the cmdline is right from the moment it exists.
 	cmd := exec.Command("sleep", "30")
 	cmd.Args[0] = "newgate __serve --port 1"
 	if err := cmd.Start(); err != nil {
-		t.Skipf("起不了测试进程: %v", err)
+		t.Skipf("cannot start the test process: %v", err)
 	}
 	t.Cleanup(func() { _ = cmd.Process.Kill() })
 	waitForProcess(t, cmd.Process.Pid,
-		func(p int) bool { return Alive(p) && isServe(p) }, "一个 __serve 进程")
+		func(p int) bool { return Alive(p) && isServe(p) }, "a __serve process")
 	return cmd.Process.Pid
 }
 
-// waitForProcess 等到这个 pid 真的满足**被测判据**再往下断言。
+// waitForProcess waits until this pid really satisfies **the criterion under test**, then asserts.
 //
-// 这里原来等的是「cmdline 非空」——不够。`cmd.Start()` 返回的瞬间子进程还是
-// bash，`exec -a` 还没跑，那个窗口里 /proc/<pid>/cmdline 读出空串；被测的
-// Alive / isServe 都拿 cmdline 当证据，测试于是站在了过渡态上。空串只是这个
-// 窗口**好认**的那种坏形态：读到的若还是 bash 那行 `-c …`，两个判据看着都成立，
-// 可 shell 随时可能退出（PATH 里找不到 sleep、exec 被拒、起手慢），断言就站在
-// 一个正在消失的进程上——2026-09-20 发行版 CI 上就是这么飘的：
-// TestReconcileHealsFromTheLock 0.00 秒报「锁里有个活着的 daemon，不该报没在跑」，
-// 而同一份代码在内核 CI 与本机压三十遍都绿。
+// This used to wait for "cmdline non-empty" - not enough. The instant `cmd.Start()` returns
+// the child is still bash, `exec -a` has not run, and /proc/<pid>/cmdline reads empty;
+// Alive / isServe take cmdline as proof, so the test stood on a transition. An empty
+// string is the **easy** bad shape: if it reads bash's `-c ...` line both criteria seem to
+// hold, but the shell may exit any moment (no sleep in PATH, exec refused, slow start),
+// and the assertion stands on a vanishing process - that is how it flaked on the
+// distribution CI on 2026-09-20: TestReconcileHealsFromTheLock at 0.00s said "the lock has
+// a live daemon, should not report not running", while kernel CI and this machine were green.
 //
-// 所以改成等判据本身成立。认不出来时**失败并带上证据**，不是跳过：夹具起不来
-// 通常意味着判据在这台机器上不成立，那正是生产代码要听的事。
+// So it now waits for the criterion itself. When it cannot tell, **fail with evidence**,
+// not skip: a fixture that will not start usually means the criterion does not hold here.
 func waitForProcess(t *testing.T, pid int, want func(int) bool, what string) {
 	t.Helper()
 	if _, err := os.Stat("/proc/self"); err != nil {
-		t.Skipf("这台机器没有 /proc（非 Linux？）：Alive/isServe 都退化成 kill(0)，测不出东西")
+		t.Skipf("this machine has no /proc (not Linux?): Alive/isServe both degrade to kill(0), nothing can be tested")
 	}
 	deadline := time.Now().Add(3 * time.Second)
 	for {
@@ -75,18 +75,18 @@ func waitForProcess(t *testing.T, pid int, want func(int) bool, what string) {
 		}
 		if time.Now().After(deadline) {
 			b, _ := ioutil.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
-			t.Fatalf("pid %d 等了 3 秒也没能成为%s（Alive=%v isServe=%v cmdline=%q）——"+
-				"要么夹具起不来，要么判据在这台机器上不成立",
+			t.Fatalf("pid %d is still not %s after 3 seconds (Alive=%v isServe=%v cmdline=%q) - "+
+				"either the fixture cannot start, or the criterion does not hold on this machine",
 				pid, what, Alive(pid), isServe(pid), b)
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
 }
 
-// why 把「代理看到的现场」讲成一行，贴在断言失败的消息后面。
+// why puts "the scene the proxy saw" on one line, appended to assertion failures.
 //
-// 这类飘的根因全在 pidfile / lock / 进程三者的状态里，而 CI 上只留一句「本该
-// 发现不一致」时根本查不动——2026-09-20 那两次就是这么隔着日志猜的。
+// Such flakes always root in the state of pidfile / lock / process, and CI's "should have
+// found a mismatch" is unworkable - the two 2026-09-20 cases were guessed at via logs.
 func why() string {
 	pid, err := ReadPid()
 	pidDesc := "nil"
@@ -98,21 +98,21 @@ func why() string {
 		pidDesc, err, lock, Alive(lock), isServe(lock), LastHeal())
 }
 
-// zombiePid 造一个**僵尸**：子进程退出了但没人收尸（不调 Wait）。这正是现场里
-// pidfile 记着的那个东西——Alive 判它「不在」（空 cmdline + isZombie），可它又
-// 不会自己消失，于是错误状态一直留在磁盘上。
+// zombiePid makes a **zombie**: the child exited but nobody collects it (no Wait). That is
+// exactly what the live pidfile recorded - Alive says "not there" (empty cmdline +
+// isZombie), yet it never disappears, so the wrong state stays on disk.
 func zombiePid(t *testing.T) int {
 	t.Helper()
 	cmd := exec.Command("/bin/true")
 	if err := cmd.Start(); err != nil {
-		t.Skipf("起不了测试进程: %v", err)
+		t.Skipf("cannot start the test process: %v", err)
 	}
 	pid := cmd.Process.Pid
 	deadline := time.Now().Add(2 * time.Second)
 	for !isZombie(pid) {
 		if time.Now().After(deadline) {
 			_ = cmd.Wait()
-			t.Skip("没等到僵尸态")
+			t.Skip("never saw the zombie state")
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
@@ -120,8 +120,8 @@ func zombiePid(t *testing.T) int {
 	return pid
 }
 
-// freePid 挑一个当前不存在的 pid。不写死 999999：那个号真有可能存在。
-// Alive 对它为 false（kill 报 ESRCH），正是 pidfile 最常见的坏法。
+// freePid picks a pid that does not exist. Not hard-coded 999999: that number really might.
+// Alive is false for it (kill says ESRCH), the most common way a pidfile goes bad.
 func freePid(t *testing.T) int {
 	t.Helper()
 	for pid := 3999000; pid > 399000; pid -= 7919 {
@@ -129,7 +129,7 @@ func freePid(t *testing.T) int {
 			return pid
 		}
 	}
-	t.Skip("找不到空闲 pid（这机器进程数异常）")
+	t.Skip("cannot find a free pid (abnormal process count on this machine)")
 	return 0
 }
 
@@ -157,9 +157,9 @@ func writeLockFile(t *testing.T, pid int) {
 	}
 }
 
-// TestReconcileHealsFromTheLock 就是现场那一幕：pidfile 指向僵尸，锁指着真身。
-// 结论必须是「在跑，pid 是它」，而且 pidfile 当场被修回去——否则 status/metrics
-// 会一直瞎下去，每次懒启动还多生一个注定撞锁的子进程。
+// TestReconcileHealsFromTheLock is that scene: pidfile points at a zombie, lock at the body.
+// The result must be "running, pid is it", and the pidfile repaired on the spot - else
+// status/metrics stay blind, and every lazy start births another child doomed to lose the race.
 func TestReconcileHealsFromTheLock(t *testing.T) {
 	sandbox(t)
 	live := newgateServeProcess(t)
@@ -168,34 +168,34 @@ func TestReconcileHealsFromTheLock(t *testing.T) {
 
 	info, notes := Reconcile()
 	if info == nil {
-		t.Fatal("锁里有个活着的 daemon，不该报「没在跑」：" + why())
+		t.Fatal("there is a live daemon in the lock, so it must not report 'not running':" + why())
 	}
 	if info.PID != live {
-		t.Errorf("认错了真身：got pid %d, want %d", info.PID, live)
+		t.Errorf("it identified the wrong process: got pid %d, want %d", info.PID, live)
 	}
-	// 端口只能来自 pidfile/配置——锁文件里没有端口，别把它丢了。
+	// The port can only come from pidfile/config - the lock has none, don't lose it.
 	if info.Port != 8899 {
-		t.Errorf("端口该沿用 pidfile 里那个: got %d", info.Port)
+		t.Errorf("the port should be taken from the pidfile: got %d", info.Port)
 	}
 	if len(notes) == 0 {
-		t.Error("发现不一致却什么都不说——doctor 那一项就是靠它出人话的")
+		t.Error("it found an inconsistency but said nothing - the doctor item relies on it for readable output")
 	}
-	// 修回去：下一个命令不必再推一遍，也不会再有人从死 pid 出发做决定。
+	// Repaired: the next command need not re-derive, nor decide from a dead pid again.
 	back, err := ReadPid()
 	if err != nil || back.PID != live {
-		t.Errorf("pidfile 没被修回真身: %+v (err %v)", back, err)
+		t.Errorf("the pidfile was not repaired to the real process: %+v (err %v)", back, err)
 	}
-	// 修好之后 Running 直接命中，不再有任何不一致可说。
+	// After the repair Running hits directly, no mismatch left to report.
 	if Running() == nil {
-		t.Fatal("修好之后 Running 仍然说没在跑")
+		t.Fatal("after the repair Running still says not running")
 	}
 	if _, again := Reconcile(); len(again) != 0 {
-		t.Errorf("已经一致了还在报不一致: %v", again)
+		t.Errorf("it still reports an inconsistency after they agree: %v", again)
 	}
 }
 
-// TestReconcileHealsWhenPidfileIsMissing pidfile 整个不见了（陈旧锁清理把它删掉
-// 的那一瞬间，见 WriteOwn）——同样得靠锁把真身捞回来。
+// TestReconcileHealsWhenPidfileIsMissing: the pidfile is gone entirely (the instant stale
+// lock cleanup deleted it, see WriteOwn) - the lock must recover the body just the same.
 func TestReconcileHealsWhenPidfileIsMissing(t *testing.T) {
 	sandbox(t)
 	live := newgateServeProcess(t)
@@ -203,17 +203,17 @@ func TestReconcileHealsWhenPidfileIsMissing(t *testing.T) {
 
 	info, notes := Reconcile()
 	if info == nil || info.PID != live {
-		t.Fatalf("pidfile 缺失时应从锁认出真身: %+v", info)
+		t.Fatalf("with the pidfile missing it should identify the process from the lock: %+v", info)
 	}
 	if len(notes) == 0 {
-		t.Error("不一致必须说出来")
+		t.Error("an inconsistency must be stated")
 	}
 }
 
-// TestReconcileLeavesALivePidfileAlone 方向是单向的：pidfile 指向活进程时一律
-// 信它。优雅交接的那一瞬间 pidfile 已是新进程、锁还是仍在排空的旧进程
-// （AdoptRuntime 先写 pidfile 再改锁）——反过来信锁会把刚交出去的 pidfile 改回
-// 旧进程，交接当场失败。
+// TestReconcileLeavesALivePidfileAlone: one-way. When the pidfile points at a live process,
+// believe it. At a graceful handoff's instant the pidfile is the new process and the lock
+// still the old draining one (AdoptRuntime writes the pidfile first) - believing the lock
+// would rewrite the pidfile back to the old process and fail the handoff on the spot.
 func TestReconcileLeavesALivePidfileAlone(t *testing.T) {
 	sandbox(t)
 	fresh := newgateServeProcess(t) // pidfile 说的：新进程
@@ -223,42 +223,42 @@ func TestReconcileLeavesALivePidfileAlone(t *testing.T) {
 
 	info, notes := Reconcile()
 	if info == nil || info.PID != fresh {
-		t.Fatalf("pidfile 指向活进程时该信 pidfile: %+v", info)
+		t.Fatalf("when the pidfile points at a live process it should trust the pidfile: %+v", info)
 	}
 	if len(notes) != 0 {
-		t.Errorf("交接窗口内不一致不该报警（几毫秒后自己会对上）: %v", notes)
+		t.Errorf("an inconsistency inside the handoff window must not alarm (it resolves itself within milliseconds): %v", notes)
 	}
 	back, _ := ReadPid()
 	if back == nil || back.PID != fresh {
-		t.Errorf("pidfile 被改动了——交接会因此失败: %+v", back)
+		t.Errorf("the pidfile was modified - the handoff would fail because of it: %+v", back)
 	}
 }
 
-// TestReconcileSaysNothingWhenNobodyRuns 「真的没在跑」不是不一致：两边都没有
-// 活着的 daemon 时，什么都不用说（doctor 报 skip，不是 warn）。
+// TestReconcileSaysNothingWhenNobodyRuns: "really not running" is not a mismatch: with
+// no live daemon at either place, say nothing (doctor reports skip, not warn).
 func TestReconcileSaysNothingWhenNobodyRuns(t *testing.T) {
-	t.Run("两边都是死 pid", func(t *testing.T) {
+	t.Run("both sides are dead pids", func(t *testing.T) {
 		sandbox(t)
 		dead := freePid(t)
 		writePidFile(t, dead, 8899)
 		writeLockFile(t, dead)
 		if info, notes := Reconcile(); info != nil || len(notes) != 0 {
-			t.Errorf("没在跑就该给 (nil, 空): %+v %v", info, notes)
+			t.Errorf("when not running it should give (nil, empty): %+v %v", info, notes)
 		}
 	})
-	t.Run("只有陈旧锁", func(t *testing.T) {
+	t.Run("only a stale lock", func(t *testing.T) {
 		sandbox(t)
 		writeLockFile(t, freePid(t))
 		if info, notes := Reconcile(); info != nil || len(notes) != 0 {
-			t.Errorf("没在跑就该给 (nil, 空): %+v %v", info, notes)
+			t.Errorf("when not running it should give (nil, empty): %+v %v", info, notes)
 		}
 	})
 }
 
-// TestReconcileRefusesALockThatIsNotTheDaemon 光「有个 newgate 进程」不够——
-// 锁里的 pid 可能是回收后被别的 newgate 进程（CLI 自己）占用的号。用它当 daemon
-// 会连环出错：status 报一个假 pid，stop 还会去 SIGTERM 用户的命令行进程。
-// 所以推断路径要求更硬的证据（__serve），证据不足就老实说「不知道」。
+// TestReconcileRefusesALockThatIsNotTheDaemon: "a newgate process exists" is not enough -
+// the lock's pid may be a recycled number taken by another newgate process (the CLI).
+// Using it as the daemon cascades: status reports a fake pid, stop SIGTERMs the user's
+// shell process. So the inference path demands harder proof (__serve), else says "don't know".
 func TestReconcileRefusesALockThatIsNotTheDaemon(t *testing.T) {
 	sandbox(t)
 	notADaemon := newgateNamedProcess(t) // argv0 带 newgate，但不是 __serve
@@ -267,21 +267,21 @@ func TestReconcileRefusesALockThatIsNotTheDaemon(t *testing.T) {
 
 	info, notes := Reconcile()
 	if info != nil {
-		t.Fatalf("证据不足（不是 __serve）时不该认它当真身: %+v", info)
+		t.Fatalf("with insufficient evidence (not __serve) it must not be taken as the real process: %+v", info)
 	}
 	if len(notes) != 0 {
-		t.Errorf("没认出来就别报警: %v", notes)
+		t.Errorf("if it was not identified, do not alarm: %v", notes)
 	}
-	// 也不能顺手改 pidfile——那是拿猜测覆盖事实。
+	// Nor may it touch the pidfile along the way - that would cover facts with a guess.
 	back, _ := ReadPid()
 	if back == nil || back.PID == notADaemon {
-		t.Errorf("pidfile 被猜测改写了: %+v", back)
+		t.Errorf("the pidfile was rewritten by a guess: %+v", back)
 	}
 }
 
-// TestStopTakesTheLockHolderWhenPidfileIsStale 停机也得认对真身。
-// 旧代码在 pidfile 指向死进程时报「本来没在跑」，顺手把**活 daemon 的锁删掉**
-// ——服务还在、锁没了，下次 start 就能起出第二个实例去撞端口。
+// TestStopTakesTheLockHolderWhenPidfileIsStale: stop must also pick the right body. The old
+// code reported "not running anyway" at a dead pidfile and **deleted the live daemon's lock**
+// - service up, lock gone, and the next start can birth a second instance fighting for the port.
 func TestStopTakesTheLockHolderWhenPidfileIsStale(t *testing.T) {
 	sandbox(t)
 	live := newgateServeProcess(t)
@@ -293,22 +293,22 @@ func TestStopTakesTheLockHolderWhenPidfileIsStale(t *testing.T) {
 		t.Fatalf("Stop: %v", err)
 	}
 	if got != live {
-		t.Fatalf("停错了对象：got pid %d, want %d", got, live)
+		t.Fatalf("stopped the wrong process: got pid %d, want %d", got, live)
 	}
 	for _, f := range []string{".config/newgate/.newgate.pid", ".config/newgate/.newgate.lock"} {
 		if _, err := os.Stat(filepath.Join(os.Getenv("HOME"), f)); !os.IsNotExist(err) {
-			t.Errorf("%s 没被清掉", f)
+			t.Errorf("%s was not cleared", f)
 		}
 	}
 }
 
-// TestStaleLockCleanupThenWriteOwnIsTheFix 锁住修复的**顺序**：陈旧锁清理
-// （AcquireLock 里的 RemovePid）必须发生在写 pidfile **之前**。现场正是反过来
-// 的：父进程先写、子进程随后把陈旧锁和那份刚写好的 pidfile 一起清掉，于是
-// 「daemon 活着、锁写着它、pidfile 不存在」，而再没有人补回来。
+// TestStaleLockCleanupThenWriteOwnIsTheFix pins the **order** of the fix: stale lock cleanup
+// (RemovePid inside AcquireLock) must happen **before** writing the pidfile. The live case
+// was the reverse: the parent wrote first, the child then cleared the stale lock and the
+// fresh pidfile together, leaving "daemon alive, lock naming it, pidfile absent", never refilled.
 //
-// 这里照着子进程真实的那两个动作走一遍：先 AcquireLock（它会清掉陈旧文件），
-// 再 WriteOwn（自己写）。跑完 pidfile 必须记着本进程。
+// Here we walk the child's two real actions: AcquireLock (clears stale files), then
+// WriteOwn (writes itself). After that the pidfile must name this process.
 func TestStaleLockCleanupThenWriteOwnIsTheFix(t *testing.T) {
 	sandbox(t)
 	stale := freePid(t)
@@ -316,7 +316,7 @@ func TestStaleLockCleanupThenWriteOwnIsTheFix(t *testing.T) {
 	writeLockFile(t, stale)
 
 	if err := AcquireLock(); err != nil {
-		t.Fatalf("陈旧锁该被自动清理，抢锁不该失败: %v", err)
+		t.Fatalf("a stale lock should be cleaned automatically; taking the lock must not fail: %v", err)
 	}
 	t.Cleanup(RemoveLock)
 	if err := WriteOwn(18899); err != nil {
@@ -324,34 +324,34 @@ func TestStaleLockCleanupThenWriteOwnIsTheFix(t *testing.T) {
 	}
 	i, err := ReadPid()
 	if err != nil {
-		t.Fatalf("pidfile 没写出来: %v", err)
+		t.Fatalf("the pidfile was not written: %v", err)
 	}
 	if i.PID != os.Getpid() || i.Port != 18899 {
-		t.Errorf("pidfile 该记着本进程: %+v", i)
+		t.Errorf("the pidfile should record this process: %+v", i)
 	}
 	if i.StartedAt == "" {
-		t.Error("started_at 是空的——`newgate status` 靠它显示起来了多久")
+		t.Error("started_at is empty - `newgate status` uses it to show how long it has been up")
 	}
 }
 
-// TestProcStartTimeMatchesPs /proc 只给「开机后第几个 tick」，得加上 btime 才是
-// 墙钟时间。反推错了会让 status 显示一个荒谬的启动时刻，而那正是排查「他到底
-// 重启过没有」时要看的东西。
+// TestProcStartTimeMatchesPs: /proc gives only "ticks since boot"; btime must be added for
+// wall-clock time. A wrong derivation shows a nonsensical start time in status, and that is
+// just what one looks at to answer "did it really restart or not".
 func TestProcStartTimeMatchesPs(t *testing.T) {
 	got := procStartTime(os.Getpid())
 	if got.IsZero() {
-		t.Skip("这个内核读不到 btime/starttime")
+		t.Skip("this kernel cannot read btime/starttime")
 	}
-	// 自证：本进程的启动时刻必然在「很久以前」与「现在」之间，且不该是 1970。
+	// Self-check: this process's start is between "long ago" and "now", and not 1970.
 	if got.After(time.Now().Add(time.Minute)) || got.Before(time.Now().Add(-10*365*24*time.Hour)) {
-		t.Fatalf("反推出来的启动时刻不合理: %v", got)
+		t.Fatalf("the inferred start time is unreasonable: %v", got)
 	}
 }
 
-// TestLastHealRecordsTheRepair 修好之后 pidfile 就对了，再对账一片绿——那处不
-// 一致就此消失。doctor 里排在前面那几项（链路、代理）都会读 Running()，于是它们
-// 会先把现场抹平，等「守护进程」那一项跑到时已经无话可说。这一行记账就是
-// 「不静默」在自愈路径上的落点：悄悄修了，也得有人能说出来。
+// TestLastHealRecordsTheRepair: once repaired, the pidfile is right, and the next reconcile
+// is all green - the mismatch is gone. Earlier `newgate doctor` items (chain, proxy) read
+// Running(), so they flatten the scene first and the "daemon" item has nothing to say. This
+// record is where "not silent" lands on the self-healing path: repaired quietly, but sayable.
 func TestLastHealRecordsTheRepair(t *testing.T) {
 	sandbox(t)
 	live := newgateServeProcess(t)
@@ -359,23 +359,23 @@ func TestLastHealRecordsTheRepair(t *testing.T) {
 	writeLockFile(t, live)
 
 	if _, notes := Reconcile(); len(notes) == 0 {
-		t.Fatal("这一发本该发现不一致：" + why())
+		t.Fatal("this pass should have found an inconsistency:" + why())
 	}
 	h := LastHeal()
 	if h == "" {
-		t.Fatal("修好了却没记账——doctor 会把一处刚发生的不一致报成全绿")
+		t.Fatal("it repaired but did not record it - the doctor would report a just-fixed inconsistency as all green")
 	}
 	for _, want := range []string{"pidfile", strconv.Itoa(live)} {
 		if !strings.Contains(h, want) {
-			t.Errorf("记账那句话里该有 %q: %q", want, h)
+			t.Errorf("that record should contain %q: %q", want, h)
 		}
 	}
-	// 第二遍已经一致：不该再记一笔新的（否则每次体检都报同一条）。
+	// The second pass already agrees: no new entry (else every check reports the same line).
 	before := LastHeal()
 	if _, notes := Reconcile(); len(notes) != 0 {
-		t.Fatalf("已经一致了还在报: %v", notes)
+		t.Fatalf("it still reports after they agree: %v", notes)
 	}
 	if after := LastHeal(); after != before {
-		t.Errorf("没有新的不一致却改了记账: %q → %q", before, after)
+		t.Errorf("no new inconsistency, yet the record changed: %q -> %q", before, after)
 	}
 }

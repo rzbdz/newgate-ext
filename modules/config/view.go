@@ -19,50 +19,58 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// 配置模块贡献给 web 界面的三样东西：**档位映射**（每个 profile 一张绑定编辑器）、
-// **源文件**（硬核用户直接改文件那条 tab）、**全局开关**（默认 profile 这类）。
+// The three things the config module contributes to the web UI: **tier mapping**
+// (one binding editor per profile), **source files** (the tab where hardcore
+// users edit files directly), **global switches** (default profile and such).
 //
-// 为什么由本模块贡献而不是让界面自己读：界面一旦自己读 store，它就必须知道
-// profile 文件的字段、mappings 目录的布局、哪些文件带凭据不能写回——那样加一个
-// 模块的界面就要改界面。这条规矩与 cli/extension 那边一字不差（见那里关于
-// 「status 要显示非出厂态的开关点」的那段），只是这次的服务端是浏览器。
+// Why this module contributes them rather than letting the UI read itself: the moment
+// the UI reads store itself, it must know the fields of a profile file, the layout
+// of the mappings directory, and which files carry credentials and cannot be written
+// back -- then adding one module's UI would mean changing the UI. This rule is word
+// for word the same as on the cli/extension side (see the passage there about "status
+// must show switches not at factory state"), only this time the server is a browser.
 //
-// **写的知识也在这里**（每个概念带 Apply）：改档位要「只动 roles 那一段、别的键
-// 原样保留」，这件事只有知道 profile 文件长什么样的人做得对。
+// **The knowledge of writing is here too** (each concept has an Apply):
+// changing a tier means "touch only the roles section, keep other keys as is",
+// and only someone who knows what a profile file looks like can do that right.
 
-// registerView 把本模块的概念挂到界面上。没有界面（没装 web-dashboard 或者
-// 那是个 CLI 进程）时什么都不做——配置照常工作，只是没有 web 入口。
+// registerView mounts this module's concepts on the UI. With no UI (web-dashboard not installed,
+// or this is a CLI process) it does nothing -- config works as usual, just with no web entry point.
 //
-// 登记时**一个文件都不读**：产出函数 `concepts` 要等到真的有人来看界面才跑。
-// 理由是这套东西的正确性而不是性能——每条 `newgate …` 命令都会跑到这里，而其中
-// 绝大多数没有人会打开界面（见 lib/view 的包注释）。
+// Registration **reads not one file**: the producer function `concepts` runs
+// only when someone really comes to look at the UI. The reason is the correctness
+// of this setup, not performance -- every `newgate ...` command runs to here, and
+// in the vast majority nobody will open the UI (see lib/view's package comment).
 func registerView(v view.Service) (modules.Release, error) {
-	// 「再建一份档位文件」挂在**栏目**上，不是挂在某张卡上（见 view.Section.Actions）：
-	// 新建出来的那一份此刻还没有概念，所以没有哪张卡能挂这个按钮。挂在栏目上还有一个
-	// 好处——它**永远够得着**，不管你现在正看着哪一张卡。
+	// "Create another tier file" hangs on **the section**, not on some card (see
+	// view.Section.Actions): the newly created one has no concept yet, so no
+	// card can hang this button. Hanging it on the section has another benefit
+	// -- it is **always within reach**, no matter which card you are looking at.
 	create := view.Action{
 		ID:    "new-profile",
 		Label: func() string { return i18n.T("+ profile", nil) },
 		Run:   newProfileFile,
 	}
-	// 「force apply」：把**每一个**客户端的链头清成「跟随全局缺省」。
+	// "force apply": clear **every** client's chain head to "follow the global default".
 	//
-	// 它挂在**栏目**上而不是某张卡上，有两个理由，两个都不是排版：
+	// It hangs on **the section** rather than some card, for two reasons, neither of them layout:
 	//
-	//   - 它动的不是某一格，而是**所有客户端**（今天三家，将来更多）。挂到某一家的卡
-	//     上，那个按钮就会在一个它管不着的地方；挂到「全局设置」那张卡上，读起来又像
-	//     「这一格的一个选项」，而它不是——它是一次批量收敛。
-	//   - 界面不认识「客户端」这件事（那是 confighook 的词汇）。让顶栏那个通用保存
-	//     按钮多一个「force」含义，就等于让界面知道「清掉 active 是什么意思」——
-	//     正是这套设计要避免的那种耦合。
+	// - what it touches is not one cell but **all clients** (three today, more later). On one
+	//   client's card the button would sit somewhere it does not govern; on the "global settings" card
+	//   it would read like "one option on this cell", which it is not -- it is a batch convergence.
+	// - the UI does not know the notion of a "client" (that is confighook's vocabulary).
+	//   Giving the toolbar's generic save button one more "force" meaning would amount to the UI
+	//   knowing "what clearing active means" -- exactly the coupling this design exists to avoid.
 	//
-	// 用例是一句话：**改完全局默认，想让所有客户端都跟着它**。单独设过的客户端
-	// 不跟着走是对的（它们被明确指定过），但「全部收敛回跟随，然后我只维护一个
-	// 默认」是常见诉求，而逐个去点一遍要十六次操作。
+	// The use case is one sentence: **change the global default and have every
+	// client follow it**. Not following the clients set on their own is right (they were
+	// explicitly designated), but "converge everything back to following, then I maintain
+	// one default" is a common demand, and clicking through each is sixteen operations.
 	applyAll := view.Action{
 		ID: "apply-default-all",
-		// 它挂在**栏目**上，所以宾语得自己写全：旁边没有哪张卡告诉读的人「应用什么」。
-		// （卡片上那一对不一样，见 profileActions——那里的宾语是那张卡。）
+		// It hangs on **the section**, so the object must be spelled out:
+		// no card nearby tells the reader "apply what". (The pair on the card
+		// is different, see profileActions -- there the object is that card.)
 		Label: func() string { return i18n.T("apply the default to all clients", nil) },
 		Run:   applyDefaultToAll,
 	}
@@ -72,12 +80,15 @@ func registerView(v view.Service) (modules.Release, error) {
 			Does(create).Does(applyAll), concepts)
 }
 
-// applyDefaultToAll 清掉所有 per-agent 链头（见 store.ClearAllAgentProfiles）。
+// applyDefaultToAll clears all per-agent chain heads (see store.ClearAllAgentProfiles).
 //
-// 它不改全局默认本身：用户要的是「大家都跟着它」，不是「把它改成别的」。
+// It does not change the global default itself: what the user wants
+// is "everyone follows it", not "change it to something else".
 //
-// 一条都不存在时**也算成功**（返回 nil）：那正是用户想要的状态，报一个错只会让人
-// 以为没生效。界面做完动作会重读快照，各家的链头那一格会自己显示成「跟随缺省」。
+// When not one exists it **still counts as success** (returns nil): that is
+// exactly the state the user wants, and reporting an error would only make people
+// think it did not take effect. After the action the UI re-reads the snapshot,
+// and each client's chain-head cell shows "follow the default" by itself.
 func applyDefaultToAll() (string, error) {
 	if _, err := store.ClearAllAgentProfiles(); err != nil {
 		return "", i18n.Ef(err, "cannot clear the per-client profiles: {err}", nil)
@@ -85,15 +96,17 @@ func applyDefaultToAll() (string, error) {
 	return "", nil
 }
 
-// newProfileFile 建一份空的档位文件，名字自己挑（第一个没被占用的）。
+// newProfileFile creates an empty tier file, with a name it picks itself (the first not taken).
 //
-// 为什么名字由**后端**挑（原来是界面挑的）：只有这里知道哪几个名字已经被占了，
-// 也知道「一份档位可以叫 .kv 也可以叫 .json」（见 store.ListProfiles 的去重）——
-// 界面要挑名字就得把这两条知识各抄一份，而抄来的知识必然漂移。
+// Why the name is picked by the **backend** (it used to be the UI): only here
+// know which names are already taken, and also that "a tier file may be called .kv
+// or .json" (see store.ListProfiles' dedup) -- for the UI to pick a name it would
+// have to copy both pieces of knowledge, and copied knowledge necessarily drifts.
 //
-// 为什么用 `WriteIfUnchanged(…, "")`（要求「此刻不存在」）：两个标签页同时按下这个
-// 按钮时，后到的那个撞上 StaleError 而不是把前一个建好的覆盖掉——重名撞车是这里
-// 唯一真实的并发场景，而它的代价是「我刚建的那份没了」。
+// Why `WriteIfUnchanged(..., "")` (requiring "it does not exist right now"):
+// when two tabs press this button at the same time, the later one hits a StaleError
+// rather than overwriting the one the first created -- a name clash is the only
+// real concurrency scenario here, and its cost is "the one I just created is gone".
 func newProfileFile() (string, error) {
 	taken := map[string]bool{}
 	for _, n := range profileNames() {
@@ -111,37 +124,41 @@ func newProfileFile() (string, error) {
 		body := []byte(store.SerializeProfileKV(&domain.Profile{Name: name}))
 		_, err := store.WriteIfUnchanged(file, "", body)
 		if err == nil {
-			// 交回新卡的名字：界面据此切过去（「新建的下一步一定是去填它」）。
+			// Hand back the new card's name: the UI switches based on it
+			// ("the next step after creating is always to fill it in").
 			return "config.profile." + name, nil
 		}
 		var stale *store.StaleError
 		if !errors.As(err, &stale) {
-			// 写不进去（目录权限之类）——报出来，别拿它当撞名一路重试到 100。
+			// Cannot be written (directory permissions or such) -- report it, rather
+			// than treating it as a name clash and retrying all the way to 100.
 			return "", i18n.Ef(err, "cannot create {file}: {err}", i18n.A{"file": filepath.Base(file)})
 		}
-		// 名字刚被别人占了：换下一个再试。
+		// The name was just taken by someone else: try the next one.
 	}
 	return "", i18n.E("could not find a free name for a new profile file", nil)
 }
 
-// concepts 是「此刻配置的样子」：state.json 里归本模块的那几个字段、每个 profile
-// 一张绑定编辑器、每个源文件一条。
+// concepts is "what the config looks like right now": the fields in state.json
+// that belong to this module, one binding editor per profile, one per source file.
 //
-// 它每次被调用都重新读盘，所以界面上的刷新是真的刷新——CLI 刚建的档位文件会在
-// 下一次快照里出现。单个东西读不出来（文件删了、JSON 坏了）不牵连同组的别人：
-// 那一张卡片带 Broken 说明，其余照常。
+// It re-reads the disk on every call, so a refresh in the UI is a real refresh -- a tier file
+// the CLI just created appears in the next snapshot. One item failing to read (file deleted, JSON
+// broken) does not drag down its group: that card carries a Broken note, the rest proceed as usual.
 func concepts() ([]view.Concept, error) {
 	var out []view.Concept
-	// **顺序是产品决定，不是字母序**（见 view.Concept.Order）：先配上游、再挑档位。
-	// 字母序会把 `config.profile.*` 排到 `config.providers` 前面，于是左栏第一屏
-	// 全是档位文件、而上游配置在第一屏之外——而「先有上游才选得出绑定」这件事与
-	// 操作的先后是同一件事。
+	// **The order is a product decision, not alphabetical** (see view.Concept.Order):
+	// configure the upstream first, then pick tiers. Alphabetical would put
+	// `config.profile.*` before `config.providers`, so the first screen of the left column
+	// would be all tier files, with the upstream config beyond the first screen -- and "only
+	// with an upstream can a binding be picked" is the same thing as the order of operations.
 	out = append(out, stateConcept())     // Order 0：全局设置
 	out = append(out, providersConcept()) // Order 1：上游
-	// 一个档位一份文件，一份文件一张卡——**改档位、改继承、改名、删除、新增**全都
-	// 在这张卡上（见 applyProfileRoles）。2026-09-20 之前这里还有一张「档位文件」
-	// 目录卡：它列的文件与下面这些卡一一对应，是同一件事说两遍（用户的原话是
-	// 「这个多余的啊」），而它独有的那点功能（新增/改名/删除）现在都在卡自己身上。
+	// One file per tier, one card per file -- **change tiers, change inheritance, rename, delete,
+	// create** all happen on this card (see applyProfileRoles). Before 2026-09-20 there was also
+	// a "tier files" directory card here: it listed the files that correspond one to one with
+	// the cards below, the same thing said twice (the user's words: "this one is redundant"),
+	// and its few unique functions (create/rename/delete) are now on the card itself.
 	names := profileNames()
 	for _, name := range names {
 		out = append(out, profileConcept(name, names))
@@ -150,33 +167,37 @@ func concepts() ([]view.Concept, error) {
 	return out, nil
 }
 
-// profileFamily 说一个档位属于哪一族（左栏分组用）。
+// profileFamily says which family a tier belongs to (for left-column grouping).
 //
-// 规则一条：把名字按 "-" 从左往右切，**切到的那一段本身是一个存在的档位**时，
-// 它就是这一族的名字（`claude-cheap` → `claude`，`minimax-fast` → `minimax`）。
-// 切不出来（没有 `demo-*` 这种兄弟）就用自己的名字——自己一族。
+// One rule: cut the name by "-" from left to right, and
+// when **the cut segment itself is an existing tier**, that is the family name
+// (`claude-cheap` -> `claude`, `minimax-fast` -> `minimax`). If nothing can be
+// cut out (no sibling like `demo-*`), use its own name -- a family of its own.
 //
-// 为什么要有它：档位是**一族一族**长出来的（先 `claude`，再派生出 `claude-cheap`），
-// 而左栏平铺十六行之后，一眼看不出谁是谁的变体。分组的判据必须是「那一族真的存在」
-// 而不是「名字里有横杠」：横杠在档位名里很常见（`gpt-4.1-mini`），凭它分组会造出
-// 一堆并不存在的家族。
+// Why it must exist: tiers grow **one family at a time** (`claude` first, then
+// `claude-cheap` derived), and with sixteen rows laid flat in the left column, nobody
+// can tell at a glance who is whose variant. The grouping criterion must be "that family
+// really exists", not "there is a hyphen in the name": hyphens are common in tier names
+// (`gpt-4.1-mini`), and grouping by it would invent a pile of families that do not exist.
 func profileFamily(name string, all []string) string {
 	exists := make(map[string]bool, len(all))
 	for _, n := range all {
 		exists[n] = true
 	}
-	// 逐个扫描字符，遇到一个 "-" 就试一次它左边那一段。
+	// Scan the characters one by one, and on each "-" try the segment to its left.
 	//
-	// **不要把它写成 `for i := strings.Index(name, "-"); i > 0; i = strings.Index(name[i+1:], "-") + i + 1`**
-	// ——那是这一段原来的写法，而它有一个会**把整个 daemon 挂死**的错：`name[i+1:]`
-	// 里再也没有 "-" 时 `Index` 回 -1，`-1 + i + 1` 恰好等于 `i`，于是下标原地踏步、
-	// 循环永不退出。触发条件平常到不能再平常——界面上的「＋新建档位」造出来的名字
-	// 就是 `new-profile`：它在 `new` 之后没有第二个横杠，而 `new` 又不是一个已有的
-	// 档位，于是**第一次刷新快照就死循环**（2026-09-20 实测：CPU 打满、`/ui/api/snapshot`
-	// 一个字节都不回、浏览器那层「新建之后切到新卡」永远不成立）。
+	// **Do not write it as `for i := strings.Index(name, "-"); i > 0; i = strings.Index(name[i+1:],
+	// "-") + i + 1`** -- that was this passage's original spelling, and it has a bug that **hangs
+	// the whole daemon**: when there is no more "-" in `name[i+1:]`, `Index` returns -1, and `-1 +
+	// i + 1` happens to equal `i`, so the index stays put and the loop never exits. The trigger is
+	// as ordinary as can be -- the name the UI's "+ new tier" makes is `new-profile`: there is no
+	// second hyphen after `new`, and `new` is not an existing tier, so **the very first snapshot
+	// refresh loops forever** (measured 2026-09-20: CPU pegged, `/ui/api/snapshot` returning not
+	// one byte, and the browser layer's "switch to the new card after create" never coming true).
 	//
-	// 症状之所以难认，是因为挂的是**读快照**这条所有人共用的路：界面整个卡住，
-	// 而磁盘上文件建得好好的——看起来像前端没刷新，不像后端在空转。
+	// The symptom is hard to recognize because what hangs is **reading the snapshot**, a
+	// path everyone shares: the whole UI freezes, while the file is created just fine on
+	// disk -- it looks like the front end did not refresh, not like the backend spinning.
 	for i := 0; i < len(name); i++ {
 		if name[i] == '-' && exists[name[:i]] {
 			return name[:i]
@@ -185,16 +206,18 @@ func profileFamily(name string, all []string) string {
 	return name
 }
 
-// brokenConcept 是「这东西现在读不出来」的那张卡片：身份照报（前端才知道少了
-// 谁），数据没有，也写不回去。
+// brokenConcept is the card saying "this thing cannot be read right
+// now": the identity is still reported (so the front end knows who is
+// missing), the data is absent, and it cannot be written back either.
 //
-// 为什么不干脆不报这个概念：用户会以为那个档位不存在，然后去别处找。为什么不让
-// 整次快照失败：一个坏文件让整个界面白屏，代价远大于它。
+// Why not just omit the concept: the user would think that tier does
+// not exist, and go looking elsewhere. Why not fail the whole snapshot:
+// one bad file blanking the whole UI costs far more than it saves.
 func brokenConcept(id, kind, title string, err error) view.Concept {
 	return view.Concept{ID: id, Kind: kind, Title: title, Broken: err.Error()}
 }
 
-// ---------- 档位映射 ----------
+// ---------- tier mapping ----------
 
 type bindingData struct {
 	Provider string `json:"provider,omitempty"`
@@ -216,11 +239,12 @@ type providerChoice struct {
 	Models   []string `json:"models"`
 }
 
-// profileData 是绑定编辑器的全部素材。
+// profileData is all the material for the binding editor.
 //
-// 带上 providers 是刻意的：**候选是「provider × model」的组合**，界面要让人用
-// 下拉框选而不是凭记忆敲字符串。这份清单从配置里来（各家声明过的模型），不问
-// 上游——探活是 `newgate probe` 的事，界面加载不该去碰网络。
+// Carrying providers is deliberate: **a candidate is a "provider x model" combination**,
+// and the UI must let people choose with a dropdown rather than typing strings from memory.
+// This list comes from the config (models each provider declared), and does not ask the
+// upstream -- probing is `newgate probe`'s job, and UI loading should not touch the network.
 type profileData struct {
 	Profile     string `json:"profile"`
 	File        string `json:"file"` // 相对配置根；保存时原样回传
@@ -230,8 +254,9 @@ type profileData struct {
 	Pinned      bool   `json:"pinned,omitempty"`
 	Excluded    bool   `json:"excluded,omitempty"`
 	Extends     string `json:"extends,omitempty"`
-	// ExtendsOptions 是可选的父档位（别的档位文件名）。**它必须由后端给**：
-	// 界面不认识「档位文件」这件事，它只知道「这一格有个下拉，选项是这些」。
+	// ExtendsOptions are the selectable parent tiers (other tier file names).
+	// **They must come from the backend**: the UI does not know the notion of a
+	// "tier file", it only knows "this cell has a dropdown with these options".
 	ExtendsOptions []string         `json:"extends_options"`
 	Roles          []roleData       `json:"roles"`
 	Providers      []providerChoice `json:"providers"`
@@ -243,8 +268,9 @@ func profileConcept(name string, all []string) view.Concept {
 	if err != nil {
 		return brokenConcept(conceptID, view.KindMapping, name, err)
 	}
-	// 读**未合并**的原文：对一个紧凑的派生声明（extends）改一个字段，不该把它
-	// 展开成全量——那会让用户在界面上点一下保存，文件就膨胀十倍。
+	// Read the **unmerged** source text: changing one field of a compact
+	// derived declaration (extends) should not expand it into the whole thing --
+	// that would make the file balloon tenfold when the user clicks save once.
 	pr, err := store.LoadProfileRaw(name)
 	if err != nil {
 		return brokenConcept(conceptID, view.KindMapping, name, err)
@@ -255,27 +281,30 @@ func profileConcept(name string, all []string) view.Concept {
 	}
 	return view.Concept{
 		ID: conceptID, Kind: view.KindMapping, Title: title,
-		// Order 10：档位文件排在「上游 / 全局设置」之后（见 concepts 的注释）。
+		// Order 10: tier files come after "upstream / global settings" (see the concepts comment).
 		//
-		// Group 是**两级**的（见 view.Concept.Group）：大档 `档位`，族由
-		// profileFamily 算（`claude-cheap` 缩在 `claude` 底下）。为什么要有大档
-		// 那一段：左栏里「全局设置 / 上游」是**装完就要配的两项**，而档位是**一天天
-		// 加出来的一堆**——不分开的话，那两项与十六个档位平铺在一起，谁也看不出
-		// 这是两类东西（用户的原话：「profile 这里就可以做一个分栏了啊」）。
+		// Group is **two levels** (see view.Concept.Group): the top group `Tiers`, and the
+		// family computed by profileFamily (`claude-cheap` tucked under `claude`). Why the top
+		// group is needed: in the left column "global settings / upstream" are **the two things
+		// configured right after install**, while tiers are **a pile accumulated day by day**
+		// -- not separated, those two sit flat with sixteen tiers and nobody can see these are
+		// two kinds of things (the user's words: "profile could really use a section here").
 		//
-		// 大档的名字走 i18n（它是给人看的），族名是档位名本身（机器标记，不翻）。
+		// The top group's name goes through i18n (it is for humans); the family
+		// name is the tier name itself (a machine marker, not translated).
 		Order: 10, Group: i18n.T("Profiles", nil) + "/" + profileFamily(name, all),
 		Data: profileView(name, file, pr),
 		Apply: func(edit json.RawMessage, base string) (string, error) {
 			return applyProfileRoles(conceptID, file, edit, base)
 		},
-		// Preview：原文那一半的草稿长这样时，这张控件卡该显示成什么样（见
-		// view.Concept.Preview）。
+		// Preview: what this controls card should show when the draft on
+		// the source-text side looks like this (see view.Concept.Preview).
 		//
-		// 为什么这张卡需要它：用户粘一整份档位进原文那一栏、再想用一个下拉框调一档
-		// ——没有 Preview 的话，控件那一栏手里还是**改之前**那份内容，他那一下编辑
-		// 交上去的是整份旧表，刚粘的东西当场没了，而屏幕上一直没显示过它，所以他
-		// 不会觉得自己正在覆盖什么（见 App.svelte 里 lastEdit 那段）。
+		// Why this card needs it: the user pastes a whole tier file into the source-text column
+		// and then wants to adjust one tier with a dropdown -- without Preview, the controls column
+		// still holds **the content from before the change**, and that one edit submits the whole
+		// old table, so what was just pasted is gone on the spot, while the screen never showed it,
+		// so he would not feel he is overwriting anything (see the lastEdit passage in App.svelte).
 		Preview: func(draft []byte) (any, error) {
 			p, err := parseProfileDraft(file, draft)
 			if err != nil {
@@ -288,24 +317,27 @@ func profileConcept(name string, all []string) view.Concept {
 	}
 }
 
-// profileNote 说这张档位卡此刻**是不是正在生效的那一份**。
+// profileNote says whether this tier card is **the one in effect right now**.
 //
-// 是 → 一句绿色的「当前配置」，不是 → 不画任何东西。
+// Yes -> a green "current config" line; no -> draw nothing.
 //
-// # 为什么不能只靠「按钮不画」表达这件事（2026-09-21 用户指出）
+// # Why "buttons not drawn" cannot express this alone (pointed out by the user on 2026-09-21)
 //
-// 第一版就是那样：已经生效的那一张不挂那对按钮（理由见 profileActions），于是
-// 十六张档位卡里有十五张长着两个按钮、一张什么都没有。用户的原话是：
+// The first version was like that: the one already in effect did not carry
+// that pair of buttons (for the reason see profileActions), so of sixteen
+// tier cards fifteen had two buttons and one had nothing. The user's words:
 //
-//	你应该注入的是一个 info only 的绿色：当前配置 / Active profile 的效果啊！
+//	what you should inject is an info-only green: the current config / active profile effect!
 //
-// 他说得对，而且指出的是一个**信息缺口**：「这份在生效吗」是他打开这一节最想
-// 知道的事，而当时的界面只用一个**缺席**去暗示它——缺席是看不出来的，两张卡
-// 长得几乎一样，唯一的差别是少两个按钮。而不画按钮与不画任何东西是两件事。
+// He was right, and what he pointed at is an **information gap**: "is this one in effect" is
+// what he most wants to know when opening this section, and the UI then only hinted at it with an
+// **absence** -- absence is invisible, and the two cards look almost identical, the only difference
+// being two fewer buttons. Not drawing buttons and not drawing anything are two different things.
 //
-// 措辞按用户给的来：`active profile`（中文「当前配置」）。它是**陈述**不是命令，
-// 所以不着重点色（那是按钮用的），走 ToneOK——绿色的意思是「一切正常，这就是
-// 现在生效的那一份」，与健康表里 `ok` 那一格是同一个语气。
+// The wording follows what the user gave: `active profile` (Chinese "current
+// config"). It is a **statement**, not a command, so it does not use the accent
+// color (that is for buttons) and goes through ToneOK -- green means "all normal,
+// this is the one in effect now", the same tone as the `ok` cell in the health table.
 func profileNote(name string) *view.Note {
 	if store.LoadState().DefaultProfile != name {
 		return nil
@@ -313,31 +345,34 @@ func profileNote(name string) *view.Note {
 	return &view.Note{Text: i18n.T("active profile", nil), Tone: view.ToneOK}
 }
 
-// profileActions 是这张档位卡上的按钮；它**已经就是默认**时返回空。
+// profileActions are the buttons on this tier card;
+// it returns empty when it **is already the default**.
 //
-// 为什么已经默认的那一张不挂：「把当前这份设为默认」显示在它自己身上是纯噪音，
-// 而卡片上按钮一多，真正有用的那个就会被淹掉。判据只有一条（此刻的 DefaultProfile
-// 是不是它），所以它不会骗人。
+// Why the already-default one carries none: "set this as default" shown on itself is
+// pure noise, and with more buttons on a card the genuinely useful one gets drowned out.
+// There is only one criterion (is the current DefaultProfile this one), so it cannot lie.
 //
-// 注意「不挂按钮」**不等于**「什么都不说」：那一张卡上有一句绿色的 `active profile`
-// （见 profileNote）。两件事分开之后，这条函数只回答「该给哪些按钮」。
+// Note "no buttons" **does not equal** "say nothing": that card has a green `active profile` line
+// (see profileNote). With the two separated, this function only answers "which buttons to give".
 //
-// 为什么是两个而不是一个：改默认 profile 这件事，用户想要的常常不止「默认改成它」，
-// 还有「**所有客户端**都跟着它」。单独设过的客户端不跟着走是对的（它们被明确指定
-// 过），但要逐个去点一遍就是十六次操作——第二个按钮把「设默认」与「收敛」一次做完，
-// 它不多做任何别的事。
+// Why two rather than one: for changing the default profile, what the user often wants is not
+// just "make this the default" but also "**all clients** follow it". Not following the clients set
+// on their own is right (they were explicitly designated), but clicking through each is sixteen
+// operations -- the second button does "set default" and "converge" in one, and does nothing else.
 //
-// # 措辞：`use` / `use globally`（2026-10-26 改，之前是 `apply` / `apply to all`）
+// # Wording: `use` / `use globally` (changed 2026-10-26; before it was `apply` / `apply to all`)
 //
-// 2026-09-21 那一版写的是 `apply` / `apply to all`（中文「应用 / 应用到全部」）。
-// 2026-10-26 用户指出它**歧义**：`apply` 在这个界面里也能读成「把这份草稿保存
-// 下去」，而这两颗按钮做的是「把它变成当前生效的那一份」。所以动词改成 `use`：
+// The 2026-09-21 version said `apply` / `apply to all` (Chinese "apply
+// / apply to all"). On 2026-10-26 the user pointed out it is **ambiguous**:
+// `apply` in this UI can also read as "save this draft down", while what these
+// two buttons do is "make it the one in effect". So the verb became `use`:
 //
-//	use           = 从现在起用它（成为全局默认）
-//	use globally  = 再往所有客户端推一遍（清掉每个客户端自己的链头）
+//	use           = use it from now on (becomes the global default)
+//	use globally  = also push it to all clients (clear each client's own chain head)
 //
-// 两个词仍然是同一个动词、只差作用域——「同一件事的两个范围」该有的样子。
-// 宾语不必写出来：按钮就长在**这张档位的卡**上，卡头写着它的名字。
+// Both are still the same verb, differing only in scope -- what "two scopes
+// of one thing" should look like. The object need not be spelled out: the
+// button grows on **this tier's card**, and the card header carries its name.
 func profileActions(name string) []view.Action {
 	if store.LoadState().DefaultProfile == name {
 		return nil
@@ -356,11 +391,12 @@ func profileActions(name string) []view.Action {
 	}
 }
 
-// setDefaultProfile 把一份档位设成全局默认；all 时顺带清掉每个客户端的链头。
+// setDefaultProfile makes a tier the global default;
+// with all, also clears each client's chain head.
 //
-// 它**不改这一份档位本身**：用户要的是「默认用它」，不是「把它改一改」。所以这个
-// 按钮不会让这张卡变脏、也不会产生一份待保存的草稿——它是一次落盘的动作，
-// 做完界面重读一遍（见 lib/view 的 Concept.Actions）。
+// It **does not change this tier itself**: what the user wants is "use it as the default", not
+// "change it a bit". So this button does not make the card dirty, nor produce a draft to save
+// -- it is a write-to-disk action, after which the UI re-reads (see lib/view's Concept.Actions).
 func setDefaultProfile(name string, all bool) (string, error) {
 	if err := store.SetDefaultProfile(name, all); err != nil {
 		return "", err
@@ -368,21 +404,24 @@ func setDefaultProfile(name string, all bool) (string, error) {
 	return "", nil
 }
 
-// profileView 把一份**已经解析好的**档位拼成编辑器要的全部素材。
+// profileView assembles an **already resolved** tier into all the material the editor needs.
 //
-// 加载路径与预览路径共用它，理由一条：两条路必须给出**一模一样**的形状。各写一份
-// 的话，「刚敲完原文」与「保存之后」这两个时刻画出来的会是两张慢慢长歪的表，而那种
-// 不一致没有任何测试会红——只有用的人看得出来（两张表里有一张少了某个字段）。
+// The load path and the preview path share it, for one reason: the two paths must give
+// **exactly the same** shape. Written separately, "just after typing the source text"
+// and "after saving" would draw two tables slowly growing crooked, and that inconsistency
+// turns no test red -- only users notice (one of the two tables is missing some field).
 func profileView(name, file string, pr *domain.Profile) profileData {
-	// provider 表读不出来不算这张卡片坏掉：档位本身是好的、可以改，只是候选
-	// 下拉框没有素材（providers.json 还没建是全新安装的正常状态）。这条以前是
-	// 「整个 profile 静默消失」，现在是「照常显示、候选为空」。
+	// An unreadable provider table does not count as this card being broken: the tier itself
+	// is fine and editable, only the candidate dropdown has no material (providers.json
+	// not created yet is the normal state of a fresh install). This used to be "the
+	// whole profile vanishes silently"; now it is "shown as usual, candidates empty".
 	snap, snapErr := store.Load()
 	if snapErr != nil {
 		snap = &store.Snapshot{}
 	}
-	// 父档位的可选项 = 别的档位（不含自己：自己继承自己是个环，解析时会报错）。
-	// 第一个是空串 = **不继承**，它必须有一个看得见的位置（界面把它画成「—」）。
+	// The parent tier's options = other tiers (not itself: inheriting from itself
+	// is a cycle and errors when resolving). The first is the empty string = **no
+	// inheritance**, and it must have a visible position (the UI draws it as "-").
 	extOpts := []string{""}
 	for _, n := range profileNames() {
 		if n != name {
@@ -406,10 +445,11 @@ func profileView(name, file string, pr *domain.Profile) profileData {
 	return data
 }
 
-// parseProfileDraft 把一份**草稿的字节**按那份文件的格式解析成档位。
+// parseProfileDraft parses **a draft's bytes** into a profile according to that file's format.
 //
-// 与 store.readProfileFile 是同一套分支（.kv 走 KV 解析、.json 走 JSON），但输入
-// 是内存里的草稿而不是磁盘上的文件——预览要的正是这个：**还没落盘**的那一份。
+// Same set of branches as store.readProfileFile (.kv goes through KV parsing, .json
+// through JSON), but the input is an in-memory draft rather than a file on disk
+// -- which is exactly what preview needs: the copy **not yet written to disk**.
 func parseProfileDraft(file string, draft []byte) (*domain.Profile, error) {
 	if strings.HasSuffix(file, ".kv") {
 		return store.ParseProfileKV(string(draft))
@@ -424,11 +464,12 @@ func parseProfileDraft(file string, draft []byte) (*domain.Profile, error) {
 	return &pr, nil
 }
 
-// roleOrder 是档位的展示顺序：四个标准档位按阶梯先后（重→轻），其余（含 "*" 与
-// 客户端注册的动态键）按名字排在后面。
+// roleOrder is the display order of tiers: the four standard tiers in ladder order (heavy ->
+// light), and the rest (including "*" and client-registered dynamic keys) after them by name.
 //
-// 顺序不是排版洁癖：**档位是一条阶梯**，界面上按 heavy→light 排，用户一眼能看出
-// 「这条链在往下走」；按字母序排出来的是 h/l/m/n，看的人得自己拼。
+// The order is not layout fastidiousness: **tiers are a ladder**, and sorted
+// heavy->light in the UI the user can see at a glance "this chain goes downward";
+// alphabetical gives h/l/m/n, and the reader has to assemble it himself.
 func roleOrder(pr *domain.Profile) []string {
 	var out []string
 	seen := map[string]bool{}
@@ -452,8 +493,9 @@ func providerChoices(snap *store.Snapshot) []providerChoice {
 	if snap.Providers == nil {
 		return nil
 	}
-	// 模型清单从**各 profile 的绑定**里收集：那是「这家用过的模型」，比 providers.json
-	// 里声明的 models 更贴近实际（而且不依赖那个字段存不存在）。
+	// The model list is collected from **each profile's bindings**: those
+	// are "the models this provider has used", closer to reality than the models
+	// declared in providers.json (and independent of whether that field exists).
 	used := map[string]map[string]bool{}
 	for _, p := range snap.Profiles {
 		for _, cands := range p.Roles {
@@ -489,18 +531,19 @@ func providerChoices(snap *store.Snapshot) []providerChoice {
 	return out
 }
 
-// applyProfileRoles 只改 roles 那一段，其余字段原样保留。
+// applyProfileRoles changes only the roles section, keeping the other fields as is.
 //
-// 为什么不是「把整个 profile 序列化回去」：界面展示的是**概念**（档位、候选），
-// 而文件里还有它不认识的东西（extends、window、compact、将来加的字段）。整份重写
-// 等于拿界面的知识覆盖文件，用户手写的字段会在他没碰过的地方消失。
+// Why not "serialize the whole profile back": what the UI shows is **concepts** (tiers,
+// candidates), while the file also holds things it does not recognize (extends, window,
+// compact, fields added later). Rewriting the whole thing amounts to overwriting the file
+// with the UI's knowledge, and fields the user hand-wrote vanish in places he never touched.
 func applyProfileRoles(conceptID, file string, edit json.RawMessage, base string) (string, error) {
 	var patch struct {
 		Roles map[string][]bindingData `json:"roles"`
-		// Extends / Name / Delete 与 roles **同一张卡**交上来：一张 kv 卡就是那一份
-		// 文件的全部（档位、继承、改名、删除）。分成两张卡的做法试过了——用户的原话
-		// 是「这些要收进各个 kv 内部」，而且分成两张时「档位文件」那张卡与每个 kv 的
-		// 卡说的是同一件事，是重复的。
+		// Extends / Name / Delete come up on **the same card** as roles: one kv card is
+		// all of that file (tiers, inheritance, rename, delete). The two-card approach was
+		// tried -- the user's words were "these should go inside each kv", and with two
+		// cards the "tier files" card and each kv's card said the same thing, redundantly.
 		Extends *string `json:"extends"`
 		Name    *string `json:"name"`
 		Delete  bool    `json:"delete"`
@@ -510,21 +553,24 @@ func applyProfileRoles(conceptID, file string, edit json.RawMessage, base string
 	}
 
 	if patch.Delete {
-		// 删的是整份文件。CAS 用 base（加载时那一版）——别人刚改过就不删，报冲突。
+		// What is deleted is the whole file. The CAS uses base (the version at
+		// load) -- if someone just changed it, do not delete, report a conflict.
 		if err := store.RemoveIfUnchanged(file, base); err != nil {
 			return "", profileErr("remove", file, err)
 		}
 		return "", nil
 	}
 
-	// roles 为 nil 表示**这一次没动档位**（只改了继承或名字）：保持文件里现有的。
+	// roles being nil means **tiers were not touched this time**
+	// (only inheritance or the name changed): keep what the file has.
 	var roles map[string]domain.Candidates
 	if patch.Roles != nil {
 		roles = map[string]domain.Candidates{}
 		for id, list := range patch.Roles {
-			// 空列表**保留**（写进去一个空档位），不当作「删掉这个键」：界面把一个档位
-			// 的候选全删光，意思是「这一档没有候选」——那与「没写这一档」（于是往上
-			// 继承）是两件事，替用户选后者等于改了他没碰过的语义。
+			// An empty list is **kept** (an empty tier is written in), not treated as "delete this
+			// key": the UI deleting all candidates of a tier means "this tier has no candidates" --
+			// which is a different thing from "this tier is not written" (so it inherits upward),
+			// and choosing the latter for the user amounts to changing semantics he never touched.
 			cands := make(domain.Candidates, 0, len(list))
 			for _, b := range list {
 				cands = append(cands, domain.Binding{Provider: b.Provider, Model: b.Model, Ref: b.Ref})
@@ -533,8 +579,9 @@ func applyProfileRoles(conceptID, file string, edit json.RawMessage, base string
 		}
 	}
 
-	// 改名 = 建新文件 + 删旧文件（两次独立的 CAS）。名字必须是干净的**文件词干**：
-	// 带路径分隔符或 ".." 的名字能把文件写到 mappings/ 外面去。
+	// Rename = create a new file + delete the old one (two independent
+	// CASes). The name must be a clean **file stem**: a name with a
+	// path separator or ".." could write the file outside mappings/.
 	newName := ""
 	if patch.Name != nil {
 		newName = strings.TrimSpace(*patch.Name)
@@ -566,8 +613,9 @@ func applyProfileRoles(conceptID, file string, edit json.RawMessage, base string
 			pr.Extends = strings.TrimSpace(*patch.Extends)
 		}
 		if newName != "" {
-			// .kv 里**没有名字这个字段**——名字就是文件名。所以改名 = 内容原样搬到
-			// 新文件名下（内容里不含名字，不存在「路径与内容不一致」的问题）。
+			// .kv has **no name field** -- the name is the file name. So rename
+			// = move the content as is under the new file name (the content
+			// holds no name, so there is no "path and content disagree").
 			return renameProfile(conceptID, file, newName, base, []byte(store.SerializeProfileKV(pr)))
 		}
 		return writeThrough(conceptID, file, base, []byte(store.SerializeProfileKV(pr)))
@@ -577,8 +625,9 @@ func applyProfileRoles(conceptID, file string, edit json.RawMessage, base string
 	if err != nil {
 		return "", err
 	}
-	// map[string]json.RawMessage：只替换动过的那几个键，别的键连**解析都不解析**，
-	// 于是它们不可能被这次保存改变形状（数字的写法、键的顺序、未知字段）。
+	// map[string]json.RawMessage: replace only the keys that were touched,
+	// and the others are **not even parsed**, so this save cannot change
+	// their shape (how numbers are spelled, key order, unknown fields).
 	var doc map[string]json.RawMessage
 	if err := json.Unmarshal(b, &doc); err != nil {
 		return "", i18n.Ef(err, "{file} is not valid JSON", i18n.A{"file": filepath.Base(file)})
@@ -615,11 +664,13 @@ func applyProfileRoles(conceptID, file string, edit json.RawMessage, base string
 	return writeThrough(conceptID, file, base, append(out, '\n'))
 }
 
-// renameProfile 把一份档位文件改名：按新名字写一份（内容原样），再删掉旧的。
+// renameProfile renames a tier file: write one under
+// the new name (content as is), then delete the old one.
 //
-// 两次独立的 CAS：新文件要求**不存在**（base=""），旧文件要求**还是加载时那一版**。
-// 中间任何一步失败都如实报出来——半途改名（两份都在、或者旧的没了新的没建）是
-// 用户最不愿意看到的状态，所以宁可在错误里说清楚停在哪一步。
+// Two independent CASes: the new file must **not exist** (base=""), and the old file
+// must still be **the version at load**. Any failure in between is reported faithfully --
+// a half-done rename (both present, or the old gone and the new not created) is the state
+// users least want to see, so better to say clearly in the error which step it stopped at.
 func renameProfile(conceptID, oldFile, newName, base string, content []byte) (string, error) {
 	newFile := filepath.Join(paths.Mappings(), newName+filepath.Ext(oldFile))
 	if newFile == oldFile {
@@ -637,12 +688,13 @@ func renameProfile(conceptID, oldFile, newName, base string, content []byte) (st
 	return "", nil
 }
 
-// writeThrough 是三个应用者共用的出口：落盘，并把「基线对不上」翻译成**界面的
-// 冲突形状**（两边原文都在）。
+// writeThrough is the exit the three appliers share: write to disk, and translate "the
+// baseline does not match" into **the UI's conflict shape** (both source texts present).
 //
-// 翻译放在这里而不是 store 里：store 是文件层，它只该说「你手里那份过期了」，
-// 而「过期了该怎么办」是界面与用户之间的事（把两份摊开让人选）。中间这一层
-// 是拥有这些文件的那位——它知道文件叫什么、概念是谁。
+// The translation is here rather than in store: store is the file layer, and should
+// only say "the copy you hold is stale"; what "stale, so now what" means is between
+// the UI and the user (lay both out and let them choose). This middle layer is the one
+// that owns these files -- it knows what the file is called and whose concept it is.
 func writeThrough(conceptID, file, base string, data []byte) (string, error) {
 	rev, err := store.WriteIfUnchanged(file, base, data)
 	var stale *store.StaleError
@@ -656,19 +708,21 @@ func writeThrough(conceptID, file, base string, data []byte) (string, error) {
 	return rev, err
 }
 
-// ---------- 全局开关 ----------
+// ---------- global switches ----------
 
-// toggleItem / stateData 的形状住在契约包里（`lib/view` 的 Toggles / ToggleItem）：
-// 形状是 **Kind 的事**，而 Kind 定义在那里。2026-09-21 之前它们长在这里，只因为
-// 当时只有这一张卡用 KindToggles；等 modules/locale 也要产出一张语言卡，留在
-// 这里就只能被抄一遍。
+// The shapes of toggleItem / stateData live in the contract package
+// (`lib/view`'s Toggles / ToggleItem): the shape is **Kind's business**, and
+// Kind is defined there. Before 2026-09-21 they lived here, only because at the
+// time this was the only card using KindToggles; once modules/locale also needs
+// to produce a language card, keeping them here would only mean being copied.
 type toggleItem = view.ToggleItem
 type stateData = view.Toggles
 
-// stateConcept 是 state.json 里**归 config 的那几个字段**。
+// stateConcept is **the fields in state.json that belong to config**.
 //
-// 只报自己的字段（别的模块的段各有其人，见 confighook 的登记表）：一个模块把
-// state.json 整个端上去让用户改，等于让界面替所有模块做决定。
+// It reports only its own fields (other modules' sections have their own owners,
+// see confighook's registry table): one module handing up all of state.json for
+// the user to edit amounts to letting the UI make decisions for every module.
 func stateConcept() view.Concept {
 	file := paths.StateFile()
 	snap, _ := store.Load()
@@ -682,17 +736,18 @@ func stateConcept() view.Concept {
 		Apply: func(edit json.RawMessage, base string) (string, error) {
 			return applyStateDefaultProfile("config.state", file, edit, base)
 		},
-		// Preview：见 view.Concept.Preview。这一对（`config.state` 是控件半、
-		// `config.file.state.json` 是原文半）与档位那一对是同一件事，所以少了它
-		// 就会长出同一个 bug：在原文里改完、再拨一下开关，整份盖回去。
+		// Preview: see view.Concept.Preview. This pair (`config.state` is the
+		// controls half, `config.file.state.json` the source-text half) is the same
+		// thing as the tier pair, so without it the same bug would grow: change
+		// the source text, then flip a switch, and the whole thing is overwritten.
 		Preview: func(draft []byte) (any, error) {
 			return stateView(file, parseStateDraft(draft)), nil
 		},
 	}
 }
 
-// stateView 把一份 state 拼成开关卡要的素材。加载与预览共用（理由同 profileView：
-// 两条路必须给出同一个形状）。
+// stateView assembles a state into the material the switch card needs. Shared by load
+// and preview (for the reason see profileView: the two paths must give the same shape).
 func stateView(file string, st *domain.State) stateData {
 	active, host := "", ""
 	if st != nil {
@@ -705,9 +760,9 @@ func stateView(file string, st *domain.State) stateData {
 			Label: i18n.T("Default profile", nil),
 			Why:   i18n.T("Which profile the chain starts from when no agent-specific one is set.", nil),
 		}, {
-			// 监听地址：默认只绑回环，因为 8899 能改配置、能拨开关。想从 tailnet /
-			// 局域网打开界面的人才需要放开它（放开之后 web 界面的 Host 门也认得
-			// Tailscale 网段，见 web-dashboard 的 isTailscale）。
+			// Listen address: loopback only by default, because 8899 can change config and flip switches.
+			// Only someone who wants to open the UI from a tailnet / LAN needs it open (when open, the
+			// web UI's Host gate also recognizes Tailscale subnets, see isTailscale in web-dashboard).
 			ID: "host", Kind: "text", Value: host,
 			Label:       i18n.T("Bind address", nil),
 			Placeholder: i18n.T("empty = loopback only (127.0.0.1)", nil),
@@ -717,11 +772,11 @@ func stateView(file string, st *domain.State) stateData {
 	}
 }
 
-// parseStateDraft 把一份 state.json 的草稿解析成 State。
+// parseStateDraft parses a state.json draft into a State.
 //
-// 与 store.LoadState 同一套规则（读不出来就零值 + Normalize——那是刻意的 fail-open，
-// 一个手改坏的文件不该让所有 agent 停摆），只是输入是**内存里的草稿**：预览要的正是
-// 还没落盘的那一份。
+// The same rules as store.LoadState (zero value + Normalize when unreadable -- that
+// is deliberate fail-open, one hand-broken file should not stall every agent), except
+// the input is **an in-memory draft**: preview wants exactly the copy not yet on disk.
 func parseStateDraft(draft []byte) *domain.State {
 	s := &domain.State{}
 	_ = json.Unmarshal(draft, s)
@@ -732,10 +787,11 @@ func parseStateDraft(draft []byte) *domain.State {
 func applyStateDefaultProfile(conceptID, file string, edit json.RawMessage, base string) (string, error) {
 	var patch struct {
 		DefaultProfile *string `json:"default_profile"`
-		// Host 是监听地址（空串 = 回环）。它在界面上也能改，但**改完要重启**
-		// 才生效：换监听地址要重新 bind，那不是热路径能做的事（见 forward.New 的
-		// 注释）。所以这一格保存之后，界面显示的仍是「配置成什么」，而此刻真正
-		// 在听的是哪一个是另一回事——那句话写在 why 里。
+		// Host is the listen address (empty = loopback). It can be changed in the UI too, but **a
+		// restart is needed** for it to take effect: changing the listen address means binding
+		// again, which is not something the hot path can do (see the comment on forward.New). So
+		// after this cell is saved, the UI still shows "what it is configured as", while which
+		// one is really listening right now is another matter -- that sentence goes in why.
 		Host *string `json:"host"`
 	}
 	if err := json.Unmarshal(edit, &patch); err != nil {
@@ -745,8 +801,8 @@ func applyStateDefaultProfile(conceptID, file string, edit json.RawMessage, base
 	if err != nil {
 		return "", err
 	}
-	// RawMessage 的理由同 applyProfileRoles：state.json 里住着好几个模块各自的段，
-	// 整份重写会拿这一处的知识覆盖别人的。
+	// RawMessage for the same reason as applyProfileRoles: state.json holds several modules'
+	// own sections, and rewriting it whole would overwrite others with this place's knowledge.
 	var doc map[string]json.RawMessage
 	if err := json.Unmarshal(b, &doc); err != nil {
 		return "", i18n.Ef(err, "{file} is not valid JSON", i18n.A{"file": filepath.Base(file)})
@@ -761,8 +817,9 @@ func applyStateDefaultProfile(conceptID, file string, edit json.RawMessage, base
 	if patch.Host != nil {
 		h := strings.TrimSpace(*patch.Host)
 		if h == "" {
-			// 空 = 回环，那是默认值——把键删掉而不是写一个空串，文件里少一行噪音，
-			// 语义与「没配过」完全一样（见 domain.State.BindHost）。
+			// Empty = loopback, which is the default -- delete the key rather than
+			// write an empty string, one line less noise in the file, with exactly
+			// the same meaning as "never configured" (see domain.State.BindHost).
 			delete(doc, "host")
 		} else {
 			if net.ParseIP(h) == nil {
@@ -783,28 +840,31 @@ func applyStateDefaultProfile(conceptID, file string, edit json.RawMessage, base
 	return writeThrough(conceptID, file, base, append(out, '\n'))
 }
 
-// ---------- provider 表 ----------
+// ---------- provider table ----------
 
-// providerFields 是这个概念管得着的键。**不在这个名单里的键原样保留**——名字里
-// 带个日期、写着备注、或者将来 core 新加的字段，都不该因为界面没露出来就消失
-// （同一个理由见 applyProfileRoles）。
+// providerFields are the keys this concept governs. **Keys not on this list are kept
+// as is** -- a name with a date, a written note, or fields core adds later should not
+// vanish just because the UI does not expose them (same reason see applyProfileRoles).
 var providerFields = []string{"protocol", "base_url", "anthropic_url", "api_key", "api_key_env", "models"}
 
-// providersConcept 是 providers.json 的**结构化编辑器**。
+// providersConcept is providers.json's **structured editor**.
 //
-// 为什么不能靠原文那张卡：那份文件里有 api_key，出 daemon 之前整份被脱敏（见
-// redact），而原文卡的 Apply 写回的是整份文本——写回去就是把 *** 落盘。所以
-// `config.file.providers.json` 一直是只读的，而「加一家 provider」恰恰是装完
-// newgate 之后第一个要做的事，界面不该在这件事上缺席。
+// Why the source-text card cannot do it: that file holds api_key, which is redacted whole
+// before leaving the daemon (see redact), and the source-text card's Apply writes back
+// the whole text -- writing it back lands *** on disk. So `config.file.providers.json`
+// has always been read-only, while "add a provider" is exactly the first thing
+// to do after installing newgate, and the UI should not be absent from that.
 //
-// 做法是把值**留在 daemon 里**：api_key 那一格不进快照（见 view.FieldSecret），
-// 界面显示占位提示，敲了才改、不敲就不动。于是浏览器永远拿不到凭据，而新增、
-// 改名、删除、换 base 这些操作都是完整的。
+// The approach is to keep the value **inside the daemon**: the api_key cell does
+// not enter the snapshot (see view.FieldSecret), the UI shows a placeholder hint, and it
+// changes only when typed, untouched otherwise. So the browser never gets the credential,
+// while adding, renaming, deleting and switching base are all fully available.
 func providersConcept() view.Concept {
 	file := paths.ProvidersFile()
-	// 读**原始形态**，不走 store.LoadProviders：那一个会把 api_key_env 解析成明文
-	// 填进 APIKey，拿它的结果去写盘就是把密钥落盘（见 store.SaveProviders 的注释）。
-	// 「界面拿不到凭据」这条承诺，在这里是「连我自己的读路径都不带明文」。
+	// Read the **raw form**, not store.LoadProviders: that one resolves api_key_env
+	// into plaintext and fills it into APIKey, and writing its result to disk lands
+	// the key on disk (see the comment on store.SaveProviders). "The UI cannot
+	// get credentials" is here "not even my own read path carries plaintext".
 	raw, err := readProvidersRaw(file)
 	if err != nil {
 		return brokenConcept("config.providers", view.KindRecords, i18n.T("Providers", nil), err)
@@ -822,8 +882,8 @@ func providersConcept() view.Concept {
 	return view.Concept{
 		ID: "config.providers", Kind: view.KindRecords,
 		Title: i18n.T("Providers", nil),
-		// Order 1：排在全局设置（0）之后、档位文件（10）之前——「先配上游，才选得出
-		// 档位绑定」，这个顺序与操作的先后是同一件事。
+		// Order 1: after global settings (0), before tier files (10) -- "configure the upstream first,
+		// then tier bindings can be picked"; this order is the same thing as the order of operations.
 		Order: 1,
 		Data: view.Records{
 			File:     paths.RelToRoot(file),
@@ -838,10 +898,11 @@ func providersConcept() view.Concept {
 	}
 }
 
-// providerRecord 把一个 provider 摆成一张小表单。
+// providerRecord lays one provider out as a small form.
 //
-// 顺序是**从上到下读一遍就能配出一家上游**的顺序：先认人（名字、协议、地址），
-// 再给凭据，最后是它提供哪些模型。
+// The order is the order in which **reading from top to bottom is
+// enough to configure one upstream**: who it is first (name, protocol,
+// address), then the credential, and finally which models it offers.
 func providerRecord(name string, fields map[string]json.RawMessage) view.Record {
 	str := func(k string) string {
 		var s string
@@ -856,8 +917,9 @@ func providerRecord(name string, fields map[string]json.RawMessage) view.Record 
 	}
 	sort.Strings(models)
 
-	// 凭据那一格的提示要说清**它现在是什么状态**，因为值本身永远不出来：
-	// 「已设置（留空 = 不改）」与「还没设」是用户唯一能看到的区别。
+	// The hint on the credential cell must say clearly **what state it is in
+	// now**, because the value itself never comes out: "already set (leave blank =
+	// do not change)" and "not set yet" are the only difference the user can see.
 	keyHint := i18n.T("not set — paste the key here", nil)
 	if str("api_key") != "" || str("api_key_env") != "" {
 		keyHint = i18n.T("set — leave empty to keep it", nil)
@@ -889,13 +951,14 @@ func providerRecord(name string, fields map[string]json.RawMessage) view.Record 
 	}
 }
 
-// applyProviders 把界面上那份 provider 表写回 providers.json。
+// applyProviders writes the provider table in the UI back to providers.json.
 //
-// 语义与开关那张表一致：界面交回来的是**它手里的全部记录**，没交的就是删掉。
-// 两处例外，都是「界面不可能知道」的东西：
+// The semantics match the switches table: what the UI sends back is **all the records it holds**,
+// and what is not sent is deleted. Two exceptions, both things "the UI cannot possibly know":
 //
-//   - api_key 空串 = **别动它**（值从来没给过界面，它无从回传）。
-//   - 不在 providerFields 里的键原样保留。
+//   - an empty api_key = **do not touch it** (the value was
+//     never given to the UI, so it cannot send it back).
+//   - keys not in providerFields are kept as is.
 func applyProviders(file string, edit json.RawMessage, base string) (string, error) {
 	var patch struct {
 		Items []struct {
@@ -919,11 +982,12 @@ func applyProviders(file string, edit json.RawMessage, base string) (string, err
 			return "", i18n.E("a provider has no name — the tier bindings would have nothing to refer to", nil)
 		}
 		if _, dup := out[name]; dup {
-			// 两条记录写同一个名字：静默留一条的结果是用户改的那家不见了。
+			// Two records writing the same name: quietly keeping one
+			// results in the provider the user edited being gone.
 			return "", i18n.E("two providers are both named \"{name}\"", i18n.A{"name": name})
 		}
-		// 从**它原来那条**起手（界面点开的是 id 那条，名字可以改），未知键与没露
-		// 出来的字段于是原样带过去。
+		// Start from **its original record** (the UI opens the one by id, and the name
+		// may be changed), so unknown keys and unexposed fields are carried over as is.
 		next := map[string]json.RawMessage{}
 		for k, v := range raw[it.ID] {
 			next[k] = v
@@ -960,15 +1024,16 @@ func applyProviders(file string, edit json.RawMessage, base string) (string, err
 		out[name] = next
 	}
 
-	// 顶层文档的其他键也要留着（将来加的段），所以按原文**只改 providers 那一段**。
-	// 文件不存在（全新安装还没建它）从空文档起手：那不是错误，见 readProvidersRaw。
+	// Other keys of the top-level document must be kept too (sections added later), so the source
+	// text is changed **only in the providers section**. When the file does not exist (a fresh install
+	// has not created it) start from an empty document: that is not an error, see readProvidersRaw.
 	b, err := os.ReadFile(file)
 	if err != nil && !os.IsNotExist(err) {
 		return "", err
 	}
 	doc := map[string]json.RawMessage{}
-	// 空文件（不存在 / 刚被清空）从空文档起手：`json.Unmarshal(nil, …)` 报的是
-	// 「unexpected end of JSON input」，而那不是用户能看懂的东西。
+	// An empty file (missing / just cleared) starts from an empty document: `json.Unmarshal(nil, ...)`
+	// reports "unexpected end of JSON input", and that is not something the user can make sense of.
 	if len(strings.TrimSpace(string(b))) > 0 {
 		if err := json.Unmarshal(b, &doc); err != nil {
 			return "", i18n.Ef(err, "{file} is not valid JSON", i18n.A{"file": filepath.Base(file)})
@@ -987,10 +1052,11 @@ func applyProviders(file string, edit json.RawMessage, base string) (string, err
 	return writeThrough("config.providers", file, base, append(text, '\n'))
 }
 
-// readProvidersRaw 读 providers.json 的 providers 那一段，**每个 provider 保持
-// 原始 JSON**（键序、未知键都不动）。
+// readProvidersRaw reads the providers section of providers.json, **keeping
+// each provider's raw JSON** (key order and unknown keys untouched).
 //
-// 文件不存在当空表：全新安装还没建它——那不是错误，界面该能照着它加第一家。
+// A missing file counts as an empty table: a fresh install has not created it yet --
+// that is not an error, and the UI should be able to add the first one against it.
 func readProvidersRaw(file string) (map[string]map[string]json.RawMessage, error) {
 	b, err := os.ReadFile(file)
 	if os.IsNotExist(err) {
@@ -1011,7 +1077,8 @@ func readProvidersRaw(file string) (map[string]map[string]json.RawMessage, error
 	return doc.Providers, nil
 }
 
-// splitLines 把「一行一项」的多行文本拆成列表：空行与首尾空格丢掉。
+// splitLines splits "one item per line" multi-line text into
+// a list: blank lines and surrounding whitespace are dropped.
 func splitLines(s string) []string {
 	var out []string
 	for _, line := range strings.Split(s, "\n") {
@@ -1022,8 +1089,8 @@ func splitLines(s string) []string {
 	return out
 }
 
-// mustJSON 把一个字符串编码成 JSON 值。字符串不会有编码错误，所以这里不返回错误
-// ——让调用点少一条永远走不到的 if。
+// mustJSON encodes a string into a JSON value. A string cannot fail to encode, so this
+// does not return an error -- one fewer if that can never be reached at the call site.
 func mustJSON(s string) json.RawMessage {
 	b, err := json.Marshal(s)
 	if err != nil {
@@ -1032,16 +1099,16 @@ func mustJSON(s string) json.RawMessage {
 	return b
 }
 
-// writeProfileNewFile 写一份「此刻不存在的」新文件：要求 base="" 让
-// WriteIfUnchanged（它还要返回新基线）把并发新建直接拒。
+// writeProfileNewFile writes a new file "that does not exist right now": requiring base="" makes
+// WriteIfUnchanged (which also returns the new baseline) reject a concurrent create outright.
 func writeProfileNewFile(path string, data []byte) error {
 	_, err := store.WriteIfUnchanged(path, "", data)
 	return err
 }
 
-// profileErr 把三类失败包成一句可读的、按文件定位的报错——这是「不静默」的
-// 那条规矩（出错了要带上下文），也是「按文件定位」（这条路径同时动多份文件，
-// 用户必须知道是哪份坏了）。
+// profileErr wraps the three classes of failure into one readable error located by file
+// -- this is the "do not be silent" rule (an error carries context), and also "locate by
+// file" (this path touches several files at once, and the user must know which one broke).
 func profileErr(verb, file string, err error) error {
 	name := filepath.Base(file)
 	if sc, ok := err.(*store.StaleError); ok {
@@ -1052,21 +1119,23 @@ func profileErr(verb, file string, err error) error {
 		i18n.A{"verb": verb, "file": name})
 }
 
-// ---------- 源文件 ----------
+// ---------- source files ----------
 
 type fileData struct {
 	Path     string `json:"path"`
 	Language string `json:"language"`
 	Text     string `json:"text"`
-	// Base 是这份文件加载时的基线（内容哈希，见 store.WriteIfUnchanged）。
+	// Base is this file's baseline at load (a content hash, see store.WriteIfUnchanged).
 	//
-	// **少了它，原文那一栏根本存不进去**：界面保存时把这份基线一起交回来，没有
-	// 基线就成了「我以为它不存在」，而磁盘上它是存在的——CAS 当场判过期，报
-	// 「这个文件在页面加载之后被别人改过」。用户看到的是「改原文点保存没反应，
-	// 改控件却好好的」（2026-09-20 实测）。
+	// **Without it, the source-text column cannot be saved at all**: the UI hands this baseline
+	// back when saving, and without a baseline it becomes "I thought it did not exist", while on
+	// disk it does exist -- the CAS judges it stale on the spot and reports "this file was changed
+	// by someone else after the page loaded". What the user sees is "editing the source text
+	// and pressing save does nothing, while editing controls works fine" (measured 2026-09-20).
 	Base string `json:"base"`
-	// Redacted：这份内容是**脱敏过**的（凭据被换成了 ***），所以它只读——
-	// 写回去就是把 *** 落盘，那是数据丢失，比不能编辑严重得多。
+	// Redacted: this content has been **redacted** (credentials replaced
+	// with ***), so it is read-only -- writing it back lands *** on disk,
+	// which is data loss, far more serious than being unable to edit.
 	Redacted bool `json:"redacted,omitempty"`
 }
 
@@ -1076,23 +1145,25 @@ func fileConcepts() []view.Concept {
 		rel := paths.RelToRoot(path)
 		b, err := os.ReadFile(path)
 		if err != nil {
-			// 读不出来就报一张坏卡片（而不是不报）：源文件那条 tab 少一个文件名，
-			// 用户以为这文件不存在，而它可能只是权限不对。
+			// When it cannot be read, report a broken card (rather than not reporting
+			// it): a missing file name on the source-files tab makes the user think
+			// the file does not exist, while it may just have wrong permissions.
 			out = append(out, brokenConcept("config.file."+rel, view.KindCode, rel, err))
 			return
 		}
 		text, redacted := redact(string(b), language)
 		c := view.Concept{
 			ID: "config.file." + rel, Kind: view.KindCode, Title: rel,
-			// Order 20：原文那一半排在所有控件卡之后。它在左栏里本来就不占位
-			// （有控件半时被折掉，见 App 的 navUnits），这个 Order 是给「没有
-			// 控件半、自己单独露脸」的那种文件用的（比如 providers.json 之外的
-			// 边角文件）。
+			// Order 20: the source-text half comes after all controls cards. It does
+			// not take a slot in the left column anyway (it is folded away when the controls
+			// half exists, see App's navUnits); this Order is for files that "have no controls
+			// half and show their face on their own" (corner files other than providers.json).
 			Order: 20,
 			Data: fileData{
 				Path: rel, Language: language, Text: text, Redacted: redacted,
-				// 基线取自**磁盘上那份字节**（不是上面这段 text——text 可能被脱敏
-				// 改写过，用它算出来的哈希与盘上对不上，保存照样会被判过期）。
+				// The baseline is taken from **the bytes on disk** (not from the text
+				// above -- text may have been rewritten by redaction, and a hash computed
+				// from it would not match the disk; saving would still be judged stale).
 				Base: store.Revision(path),
 			},
 		}
@@ -1129,12 +1200,12 @@ func fileConcepts() []view.Concept {
 	return out
 }
 
-// secretKeys 是**绝不外发**的字段名。
+// secretKeys are the field names that are **never sent out**.
 //
-// 显式列而不是「反正只挑我认识的字段」：源文件那条 tab 是把整个文件发给浏览器的，
-// 而 providers.json 里的 api_key、state.json 里的 control_token 都是凭据。界面
-// 监听在 loopback 上，但 loopback 边界意味着**本机任何进程**都能读——凭据不该
-// 只靠这一点保护。
+// Listed explicitly rather than "just pick the fields I recognize": the source-files tab sends
+// the whole file to the browser, and providers.json's api_key and state.json's control_token
+// are credentials. The UI listens on loopback, but the loopback boundary means **any process
+// on this machine** can read -- the credentials should not be protected only by this.
 var secretKeys = map[string]bool{
 	"api_key": true, "control_token": true, "root_key": true, "token": true,
 }
@@ -1190,7 +1261,7 @@ func scrub(v any) bool {
 	return touched
 }
 
-// ---------- 小工具 ----------
+// ---------- small helpers ----------
 
 func profileNames() []string {
 	names, err := store.ListProfiles()
@@ -1200,18 +1271,20 @@ func profileNames() []string {
 	return names
 }
 
-// profileNameTaken 说这个**名字**是不是已经有一份档位文件了（`.kv` / `.json` 都算）。
+// profileNameTaken says whether this **name** already has a tier file (either `.kv` or `.json`).
 //
-// 为什么按名字判、而不是按「我正要写的那条路径」判：两种后缀并存时 `.kv` 赢（见
-// store.LoadProfile），所以 `demo.json` 还在的情况下写出一份 `demo.kv`，等于把那份
-// json **静默压掉**——它在文件系统里好好的，但谁也不会再读到它（用户在界面上看到
-// 的只是「我新建的那个档位怎么是空的」）。按名字判把这个洞一起堵上。
+// Why judge by name rather than by "the path I am about to write": when the
+// two suffixes coexist `.kv` wins (see store.LoadProfile), so writing a `demo.kv`
+// while `demo.json` is still there amounts to **silently suppressing** that json --
+// it is fine in the filesystem, but nobody will ever read it again (the user only
+// sees "why is the tier I created empty"). Judging by name plugs that hole too.
 //
-// 为什么这条要放在 CAS **之前**：CAS 拦得住写入，但它的报错是「(loaded (absent),
-// on disk sha256:…)（页面打开后别人改过——重载后再试）」——而这里根本没有人改过
-// 东西，重载再试一万次还是同一个结果（2026-09-21 实测：把 aaa 改名成已存在的 bbb
-// 报的就是这句，用户会照着它去重载，然后卡住）。存在性是一个**确定的事实**，
-// 按事实说。
+// Why this must come **before** the CAS: the CAS can block the write, but its
+// error is "(loaded (absent), on disk sha256:...) (changed by someone else after the
+// page opened -- reload and retry)" -- while here nobody changed anything at all, and
+// reloading and retrying ten thousand times gives the same result (measured 2026-09-21:
+// renaming aaa to an existing bbb reported exactly this, and the user follows it,
+// reloads, and gets stuck). Existence is **a settled fact**; say it as the fact.
 func profileNameTaken(name string) error {
 	if slices.Contains(profileNames(), name) {
 		return i18n.E("a profile named {name} already exists — pick another name, or delete that one first",
@@ -1220,7 +1293,7 @@ func profileNameTaken(name string) error {
 	return nil
 }
 
-// profileFile 是这个 profile 在磁盘上的真身（.kv 优先，与 store 的读取次序一致）。
+// profileFile is this profile's real body on disk (.kv first, the same read order as store).
 func profileFile(name string) (string, error) {
 	kv := filepath.Join(paths.Mappings(), name+".kv")
 	if _, err := os.Stat(kv); err == nil {

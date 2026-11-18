@@ -9,16 +9,17 @@ import (
 	"testing"
 )
 
-// 账本的行为与渲染无关，所以它在叶子里就能测——界面的测试要拖起 HTTP 与嵌入
-// 资源，而这里要锁的是几件很具体的事：**注册不产出**（每一次 CLI 调用都会跑到
-// 注册，而没有人会打开界面）、重名必须报错、撤销只撤自己那条、并发安全。
+// The ledger's behavior is unrelated to rendering, so it can be tested in the leaf -- the UI's
+// tests would drag in HTTP and embedded assets, while what is pinned here are a few very concrete
+// things: **registration produces nothing** (every CLI invocation reaches registration, and nobody
+// opens the UI), duplicates must error, a release removes only its own, and it is concurrency-safe.
 
-// TestRegisterDoesNotProduce 是这套东西最要紧的一条：登记一个产出函数**不能**
-// 顺带把数据算出来。
+// TestRegisterDoesNotProduce is the most important one in this thing:
+// registering a produce function **must not** compute the data along the way.
 //
-// 它守的不是性能，是「每条 `newgate …` 命令都白读一遍全部配置」那个坑——第一版
-// 就是那样（Start 里直接读出全部数据塞进概念），被删掉了。这个测试红了就说明
-// 那个坑回来了。
+// What it guards is not performance, it is the pit of "every `newgate …` command rereads
+// all config for nothing" -- the first version did exactly that (Start read all the data
+// straight into concepts), and it was deleted. This test going red means that pit is back.
 func TestRegisterDoesNotProduce(t *testing.T) {
 	r := NewRegistry()
 	var calls atomic.Int64
@@ -29,18 +30,19 @@ func TestRegisterDoesNotProduce(t *testing.T) {
 		t.Fatal(err)
 	}
 	if n := calls.Load(); n != 0 {
-		t.Fatalf("注册时产出了 %d 次——每一次 CLI 调用都会跑到注册", n)
+		t.Fatalf("produced %d times at registration -- every CLI invocation reaches registration", n)
 	}
 	if _, err := r.Snapshot(); err != nil {
 		t.Fatal(err)
 	}
 	if n := calls.Load(); n != 1 {
-		t.Fatalf("快照时该产出一次，实际 %d 次", n)
+		t.Fatalf("must produce once at snapshot time, actually %d times", n)
 	}
 }
 
-// TestSnapshotAsksEveryTime：界面上的刷新得是真的刷新——CLI 刚建的档位文件要
-// 出现在下一次快照里。缓存一份旧的等于让 daemon 的界面停在启动那一刻。
+// TestSnapshotAsksEveryTime: refreshing in the UI has to be real refreshing
+// -- the tier file the CLI just created must show up in the next snapshot.
+// Caching an old one would freeze the daemon's UI at the moment it started.
 func TestSnapshotAsksEveryTime(t *testing.T) {
 	r := NewRegistry()
 	n := 0
@@ -53,13 +55,14 @@ func TestSnapshotAsksEveryTime(t *testing.T) {
 	first, _ := r.Snapshot()
 	second, _ := r.Snapshot()
 	if first[0].ID == second[0].ID {
-		t.Fatalf("两次快照拿到了同一个概念（%s）——产出函数只跑了一次", first[0].ID)
+		t.Fatalf("two snapshots got the same concept (%s) -- the producer ran only once", first[0].ID)
 	}
 }
 
-// TestSnapshotCanAskJustSomeContributors：界面刷新计数器与日志（便宜）时不该
-// 顺带把配置那一位也叫醒——那一位要重读并重新解析每一份 profile 与每一个源文件。
-// 让「刷一下计数器」付那个成本，是把钱花在没人看的地方。
+// TestSnapshotCanAskJustSomeContributors: when the UI refreshes counters
+// and logs (cheap), it should not wake the config one along the way -- that
+// one has to reread and reparse every profile and every source file. Making
+// "refresh the counters" pay that cost spends money where nobody is looking.
 func TestSnapshotCanAskJustSomeContributors(t *testing.T) {
 	r := NewRegistry()
 	var cheap, expensive atomic.Int64
@@ -70,27 +73,28 @@ func TestSnapshotCanAskJustSomeContributors(t *testing.T) {
 		t.Fatal(err)
 	}
 	if cheap.Load() != 1 || expensive.Load() != 1 {
-		t.Fatalf("不带参数该问全部: gateway=%d config=%d", cheap.Load(), expensive.Load())
+		t.Fatalf("without arguments it should ask everyone: gateway=%d config=%d", cheap.Load(), expensive.Load())
 	}
 
 	if _, err := r.Snapshot("gateway"); err != nil {
 		t.Fatal(err)
 	}
 	if cheap.Load() != 2 {
-		t.Errorf("点名问的那位该被再问一次: %d", cheap.Load())
+		t.Errorf("the named one should be asked again: %d", cheap.Load())
 	}
 	if expensive.Load() != 1 {
-		t.Errorf("没点名的那位不该被吵醒: %d 次", expensive.Load())
+		t.Errorf("the unnamed one must not be woken up: %d times", expensive.Load())
 	}
 
-	// 名字不认识（那位没装、或刚被关掉）不报错：刷新是后台行为，为一个不在的
-	// 贡献者让整次刷新失败，界面会停在上一帧。
+	// An unknown name (that one is not installed, or was just turned off) is not
+	// an error: refreshing is background behavior, and failing the whole refresh
+	// for an absent contributor would leave the UI stuck on the previous frame.
 	got, err := r.Snapshot("nobody")
 	if err != nil {
-		t.Fatalf("不认识的名字不该让刷新失败: %v", err)
+		t.Fatalf("an unknown name must not make the refresh fail: %v", err)
 	}
 	if len(got) != 0 {
-		t.Errorf("问了不存在的贡献者，结果该是空的: %+v", got)
+		t.Errorf("asking a contributor that does not exist should yield empty: %+v", got)
 	}
 }
 
@@ -110,12 +114,12 @@ func TestSnapshotRejectsDuplicateID(t *testing.T) {
 	mustRegister(t, r, "two", Concept{ID: "a", Kind: KindCode})
 	_, err := r.Snapshot()
 	if err == nil {
-		t.Fatal("同一个 ID 被两家报上来该报错——否则界面上只会显示其中一个，" +
-			"另一个的修改点永远点不到")
+		t.Fatal("the same ID reported by two sources must error -- otherwise the UI shows only one of them," +
+			"and the other one's edit is never reachable")
 	}
 	for _, want := range []string{"one", "two"} {
 		if !strings.Contains(err.Error(), want) {
-			t.Errorf("报错要点名两家（谁和谁撞了），缺 %q: %v", want, err)
+			t.Errorf("the error must name both sources (who collided with whom), missing %q: %v", want, err)
 		}
 	}
 }
@@ -124,38 +128,40 @@ func TestSnapshotRequiresIdentityAndKind(t *testing.T) {
 	r := NewRegistry()
 	mustRegister(t, r, "x", Concept{Kind: KindCode})
 	if _, err := r.Snapshot(); err == nil {
-		t.Error("没有 ID 的概念该被拒绝（身份是前端定位它的唯一依据）")
+		t.Error("a concept without an ID must be rejected (the ID is the only thing the front end can locate it by)")
 	}
 	r2 := NewRegistry()
 	mustRegister(t, r2, "x", Concept{ID: "a"})
 	if _, err := r2.Snapshot(); err == nil {
-		t.Error("没有 Kind 的概念该被拒绝（界面不知道怎么渲染它）")
+		t.Error("a concept without a Kind must be rejected (the UI does not know how to render it)")
 	}
 }
 
-// TestLedgerStampsTheSource：来源由账本填，不用贡献者自己报。报错了就是替别人
-// 背锅（报错的文案里点名的是别人），而账本本来就知道这条是谁登记的。
+// TestLedgerStampsTheSource: the source is filled by the ledger, not reported by the
+// contributor. Reporting it wrong means taking the blame for someone else (the error
+// text names someone else), while the ledger already knows who registered this entry.
 func TestLedgerStampsTheSource(t *testing.T) {
 	r := NewRegistry()
-	mustRegister(t, r, "config", Concept{ID: "a", Kind: KindCode, Source: "撒谎的模块"})
+	mustRegister(t, r, "config", Concept{ID: "a", Kind: KindCode, Source: "lying module"})
 	got, _ := r.Snapshot()
 	if got[0].Source != "config" {
-		t.Errorf("Source 该由账本填，实际 %q", got[0].Source)
+		t.Errorf("Source should be filled in from the ledger, actually %q", got[0].Source)
 	}
 }
 
 func TestRegisterRejectsEmptySourceAndNilContributor(t *testing.T) {
 	r := NewRegistry()
 	if _, err := r.Register("", tsection("x"), func() ([]Concept, error) { return nil, nil }); err == nil {
-		t.Error("没有来源名的贡献者该被拒绝（报错与分组都要点名）")
+		t.Error("a contributor without a source name must be rejected (both errors and grouping must name it)")
 	}
 	if _, err := r.Register("x", tsection("x"), nil); err == nil {
-		t.Error("nil 产出函数该被拒绝（界面上会静默什么都没有）")
+		t.Error("a nil producer must be rejected (the UI would silently show nothing)")
 	}
 }
 
-// TestReleaseOnlyRemovesItsOwn：撤销按**登记的序号**认人，不按名字。同一个模块
-// 名重复登记是允许的，后来者不该被前一个的撤销带走。
+// TestReleaseOnlyRemovesItsOwn: a release is identified by **registration
+// sequence number**, not by name. Registering the same module name twice is
+// allowed, and the later one should not be removed by the former's release.
 func TestReleaseOnlyRemovesItsOwn(t *testing.T) {
 	r := NewRegistry()
 	first, err := r.Register("config", tsection("config"), func() ([]Concept, error) {
@@ -168,10 +174,10 @@ func TestReleaseOnlyRemovesItsOwn(t *testing.T) {
 		t.Fatal(err)
 	}
 	if all, _ := r.Snapshot(); len(all) != 0 {
-		t.Fatalf("撤销之后不该还在: %+v", all)
+		t.Fatalf("must not remain after revoke: %+v", all)
 	}
 	if err := first(); err != nil {
-		t.Fatalf("撤销该是幂等的: %v", err)
+		t.Fatalf("revoke must be idempotent: %v", err)
 	}
 	if _, err := r.Register("config", tsection("config"), func() ([]Concept, error) {
 		return []Concept{{ID: "a", Kind: KindCode}}, nil
@@ -180,12 +186,12 @@ func TestReleaseOnlyRemovesItsOwn(t *testing.T) {
 	}
 	_ = first() // 再撤一次（幂等，且不许误删后来者那条）
 	if all, _ := r.Snapshot(); len(all) != 1 {
-		t.Fatalf("后来者的概念被误删了: %+v", all)
+		t.Fatalf("the latecomer's concept was deleted by mistake: %+v", all)
 	}
 }
 
-// TestSnapshotIsSortedAndStable：诊断与前端分组都靠它。同一份装配跑两次，顺序
-// 必须一样——不然用户会以为东西变了。
+// TestSnapshotIsSortedAndStable: both diagnostics and frontend grouping rely on it. Two runs of
+// the same assembly must yield the same order -- otherwise the user will think something changed.
 func TestSnapshotIsSortedAndStable(t *testing.T) {
 	r := NewRegistry()
 	mustRegister(t, r, "gateway", Concept{ID: "z", Kind: KindSeries})
@@ -197,13 +203,14 @@ func TestSnapshotIsSortedAndStable(t *testing.T) {
 	want := []string{"config/a", "config/b", "gateway/z"}
 	for i, c := range got {
 		if c.Source+"/"+c.ID != want[i] {
-			t.Fatalf("Snapshot()[%d] = %s/%s，想要 %s", i, c.Source, c.ID, want[i])
+			t.Fatalf("Snapshot()[%d] = %s/%s, want %s", i, c.Source, c.ID, want[i])
 		}
 	}
 }
 
-// TestApplyCarriesTheEditThrough：概念不只报数据，还带**怎么改**。这条锁的是
-// 「写的知识属于拥有那份数据的人」——BFF 只负责把前端那坨 JSON 原样转交。
+// TestApplyCarriesTheEditThrough: a concept reports not only data, but also
+// **how to change it**. This pins "the knowledge of writing belongs to whoever
+// owns that data" -- the BFF only passes the frontend's JSON through verbatim.
 func TestApplyCarriesTheEditThrough(t *testing.T) {
 	r := NewRegistry()
 	var got json.RawMessage
@@ -220,32 +227,32 @@ func TestApplyCarriesTheEditThrough(t *testing.T) {
 		t.Fatal(err)
 	}
 	if c.Apply == nil {
-		t.Fatal("Apply 没进快照——界面就永远写不了")
+		t.Fatal("Apply is not in the snapshot -- then the UI can never write")
 	}
 	rev, err := c.Apply(json.RawMessage(`{"text":"hi"}`), "sha256:old")
 	if err != nil || rev != "sha256:new" {
-		t.Fatalf("Apply 的返回值该原样回给界面: rev=%q err=%v", rev, err)
+		t.Fatalf("Apply's return value should be handed back to the UI verbatim: rev=%q err=%v", rev, err)
 	}
 	if string(got) != `{"text":"hi"}` || gotBase != "sha256:old" {
-		t.Errorf("编辑内容与基线该原样转交: edit=%s base=%s", got, gotBase)
+		t.Errorf("the edit content and the baseline should be passed through verbatim: edit=%s base=%s", got, gotBase)
 	}
 }
 
-// TestGetReportsUnknownConcept：界面拿这个区分 404（前端那份快照过期了，重载
-// 就好）与 500（某种真的坏了）。
+// TestGetReportsUnknownConcept: the UI uses this to tell 404 (the frontend's
+// snapshot is stale, just reload) from 500 (something is really broken).
 func TestGetReportsUnknownConcept(t *testing.T) {
 	r := NewRegistry()
 	_, err := r.Get("nope")
 	if !errors.Is(err, ErrUnknownConcept) {
-		t.Fatalf("要能 errors.Is(ErrUnknownConcept) 认出来，实际: %v", err)
+		t.Fatalf("errors.Is(ErrUnknownConcept) must recognize it, got: %v", err)
 	}
 	if !strings.Contains(err.Error(), "nope") {
-		t.Errorf("报错里要有那个 ID（排查时第一个要问的就是它）: %v", err)
+		t.Errorf("the error must contain that ID (it is the first thing anyone asks when debugging): %v", err)
 	}
 }
 
-// TestConcurrentRegisterAndSnapshot：模块的 Start（注册）与界面的渲染（快照）
-// 跑在不同 goroutine 上。跑 -race 才有意义。
+// TestConcurrentRegisterAndSnapshot: a module's Start (register) and the UI's
+// rendering (snapshot) run on different goroutines. Only meaningful under -race.
 func TestConcurrentRegisterAndSnapshot(t *testing.T) {
 	r := NewRegistry()
 	var wg sync.WaitGroup
@@ -281,23 +288,26 @@ func mustRegister(t *testing.T, r *Registry, source string, concepts ...Concept)
 	}
 }
 
-// tsection 造一个栏目名。绝大多数用例只关心账本的行为，不关心标题长什么样，
-// 所以标题就用来源名——**栏目名的断言在 TestSections* 那几条里**，这里不该
-// 顺手把它也钉一遍（钉了就会有人为了改测试而改标题）。
+// tsection builds a column name. The vast majority of cases only care about the ledger's
+// behavior, not what the title looks like, so the title is just the source name --
+// **assertions about column names live in the TestSections* tests**, and this one should
+// not pin it too (pinning it would make someone change the title just to fix a test).
 func tsection(name string) Section {
 	return Title(func() string { return name })
 }
 
-// TestSectionTitlesAreAskedEverySnapshot 是「栏目名为什么是个函数」的棘轮。
+// TestSectionTitlesAreAskedEverySnapshot is the ratchet for "why the column name is a function".
 //
-// 界面上的那一栏叫什么由模块自己报，而**报的时候不能翻**：登记发生在各模块的
-// Start 里，那时候语言层装好了没有是没有保证的（业务模块不依赖 modules/locale，
-// 依赖它的只有发行版那份追加目录的模块）。登记时求值的标题会冻在源语言上，而
-// 没有任何东西会因此变红——中文界面上那一栏一直叫 Configuration，看着只像
-// 「还没翻」，不像一条 bug。
+// What that column in the UI is called is reported by the module itself, and **it must
+// not be translated when reporting**: registration happens in each module's Start,
+// and whether the language layer is installed by then is not guaranteed (business
+// modules do not depend on modules/locale; only the distribution's catalog-appending
+// module does). A title evaluated at registration would freeze in the source language,
+// and nothing would go red for it -- a column in the Chinese UI would be called
+// Configuration forever, looking like "not translated yet" rather than like a bug.
 //
-// 所以这条测试盯的不是「标题对不对」，而是**求值发生在哪一刻**：登记之后改掉
-// 那句话的来源，下一次问栏名必须拿到新的。
+// So this test watches not "is the title right" but **at which moment evaluation happens**: change
+// what that sentence comes from after registration, and the next ask must return the new one.
 func TestSectionTitlesAreAskedEverySnapshot(t *testing.T) {
 	r := NewRegistry()
 	title := "first"
@@ -306,20 +316,22 @@ func TestSectionTitlesAreAskedEverySnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := sectionsOf(t, r)["x"]; got != "first" {
-		t.Fatalf("栏名该是登记的那个闭包算出来的，实际 %q", got)
+		t.Fatalf("the column name should be computed by the registered closure, actually %q", got)
 	}
 	title = "second"
 	if got := sectionsOf(t, r)["x"]; got != "second" {
-		t.Fatalf("栏名在登记那一刻就定死了（%q）——换个语言它也不会变", got)
+		t.Fatalf("the column name is frozen at registration time (%q) -- it will not change with the language", got)
 	}
 }
 
-// TestSectionsListSilentContributors：一个此刻一条概念都产不出来的源，仍然要
-// 在侧栏里有一个位置。
+// TestSectionsListSilentContributors: a source that produces not
+// one concept right now must still have a place in the sidebar.
 //
-// 它消失的代价不是「少一行」：用户会以为那个模块没装，然后去别处找（翻配置、
-// 问 doctor）。今天真会这样的场景是配置目录整个读不了、omo 还没接管过、一个
-// 开关点都没上报——而那时候恰恰最需要看见「这一栏在，只是空的」。
+// The cost of it disappearing is not "one row fewer": the user will think that module
+// is not installed and go looking elsewhere (dig through config, ask doctor). The scenes
+// where this really happens today are the config directory being entirely unreadable,
+// omo never having been taken over, not one switch point having reported -- and those
+// are exactly the moments when seeing "this column is there, just empty" matters most.
 func TestSectionsListSilentContributors(t *testing.T) {
 	r := NewRegistry()
 	if _, err := r.Register("quiet", tsection("Quiet"),
@@ -332,18 +344,19 @@ func TestSectionsListSilentContributors(t *testing.T) {
 	}
 	got := r.Sections()
 	if len(got) != 2 {
-		t.Fatalf("两个源都该在栏目列表里，实际 %d 个: %+v", len(got), got)
+		t.Fatalf("both sources should be in the column list, actually %d: %+v", len(got), got)
 	}
 	if got[0].Source != "loud" || got[1].Source != "quiet" {
-		t.Errorf("栏目该按 source 排序（界面顺序要跨重启稳定）: %+v", got)
+		t.Errorf("columns must be sorted by source (UI order must be stable across restarts): %+v", got)
 	}
 	if got[1].Title != "Quiet" {
-		t.Errorf("没产出的那位也该有名字: %+v", got[1])
+		t.Errorf("the one that produced nothing should still have a name: %+v", got[1])
 	}
 }
 
-// TestSectionsSurviveAnEmptyTitle：栏名是一句展示文案。它算不出来时兜成来源名，
-// 而不是让整次快照失败——那代价是整个界面白屏，比一栏标题不好看严重得多。
+// TestSectionsSurviveAnEmptyTitle: a column name is a piece of display copy. When it
+// cannot be computed, fall back to the source name rather than fail the whole snapshot
+// -- that cost is a blank UI, far more serious than one column's title looking bad.
 func TestSectionsSurviveAnEmptyTitle(t *testing.T) {
 	r := NewRegistry()
 	if _, err := r.Register("config", Title(func() string { return "  " }),
@@ -351,31 +364,34 @@ func TestSectionsSurviveAnEmptyTitle(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := sectionsOf(t, r)["config"]; got != "config" {
-		t.Errorf("空栏名该兜成来源名（机器标记，至少不是空的）: %q", got)
+		t.Errorf("an empty column name must fall back to the source name (a machine marker, at least not empty): %q", got)
 	}
 }
 
-// TestRegisterRejectsNoSectionTitle：漏报栏名要在**登记那一刻**红，不能等到
-// 界面渲染——那一刻离这里隔着一次 HTTP 与一次渲染，谁也不会顺着摸回来，症状
-// 是侧栏里一栏没有标题（或者顶着一个模块名）。
+// TestRegisterRejectsNoSectionTitle: a missing column name must go red **at the
+// moment of registration**, not wait for the UI to render -- that moment is one
+// HTTP request and one render away from here, nobody will trace it back, and the
+// symptom is a column in the sidebar with no title (or wearing a module name).
 func TestRegisterRejectsNoSectionTitle(t *testing.T) {
 	r := NewRegistry()
 	rel, err := r.Register("x", Section{}, func() ([]Concept, error) { return nil, nil })
 	if err == nil {
 		_ = rel()
-		t.Fatal("没报栏目名该被拒绝（用 view.Title）")
+		t.Fatal("not reporting a column name must be rejected (use view.Title)")
 	}
 	if !strings.Contains(err.Error(), "x") {
-		t.Errorf("报错要点名是哪个源: %v", err)
+		t.Errorf("the error must name which source: %v", err)
 	}
 }
 
-// TestNobodyDeclaresALandingByDefault：没人声明落点时，**行为与这条改动之前一模
-// 一样**——一个 Default 都没有，界面照它原来那套规矩挑（第一个有卡片的那一栏）。
+// TestNobodyDeclaresALandingByDefault: when nobody declares a landing,
+// **behavior is exactly as before this change** -- no Default at all,
+// and the UI picks by its old rule (the first column with cards).
 //
-// 这条是这次改动的安全绳：装 `home` 的装配里首屏换了地方，不装的那些（`dist.json`
-// 之外的四份规格书、内核自己的测试图）必须一个字都没变。破了它就是一次静默的
-// 行为变更——而「首屏落在哪」没有任何测试会因此变红。
+// This is the safety rope of this change: assemblies with `home` installed move their
+// first screen, and those without it (the four specs other than `dist.json`, the
+// kernel's own test graphs) must change not one character. Breaking it is a silent
+// behavior change -- and nothing would go red for "where the first screen lands".
 func TestNobodyDeclaresALandingByDefault(t *testing.T) {
 	r := NewRegistry()
 	for _, name := range []string{"breaker", "config", "gateway"} {
@@ -385,22 +401,25 @@ func TestNobodyDeclaresALandingByDefault(t *testing.T) {
 	}
 	for _, s := range r.Sections() {
 		if s.Default {
-			t.Errorf("%s 被标成了落点，而没人声明过", s.Source)
+			t.Errorf("%s was marked as the landing point, but nobody declared it", s.Source)
 		}
 	}
 }
 
-// TestLandingIsTheDeclaredSection：声明了落点的那一栏带上它，其余不带。
+// TestLandingIsTheDeclaredSection: the column that
+// declared the landing carries it, the rest do not.
 //
-// 它端给界面的是 `default: true` 这一格（SectionInfo.Default），前端按它决定首屏
-// 落在哪儿——在这之前，那件事是「谁的名字按字母序排在前面」这个偶然。
+// What it sends to the UI is the `default: true` cell (SectionInfo.Default),
+// and the frontend decides from it where the first screen lands -- before
+// this, that was the accident of "whose name sorts first alphabetically".
 func TestLandingIsTheDeclaredSection(t *testing.T) {
 	r := NewRegistry()
 	if _, err := r.Register("breaker", tsection("Breaker"), func() ([]Concept, error) { return nil, nil }); err != nil {
 		t.Fatal(err)
 	}
-	// 名字刻意排在字母序**最后**：落点靠声明，不靠在字母表里插队——插队那套
-	// （把 source 起成 `aaa-home`）是这次改动要消灭的东西。
+	// The name is deliberately sorted **last** alphabetically: the landing comes
+	// from a declaration, not from jumping the queue in the alphabet -- queue-jumping
+	// (naming the source `aaa-home`) is what this change exists to kill.
 	if _, err := r.Register("home", tsection("Home").Landing(), func() ([]Concept, error) { return nil, nil }); err != nil {
 		t.Fatal(err)
 	}
@@ -409,19 +428,19 @@ func TestLandingIsTheDeclaredSection(t *testing.T) {
 		got[s.Source] = s.Default
 	}
 	if !got["home"] {
-		t.Errorf("声明了 Landing 的那一栏没被标成落点: %+v", got)
+		t.Errorf("the column that declared Landing was not marked as the landing point: %+v", got)
 	}
 	if got["breaker"] {
-		t.Errorf("没声明的那一栏不该是落点: %+v", got)
+		t.Errorf("the column that did not declare it must not be the landing point: %+v", got)
 	}
 }
 
-// TestSeveralLandingsResolveBySource：两个模块都想当落点（那是发行版装机时的
-// 选择冲突，不是谁写错了）时，按 Source 取最小的那个。
+// TestSeveralLandingsResolveBySource: when two modules both want to be the landing (a conflict
+// in how the distribution is installed, not a mistake by either) take the smallest by Source.
 //
-// 为什么要一条确定性规则：不定它的话，被选中的那个取决于各模块 Start 的先后，
-// 而那种「装法一变、首屏就换地方」的错没有任何东西会红。取最小与 Sections 的
-// 排序用同一把尺子，看的人因此不会困惑。
+// Why a deterministic rule is needed: without it, who gets picked depends on the order the modules
+// Start, and that "change how it is installed and the first screen moves" error would make nothing
+// go red. Taking the smallest uses the same ruler as Sections' sort, so readers are not confused.
 func TestSeveralLandingsResolveBySource(t *testing.T) {
 	r := NewRegistry()
 	for _, name := range []string{"zebra", "apple"} {
@@ -436,7 +455,7 @@ func TestSeveralLandingsResolveBySource(t *testing.T) {
 		}
 	}
 	if len(landed) != 1 || landed[0] != "apple" {
-		t.Fatalf("多个落点该只留 source 最小的那个，实际 %v", landed)
+		t.Fatalf("with several landing points only the one with the smallest source should remain, actually %v", landed)
 	}
 }
 
@@ -449,10 +468,11 @@ func sectionsOf(t *testing.T, r *Registry) map[string]string {
 	return out
 }
 
-// Row 上的动作按**行**定位：跑哪一个行的按钮，就只跑那一个。
+// Actions on a Row are located by **row**: whichever row's button runs, only that one runs.
 //
-// 这条锁的是「行 ID 真的参与了定位」——少了它，「把这一档换成 X」在一张有十行的卡上
-// 会变成「跑第一行里叫这个名字的那个按钮」，而那种错的表现是**改错了别的行**。
+// This pins that "the row ID really takes part in the lookup" -- without it, "switch
+// this tier to X" on a card with ten rows would become "run the button with this name
+// in the first row", and the symptom of that error is **changing the wrong row**.
 func TestRunRowActionFindsTheRightRow(t *testing.T) {
 	r := NewRegistry()
 	var ran string
@@ -467,15 +487,15 @@ func TestRunRowActionFindsTheRightRow(t *testing.T) {
 			{ID: "b", Cells: map[string]Cell{}, Actions: []Action{btn("probe")}},
 		}},
 	})
-	// 两行上有一个**同名**的按钮：这正是「按行定位」要能区分的那种情况。
+	// Two rows have a button of the **same name**: exactly the case "locate by row" must tell apart.
 	if _, err := r.RunRowAction("t", "b", "probe"); err != nil {
 		t.Fatal(err)
 	}
 	if ran != "probe" {
-		t.Fatalf("按钮没跑起来: %q", ran)
+		t.Fatalf("the button did not run: %q", ran)
 	}
-	// 两行跑的都是同一个闭包，所以上面那条分不出 a/b——换一个能分的：每行各跑
-	// 它自己的那个闭包（Run 返回行 ID）。
+	// Both rows run the same closure, so the above cannot tell a from b -- switch
+	// to one that can: each row runs its own closure (Run returns the row ID).
 	var which string
 	rowBtn := func(row string) Action {
 		return Action{ID: "go", Label: func() string { return row },
@@ -493,15 +513,17 @@ func TestRunRowActionFindsTheRightRow(t *testing.T) {
 		t.Fatal(err)
 	}
 	if which != "b" {
-		t.Fatalf("跑的是 %q 行，要的是 b 行", which)
+		t.Fatalf("ran line %q, wanted line b", which)
 	}
 }
 
-// 链卡（KindChains）上的行**也能挂动作**，而且行 ID 是全概念唯一的。
+// Rows on a chain card (KindChains) **can carry actions
+// too**, and row IDs are unique across the whole concept.
 //
-// 这条是 2026-09-22 加 chains 时的那个缺口：第一版 RunRowAction 只认 Table，于是
-// 「一行的去处」这件事被渲染形状绑住了。判据两条——链卡里的动作跑得起来，以及
-// **档位名单独一个不够用**（十份 profile 就有十个 heavy，只报 tie 会改错那一份）。
+// This is the gap from when chains were added on 2026-09-22: the first version of
+// RunRowAction only knew Table, so "where a row goes" was tied to the rendering shape.
+// Two tests -- actions on a chain card can run, and **a tier name alone is not enough**
+// (ten profiles means ten heavy's, and reporting only the tier changes the wrong one).
 func TestRunRowActionWorksOnChainCards(t *testing.T) {
 	r := NewRegistry()
 	var got string
@@ -525,43 +547,45 @@ func TestRunRowActionWorksOnChainCards(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got != "alt/heavy→zhipu/glm-4" {
-		t.Fatalf("跑错行了：%q（两边都有叫 heavy 的行，只有行 ID 能分开它们）", got)
+		t.Fatalf("ran the wrong line: %q (both sides have a row named heavy, only the row ID can tell them apart)", got)
 	}
 
-	// 一行上**没有**这个动作时，报错要说得清是哪一行——界面手里那份快照旧了，
-	// 而它唯一能拿到的线索就是这句话。
+	// When a row **does not** have this action, the error must say clearly which row
+	// -- the snapshot in the UI's hands is stale, and this sentence is its only clue.
 	_, err := r.RunRowAction("chains", "demo/heavy", "head:nope")
 	if err == nil {
-		t.Fatal("那一行上没有这个按钮，该报错")
+		t.Fatal("there is no such button on that row; it should error")
 	}
 	if !strings.Contains(err.Error(), "demo/heavy") || !strings.Contains(err.Error(), "head:nope") {
-		t.Errorf("报错该点明行与动作，实际: %v", err)
+		t.Errorf("the error must name the row and the action, got: %v", err)
 	}
 }
 
-// 一种 Kind 的行上不可能有动作时，报错说的是**「这种形状没有行动作」**，而不是
-// 装作那一行存在过。
+// When rows of a Kind cannot carry actions, the error says **"this
+// shape has no row actions"** rather than pretending that row existed.
 //
-// 为什么这条值得有：加一种带行的 Kind 时忘了在 rowActions 里补一支，症状会是一句
-// 「这一行不存在」——排查的人于是去查数据，而真相是代码里少了一个 case。
+// Why this is worth having: forget to add a branch in rowActions when adding a Kind
+// with rows, and the symptom is a sentence "this row does not exist" -- so whoever
+// investigates goes looking at the data, when the truth is a missing case in the code.
 func TestRunRowActionOnAKindWithoutRows(t *testing.T) {
 	r := NewRegistry()
 	mustRegister(t, r, "x", Concept{ID: "c", Kind: KindCode, Data: struct{}{}})
 	_, err := r.RunRowAction("c", "whatever", "go")
 	if err == nil {
-		t.Fatal("code 那一种没有行，该报错")
+		t.Fatal("the code kind has no rows; it should error")
 	}
 	if !strings.Contains(err.Error(), KindCode) {
-		t.Errorf("报错该说出是哪种 Kind 没有行动作，实际: %v", err)
+		t.Errorf("the error must say which Kind has no actions, got: %v", err)
 	}
 }
 
-// 总览那一张卡上的按钮长在**卡片**上（一个 profile 一个「用它」），而
-// RunConceptAction 找的是概念上的动作——所以它得按 Kind 往数据里看一眼。
+// Buttons on the overview card live on the **cards** (one "use it" per profile), while
+// RunConceptAction looks for actions on the concept -- so it has to look into the data by Kind.
 //
-// 为什么这条值得有两条断言：**十几张卡上都有同一族动作**（每份 profile 一个「给
-// claude 用」），而账本按 ID 取的是第一个匹配。ID 里不带 profile 的话，用户想切到
-// 第三张卡，实际改的是第一张——那是静默改错东西，界面上一点异样都没有。
+// Why this deserves two assertions: **a dozen cards all have the same family of actions**
+// (one "use for claude" per profile), and the ledger takes the first match by ID. Without
+// the profile in the ID, the user wanting to switch the third card actually changes the
+// first -- silently changing the wrong thing, with not a hint of anything odd in the UI.
 func TestRunConceptActionReachesOverviewCards(t *testing.T) {
 	r := NewRegistry()
 	var got string
@@ -581,39 +605,41 @@ func TestRunConceptActionReachesOverviewCards(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got != "cheap" {
-		t.Fatalf("跑错卡了：改到了 %q（两段机器标记缺一段就会这样）", got)
+		t.Fatalf("ran the wrong card: edited %q (this happens when one of the two machine markers is missing)", got)
 	}
 
-	// 卡片上**没有**这个按钮时，报错要说得清是哪个动作——界面手里那份快照旧了，
-	// 而它唯一能拿到的线索就是这句话。
+	// When the card **does not** have this button, the error must say clearly which action
+	// -- the snapshot in the UI's hands is stale, and this sentence is its only clue.
 	_, err := r.RunConceptAction("overview", "use:codex:cheap")
 	if err == nil {
-		t.Fatal("没有这个按钮，该报错")
+		t.Fatal("there is no such button; it should error")
 	}
 	if !strings.Contains(err.Error(), "use:codex:cheap") {
-		t.Errorf("报错该点明动作，实际: %v", err)
+		t.Errorf("the error must name the action, got: %v", err)
 	}
 }
 
-// 数据形状与 Kind 对不上时要**说出这句话**，不装作那一张卡上没有这个按钮。
+// When the data shape does not match the Kind it must
+// **say so**, not pretend that card has no such button.
 func TestRunConceptActionOnAMismatchedOverview(t *testing.T) {
 	r := NewRegistry()
 	mustRegister(t, r, "x", Concept{ID: "c", Kind: KindOverview, Data: struct{}{}})
 	_, err := r.RunConceptAction("c", "any")
 	if err == nil {
-		t.Fatal("形状对不上，该报错")
+		t.Fatal("the shape does not match; it should error")
 	}
 	if !strings.Contains(err.Error(), "Overview") {
-		t.Errorf("报错该说出形状不对，实际: %v", err)
+		t.Errorf("the error must say the shape is wrong, got: %v", err)
 	}
 }
 
-// 「这个客户端装没装」在报文上必须是**两个能分开的取值**。
+// "Is this client installed" must be **two distinguishable values** on the wire.
 //
-// 它防的是 `omitempty` 这类看着无害的省字节：`Ready` 的两头都有意义（true = 装了、
-// false = 这台机器上没有），省掉 `false` 之后两者在 JSON 里都是「字段缺席」，界面
-// 于是既画不出那一栏的灰、也画不出「未安装」那个记号。它不报任何错——那两处只是
-// 永远不出现。实测过：线上快照里没装的那个客户端报出来是 `None`。
+// What it guards against is `omitempty`-style byte saving that looks harmless: both
+// ends of `Ready` are meaningful (true = installed, false = not on this machine), and
+// dropping `false` makes both "field absent" in JSON, so the UI can draw neither the gray
+// of that tab nor the "not installed" mark. It reports no error -- those two just never
+// appear. Measured: a production snapshot reported the uninstalled client as `None`.
 func TestOverviewAgentSaysWhetherItIsInstalled(t *testing.T) {
 	raw, err := json.Marshal(Overview{Agents: []OverviewAgent{
 		{ID: "claude", Name: "claude", Profile: "production", Ready: true},
@@ -631,20 +657,22 @@ func TestOverviewAgentSaysWhetherItIsInstalled(t *testing.T) {
 	for i, want := range []bool{true, false} {
 		v, ok := back.Agents[i]["ready"]
 		if !ok {
-			t.Fatalf("第 %d 个客户端的报文里没有 ready：%s", i, raw)
+			t.Fatalf("the payload for client %d has no ready: %s", i, raw)
 		}
 		if v != want {
-			t.Errorf("第 %d 个的 ready 该是 %v，实际 %v", i, want, v)
+			t.Errorf("the ready for client %d should be %v, actually %v", i, want, v)
 		}
 	}
 }
 
-// 「这一家是固定住的，还是跟着全局默认走的」也必须在报文上是**两个能分开的取值**。
+// "Is this one pinned, or following the global default"
+// must also be **two distinguishable values** on the wire.
 //
-// 这两件事此刻可能解析成同一份 profile（固定选 ds、而全局恰好也是 ds），但改掉全局
-// 之后一个跟着变、一个不变——报文里只有 profile 的话，界面只能把它们说成同一句话，
-// 于是用户看不出「我改全局会不会连带改了这一家」，「把这一家改回自动」那个动作也
-// 没有前提可判（它成立的条件正是「它现在自己有设置」）。
+// The two things may resolve to the same profile right now (pinned to ds, and the global
+// happens to be ds too), but after the global changes one follows and one does not -- with only
+// the profile on the wire, the UI can only describe them the same way, so the user cannot tell
+// "will changing the global also change this one", and the "set this one back to automatic"
+// action has no premise to test (its condition is exactly "it currently has its own setting").
 func TestOverviewAgentSaysWhetherItIsPinned(t *testing.T) {
 	raw, err := json.Marshal(Overview{Agents: []OverviewAgent{
 		{ID: "claude", Profile: "ds", Own: false},
@@ -659,27 +687,27 @@ func TestOverviewAgentSaysWhetherItIsPinned(t *testing.T) {
 	if err := json.Unmarshal(raw, &back); err != nil {
 		t.Fatal(err)
 	}
-	// 两个人指向**同一份** profile，唯一分得开它们的就是这一格。
+	// Both point at the **same** profile, and this cell is the only thing telling them apart.
 	if back.Agents[0]["profile"] != back.Agents[1]["profile"] {
-		t.Fatalf("这一条的前提取的是两份 profile 一样：%s", raw)
+		t.Fatalf("this case assumes the two profiles are the same: %s", raw)
 	}
 	for i, want := range []bool{false, true} {
 		v, ok := back.Agents[i]["own"]
 		if !ok {
-			t.Fatalf("第 %d 个客户端的报文里没有 own：%s", i, raw)
+			t.Fatalf("the payload for client %d has no own: %s", i, raw)
 		}
 		if v != want {
-			t.Errorf("第 %d 个的 own 该是 %v，实际 %v", i, want, v)
+			t.Errorf("the own for client %d should be %v, actually %v", i, want, v)
 		}
 	}
 }
 
-// 「默认」那张卡上的动作**也必须够得着**。
+// Actions on the "default" card **must be reachable too**.
 //
-// 它不在 Cards 里（它不是一个 profile），而在 Overview.Auto 上，所以遍历 Cards 的
-// 那一版会漏掉它——症状是那张卡上每个按钮点下去都回一句「没有这个动作」：成员
-// （`use:global:<profile>`）与「跟着默认走」（`auto:<agent>`）**只**长在它身上，
-// 漏掉它等于把「改默认」和「改回自动」两条路一起断掉。
+// It is not in Cards (it is not a profile) but on Overview.Auto, so the version that iterated
+// Cards missed it -- the symptom being every button on that card answering "no such action":
+// the members (`use:global:<profile>`) and "follow the default" (`auto:<agent>`) **only**
+// live on it, so missing it cuts off both "change the default" and "set back to automatic".
 func TestRunConceptActionReachesTheAutoCard(t *testing.T) {
 	r := NewRegistry()
 	var got string
@@ -700,22 +728,24 @@ func TestRunConceptActionReachesTheAutoCard(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got != "global" {
-		t.Errorf("「默认」那张卡的成员动作没被跑到，实际 %q", got)
+		t.Errorf("the member action of the \"default\" card was not run, actually %q", got)
 	}
 	if _, err := r.RunConceptAction("overview", "auto:claude"); err != nil {
 		t.Fatal(err)
 	}
 	if got != "auto" {
-		t.Errorf("「跟着默认走」没被跑到，实际 %q", got)
+		t.Errorf("\"follow the default\" was not run, actually %q", got)
 	}
 }
 
-// 一个下拉的取值是空串时，那一格**也必须出现在报文里**。
+// When a dropdown's value is the empty string, that cell **must appear on the wire too**.
 //
-// 「跟随系统」「跟随全局缺省」这些档位的机器取值就是空串，而空串对 select 是一个
-// **合法取值**，不是「没有这一格」。省掉它，前端拿到 undefined，只能自己 `?? ""`；
-// 那个兜底恰好对，但它是运气——选项表里不含空串的下拉会因此显示成第一项，而实际
-// 存的是空，屏幕上说的与盘上存的不一样，且没有任何东西会红。
+// The machine values of tiers like "follow system" and "follow the global default" are
+// the empty string, and for a select the empty string is a **legal value**, not "this
+// cell is absent". Dropping it leaves the frontend with undefined and it has to `??
+// ""` itself; that fallback happens to be right, but by luck -- a dropdown whose option
+// table lacks the empty string would then display the first item while the stored value
+// is empty, the screen says something different from the disk, and nothing goes red.
 func TestToggleValueIsAlwaysOnTheWire(t *testing.T) {
 	raw, err := json.Marshal(Toggles{Items: []ToggleItem{
 		{ID: "theme", Kind: ToggleSelect, Label: "Theme", Options: []string{"", "dark"}},
@@ -732,22 +762,24 @@ func TestToggleValueIsAlwaysOnTheWire(t *testing.T) {
 	}
 	for i, it := range back.Items {
 		if _, ok := it["value"]; !ok {
-			t.Errorf("第 %d 格的报文里没有 value：%s", i, raw)
+			t.Errorf("the payload for cell %d has no value: %s", i, raw)
 		}
 	}
 }
 
-// 栏目动作的 Tone **必须过到报文里**。
+// The Tone of a section action **must get through to the wire**.
 //
-// 它有一条自己的转换路（SectionInfo 那里手工拼 ActionInfo），与 Action.MarshalJSON
-// 是两条——2026-09-29 实测：`auto fallback` 那颗状态按钮在卡片动作上是亮的、在栏目
-// 动作上永远不亮，因为那条路把 Tone 丢了。同一条信息有两条序列化路径时，「一条记得、
-// 一条忘了」是最容易长出来的错，而它的症状只是一个颜色不对。
-// Tone 是**每次快照求值**的，不是登记那一刻取下来的。
+// It has its own conversion path (SectionInfo builds ActionInfo by hand), separate
+// from Action.MarshalJSON -- measured 2026-09-29: the `auto fallback` state button
+// lit up on card actions but never on section actions, because that path dropped
+// Tone. When one piece of information has two serialization paths, "one remembers,
+// one forgets" is the easiest error to grow, and its symptom is just a wrong
+// color. Tone is evaluated **on every snapshot**, not taken at registration time.
 //
-// 与 Label 同一条理由，但更硬：Label 是文案，取了就取了；Tone 是**状态**——动作在
-// Start 里登记一次，而快照每次请求重算一次。当场取值的话，颜色永远停在进程启动时
-// 那一刻，实测踩过（2026-09-30）：`newgate fallback off` 之后按钮还是绿的。
+// Same reason as Label, but harder: Label is copy, once taken it is fine; Tone is **state**
+// -- the action is registered once in Start, while the snapshot is recomputed on every
+// request. A value taken on the spot would keep the color frozen at the moment the process
+// started, hit for real (2026-09-30): after `newgate fallback off` the button was still green.
 func TestActionToneIsReadAtSnapshotTime(t *testing.T) {
 	r := NewRegistry()
 	on := true
@@ -773,7 +805,7 @@ func TestActionToneIsReadAtSnapshotTime(t *testing.T) {
 		}
 		for _, c := range list {
 			if len(c.Actions) == 1 {
-				// 走一遍端出去的那条路（前端拿到的就是它）。
+				// Go through the path that actually sends it (what the frontend gets).
 				raw, err := json.Marshal(c.Actions[0])
 				if err != nil {
 					t.Fatal(err)
@@ -787,16 +819,16 @@ func TestActionToneIsReadAtSnapshotTime(t *testing.T) {
 				return back.Tone
 			}
 		}
-		t.Fatal("找不到那颗动作")
+		t.Fatal("cannot find that action")
 		return ""
 	}
 
 	if got := toneOf(); got != ToneOK {
-		t.Fatalf("开着时该是 %q，实际 %q", ToneOK, got)
+		t.Fatalf("when on it should be %q, actually %q", ToneOK, got)
 	}
 	on = false
 	if got := toneOf(); got != ToneBad {
-		t.Errorf("关掉之后**下一次快照**就该变红，实际 %q——Tone 是在登记那一刻取的？", got)
+		t.Errorf("after turning it off the **next snapshot** should turn red, actually %q -- is Tone taken at registration time?", got)
 	}
 }
 
@@ -820,17 +852,18 @@ func TestSectionActionToneReachesTheWire(t *testing.T) {
 			continue
 		}
 		if s.Actions[0].Tone != bad {
-			t.Errorf("栏目动作的 Tone 该是 %q，实际 %q——那条手工拼 ActionInfo 的路漏了它", bad, s.Actions[0].Tone)
+			t.Errorf("the column action's Tone should be %q, actually %q -- that hand-built ActionInfo path missed it", bad, s.Actions[0].Tone)
 		}
 		return
 	}
-	t.Fatal("账本里没有那一栏")
+	t.Fatal("the ledger has no such column")
 }
 
-// 栏目的 Fields（这一栏是干什么的）要**一路到报文**。
+// A section's Fields (what this column is for) must go **all the way to the wire**.
 //
-// 它决定界面在目录里把这一栏归到哪一类——丢了它，侧栏就退回「按贡献者自己写的分组
-// 名聚堆」，而那种自由文本在两个发行版之间分不到一起。
+// It decides which category the UI files this column under in the catalog -- lose
+// it and the sidebar falls back to "pile things up by the contributor's own group
+// name", and that free text never ends up together across two distributions.
 func TestSectionFieldsReachTheWire(t *testing.T) {
 	r := NewRegistry()
 	mustRegister(t, r, "x", Concept{ID: "c", Kind: KindRecords, Data: Records{}})
@@ -845,21 +878,24 @@ func TestSectionFieldsReachTheWire(t *testing.T) {
 		}
 		seen = true
 		if s.Fields != FieldSettings {
-			t.Errorf("Fields 该是 %q，实际 %q", FieldSettings, s.Fields)
+			t.Errorf("Fields should be %q, actually %q", FieldSettings, s.Fields)
 		}
 	}
 	if !seen {
-		t.Fatal("账本里没有那一栏")
+		t.Fatal("the ledger has no such column")
 	}
 }
 
-// TestRecordsBlankReachesTheWire：新增一条时的字段形状必须真的到得了界面。
+// TestRecordsBlankReachesTheWire: the field shape
+// for a newly added record must really reach the UI.
 //
-// 这条防的是一个**只有空集才显形**的失效：字段的形状长在每一条记录上，所以前端
-// 渲染一张新卡片时只能去抄一条现成的。一条都没有的时候无处可抄——点「新增」得到
-// 一张一个输入框都没有的空卡片，而用户没有任何办法把内容填进去。
+// What this guards is a failure **visible only with an empty set**: the field
+// shape lives on each record, so the frontend rendering a new card can only copy
+// an existing one. With none there is nothing to copy -- pressing "add" yields an
+// empty card with not one input box, and the user has no way to fill anything in.
 //
-// 装机就是那个状态（一份还没配过任何东西的配置），所以它不是边角。
+// A fresh install is exactly that state (a config with
+// nothing configured yet), so it is not a corner case.
 func TestRecordsBlankReachesTheWire(t *testing.T) {
 	blank := []Field{
 		{ID: "host", Label: "host", Kind: FieldText},
@@ -877,26 +913,28 @@ func TestRecordsBlankReachesTheWire(t *testing.T) {
 		} `json:"blank"`
 	}
 	if err := json.Unmarshal(raw, &back); err != nil {
-		t.Fatalf("界面上读到的这一格解不出来：%v（%s）", err, raw)
+		t.Fatalf("the cell read from the UI cannot be decoded: %v (%s)", err, raw)
 	}
 	if len(back.Blank) != 2 {
-		t.Fatalf("blank 该有 2 格，实际 %d（%s）", len(back.Blank), raw)
+		t.Fatalf("blank should have 2 cells, actually %d (%s)", len(back.Blank), raw)
 	}
 	if back.Blank[0].ID != "host" || back.Blank[0].Kind != FieldText {
-		t.Errorf("第一格不对：%+v", back.Blank[0])
+		t.Errorf("the first cell is wrong: %+v", back.Blank[0])
 	}
-	// Options 也要过去：下拉的候选只有贡献者知道（协议只有两家、档位只有四档）。
+	// Options must go too: only the contributor knows the dropdown's
+	// candidates (only two protocols exist, only four tiers).
 	if len(back.Blank[1].Options) != 2 {
-		t.Errorf("下拉的候选丢了：%+v", back.Blank[1])
+		t.Errorf("the dropdown choices were lost: %+v", back.Blank[1])
 	}
 }
 
-// TestCellHrefReachesTheWire：一格里那个可点的地址必须真的到得了界面。
+// TestCellHrefReachesTheWire: the clickable address in a cell must really reach the UI.
 //
-// 判据在这里而不是在贡献者那边：地址往往是**算出来的**（「这个远端界面挂在这个
-// 端口的这个前缀下」），贡献者把它一并交出来，界面只负责画成一个 <a>。少了这一格
-// 的搬运，那个地址在界面上就只是一段**长得像地址的文字**——用户全选、复制、粘到
-// 浏览器里，每一步都可能出错，而它看起来完全正常。
+// The test is here rather than on the contributor's side: the address is often **computed**
+// ("this remote UI is mounted under this prefix on this port"), the contributor hands it over
+// along with the rest, and the UI only draws an <a>. Without carrying this cell, that address
+// is just **a piece of text that looks like an address** in the UI -- the user selects it, copies
+// it, pastes it into the browser, and any step can go wrong, while it all looks perfectly normal.
 func TestCellHrefReachesTheWire(t *testing.T) {
 	raw, err := json.Marshal(Table{
 		Columns: []Column{{ID: "route", Label: "route"}},
@@ -917,16 +955,17 @@ func TestCellHrefReachesTheWire(t *testing.T) {
 		} `json:"rows"`
 	}
 	if err := json.Unmarshal(raw, &back); err != nil {
-		t.Fatalf("解不出来：%v（%s）", err, raw)
+		t.Fatalf("cannot decode: %v (%s)", err, raw)
 	}
 	if got := back.Rows[0].Cells["route"].Href; got != "/ui/remote/ds/" {
 		t.Errorf("Href = %q（%s）", got, raw)
 	}
-	// 没有链接的格子不该凭空长出一个 href——空串是「这不是一个链接」。
+	// A cell with no link should not grow an href out of
+	// nowhere -- an empty string is "this is not a link".
 	if _, present := back.Rows[0].Cells["plain"]; !present {
-		t.Fatal("普通格子丢了")
+		t.Fatal("the plain cell was lost")
 	}
 	if strings.Contains(string(raw), `"plain":{"text":"no link here","href"`) {
-		t.Errorf("普通格子被写上了 href：%s", raw)
+		t.Errorf("the plain cell was given an href: %s", raw)
 	}
 }

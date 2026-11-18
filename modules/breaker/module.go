@@ -11,20 +11,21 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// New 声明健康表组件。
+// New declares the health table component.
 //
-// **依赖方向（2026-09-18 翻转）**：它现在声明 `Need(gateway)`，因为它是数据面
-// 的**消费者**——健康表是一个有状态、有所有者的服务，它把自己挂进 gateway 留出
-// 的四个决策点（见 plane.go）。在那之前方向是反的：gateway 声明 Need(breaker)，
-// 把一个 breaker.Breaker 塞进 forward.Server 的字段里当 lib 使，热路径里写着
-// `breaker.BucketShape`。按 docs/03-architecture.md §2 的判据（「需要被启动、
-// 被停止、被撤销吗？」）那是错的。
+// **Dependency direction (flipped 2026-09-18)**: it now declares `Need(gateway)`, because
+// it is a **consumer** of the data plane -- the health table is a stateful, owned service, and it
+// plugs itself into the four decision points gateway leaves open (see plane.go). Before that the
+// direction was reversed: gateway declared Need(breaker), stuffed a breaker.Breaker into a field
+// of forward.Server to use as a lib, and the hot path wrote `breaker.BucketShape`. By the test in
+// docs/03-architecture.md §2 ("does it need to be started, stopped, released?"), that was wrong.
 //
-// 它不认识 agent、profile 或上游协议：健康表只认 binding 键、状态码和延迟。
+// It knows no agent, profile, or upstream protocol: the health
+// table only knows binding keys, status codes, and latency.
 //
-// 装载 health.json 失败**不**让装配失败：坏掉的健康表只该退化成纯内存，不能
-// 因为一个可再生的缓存文件让整个代理起不来。错误存下来，等 BindEnv 装上日志
-// 出口后补报出去（「不静默」）。
+// Failing to load health.json **does not** fail assembly: a broken health table should
+// only degrade to pure memory, and a regenerable cache file must not keep the whole proxy from
+// starting. The error is stored and reported once BindEnv installs the log outlet ("never silent").
 func New() modules.Component {
 	table := newTable()
 	var releases []modules.Release
@@ -35,26 +36,28 @@ func New() modules.Component {
 		},
 		Type: "infra",
 		Requires: []modules.Requirement{
-			// 数据面是 owner，我往它的口里插自己。这条边也是启动顺序的排序边
-			// ——gateway → breaker → deepseek（deepseek 要用我的形状判据口）。
+			// The data plane is the owner; I plug myself into its outlets.
+			// This edge is also the startup-order edge -- gateway ->
+			// breaker -> deepseek (deepseek needs my shape-detector outlet).
 			modules.Need(gatewayapi.Capability),
-			// ui 是**弱依赖**（见 component.Optional）：装着界面就把 `newgate
-			// breaker` 挂上去，没装就跳过——健康表本身照常工作，只是没有入口。
+			// ui is a **weak dependency** (see component.Optional): mount `newgate breaker` if a UI is
+			// installed, skip it if not -- the health table itself works as usual, just with no entry point.
 			modules.Optional(cliapi.Capability),
-			// web 界面那条同理，而且它是**另一条**：只装 dashboard（不装 cli）的
-			// 装配里，这张表照样该出现在网页上。
+			// Same for the web UI, and it is a **separate** edge: in an assembly with only
+			// the dashboard (no cli), this table should still show up on the web page.
 			modules.Optional(viewapi.Capability),
 		},
 		Provides: []modules.Provision{
 			modules.Provide(Capability, Breaker(table)),
 		},
 		Start: func(_ context.Context, ctx modules.Context) error {
-			// 装载归自己：健康状态跨优雅重启存活。
+			// Loading is ours: health state survives a graceful restart.
 			_ = table.UseFile(paths.HealthFile())
 
-			// **写侧**：把自己挂进数据面。Start 只做「启动自己的服务 + 往 owner
-			// 注册自己的贡献」，不读别人注册了什么（见 docs/02-component-framework.md
-			// 的三段法则）——注册表是 offer 的，读它的时刻在 Serve 期。
+			// The **write side**: plug myself into the data plane. Start only does "start my
+			// own service + register my contribution with the owner", and does not read what
+			// others registered (see the three-phase rule in docs/02-component-framework.md)
+			// -- the registry is offered, and the moment to read it is during Serve.
 			gateway := modules.MustGet(ctx, gatewayapi.Capability)
 			release, err := gateway.RegisterFilter(plane{t: table})
 			if err != nil {
@@ -62,11 +65,11 @@ func New() modules.Component {
 			}
 			releases = append(releases, release)
 
-			// web 界面那一份**先**注册：它不依赖 cli，只装 dashboard 的装配里也要
-			// 有——下面那段一旦 return，这里就永远不会跑（与 gateway 同一条）。
-			// 探一条 binding 那条缝由网关提供（见 gateway.ProbeBinding）：发起探活
-			// 需要的东西（base、key、方言）只有它有。Need(gateway) 是本模块既有的
-			// 依赖，所以这里一定有。
+			// The web UI copy registers **first**: it does not depend on cli and must be there in
+			// an assembly with only the dashboard -- once the block below returns, this would never
+			// run (same as gateway). The seam for probing one binding is provided by the gateway
+			// (see gateway.ProbeBinding): what starting a probe needs (base, key, dialect) only it
+			// has. Need(gateway) is this module's existing dependency, so it is guaranteed here.
 			prober := modules.MustGet(ctx, gatewayapi.Capability)
 
 			if v, ok := modules.Get(ctx, viewapi.Capability); ok {

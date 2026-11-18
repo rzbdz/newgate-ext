@@ -1,15 +1,16 @@
-// Package breaker 拥有「这条 binding 现在能不能用」这件事的全部判断。
+// Package breaker owns every judgment about "can this binding be used right now".
 //
-// 它从一个 gateway 内部包提升为顶级模块（2026-09-17），因为读它的地方比写它的
-// 地方多：数据面（gateway/forward）在建链期问它、控制端点回报探活结论、CLI 把
-// 它渲染成 `newgate breaker` / `newgate metrics` / `newgate tier`。放在 gateway
-// 里的时候，这些消费者只能通过进程级单例 `health.Default` 摸到它——一个全局
-// 可变量，测试之间互相污染，也没法在装配时换掉。现在它经 capability 注入，
-// 谁需要谁声明。
+// It was promoted from a gateway-internal package to a top-level module (2026-09-17)
+// because more places read it than write it: the data plane (gateway/forward) asks during
+// chain building, the control endpoint reports probe conclusions, and the CLI renders
+// it as `newgate breaker` / `newgate metrics` / `newgate tier`. While it lived in gateway,
+// those consumers could only reach it through the process-level singleton `health.Default`
+// -- a global mutable variable that polluted tests and could not be swapped at
+// assembly. Now it is injected via a capability, and whoever needs it declares it.
 //
-// 本包**不依赖任何业务模块**：它只知道 binding 键（provider/model）、状态码和
-// 延迟。上游专有的知识（什么响应体算「请求形状错误」）由上游模块通过
-// RegisterShapeDetector 贡献进来，见 detectors.go。
+// This package **depends on no business module**: it only knows the binding key (provider/model),
+// status codes, and latency. Upstream-specific knowledge (what response body counts as "bad
+// request shape") is contributed by upstream modules via RegisterShapeDetector; see detectors.go.
 package breaker
 
 import (
@@ -19,8 +20,8 @@ import (
 	modules "github.com/rzbdz/newgate/component"
 )
 
-// ProbeGrade / Status 的事实定义在 modules/breaker/status（wire 契约叶子）。
-// 这里做别名转发，本包内的代码与老调用方继续用短名字。
+// The facts of ProbeGrade / Status are defined in modules/breaker/status (the wire-contract leaf).
+// Aliases are forwarded here, so code in this package and old callers keep using the short names.
 type (
 	ProbeGrade = status.ProbeGrade
 	Status     = status.Status
@@ -33,71 +34,85 @@ const (
 	ProbeUnavailable = status.ProbeUnavailable
 )
 
-// Breaker 是健康表端口。数据面只读前两项、只写 Report/ObserveSuccess；
-// 渲染层只读 Snapshot。
+// Breaker is the health-table port. The data plane only reads the first two items
+// and only writes Report/ObserveSuccess; the render layer only reads Snapshot.
 //
-// # 这个接口为什么是「读多写少」（2026-09-21 收窄）
+// # Why this interface is "many readers, few writers" (narrowed 2026-09-21)
 //
-// 它曾经在上面挂着三个 setter：`SetPolicy` / `SetErrorHandler` / `SetVerifier`。
-// 三个都是**无主的写门**——任何拿到健康表 capability 的模块都能调，而全仓库的
-// 调用点**一个都不在接口上**（都在下面的 BindEnv 与测试里，作用于具体的 *table）。
-// 也就是说：接口开得比所有真实用法都大，多出来的部分是一扇谁都能推的门。
+// It once hung three setters: `SetPolicy` / `SetErrorHandler` / `SetVerifier`. All
+// three were **ownerless write doors** -- any module holding the health-table capability
+// could call them, while **not one** call site in the whole repo was on the interface (they
+// were all in BindEnv below and in tests, acting on a concrete *table). In other words: the
+// interface was wider than every real use, and the extra part was a door anyone could push.
 //
-// 多出来的代价不是假想的。`SetVerifier` 是上闸前那道安全诊断的开关，一句
-// `SetVerifier(nil)` 就能把它**静默**卸掉——不报错、依赖图上没有边、code review
-// 也看不出有人碰过它。而 `SetPolicy` 更干脆：它**零调用者**，是为一个还没做的
-// 功能（把策略挂到 state.json）预留的 API。
+// The extra cost was not hypothetical. `SetVerifier` is the switch for the safety
+// diagnostic added before tripping, and one `SetVerifier(nil)` **silently**
+// removes it -- no error, no edge on the dependency graph, and code review cannot
+// see that anyone touched it. And `SetPolicy` is worse: it has **zero callers**,
+// an API reserved for a feature not yet built (putting policies into state.json).
 //
-// 判据是「一个能力只该有一扇门，门开在拥有它的模块上」：
-//   - 数据面借给策略的运行期能力 → `policy.EnvBinder.BindEnv`（那条缝有主、
-//     有向、时机明确），健康表在 BindEnv 里把日志出口与探针接回来；
-//   - 策略本身 → 今天恒为 DefaultPolicy，将来要可配时再开一扇**有主**的门，
-//     而不是现在留一个谁都能改的 setter。
+// The test is "one capability should have one door,
+// and the door belongs to the module that owns it":
+//   - the data plane's runtime capability lent to policy ->
+//     `policy.EnvBinder.BindEnv` (that seam is owned and directed, with clear timing),
+//     and the health table hooks its log outlet and probe back in inside BindEnv;
+//   - policy itself -> today always DefaultPolicy; when it needs to be configurable later,
+//     open an **owned** door then, rather than leaving a setter anyone can change now.
 //
-// 那三个方法照旧在（都是 *table 上的），只是不再从端口上露出来。
+// Those three methods are still there (all on *table); they are just no longer exposed on the port.
 type Breaker interface {
-	// Available 回答这个 binding 现在能不能进候选链。建链期调用。
+	// Available answers whether this binding can enter the
+	// candidate chain right now. Called during chain building.
 	//
-	// 它有副作用：冷却期满时会把 binding 推进半开，并发放这一轮的试探名额。
-	// 建链期每个候选只问一次，所以「放行一次真实请求」在这里天然成立。
+	// It has a side effect: when the cooldown has expired it moves the binding
+	// to half-open and issues this round's trial slot. During chain building each
+	// candidate is asked once, so "let one real request through" holds naturally here.
 	Available(provider, model string) bool
-	// Rank 是建链期的排序键：预测首字节延迟，越小越靠前。
+	// Rank is the sort key during chain building: predicted time to first byte, smaller first.
 	Rank(provider, model string, contextBytes int) int
 
-	// Report 回报一次上游交互的结局，返回判决（要不要沿链走）。
-	// 分类与状态迁移都在实现里，数据面只如实描述发生了什么。
+	// Report reports the outcome of one upstream interaction and returns the verdict
+	// (whether to keep going along the chain). Classification and state transitions are
+	// in the implementation; the data plane just describes what happened truthfully.
 	Report(provider, model string, in Input) Result
-	// ObserveSuccess 只记延迟样本，不动可用性（首字节已经拿到之后调用）。
+	// ObserveSuccess records only a latency sample, not
+	// availability (called after the first byte has arrived).
 	ObserveSuccess(provider, model string, contextBytes int, ttft time.Duration)
-	// RecordProbe 记录一次主动探活的结论，返回评级与是否仍然熔断。
+	// RecordProbe records the conclusion of one active probe
+	// and returns the grade and whether it is still tripped.
 	RecordProbe(provider, model string, status, contextBytes int,
 		latency, slowAfter time.Duration, probeErr string) (ProbeGrade, bool)
 
-	// Snapshot 冻结一份可序列化的现状。
+	// Snapshot freezes a serializable view of the current state.
 	Snapshot() []Status
 
-	// Flush 把节流窗口内尚未落盘的延迟样本同步写出（优雅退出用）。
+	// Flush writes out synchronously the latency samples not yet
+	// persisted in the throttling window (for graceful exit).
 	Flush()
-	// UseFile 让健康表跨优雅重启存活。
+	// UseFile lets the health table survive a graceful restart.
 	//
-	// 它与上面那三个 setter **不是**一类，所以留在端口上：它开的是「状态存哪儿」，
-	// 不是「借你一个能力」——没有它健康表只是不落盘，行为可预期，也没有第二个人
-	// 会来改它。收窄那一刀只砍无主的**能力**注入。
+	// It is **not** in the same class as the three setters above, so it stays on the port:
+	// it opens "where state is stored", not "lend you a capability" -- without it the
+	// health table just does not persist, behavior is predictable, and nobody else will
+	// come change it. The narrowing cut only chopped ownerless **capability** injection.
 	UseFile(path string) error
 
-	// RegisterShapeDetector 贡献一条「这个 4xx 是请求形状问题」的判据。
+	// RegisterShapeDetector contributes one test for "this 4xx is a request-shape problem".
 	//
-	// 形状错误的定义**属于上游自己**（见 shape.go 的 ShapeDetector）：core 只
-	// 提供端口和「永不摘牌、只计数」的策略，判据由知道那家校验规则的模块注册
-	// 进来。没有注册任何检测器时，400 一律不记在任何人头上——少认一次只是少
-	// 一个计数，误认一次会让真正的可用性故障被放过。
+	// The definition of a shape error **belongs to the upstream itself** (see ShapeDetector
+	// in shape.go): core only offers the port and the policy "never delist, only count",
+	// and the test is registered by the module that knows that provider's validation
+	// rules. With no detector registered, 400 is never charged to anyone -- missing one is
+	// just one count less, while a false positive lets a real availability failure through.
 	//
-	// 返回只属于本次注册的撤销句柄；consumer 在 Stop 里逆序释放。
+	// It returns a release handle belonging to this registration
+	// only; consumers release in Start/Stop reverse order.
 	RegisterShapeDetector(ShapeDetector) (modules.Release, error)
 }
 
-// Capability 是健康表在组件图里的身份。
+// Capability is the health table's identity in the component graph.
 var Capability = modules.NewCapability[Breaker]("breaker")
 
-// NewTable 造一份纯内存健康表（不落盘）。测试与模块装配都用它。
+// NewTable builds a purely in-memory health table (no
+// persistence). Tests and module assembly both use it.
 func NewTable() Breaker { return newTable() }

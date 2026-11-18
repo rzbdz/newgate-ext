@@ -7,16 +7,19 @@ import (
 	"github.com/rzbdz/newgate-ext/modules/config/domain"
 )
 
-// TestRefSplicesInPlace 引用（`@别键`）就地展开成那条链——文档说的「一个
-// 槽位可以绑到某条档位链上，也可以自己是一条链」，靠的就是这一条语义。
+// TestRefSplicesInPlace a reference (`@other key`) expands in place
+// into that chain -- the documented "a slot can be bound to some
+// tier chain, and can itself be a chain" rests on this one semantic.
 //
-// 展开顺序仍是「profile 为主序、list 为次序」：引用在自己的位置上把被引用
-// 的链整条插进来，不改变其余候选的相对次序。
+// The expansion order is still "profile is the main order, list the
+// within order": a reference inserts the whole referenced chain at its own
+// position, without changing the relative order of the other candidates.
 func TestRefSplicesInPlace(t *testing.T) {
 	profiles := []*domain.Profile{
 		{Name: "head", Priority: prio(10), Roles: map[string]domain.Candidates{
 			"normal": one("p1", "opus"),
-			// 槽位自己是一条链：先跟 normal 走，normal 全挂了再用自己的兜底
+			// The slot is itself a chain: follow normal first, and
+			// only use its own fallback once normal is entirely down
 			"omo-sisyphus": append(list("@normal"), domain.Binding{Provider: "p9", Model: "fallback"}),
 		}},
 		{Name: "b", Priority: prio(20), Roles: map[string]domain.Candidates{
@@ -33,8 +36,9 @@ func TestRefSplicesInPlace(t *testing.T) {
 	)
 }
 
-// TestRefWholeKeyIsAlias 整个键就是一条引用时，结果与「这个键有别名到那里」
-// 逐字相同——两条路（别名 / 引用展开）在产品语义上是一回事，实现上别名更便宜。
+// TestRefWholeKeyIsAlias when the whole key is one reference, the result is word
+// for word identical to "this key has an alias to there" -- the two paths (alias / reference
+// expansion) are the same thing in product semantics, and the alias is cheaper to implement.
 func TestRefWholeKeyIsAlias(t *testing.T) {
 	ref := []*domain.Profile{{Name: "head", Priority: prio(10), Roles: map[string]domain.Candidates{
 		"normal":        one("p1", "opus"),
@@ -54,7 +58,7 @@ func TestRefWholeKeyIsAlias(t *testing.T) {
 	eq(t, names(b), "head:p1/opus")
 }
 
-// TestRefCycleDoesNotHang 引用成环要停下来并说明，而不是无限展开。
+// TestRefCycleDoesNotHang a reference cycle must stop and explain, not expand forever.
 func TestRefCycleDoesNotHang(t *testing.T) {
 	profiles := []*domain.Profile{{Name: "head", Priority: prio(10), Roles: map[string]domain.Candidates{
 		"a": append(list("@b"), domain.Binding{Provider: "p1", Model: "a-own"}),
@@ -62,8 +66,8 @@ func TestRefCycleDoesNotHang(t *testing.T) {
 	}}}
 	steps, skips := BuildChain("a", profiles, mkProvs("p1"), Opts{Active: "head"})
 
-	// a 的候选是 [@b, a-own]：引用排在第一位，所以先把 b 整条展开（b-own），
-	// 再回到 a 自己的那条。这就是「就地展开」的意思。
+	// a's candidates are [@b, a-own]: the reference is first, so b is expanded entirely
+	// (b-own) first, then back to a's own. That is what "expand in place" means.
 	eq(t, names(steps), "head:p1/b-own", "head:p1/a-own")
 	found := false
 	for _, s := range skips {
@@ -72,11 +76,12 @@ func TestRefCycleDoesNotHang(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatalf("成环要记一条 skip 说明，实际 %+v", skips)
+		t.Fatalf("a cycle must record a skip explanation, actual %+v", skips)
 	}
 }
 
-// TestRefSharesDedup 引用展开出来的候选与外面重复时，全链仍然只出现一次。
+// TestRefSharesDedup when a reference-expanded candidate duplicates
+// an outside one, the whole chain still has it only once.
 func TestRefSharesDedup(t *testing.T) {
 	profiles := []*domain.Profile{{Name: "head", Priority: prio(10), Roles: map[string]domain.Candidates{
 		"normal": one("p1", "opus"),
@@ -86,7 +91,7 @@ func TestRefSharesDedup(t *testing.T) {
 	eq(t, names(steps), "head:p1/opus")
 }
 
-// TestRefParsing 三种写法的解析与校验。
+// TestRefParsing the parsing and validation of the three spellings.
 func TestRefParsing(t *testing.T) {
 	var p domain.Profile
 	src := `{"name":"x","roles":{
@@ -109,14 +114,14 @@ func TestRefParsing(t *testing.T) {
 		eq(t, got, want...)
 	}
 
-	// 引用与具体绑定混写 = 语法错误（说不清是哪一个）
+	// Mixing a reference and a concrete binding = syntax error (cannot tell which it is)
 	for _, bad := range []string{
 		`{"name":"x","roles":{"s":{"ref":"normal","provider":"p","model":"m"}}}`,
 		`{"name":"x","roles":{"s":"@normal/p1"}}`,
 	} {
 		var q domain.Profile
 		if err := json.Unmarshal([]byte(bad), &q); err == nil {
-			t.Errorf("该报错却通过了: %s", bad)
+			t.Errorf("should error but passed: %s", bad)
 		}
 	}
 }

@@ -1,27 +1,27 @@
-// Package takeover 是「接管」这件事的唯一实现。
+// Package takeover is the only implementation of "takeover".
 //
-// 为什么要有这一层
+// # Why this layer exists
 //
-// 接管一个 agent 有两种机制：给 claude 这类读环境变量的工具装 PATH shim，
-// 给 opencode 这类读配置文件的工具改写它自己的配置。这是**实现细节**，
-// 用户不该被迫知道——`newgate shim install claude` 这种命令把我们的内部
-// 结构泄漏成了用户接口，用户还得先搞清楚自己的工具属于哪一类才会用。
+// There are two mechanisms: a PATH shim for env-reading tools like claude, and a config
+// rewrite for config-reading tools like opencode. This is an **implementation detail**
+// users should not be forced to know - `newgate shim install claude` leaks our internals
+// into the interface, and the user must first know which class their tool belongs to.
 //
-// 所以对外只有两个动词：接管（On）和释放（Off）。用哪种机制由这一层按
-// agent catalog capability 的注册信息决定（有 BaseURLEnv 的走 shim，
-// 其余走配置文件改写）。CLI / TUI / Web 三个壳都只调这里，不各自实现
-// 一遍——见 docs/03-architecture.md 与 docs/07-clients-runtime.md。
+// So outside there are two verbs only: take over (On) and release (Off). The mechanism
+// is chosen here from the catalog capability registration (BaseURLEnv -> shim, else a
+// config rewrite). CLI / TUI / Web shells all call here - see docs/03-architecture.md
+// and docs/07-clients-runtime.md.
 //
-// 期望态与现实态
+// # Desired state and actual state
 //
-// 「用户想接管谁」记在 state.json（domain.State.Takeover），「现在实际接管了
-// 谁」看磁盘。两者必须分开，否则会出现两种对称的故障：
+// "Whom the user wants taken over" is in state.json (domain.State.Takeover); "whom it is
+// actually on" is on disk. They must stay apart, or two symmetric faults appear:
 //
-//	stop 不摘 shim → `claude` 仍命中 shim，wrapper 把代理懒启动回来，
-//	                 等于没停（用户报的原始 bug）
-//	start 不装回去 → 起来了却不接管，claude 静默直连，用户以为在走 newgate
+//	stop not pulling the shim -> `claude` still hits the shim, the wrapper lazily starts
+//	                              the proxy, same as not stopping (the user's original bug)
+//	start not plugging back in -> up but not taken over; claude connects direct, silently
 //
-// 期望态让 start = 插上、stop = 拔掉，两个方向都不丢用户的意图。
+// So start = plug in, stop = pull out, and neither loses the user's intent.
 package takeover
 
 import (
@@ -37,38 +37,38 @@ import (
 	"github.com/rzbdz/newgate/lib/i18n"
 )
 
-// Mechanism 接管机制。用户不需要知道，但排查故障时要能看到。
+// Mechanism is the takeover mechanism. Users need not know, but troubleshooting wants it.
 type Mechanism string
 
 const (
-	// MechShim PATH 里放一个指向 newgate 的链接，在子进程里注入环境变量。
-	// 用于 claude 这类读环境变量的工具：shell 里 export 的变量优先级高于
-	// 配置文件，改配置文件会被静默盖掉。
+	// MechShim puts a link to newgate in PATH and injects env in the child process.
+	// For env-reading tools like claude: shell exports outrank config files, so a config
+	// write is silently overridden.
 	MechShim Mechanism = "shim"
-	// MechConfig 改写工具自己的配置文件。
+	// MechConfig rewrites the tool's own config file.
 	MechConfig Mechanism = "config"
 )
 
-// Status 一个 agent 的接管状态。
+// Status is one agent's takeover state.
 type Status struct {
 	Agent     string
 	Mechanism Mechanism
 	Wanted    bool // 用户意愿（state.json）
-	// Active 是「磁盘上有没有我们做过的那件事」——shim 机制看链接在不在，config
-	// 机制看我们改过的配置文件在不在。它是**我们做过什么**，不是**用户有没有这个
-	// 工具**；后者是 Installed，两件事分开是有意的（见 Installed 的注释）。
+	// Active is "is there something we did on disk" - shim: is the link there; config: is
+	// the file we rewrote there. It is **what we did**, not **the user has the tool**;
+	// the latter is Installed, and the split is deliberate (see Installed's note).
 	Active    bool
 	Installed bool     // 这家客户端本身在不在这台机器上（`which`，排除我们的 shim）
 	Detail    string   // 一句人话：怎么接管的，或为什么没有
 	Files     []string // config 机制涉及的文件
 }
 
-// Result 一次接管/释放的结果。
+// Result is the outcome of one takeover/release.
 type Result struct {
 	Agent     string
 	Mechanism Mechanism
-	// Skipped 这个 agent 被有意跳过了（用户 off 过它）。不是成功也不是失败，
-	// 展示时必须和「接管成功」区分开——打成 ✓ 会让用户以为接管上了。
+	// Skipped: this agent was deliberately skipped (the user off'd it). Neither success nor
+	// failure, and must be shown apart from "taken over" - a ✓ makes the user think it worked.
 	Skipped bool
 	Lines   []string // 逐条说明，直接展示给用户
 	Warn    []string
@@ -85,14 +85,14 @@ func mechanismOf(a *agentapi.Agent) Mechanism {
 	return ""
 }
 
-// Agents 已知 agent，稳定顺序。
+// Agents are the known agents, in stable order.
 func Agents() []string {
 	ids := agentstate.Catalog().Names()
 	sort.Strings(ids)
 	return ids
 }
 
-// List 每个 agent 的接管状态。
+// List gives each agent's takeover state.
 func List() []Status {
 	agents := agentstate.Catalog()
 	st := store.LoadState()
@@ -104,8 +104,8 @@ func List() []Status {
 		}
 		s := Status{
 			Agent: id, Mechanism: mechanismOf(a), Wanted: st.TakeoverWanted(id),
-			// 判据是「这台机器上有没有这个工具」（扣掉我们自己的 shim，见
-			// confighook.InstalledDefault），不是「我们改过的文件还在不在」。
+			// The criterion is "is this tool on this machine" (minus our own shim, see
+			// confighook.InstalledDefault), not "is the file we rewrote still there".
 			Installed: agents.Installed(id),
 		}
 		switch s.Mechanism {
@@ -142,10 +142,10 @@ func List() []Status {
 			}
 		}
 		if !s.Installed {
-			// 没装的时候，「怎么接管的」那句话是在描述一件没意义的事（我们改过
-			// 的文件还在，而那个工具不在了）。这句换成「我们找过什么、没找到什么」，
-			// 因为判据用的是**这个进程的 PATH**——用户在另一个 shell 里装好了、
-			// 而这个进程没看见，是可能的，说清楚才查得下去。
+			// Not installed, the "how it is taken over" sentence describes nothing meaningful
+			// (the file we rewrote is there, the tool is gone). It becomes "what we looked for
+			// and did not find": the criterion uses **this process's PATH** - a user may have
+			// installed it in another shell this process does not see, so say it plainly.
 			s.Detail = i18n.T("{names} is not on PATH — nothing to take over",
 				i18n.A{"names": strings.Join(a.Bin, "/")})
 		}
@@ -154,7 +154,7 @@ func List() []Status {
 	return out
 }
 
-// On 接管一个 agent，并记下「用户要接管它」。
+// On takes over an agent and records "the user wants it taken over".
 func On(agent string, port int) Result {
 	agents := agentstate.Catalog()
 	a, ok := agents.Get(agent)
@@ -167,7 +167,7 @@ func On(agent string, port int) Result {
 	return apply(a, port)
 }
 
-// Off 释放一个 agent，并记下「用户不要接管它」——之后 start 也不会再接管它。
+// Off releases an agent and records "the user does not want it taken over" - start skips it.
 func Off(agent string) Result {
 	agents := agentstate.Catalog()
 	a, ok := agents.Get(agent)
@@ -180,7 +180,7 @@ func Off(agent string) Result {
 	return release(a)
 }
 
-// OnAll 全面接管：所有没被用户显式关掉的 agent。不改任何意愿。
+// OnAll takes over everything: agents not explicitly turned off. Changes no intent.
 func OnAll(port int) []Result {
 	agents := agentstate.Catalog()
 	st := store.LoadState()
@@ -201,8 +201,8 @@ func OnAll(port int) []Result {
 	return out
 }
 
-// OffAll 全面释放。**不改意愿**——这样 newgate stop 之后再 start，
-// 用户原本接管的那些还会自动插回去。
+// OffAll releases everything. **Changes no intent** - after newgate stop, start plugs
+// back exactly what the user had.
 func OffAll() []Result {
 	agents := agentstate.Catalog()
 	var out []Result

@@ -9,86 +9,86 @@ import (
 	modules "github.com/rzbdz/newgate/component"
 )
 
-// 本文件是**界面提供出去的那几个端口**：皮肤登记处（theme）与扩展端点登记处
-// （extension）。两者形状一样——模块 Optional 依赖、在自己的 Start 里注册、
-// Stop 时还回来；界面不认识任何模块。
+// This file is the **ports the UI provides**: the skin registry (theme) and the extension
+// endpoint registry (extension). Same shape: modules optionally depend, register in their
+// Start, return on Stop; the UI knows no module.
 //
-// # 为什么不把皮肤写死在这个包里
+// # Why skins are not hard-coded here
 //
-// 与概念账本（core/lib/view）是同一条规矩的另一份实现：**界面不认识任何皮肤**，
-// 它只知道「有一张表，每一条给一份 CSS」。加一套皮肤 = 加一个目录，
-// 不改这个包、不改前端。删掉全部皮肤模块时界面照常工作（走 app.css 里那套出厂
-// 令牌）——那是「没装任何 ui 时一切照常」那条规矩在**皮肤**这一层的同一句话。
+// Another implementation of the concept ledger's rule (core/lib/view): **the UI knows no
+// skin**, only "there is a table, each entry gives CSS". Adding a skin = adding a directory,
+// no change to this package or the front end. With every skin module removed the UI still
+// works (the factory tokens in app.css) - the "everything works with no ui" sentence again.
 //
-// # 方向
+// # Direction
 //
-// 箭头只有「皮肤模块 → 界面」一个方向（皮肤模块 Optional 依赖本端口）。与
-// cli/extension 那边一样：界面不能反过来依赖任何一个皮肤，否则「删掉它界面还
-// 成立吗」这个判据就答不上来了。
+// The arrow only goes "skin module → UI" (skin modules optionally depend on this port). Same
+// as cli/extension: the UI must not depend on any skin, or "would the UI stand without it"
+// has no answer.
 
-// Theme 是一套皮肤。
+// Theme is one skin.
 type Theme struct {
-	// ID 是机器标记，同时也是 `state.json` 里存下来的那个值。不翻译。
+	// ID is a machine tag, and the value stored in `state.json`. Not translated.
 	//
-	// 约定：皮肤模块的目录名是 `theme-<id>`（`theme-anthropic` → `anthropic`）。
-	// 这只是一条约定、不是机制——机制是**目录名由模块自己声明**（见 modules 的
-	// 扫描规则），所以一个叫别的名字的模块照样能注册一个 ID 叫做 `foo` 的皮肤。
+	// Convention: a skin module's directory is `theme-<id>` (`theme-anthropic` → `anthropic`).
+	// A convention, not mechanism - mechanism is **the directory name declared by the module**
+	// (the scan rule), so a module named otherwise can still register a skin with ID `foo`.
 	ID string
-	// Name 是给人看的名字（可以翻译）。
+	// Name is the human-readable name (translatable).
 	//
-	// 闭包：登记发生在各模块的 Start 里，那时候语言层装好没有是没有保证的
-	// （见 lib/view 的 Title——同一个理由）。
+	// Closure: registration happens in each module's Start, when the language layer may not
+	// be installed yet (see lib/view's Title - the same reason).
 	Name func() string
-	// Dark 说的是这套皮肤**是不是深色底**。
+	// Dark says whether this skin has a **dark ground**.
 	//
-	// 它必须由皮肤自己声明、走报文给前端，而不是让前端从颜色的亮度里猜：浏览器
-	// 那一侧有几样东西不归 CSS 变量管（滚动条、`<input type=checkbox>` 的勾、
-	// 自动填充的底色），它们跟着 `color-scheme` 走。猜错的表现是「一套很浅的皮肤
-	// 配着一条黑滚动条」，而那种错没人会报成 bug。
+	// It must be declared by the skin and sent to the front end, not guessed from color
+	// brightness: some browser things are not CSS variables (scrollbars, the tick in an
+	// `<input type=checkbox>`, autofill backgrounds) and follow `color-scheme`. Guessing wrong
+	// looks like "a very light skin with a black scrollbar" - and nobody reports that as a bug.
 	Dark bool
-	// CSS 是这套皮肤对**设计令牌**的覆盖，形如
-	// `--bg: #000; --panel: #0b0b0b;`。
+	// CSS is this skin's override of **design tokens**, of the form
+	// `--bg: #000; --panel: #0b0b0b;`.
 	//
-	// 只有令牌，**不含选择器**：皮肤能改的是那十几个变量的值，不是版面。允许写
-	// 选择器就等于允许一套皮肤重排整个界面，而「这行样式是谁加的」在那时候要靠
-	// 读一段运行时注入的字符串才能回答。令牌表是 app.css 的 `:root` 那一段，
-	// 少给一个不会报错——它会落回出厂的暖色值（半套皮肤很难看，但那是作者看得见
-	// 的难看，比静默换一套配色好）。
+	// Tokens only, **no selectors**: a skin changes a dozen variable values, not the layout.
+	// Allowing selectors means letting a skin relayout the whole UI, and "who added this style"
+	// then takes reading a string injected at runtime. The token list is app.css's `:root`; a
+	// missing one does not error - it falls back to the factory warm value (ugly, but visible
+	// ugly, better than silently swapping a palette).
 	CSS string
 }
 
-// ThemeService 是皮肤的登记处。
+// ThemeService is the skin registry.
 //
-// 形状与 view.Service 的 Register 同：交进去、拿回一个放销，Stop 时逆序还回来。
-// 注册在各模块的 Start 里做，而**那个顺序是装配图给的**（皮肤模块 Optional 依赖
-// 本端口，于是它们一定排在本模块之后）。
+// Same shape as view.Service's Register: hand in, get an undo, return on Stop in reverse.
+// Registration happens in each module's Start, and **that order comes from the assembly graph**
+// (skin modules optionally depend on this port, so they always come after this module).
 type ThemeService interface {
 	RegisterTheme(t Theme) (modules.Release, error)
 }
 
-// ThemeCapability 是它在装配图上的名字。
+// ThemeCapability is its name in the assembly graph.
 var ThemeCapability = modules.NewCapability[ThemeService]("web-theme")
 
-// ---------- 扩展端点 ----------
+// ---------- extension endpoints ----------
 //
-// BFF 的概念账本（core/lib/view）只装**能被画成一张卡**的东西。而有一类功能
-// 不是「一张卡」：用户点开模型下拉，要问一句「这家上游此刻提供哪些模型」。它
-// 没有可以持久化的形状，也不该在每次快照里都去碰网络（见 config/view.go 里
-// profileData 的注释）。
+// The BFF's concept ledger (core/lib/view) only holds things **drawable as a card**. Some
+// features are not "a card": opening the model dropdown asks "what models does this
+// upstream offer right now". It has no persistable shape, and should not touch the
+// network on every snapshot (see the profileData note in config/view.go).
 //
-// 所以这里开第二条口子：**一个名字 + 一个函数**。模块在自己的 Start 里登记，
-// BFF 在 `/api/ext/<名字>` 上原样转交。它仍然**不认识任何模块**——它只认识
-// 「有人登记了这个名字」，就像 porthub 只认识「有人挂了这段前缀」。
+// So a second opening: **a name plus a function**. A module registers in its Start,
+// the BFF passes the call through on `/api/ext/<name>`. It still **knows no module**:
+// only "someone registered this name", like porthub only knowing "someone mounted
+// this prefix".
 //
-// 方向与皮肤、概念账本完全一样：箭头只有「模块 → 界面」。没装任何扩展时这个
-// 端点一律 404，界面自己回落到它能拿到的数据（模型下拉会回落到 providers.json
-// 里声明的清单）。
+// Direction is the same as skins and the concept ledger: only "module → UI". With no
+// extensions the endpoint is always 404, and the UI falls back to data it can get.
 
-// ExtensionRequest 是一次扩展调用拿到的全部输入。
+// ExtensionRequest is all the input of one extension call.
 //
-// Body 是**原样**的 JSON：形状由登记的那个模块解释，BFF 不解析它——与
-// apply 那条 `edit` 是同一条规矩。Context 来自这次 HTTP 请求，扩展做网络调用
-// 时要沿着它超时/取消（客户端关掉页面，上游请求就该停）。
+// Body is the **raw** JSON: the registering module interprets it, the BFF does not parse it -
+// the same rule as apply's `edit`. Context comes from this HTTP request; the extension's
+// network calls follow its timeout/cancel (close the page, stop the upstream request).
 type ExtensionRequest struct {
 	Context context.Context
 	Method  string
@@ -96,81 +96,81 @@ type ExtensionRequest struct {
 	Body    json.RawMessage
 }
 
-// ExtensionHandler 回答一次扩展调用。返回的值原样写成 JSON（200）；返回 error
-// 时 BFF 回 400 并把那句话给界面看（**不包装**：那是扩展对自己数据的说法）。
+// ExtensionHandler answers one extension call. The returned value is written as JSON (200);
+// an error becomes a 400 shown to the UI (**not wrapped**: it is the extension's own words).
 type ExtensionHandler func(ExtensionRequest) (any, error)
 
-// ExtensionService 是扩展端点的登记处。
+// ExtensionService is the extension endpoint registry.
 //
-// 形状与 ThemeService 同：交进去、拿回撤销，Stop 时还回来。重名当场报错——
-// 两个模块抢同一个名字时只有一个能收到请求，而那件事在运行期表现为「另一个
-// 模块的按钮点了没反应」，没人能从界面上看出来。
+// Same shape as ThemeService: hand in, get an undo, return on Stop. Duplicate names fail on
+// the spot - when two modules claim one name only one gets the request, which shows up at
+// runtime as "that other button does nothing", and nobody can see it from the UI.
 type ExtensionService interface {
 	Register(name string, h ExtensionHandler) (modules.Release, error)
 }
 
-// ExtensionCapability 是它在装配图上的名字。
+// ExtensionCapability is its name in the assembly graph.
 var ExtensionCapability = modules.NewCapability[ExtensionService]("web-extension")
 
-// ---------- 前端插件 ----------
+// ---------- front-end plugins ----------
 //
-// 概念账本（core/lib/view）给的是**数据 + 一种已知的画法**（Kind）；扩展端点给的是
-// **数据**。两者都要求前端事先认识那种形状——于是一个模块想要一块「前端不认识」的
-// 界面时，过去唯一的办法是往前端里加一个组件、让前端认识它（指纹那一屏就是这么
-// 进去的，见 README 的「谁越界了」）。那条路的代价是：前端目录里长出了模块的知识，
-// 摘掉模块，前端里那块代码还在。
+// The concept ledger (core/lib/view) gives **data plus one known drawing** (Kind); extension
+// endpoints give **data**. Both need the front end to know that shape beforehand - so a
+// module wanting UI **the front end does not know** used to add a component and teach it
+// (that is how the fingerprint screen got in; see README's "who crossed the line"). The
+// cost: module knowledge grew in the front end, and removing the module left it behind.
 //
-// 这一口让模块**自带前端代码**：模块把一个 ES module（和它要的别的静态文件）嵌进
-// 自己的二进制段里，登记一个名字 + 它要填的**槽位**。BFF 在 `/plugins/<名字>/…`
-// 上原样发这些文件，在 `/api/plugins` 上发一张清单；界面按槽位把每个插件挂上去。
-// 界面认识的只有槽位（它自己的版面）和「插件长什么样」这份契约，不认识任何一个
-// 插件——与 Kind 是同一条判据：**前端提供框架接口，模块往里填**。
+// This lets a module **bring its own front-end code**: embed an ES module (and any static
+// files it needs) in its own binary section, register a name plus the **slot** it fills. The
+// BFF serves those files under `/plugins/<name>/...` and a manifest under `/api/plugins`;
+// the UI mounts each plugin into its slot. It knows only slots (its own layout) and the
+// "what a plugin looks like" contract, no plugin - the same rule as Kind: **framework in
+// front, modules fill it**.
 //
-// # 插件的 JS 契约（版本 1）
+// # The plugin JS contract (version 1)
 //
-//	export function mount(el, host) { …; return () => { /* 卸载 */ } }
+//	export function mount(el, host) { ...; return () => { /* unmount */ } }
 //
-//   - el：界面给的一个空容器，插件在里面随便画；
-//   - host.ext(name, body)：POST `/api/ext/<name>`（与模块自己登记的扩展端点配对），
-//     回 JSON；非 2xx 时 reject 一个 Error（message 是 BFF/扩展给的那句话）；
-//   - host.asset(path)：本插件自己的静态文件地址；
-//   - host.lang：界面当前的语言 tag。
+//   - el: an empty container from the UI; the plugin draws freely inside it;
+//   - host.ext(name, body): POST `/api/ext/<name>` (paired with the module's endpoint),
+//     returns JSON; rejects an Error on non-2xx (message is the BFF/extension's);
+//   - host.asset(path): this plugin's own static file address;
+//   - host.lang: the UI's current language tag.
 //
-// 样式用界面的设计令牌（`var(--panel)`、`var(--ink)`、`var(--ok)`…，见 app.css 的
-// `:root`），皮肤换了插件自己就跟着换。文案**由插件自己的扩展端点给**（后端走
-// i18n.T，与 CLI 同一份目录表）：前端的消息目录是界面的，不是模块的。
-//
-// 一个插件挂不上（加载失败、mount 抛错）只影响它自己那一格：界面照常（fail-open）。
+// Styling uses the UI's design tokens (`var(--panel)`, `var(--ink)`, `var(--ok)`..., see
+// app.css's `:root`), so a skin change carries the plugin along. Copy **comes from the
+// plugin's own extension endpoint** (backend i18n.T, the same catalog as the CLI): the
+// front end's catalog is the UI's, not the module's. A failed mount touches only its own cell.
 
-// PluginSlot 是界面版面上一处可以挂插件的位置。
+// PluginSlot is a place on the UI layout where a plugin can mount.
 type PluginSlot string
 
 const (
-	// SlotTopbar 是顶栏右侧、皮肤按钮左边的一小格：放一颗按钮/徽标，
-	// 点开的面板由插件自己画（相对这一格定位）。
+	// SlotTopbar is a small cell at the right of the top bar, left of the skin button: a
+	// button/badge; the panel it opens is drawn by the plugin (positioned relative to it).
 	SlotTopbar PluginSlot = "topbar"
 )
 
-// pluginSlots 是今天界面认识的全部槽位。登记一个不在这里的槽位当场报错：
-// 静默接受的话，插件在界面上哪儿都不出现，而作者看不出是拼错了还是没加载。
+// pluginSlots is every slot the UI knows today. Registering another fails on the spot:
+// accepted silently, the plugin appears nowhere and a typo looks like a load failure.
 var pluginSlots = map[PluginSlot]bool{SlotTopbar: true}
 
-// Plugin 是一个模块自带的前端代码。
+// Plugin is front-end code a module ships itself.
 type Plugin struct {
-	// Name 是机器标记，也是 URL 的一段（`/plugins/<Name>/…`）。字符集同扩展端点。
+	// Name is a machine tag and a URL segment (`/plugins/<Name>/...`). Charset as extensions.
 	Name string
-	// Assets 是插件的文件（通常是模块里的 `//go:embed web`）。
+	// Assets are the plugin's files (usually the module's `//go:embed web`).
 	Assets fs.FS
-	// Entry 是 Assets 里那个 ES module 的路径（导出 mount）。
+	// Entry is the path of the ES module inside Assets (it exports mount).
 	Entry string
-	// Slots 是它要填的槽位。
+	// Slots are the slots it fills.
 	Slots []PluginSlot
 }
 
-// PluginService 是前端插件的登记处。形状与 ExtensionService 同。
+// PluginService is the front-end plugin registry. Same shape as ExtensionService.
 type PluginService interface {
 	RegisterPlugin(p Plugin) (modules.Release, error)
 }
 
-// PluginCapability 是它在装配图上的名字。
+// PluginCapability is its name in the assembly graph.
 var PluginCapability = modules.NewCapability[PluginService]("web-plugin")

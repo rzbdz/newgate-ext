@@ -16,11 +16,11 @@ import (
 	"github.com/rzbdz/newgate-ext/manifest/distinfo"
 )
 
-// 本文件是 `newgate self-update`：看/改「走哪条路」，以及回滚。
+// This file is `newgate self-update`: see/change "which route", and rollback.
 //
-// **升级本身不在这里**——那是 `newgate upgrade`（本模块往那里登记了 `binary`
-// 动作）。两条命令各管一件事：upgrade 是「去拿新的」，self-update 是「这台机器
-// 怎么拿」。合成一条的话，`self-update` 既是动词又是设置，参数会互相打架。
+// **The upgrade itself is not here** - that is `newgate upgrade` (this module registers
+// a `binary` action there). Two commands, one job each: upgrade fetches, self-update
+// says how. Merged, it is both verb and setting, and their arguments collide.
 
 type selfUpdateCommand struct{}
 

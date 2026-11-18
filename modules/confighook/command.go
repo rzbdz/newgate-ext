@@ -1,12 +1,13 @@
 package confighook
 
-// 本文件是 `newgate agents`：列出已知客户端及其模型槽位。
+// This file is `newgate agents`: listing known clients and their model slots.
 //
-// **为什么它住在这里**（2026-09-18）：agent 是谁、有哪些槽位、槽位走哪个环境变量，
-// 全是**客户端描述符**的知识，而描述符注册表归本模块（AgentCatalog）。它以前写在
-// modules/cli/profile.go 里，界面因此要认识 AgentCatalog 的每个字段。
+// **Why it lives here** (2026-09-18): who an agent is, which slots it has, which
+// environment variable a slot takes -- all **client descriptor** knowledge, and the
+// descriptor registry belongs to this module (AgentCatalog). It used to be written
+// in modules/cli/profile.go, so the UI had to know every field of AgentCatalog.
 //
-// 依赖方向：config-hook → cli/extension（叶子契约），不是 → modules/cli。
+// Dependency direction: config-hook -> cli/extension (the leaf contract), not -> modules/cli.
 
 import (
 	"fmt"
@@ -21,7 +22,7 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// agentsCommand 是 `newgate agents`。
+// agentsCommand is `newgate agents`.
 type agentsCommand struct{ agents AgentCatalog }
 
 var (
@@ -38,10 +39,11 @@ func (agentsCommand) Help() cliapi.HelpLine {
 
 func (c agentsCommand) Run(_ cliapi.Host, _ []string) int { return runAgents(c.agents) }
 
-// cmdAgents 已知 agent 及其模型槽位。
+// cmdAgents known agents and their model slots.
 //
-// 每个 agent 一个小节：头一行是身份（方言 + 当前 profile），槽位一张表。
-// 以前是一张通铺大表，说明列又长，中文一撑就错位。
+// One section per agent: the header line is identity (dialect + current profile),
+// the slots a table. It used to be one big shared table, and the description
+// column was long enough that a single Chinese string knocked the alignment off.
 func runAgents(agents AgentCatalog) int {
 	names := agents.Names()
 	sort.Strings(names)
@@ -51,8 +53,9 @@ func runAgents(agents AgentCatalog) int {
 
 	for _, n := range names {
 		a, _ := agents.Get(n)
-		// 这个客户端交上来的运行时事实（可能没有）。取一次、往下传：它每次问都可能
-		// 读磁盘（见发行版 claudecode 的实现），而这里一个 agent 要问它好几遍。
+		// The runtime facts this client submitted (may be none). Fetch once
+		// and pass down: every ask may read the disk (see the distribution's
+		// claudecode implementation), and here one agent asks several times.
 		facts := agents.Facts(n)
 		ap := AgentProfile{AgentID: a.ID}
 		profile := ap.Active()
@@ -71,9 +74,10 @@ func runAgents(agents AgentCatalog) int {
 		if len(a.Slots) == 0 {
 			fmt.Println(style.Hint(i18n.T("slots are discovered from the config file at startup", nil)))
 		} else {
-			// 链头那一份 profile 只读一次：下面每个槽位都要拿它的绑定，而读盘 + 解析
-			// 是这一屏里最贵的两件事。读不出来时仍然把槽位表列出来（档位是描述符的
-			// 事实），只是 Binding 一列显示「未知」——不因为一个坏文件把整张表吞掉。
+			// The profile at the chain head is read only once: every slot below needs its binding,
+			// and disk read + parse are the two most expensive things on this screen. When
+			// it cannot be read, the slot table is still listed (tiers are descriptor facts), only
+			// the Binding column shows "unknown" -- one bad file does not swallow the whole table.
 			pr, profileErr := store.LoadProfile(profile)
 			if profileErr != nil {
 				fmt.Println(style.Item(style.Warn, i18n.T("cannot read profile {name}: {err}",
@@ -82,16 +86,19 @@ func runAgents(agents AgentCatalog) int {
 			provs, _ := store.LoadProviders()
 			t := style.NewTable(i18n.T("Slot", nil), i18n.T("Tier", nil), i18n.T("Binding", nil))
 			for _, s := range a.Slots {
-				// 这一列说的是「此刻实际走哪儿」（改过就用改的，见 AgentFacts）。
+				// This column says "where it actually goes right
+				// now" (if changed, the changed one, see AgentFacts).
 				tier := TierOf(facts, s)
 				t.Row(s.Name, style.Cyan(tier), slotBinding(pr, provs, tier))
 			}
 			fmt.Print(t.String())
-			// 说明单独一行：塞进表格会把整张表撑到一百多列，反而没法对读。
+			// The description goes on its own line: in the table it would stretch
+			// the whole thing past a hundred columns and make it unreadable.
 			//
-			// 「改过没有」也在这行而不在表格里：第一版把它拼进档位那一格，结果一行的
-			// 宽度多出十来个**全角**字符，列宽是按字符数算的，整张表当场歪掉（实测）。
-			// 这行本来就是「这个槽位是干什么的」，改过没有属于同一类注脚。
+			// "Changed or not" is on this line too, not in the table: the first version spliced it into
+			// the tier cell, and one row ended up a dozen **full-width** characters wider; column widths
+			// are counted in characters, and the whole table went crooked on the spot (measured). This
+			// line is already "what this slot is for", and changed-or-not is the same class of footnote.
 			for _, s := range a.Slots {
 				note := ""
 				if tier := TierOf(facts, s); tier != s.Tier {
@@ -101,17 +108,19 @@ func runAgents(agents AgentCatalog) int {
 				if s.Desc != "" || note != "" {
 					fmt.Println(style.Hint(s.Name + "  " + s.Desc + note))
 				}
-				// 环境变量单独一行：它是**不可断的标识符**（ANTHROPIC_DEFAULT_…），
-				// 拼在说明后面会被 75 列切在中间（实测 `ANT` / `HROPIC…`）。
-				// 这一行是 Claude Code 那类「靠 env 注入」的客户端的真正设置。
+				// The environment variable goes on its own line: it is an **unbreakable
+				// identifier** (ANTHROPIC_DEFAULT_...), and appended to the description it
+				// gets cut in the middle at 75 columns (measured: `ANT` / `HROPIC...`). This
+				// line is the real setting for "injected via env" clients like Claude Code.
 				if s.EnvVar != "" {
 					fmt.Println(style.Hint(i18n.T("env {var}", i18n.A{"var": s.EnvVar})))
 				}
 			}
 		}
-		// 它自己的配置文件与此刻有没有被接管。Claude Code 走 shim/env，没有
-		// Config（所以这里什么都不打）；codex / opencode 走配置文件，这两行正是
-		// 「设置落到哪儿」的答案。TUI 的详情页读的是同一份 Targets/IsTakenOver。
+		// Its own config file and whether it is taken over right now. Claude Code
+		// goes through shim/env and has no Config (so nothing is printed here); codex /
+		// opencode go through config files, and these two lines are the answer to "where
+		// the settings land". The TUI's detail page reads the same Targets/IsTakenOver.
 		if a.Config != nil {
 			for _, target := range a.Config.Targets() {
 				state := i18n.T("not taken over", nil)
@@ -132,12 +141,13 @@ func runAgents(agents AgentCatalog) int {
 	return 0
 }
 
-// slotBinding 把一个槽位的档位解析成「落到哪家上游的哪个模型」。
+// slotBinding resolves a slot's tier into "which model of which upstream it lands on".
 //
-// 这正是用户来 `newgate agents` 想看的最后一跳：档位（normal）是语义，binding
-// （provider/model）才是真正会发出去的请求目标。解析不了（profile 读坏了、这一档
-// 没绑）时返回一个明确的占位，而不是空白——空白看起来像「没配」和「读不出来」
-// 同一件事，而修复动作完全不同。
+// This is exactly the last hop the user comes to `newgate agents` for: a tier
+// (normal) is semantics, while a binding (provider/model) is the real request target
+// that will be sent. When it cannot resolve (profile broken, this tier unbound) it
+// returns a clear placeholder rather than blank -- blank looks like "not configured"
+// and "cannot be read" are the same thing, while the fix is completely different.
 func slotBinding(pr *domain.Profile, provs *domain.Providers, tier string) string {
 	if pr == nil {
 		return style.Dim(i18n.T("unknown", nil))
@@ -160,10 +170,10 @@ func slotBinding(pr *domain.Profile, provs *domain.Providers, tier string) strin
 	return out
 }
 
-// glossary 贡献帮助屏术语表里的「agent」一行。
+// glossary contributes the "agent" line in the help screen's glossary.
 //
-// 它是**客户端目录**的词汇（哪些 CLI 被接管），所以归本模块——界面不必认识
-// AgentCatalog 才写得出来（见 cliapi.Glossarist）。
+// It is **client catalog** vocabulary (which CLIs are taken over), so it belongs to
+// this module -- the UI need not know AgentCatalog to write it (see cliapi.Glossarist).
 type glossary struct{ agents AgentCatalog }
 
 var _ cliapi.Glossarist = glossary{}

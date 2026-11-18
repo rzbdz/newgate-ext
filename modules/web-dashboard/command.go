@@ -10,15 +10,15 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// `newgate web`：告诉用户这个界面在哪儿。
+// `newgate web`: tells the user where this UI is.
 //
-// 为什么要一条命令：它的地址是**两个事实相乘**——端口（守护进程起的那个）与前缀
-// （porthub 上挂的那个）。两样都不在用户的脑子里，而猜错的症状是「打不开」，看
-// 不出是端口不对还是路径不对。这条命令把乘积算出来，顺手说清「现在这个进程里它
-// 到底挂上了没有」——那两件事不一样，见下面。
+// Why a command: its address is **the product of two facts** - the port (the one the
+// daemon serves) and the prefix (mounted on porthub). Neither is in the user's head, and
+// guessing wrong shows up as "will not open": you cannot tell a wrong port from a wrong
+// path. It multiplies, and says if it is mounted in this process - two things, see below.
 //
-// 它只打印，不起浏览器：v1 不替用户决定用哪个浏览器、也不去 xdg-open 一台可能
-// 没有图形界面的机器（跳板机上那种调用会挂住）。要开复制那一行就行。
+// It only prints, never opens a browser: v1 does not pick a browser for the user, nor
+// xdg-open a machine that may have no GUI (that call hangs on a jump host). Copy to open.
 type webCommand struct{ self *instance }
 
 var (
@@ -41,21 +41,21 @@ func (c *webCommand) Run(host cliapi.Host, _ []string) int {
 	var note string
 	switch c.self.mode {
 	case modeShared:
-		// 端口来自 state.json——守护进程起监听时写下的那个。它是 CLI 侧唯一知道
-		// 的端口真相（`newgate status` 报的也是它）。
+		// The port comes from state.json - the one written when the daemon started listening.
+		// It is the only port truth the CLI side knows (`newgate status` reports it too).
 		port = domain.ProxyPort
 		if st := store.LoadState(); st != nil && st.Port != 0 {
 			port = st.Port
 		}
 	case modeStandalone:
-		// 退路：这个构建里没有共享端口，界面自己监听的号只有它自己知道
-		//（`NEWGATE_WEB_PORT` 覆盖，默认 FallbackPort）。
+		// Fallback: no shared port in this build; the UI's own listen port is known only to it
+		// (`NEWGATE_WEB_PORT` overrides, defaults to FallbackPort).
 		port = standalonePort()
 		note = i18n.T("this build has no shared port, so the interface listens on its own port "+
 			"(the gateway is on a different one)", nil)
 	default:
-		// 「这个构建里没有入口」与「守护进程没在跑」是**两件事**，说清楚哪一件，
-		// 用户才知道下一步该做什么（换一份产物 / 起服务）。
+		// "No entry point in this build" and "the daemon is not running" are **two different
+		// things**; naming which one tells the user what to do next (other build / start it).
 		return host.Die(69, i18n.T("this build cannot serve a web interface: nothing provides "+
 			"a shared port (porthub) or a serve-time hook (serving)", nil))
 	}
@@ -67,8 +67,8 @@ func (c *webCommand) Run(host cliapi.Host, _ []string) int {
 		fmt.Println(style.Hint(note))
 	}
 	if !host.DaemonRunning() {
-		// 界面是守护进程发出来的：CLI 进程里那个挂载只是账本上的一行，没有
-		// socket 在听。不说这一句，用户会以为命令本身就是把服务起起来。
+		// The UI is served by the daemon: the mount in the CLI process is a ledger row, no
+		// socket listening. Unsaid, users think the command itself starts the server.
 		fmt.Println(style.Hint(i18n.T("the daemon is not running — the dashboard is served by it, "+
 			"so start it first: newgate start", nil)))
 	}

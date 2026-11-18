@@ -1,8 +1,9 @@
-// BFF 客户端。**只有这四个东西**：契约版本、快照、保存、健康。
+// BFF client. **Only these four things**: contract version, snapshot, save, health.
 //
-// 这里刻意不认识 profile、网关、计数器——它只认概念的**形状**（Kind）。加一个
-// 模块的界面不需要改这个文件，正如加一个模块的界面不需要改 BFF：那条规矩的
-// 前端一半就是这个文件。
+// It deliberately knows nothing about profiles, the gateway or counters -- it only knows
+// the **shape** of a concept (Kind). Adding one module's UI does not require touching this
+// file, just as adding one module's UI does not require touching the BFF: the front-end
+// half of that rule is this file.
 
 export type Kind =
   | "mapping-editor"
@@ -20,69 +21,86 @@ export interface Concept {
   id: string;
   kind: Kind;
   title: string;
-  /** 谁贡献的（模块名）。只用来分组，前端**不需要知道那个模块是什么**。 */
+  /** Who contributed it (module name). Used for grouping only; the front end **does not
+      need to know what that module is**. */
   source: string;
-  /** false = 只读（贡献者没给 Apply，比如带凭据的文件）。 */
+  /** false = read-only (the contributor gave no Apply, e.g. a file with credentials). */
   writable: boolean;
-  /** 非空 = 这张卡此刻**没有意义**，值是理由（见 lib/view 的 Concept.Locked）：
-      界面把整张卡锁灰、控件禁掉，但那句话要显示出来——用户得知道为什么。
-      与只读的区别是「为什么不能动」：只读是「没有写回的方式」，锁死是「它管的那件
-      事此刻不存在」，今天唯一的用处是「这家客户端没装在这台机器上」。 */
+  /** Non-empty = this card is **meaningless** right now, and the value is the reason (see
+      lib/view's Concept.Locked): the UI greys out the whole card and disables the
+      controls, but that sentence must be shown -- the user has to know why.
+      The difference from read-only is *why* it cannot be touched: read-only means "there
+      is no way to write back", locked means "the thing it manages does not exist right
+      now"; the only use today is "this client is not installed on this machine". */
   locked?: string;
-  /** true = 这一面会自己变，跟着那几秒一次的刷新走（贡献者声明，见 lib/view 的 Live）。
-      不声明就不刷——「读一次贵不贵」只有贡献者知道，不能从 Kind 猜。 */
+  /** true = this surface changes by itself, following that refresh every few seconds
+      (declared by the contributor, see lib/view's Live). Not declared = not refreshed --
+      whether "reading once is expensive" only the contributor knows; it cannot be guessed
+      from Kind. */
   live?: boolean;
-  /** 导航里的分组（见 lib/view 的 Concept.Group）：**两级**，用 "/" 分开——
-      前一段是大档（`档位`），后一段是族（`claude`）。空 = 不归任何一档。
-      标题画不画由 TabStrip 按「这一段底下有没有 ≥2 张卡」决定。
-      **只影响排列**，不参与任何身份判断（路由与草稿都按 id 走）。 */
+  /** Grouping in the navigation (see lib/view's Concept.Group): **two levels**, separated
+      by "/" -- the first segment is the coarse tier (the backend's `Profiles`, already
+      translated), the second the family (`claude`). Empty = belongs to no tier.
+      Whether the heading is drawn is decided by TabStrip per "does this segment hold >= 2
+      cards". **Affects layout only**, takes part in no identity judgment (routing and
+      drafts both go by id). */
   group?: string;
-  /** true = 这张卡能拿**同一份文件另一半的草稿**问一句「我该显示成什么样」
-      （见 lib/view 的 Concept.Preview 与 api.ts 的 preview）。只有一半能问是
-      常态：原文那一半自己就是原文，没有第二半。 */
+  /** true = this card can take **the other half of the same file's draft** and ask "how
+      should I render it" (see lib/view's Concept.Preview and api.ts's preview). That only
+      one half can ask is the norm: the raw-text half is itself the raw text, there is no
+      second half. */
   previewable?: boolean;
-  /** 同一节里谁排前面（见 lib/view 的 Concept.Order，后端原样端出来）。界面**不解释**
-      这些数字，只按它排——排序规则是贡献者的产品决定，不是界面的。 */
+  /** Who comes first within the same section (see lib/view's Concept.Order, the backend
+      serves it verbatim). The UI **does not interpret** these numbers, it only sorts by
+      them -- the ordering rule is the contributor's product decision, not the UI's. */
   order?: number;
-  /** 这张卡上的按钮（见 lib/view 的 Concept.Actions）：**由贡献者注入**，
-      界面只把它们画出来、把点击转回去。挂在这一张卡上的理由是这件事说的是
-      「**这一张**」——「把这一份设为默认」里的「这一份」只有它自己知道。 */
+  /** Buttons on this card (see lib/view's Concept.Actions): **injected by the
+      contributor**; the UI only draws them and forwards the click back. The reason they
+      hang on this particular card is that the thing is about "**this one**" -- only it
+      knows which "this one" the "make this one the default" refers to. */
   actions?: ConceptAction[];
-  /** 一句**状态说明**（见 lib/view 的 Concept.Note），不是按钮：画成一个静态标记，
-      点了没有任何事发生。今天唯一的用处是档位卡上的「当前配置」。
-      与 Table 的格子共用一套语气词（`ok`/`warn`/`bad`，其余当没给）——
-      它是**陈述**，所以界面不该把它画成警告或错误的样子。 */
+  /** A one-line **status note** (see lib/view's Concept.Note), not a button: drawn as a
+      static marker, clicking it does nothing. The only use today is "current config" on
+      the tier card. It shares one set of tone words with Table cells (`ok`/`warn`/`bad`,
+      anything else is treated as absent) -- it is a **statement**, so the UI must not
+      draw it like a warning or an error. */
   note?: Note;
   data: any;
-  /** 非空 = 这个概念此刻读不出来（文件删了、JSON 坏了）。卡片照常显示，写原因。 */
+  /** Non-empty = this concept cannot be read right now (file deleted, JSON broken). The
+      card still shows, with the reason written on it. */
   error?: string;
 }
 
-/** 卡片上的一句状态说明（见 lib/view 的 Note）。`tone` 空 = 不着色。 */
+/** A one-line status note on a card (see lib/view's Note). `tone` empty = no color. */
 export interface Note {
   text: string;
   tone?: "ok" | "warn" | "bad";
 }
 
 /**
- * 侧栏的一栏：机器标记 + 给人看的名字。
+ * One column of the sidebar: machine tag + human-readable name.
  *
- * 名字由**各模块在登记时报**（后端的 `view.Title`），不在这里硬编码，也不从
- * 来源名猜——名字住在界面里的话，加一个模块就得改一次界面，「前端不认识模块」
- * 那条规矩就没了。前端只负责把它画出来。
+ * The name is **reported by each module at registration time** (the backend's
+ * `view.Title`); it is not hard-coded here, nor guessed from the source name -- if names
+ * lived in the UI, adding a module would mean editing the UI once, and the rule "the
+ * front end does not know modules" would be gone. The front end only draws it.
  *
- * 它**不走 t()**：那是模块的内容（与概念标题同一类），后端已经按当时的语言翻好
- * 了。t() 是界面自己的字（按钮、提示）。
+ * It **does not go through t()**: that is the module's content (the same kind as concept
+ * titles), and the backend has already translated it into the current language. t() is
+ * for the UI's own words (buttons, hints).
  */
-/** 栏目上的一个按钮（见 lib/view 的 Section.Actions）。ID 回传时用，label 是字。 */
+/** A button on a column (see lib/view's Section.Actions). The ID is for sending back,
+    the label is the text. */
 export interface SectionAction {
   id: string;
   label: string;
   /**
-   * 这颗动作**此刻是按下的**（`"bad"`），空 = 平时的样子。见内核 view.Action.Tone。
+   * This action is **currently pressed** (`"bad"`); empty = the normal look. See the
+   * kernel's view.Action.Tone.
    *
-   * 界面据此把按钮画成「亮着的状态」而不是「一个可以点的词」——`auto fallback`
-   * 那颗就是这么用的：名字固定，状态由颜色说。
+   * The UI uses it to draw the button as "a lit state" rather than "a clickable word" --
+   * that is how the `auto fallback` one works: the name is fixed, the state is told by
+   * color.
    */
   tone?: string;
 }
@@ -90,39 +108,47 @@ export interface SectionAction {
 export interface Section {
   source: string;
   /**
-   * 这一栏**是干什么的**（内核 view.SectionInfo.Fields）。界面据它在目录里分类。
+   * **What this column is for** (kernel view.SectionInfo.Fields). The UI uses it to
+   * classify in the table of contents.
    *
-   * 取值与内核那几个常量对齐：`routes`（请求走哪条路）、`config`（能改的东西）、
-   * `clients`（客户端的设置）；空 = 那一栏还没归类，排在最后。
+   * The values line up with those kernel constants: `routes` (which path a request
+   * takes), `config` (things that can be changed), `clients` (client settings); empty =
+   * the column is not classified yet and is sorted last.
    */
   fields?: string;
   title: string;
-  /** 这一栏上的动作（「再建一份档位文件」这类）。**由贡献者注入**——新建出来的
-      东西此刻还没有概念，所以它不属于任何一张卡；界面也不知道那一节能长出什么。 */
+  /** The actions on this column (like "create another profile file"). **Injected by the
+      contributor** -- the thing just created has no concept yet, so it belongs to no card;
+      the UI cannot know what that section can grow either. */
   actions?: SectionAction[];
-  /** 侧栏里的分组（见 lib/view 的 Section.Group）。空 = 不归任何一档，排在最上面。
-      **由贡献者声明**，所以单成员的组也照画标题——与 TabStrip 那条「≥2 才画」刻意
-      不同：那边是内核从名字推出来的族（一个人一族的标题是噪音），这边是模块自己
-      说的「我属于哪一类」，说了就该看得见。 */
+  /** Grouping in the sidebar (see lib/view's Section.Group). Empty = belongs to no tier,
+      sorted at the top. **Declared by the contributor**, so a single-member group still
+      draws its heading -- deliberately different from TabStrip's ">= 2 draws": there the
+      kernel derives the family from names (a heading over one member is noise), here the
+      module itself says "which class I belong to", and what is said should be visible. */
   group?: string;
-  /** 「没有位置时落在这里」——首屏落在这一栏上（见 lib/view 的 Section.Default）。
-      **由贡献者声明**：这一栏是产品取舍（「先让用户看见一屏全能」），前端不认识任何
-      模块，也就无从判断谁该在那儿。最多一栏带它（多个声明时后端按 Source 取最小的
-      那个），所以这里按 `true` 找就行，不用管先后。 */
+  /** "Fall back here when there is no position" -- the first screen lands on this column
+      (see lib/view's Section.Default). **Declared by the contributor**: this column is a
+      product choice ("let the user see one screen of everything first"), and the front
+      end knows no module, so it has no way to judge who should be there. At most one
+      column carries it (with several declarations the backend takes the smallest by
+      Source), so looking for `true` here is enough, order does not matter. */
   default?: boolean;
 }
 
 export interface Snapshot {
   contract: number;
   generated_at: string;
-  /** 后端解析出来的语言（见 i18n.ts：界面骨架上的字用它挑目录）。 */
+  /** The language parsed out by the backend (see i18n.ts: the UI skeleton's text uses it
+      to pick a catalog). */
   lang: string;
-  /** 侧栏的栏目表：**登记过的全部来源**，含此刻一条概念都产不出来的那些。 */
+  /** The sidebar's column table: **every registered source**, including those that cannot
+      produce a single concept right now. */
   sections: Section[];
   concepts: Concept[];
 }
 
-/** 冲突：两边原文都在，摆出来让人决定。 */
+/** Conflict: both sides' original text is present, laid out for a human to decide. */
 export interface Conflict {
   concept: string;
   path: string;
@@ -135,39 +161,45 @@ export interface Conflict {
 export interface ApplyResult {
   ok?: boolean;
   base?: string;
-  /** 做完之后该切到哪个概念（目前只有栏目动作会给，见 view.Action.Run）。界面据此
-      把路由挪过去——**它不认识那个 id 是什么**，只是照着跳。 */
+  /** Which concept to switch to after it is done (currently only column actions give it,
+      see view.Action.Run). The UI moves the route there -- **it does not know what that
+      id is**, it just follows it. */
   focus?: string;
   conflict?: Conflict;
   error?: string;
 }
 
-/** 与后端 Contract 常量对齐。前端**必须先看它**，不认识的版本宁可白屏报一句。 */
+/** Stays in sync with the backend Contract constant. The front end **must look at it
+    first**; for an unknown version it would rather show a blank screen with one error. */
 export const CONTRACT = 1;
 
 /**
- * 运行期的接口地址，从**构建期的 base** 推出来（vite.config.ts 的 base 是
- * "/ui/"，所以这里恒等于 "/ui/api"）。
+ * The runtime API address, derived from the **build-time base** (vite.config.ts's base is
+ * "/ui/", so this is always "/ui/api").
  *
- * 为什么不是相对路径 `"api"`（这里原来是那么写的）：相对地址的解析结果取决于
- * **当前文档**的路径，而那是会变的——用户敲 `/ui` 不带尾斜杠就是一个。实测：
- * 从 `/ui` 出发，`api/snapshot` 被解析成 `/api/snapshot`，那个路径没被挂载，
- * 于是落进数据面的 catch-all，被当成一次形状不对的转发请求（400，而且计进
- * 数据面流量）。页面本身画得出来（资源的 URL 是绝对的），所以症状是「界面
- * 好好的、一操作就报错」——最费解的那一类。
+ * Why not the relative path `"api"` (which is what used to be here): resolving a relative
+ * address depends on the **current document's** path, and that changes -- a user typing
+ * `/ui` without the trailing slash is one. Measured: starting from `/ui`, `api/snapshot`
+ * resolves to `/api/snapshot`; that path is not mounted, so it falls into the data plane's
+ * catch-all and is treated as a malformed forward request (400, and it counts toward
+ * data-plane traffic). The page itself renders (resource URLs are absolute), so the
+ * symptom is "the UI looks fine, then every action errors" -- the most puzzling kind.
  *
- * 绝对地址把这条路堵死：文档在哪一层都不影响接口地址。（module.go 那边同时做了
- * `/ui` → `/ui/` 的重定向，那是给人用的 URL 该有的样子；两条各自解决一半。）
+ * An absolute address closes that road: the document's depth no longer affects the API
+ * address. (module.go meanwhile redirects `/ui` -> `/ui/`, which is the shape a
+ * human-facing URL should have; the two each solve half.)
  */
 const API = `${import.meta.env.BASE_URL}api`;
 
 /**
- * 把后端回来的 `error` 变成一个能看的字符串。
+ * Turn the `error` coming back from the backend into a readable string.
  *
- * 那里**不保证是字符串**：BFF 自己回的确实是字符串，但请求没落到 BFF 上时
- * （地址算错、前缀改了、端口上根本不是 newgate），对面可能是数据面转上来的
- * 上游错误——一个 `{"type":"error","error":{…}}` 的对象。`new Error(obj)` 会把
- * 它渲染成 `[object Object]`，横幅上写着这么一句，排查的人连去看哪里都不知道。
+ * There it is **not guaranteed to be a string**: what the BFF itself returns is indeed a
+ * string, but when the request does not land on the BFF (address computed wrong, prefix
+ * changed, the port is not newgate at all), the other side may be an upstream error
+ * forwarded up from the data plane -- an object shaped `{"type":"error","error":{…}}`.
+ * `new Error(obj)` renders it as `[object Object]`, and a banner saying that leaves
+ * whoever is debugging with no idea where to look.
  */
 function errText(v: unknown): string {
   if (typeof v === "string") return v;
@@ -193,17 +225,19 @@ async function json<T>(res: Response): Promise<T> {
   try {
     return JSON.parse(text) as T;
   } catch {
-    // 上游不是 JSON（反代塞了一张错误页、或者端口上根本不是 newgate）。把原文
-    // 前几百字节带出来——「Unexpected token <」对面是什么，只有看的人能判断。
+    // The upstream is not JSON (a reverse proxy stuck in an error page, or the port is not
+    // newgate at all). Bring out the first few hundred bytes of the original text -- what
+    // the other side is, only the person looking can tell.
     throw new Error(`${res.status} ${res.statusText}: ${text.slice(0, 300)}`);
   }
 }
 
 /**
- * 读一次快照。`sources` 给出时**只问这几位贡献者**。
+ * Read a snapshot once. When `sources` is given, **only ask those contributors**.
  *
- * 自动刷新走这条路：计数器与日志的产出是廉价的，而配置那一位要重读并重新解析
- * 每一份 profile 与每一个源文件。不带参数 = 全部（首次加载要的就是全部）。
+ * Auto-refresh goes this way: counters and log output are cheap, while the config one has
+ * to re-read and re-parse every profile and every source file. No argument = everything
+ * (which is what the first load wants).
  */
 export async function snapshot(sources?: string[]): Promise<Snapshot> {
   const q = (sources ?? []).map((s) => `source=${encodeURIComponent(s)}`).join("&");
@@ -216,13 +250,14 @@ export async function snapshot(sources?: string[]): Promise<Snapshot> {
       `the interface is version ${CONTRACT}, the backend speaks ${doc.contract} — reload after rebuilding`,
     );
   }
-  // 老后端不认识 sections（见 CONTRACT 的注释：这个字段是**加**出来的，不动版本
-  // 号）。那种后端下侧栏回落到来源名——难看，但页面照常能用。
+  // An old backend does not know sections (see the CONTRACT comment: this field was
+  // **added**, the version number is not moved). Under such a backend the sidebar falls
+  // back to source names -- ugly, but the page keeps working.
   doc.sections ??= [];
   return doc;
 }
 
-/** 保存一个概念的修改。base 是加载时拿到的那份（内容哈希）。 */
+/** Save one concept's edit. base is the one received at load time (a content hash). */
 export async function apply(id: string, base: string, edit: unknown): Promise<ApplyResult> {
   return json<ApplyResult>(
     await fetch(`${API}/apply`, {
@@ -234,42 +269,49 @@ export async function apply(id: string, base: string, edit: unknown): Promise<Ap
 }
 
 export interface PreviewResult {
-  /** 这个概念在「文件长这样」时该显示的数据（形状与快照里的 data 一样）。 */
+  /** The data this concept should show when "the file looks like this" (same shape as
+      data in a snapshot). */
   data?: unknown;
-  /** 草稿还解析不出来（**打字途中的常态**，不是故障）：界面保持上一次的样子。 */
+  /** The draft does not parse yet (**normal while typing**, not a failure): the UI keeps
+      the previous look. */
   error?: string;
 }
 
 /**
- * 一套皮肤（见后端 modules/web-dashboard/api.go 的 Theme）。
+ * One skin (see the backend's modules/web-dashboard/api.go Theme).
  *
- * 这些字段全部由**后端**给：哪几套皮肤是装的、每套叫什么、是不是深色底、以及那串
- * 令牌覆盖。前端不认识任何一套皮肤——它只把 `css` 注进去、把 `dark` 转成
- * `color-scheme`。加一套皮肤 = 加一个模块，这个文件不动。
+ * All these fields are given by the **backend**: which skins are installed, what each is
+ * called, whether it is a dark ground, and that string of token overrides. The front end
+ * knows no skin -- it only injects `css` and turns `dark` into `color-scheme`. Adding a
+ * skin = adding a module, this file does not change.
  */
 export interface ThemeInfo {
-  /** 机器标记（存进 state.json 的就是它）。不翻译。 */
+  /** Machine tag (the one stored in state.json). Not translated. */
   id: string;
-  /** 给人看的名字（后端已经翻好，与概念标题同一条路）。 */
+  /** Human-readable name (already translated by the backend, same path as concept
+      titles). */
   name: string;
-  /** 深色底。浏览器那几样不归 CSS 变量管的东西（滚动条、控件）跟着它走。 */
+  /** Dark ground. The browser bits CSS variables do not cover (scrollbars, controls)
+      follow it. */
   dark: boolean;
-  /** 对设计令牌的覆盖，形如 `--bg: #000;`。**只有令牌，没有选择器**。 */
+  /** Overrides for design tokens, shaped like `--bg: #000;`. **Tokens only, no
+      selectors**. */
   css: string;
 }
 
 export interface Themes {
-  /** 此刻生效的那一套。**空 = 出厂令牌**（不是「没读到」）。 */
+  /** The one in effect right now. **Empty = factory tokens** (not "could not read"). */
   active: string;
   themes: ThemeInfo[];
 }
 
-/** 读一次皮肤表。它与快照分开：皮肤是界面自己的偏好，不属于任何模块的贡献。 */
+/** Read the skin table once. It is separate from the snapshot: a skin is the UI's own
+    preference, not any module's contribution. */
 export async function themes(): Promise<Themes> {
   return json<Themes>(await fetch(`${API}/themes`));
 }
 
-/** 换一套皮肤。空 id = 回到出厂那套令牌。 */
+/** Switch to another skin. Empty id = back to the factory tokens. */
 export async function setTheme(id: string): Promise<void> {
   const r = await json<{ ok?: boolean; error?: unknown }>(
     await fetch(`${API}/themes`, {
@@ -282,13 +324,17 @@ export async function setTheme(id: string): Promise<void> {
 }
 
 /**
- * 问一句：「这份文件**还没落盘的草稿**长这样时，这张卡该显示成什么样？」
+ * Ask one question: "when this file's **not-yet-saved draft** looks like this, how should
+ * this card render?"
  *
- * 用途只有一处，但很要命：一份文件的两半（控件 + 原文）都能改。用户在原文里粘了
- * 一整份档位、再去动一个下拉框——控件那一半手里还是**改之前**那份盘上内容，它交
- * 上去的是整份旧表，刚粘的东西当场没了。有了这一问，两半始终说的是同一份内容。
+ * There is only one use, but it is critical: both halves of a file (controls + raw text)
+ * can be edited. The user pastes a whole profile into the raw text, then goes to touch a
+ * dropdown -- the controls half still holds the **pre-edit** on-disk content, so what it
+ * submits is the whole old table and the paste is gone on the spot. With this question,
+ * both halves always speak about the same content.
  *
- * 解析是**贡献者**的事（那份文件的格式是它的知识），所以这里只搬字节。
+ * Parsing is the **contributor's** job (that file's format is its knowledge), so here we
+ * only move bytes.
  */
 export async function preview(id: string, text: string): Promise<PreviewResult> {
   return json<PreviewResult>(
@@ -301,29 +347,31 @@ export async function preview(id: string, text: string): Promise<PreviewResult> 
 }
 
 /**
- * 跑一个栏目上的动作，然后由调用方重读快照（与保存那条路一样）。
+ * Run an action on a column, then the caller re-reads the snapshot (same as the save
+ * path).
  *
- * 它**不带参数**，这是刻意的：界面能提供的只有「用户点了这个按钮」，别的（新档位
- * 该叫什么名字、哪些字段要预填）都得由拥有那批数据的人自己看盘上有什么决定。
+ * It **takes no arguments**, deliberately: all the UI can offer is "the user clicked this
+ * button"; everything else (what the new profile should be called, which fields to
+ * prefill) must be decided by whoever owns that data, from what is on disk.
  *
- * 返回值里的 `focus` 是**那个动作做出来的东西的 id**（「新建」才有）——界面拿它
- * 跳过去，而不是自己拼一个 id 出来猜。
+ * The returned `focus` is **the id of the thing that action created** (only "create" has
+ * one) -- the UI uses it to jump there instead of assembling an id itself and guessing.
  */
-/** 某一张卡上的一个按钮（见 lib/view 的 Concept.Actions）。形状与 SectionAction
-    完全一样，只是作用对象不同——那边认来源名，这边认概念 ID。 */
+/** A button on one card (see lib/view's Concept.Actions). Same shape as SectionAction,
+    only the target differs -- that one goes by source name, this one by concept ID. */
 export interface ConceptAction {
   id: string;
   label: string;
-  /** 见 SectionAction.tone。 */
+  /** See SectionAction.tone. */
   tone?: string;
 }
 
 /**
- * 跑一个挂在**某张卡**上的动作（「把这一份设为默认」这类）。
+ * Run an action hung on **one card** (like "make this one the default").
  *
- * 与 section 那条分开，是因为它们的身份不同（来源名 vs 概念 ID）。**界面不知道
- * 那个动作会干什么**：它的 label 是贡献者写的一句话，它改的是磁盘上的什么，
- * 只有那一位知道。
+ * It is separate from the section path because their identities differ (source name vs
+ * concept ID). **The UI does not know what that action will do**: its label is a sentence
+ * written by the contributor, and what it changes on disk only that one knows.
  */
 export async function runConceptAction(id: string, action: string): Promise<ApplyResult> {
   return json<ApplyResult>(
@@ -335,26 +383,28 @@ export async function runConceptAction(id: string, action: string): Promise<Appl
   );
 }
 
-/** 某一行上的一个按钮（见 lib/view 的 Row.Actions）。
-    形状与 ConceptAction 一样，只是多了一层「哪一行」：行是**数据长出来的**，
-    所以动作也得在构造那一行的时候才定得下来。 */
+/** A button on one row (see lib/view's Row.Actions). Same shape as ConceptAction, with
+    one more level for "which row": rows **grow out of data**, so the actions can only be
+    determined when that row is constructed. */
 export interface RowAction {
   id: string;
   label: string;
-  /** 见 SectionAction.tone。 */
+  /** See SectionAction.tone. */
   tone?: string;
 }
 
 /**
- * 跑表格里**某一行**上的一个动作（「探一下这条 binding」这类）。
+ * Run an action on **one row** of a table (like "probe this binding").
  *
- * 三个身份缺一不可：哪个概念（那张表）、哪一行（binding 键）、哪个动作。
- * 界面**不知道**这三者合起来会干什么——它只知道点了哪个按钮。
+ * Three identities are all required: which concept (that table), which row (the binding
+ * key), which action. The UI **does not know** what the three together will do -- it only
+ * knows which button was clicked.
  *
- * 与另外两条动作路（section / concept）一样**不走 drafts、不碰 CAS**：
- * 它不是「把这份草稿写下去」，而是「干一件事」（打一发探活、然后把结论记进
- * 健康表）。那件事改的是 daemon 的内存状态，与这张卡读的那个文件无关，所以
- * 这一行不该让卡片变脏。
+ * Like the other two action paths (section / concept) it **does not go through drafts and
+ * does not touch CAS**: it is not "write this draft down", it is "do one thing" (fire a
+ * liveness probe, then record the conclusion in the health table). That thing changes the
+ * daemon's in-memory state, unrelated to the file this card reads, so this row should not
+ * make the card dirty.
  */
 export async function runRowAction(
   id: string,
@@ -381,10 +431,11 @@ export async function runSectionAction(source: string, action: string): Promise<
 }
 
 /**
- * 一个上游能提供的模型。
+ * A model an upstream can offer.
  *
- * `group` 是**上游自己说的**分组（有的返回 `owned_by`，有的在 id 里用 `/` 分段）。
- * 它只影响下拉里怎么摆，不参与任何身份判断——模型的身份永远是 `id`。
+ * `group` is the grouping **the upstream itself states** (some return `owned_by`, some
+ * separate segments with `/` in the id). It only affects how the dropdown is arranged, it
+ * takes part in no identity judgment -- a model's identity is always `id`.
  */
 export interface ModelInfo {
   id: string;
@@ -393,33 +444,36 @@ export interface ModelInfo {
 }
 
 /**
- * 一次「问上游要模型清单」的回答（见发行版的 modules/modellist）。
+ * The answer to one "ask the upstream for its model list" (see the distribution's
+ * modules/modellist).
  *
- * `supported` 为 false 是**正常答案**：多数上游没有这个接口，或者这个 key 不被
- * 允许列模型。那时 `models` 为空、`note` 说原因，界面回落到 providers.json 里
- * 声明的清单——而不是把「问不到」画成一次故障。
+ * `supported` being false is a **normal answer**: most upstreams do not have this
+ * endpoint, or this key is not allowed to list models. Then `models` is empty, `note` says
+ * why, and the UI falls back to the list declared in providers.json -- rather than drawing
+ * "could not ask" as a failure.
  */
 export interface ModelList {
   provider: string;
   supported: boolean;
-  /** 命中的适配器（`openai` / `anthropic`）。机器标记，不翻译。 */
+  /** The adapter that hit (`openai` / `anthropic`). Machine tag, not translated. */
   adapter?: string;
-  /** 实际问的地址（不含凭据）。 */
+  /** The address actually asked (without credentials). */
   endpoint?: string;
   models: ModelInfo[];
   groups?: string[];
   fetched_at?: string;
-  /** 这一份是从进程内缓存里拿的（界面据此说「缓存」）。 */
+  /** This copy came from the in-process cache (the UI says "cached" accordingly). */
   cached?: boolean;
-  /** `supported` 为 false 时说明原因（后端已翻好）。 */
+  /** Explains the reason when `supported` is false (already translated by the backend). */
   note?: string;
 }
 
 /**
- * 问一次某个 provider 的模型清单。
+ * Ask one provider for its model list.
  *
- * 它走的是 BFF 的**扩展端点**（`/api/ext/modellist`）：BFF 不认识 modellist，
- * 只把请求转交给登记了那个名字的模块。`refresh` 为 true 时跳过进程内缓存。
+ * It goes through the BFF's **extension endpoint** (`/api/ext/modellist`): the BFF does
+ * not know modellist, it only forwards the request to the module registered under that
+ * name. `refresh` being true skips the in-process cache.
  */
 export async function modelList(provider: string, refresh = false): Promise<ModelList> {
   const doc = await json<ModelList & { error?: unknown }>(
@@ -434,14 +488,17 @@ export async function modelList(provider: string, refresh = false): Promise<Mode
 }
 
 /**
- * 指纹：参考库说这个上游实际是谁（见发行版的 modules/verify）。
+ * Fingerprint: the reference library says who this upstream actually is (see the
+ * distribution's modules/verify).
  *
- * # 为什么前端只认一个端点名
+ * # Why the front end only recognizes one endpoint name
  *
- * 与 modellist 同一条：`/api/ext/fingerprint` 是**登记了这个名字的模块**在回答，
- * BFF 不认识它。端点名刻意不是模块名——前端要知道的是「有一个指纹端点」，不是
- * 「有一个 verify 模块」。没有这个端点时下拉与面板回落到「还没有指纹」，而不是
- * 报错（这对老后端、对没装本模块的装配都成立）。
+ * Same as modellist: `/api/ext/fingerprint` is answered by **the module registered under
+ * that name**, the BFF does not know it. The endpoint name is deliberately not the module
+ * name -- what the front end needs to know is "there is a fingerprint endpoint", not
+ * "there is a verify module". When the endpoint is missing, the dropdown and the panel
+ * fall back to "no fingerprint yet" rather than erroring (which holds for old backends and
+ * for assemblies without this module).
  */
 export type FingerprintMatch =
   | "match"
@@ -461,10 +518,11 @@ export interface FingerprintCandidate {
 }
 
 /**
- * 一条 binding 的指纹结论。
+ * One binding's fingerprint conclusion.
  *
- * `match` 是机器标记，颜色与措辞由界面自己决定（见 `matchTone` / `matchText`）：
- * 后端不知道这一屏用什么词，而前端也不该把它翻译成第二套身份。
+ * `match` is a machine tag; the color and wording are the UI's own decision (see
+ * `matchTone` / `matchText`): the backend does not know what words this screen uses, and
+ * the front end must not translate it into a second identity.
  */
 export interface FingerprintEntry {
   provider: string;
@@ -505,7 +563,7 @@ export interface FingerprintProvider {
   models?: string[];
 }
 
-/** 这一屏的全部素材（后端 modules/verify 的 State）。 */
+/** All the material for this screen (the backend's modules/verify State). */
 export interface FingerprintState {
   profiles: FingerprintProfile[];
   providers: FingerprintProvider[];
@@ -513,7 +571,8 @@ export interface FingerprintState {
   build?: string;
   loaded: boolean;
   data_cached?: boolean;
-  /** 参考库缓存最后一次被下载/检查的时间（缓存文件的 mtime）。 */
+  /** The last time the reference library cache was downloaded/checked (the cache file's
+      mtime). */
   data_checked_at?: string;
   error?: string;
 }
@@ -525,8 +584,9 @@ async function fingerprintExt<T>(body: unknown): Promise<T> {
     body: JSON.stringify(body),
   });
   const doc = await json<T & { error?: unknown }>(res);
-  // 只有 **HTTP 失败**才是错误。State 自己的 `error` 是「配置/缓存读不出来」的
-  // 一条陈述，页面照常画——把它也当异常会让整屏白掉。
+  // Only **HTTP failure** is an error. State's own `error` is a statement that
+  // "config/cache cannot be read", and the page still draws -- treating it as an
+  // exception would blank the whole screen.
   if (!res.ok) {
     const msg = errText(doc.error);
     throw new Error(msg || `${res.status} ${res.statusText}`);
@@ -534,12 +594,13 @@ async function fingerprintExt<T>(body: unknown): Promise<T> {
   return doc as T;
 }
 
-/** 这一屏的素材。终端里的 verify 刚写下的结论也会在这里出现。 */
+/** This screen's material. Conclusions just written by verify in the terminal show up
+    here too. */
 export function fingerprintState(): Promise<FingerprintState> {
   return fingerprintExt<FingerprintState>({ action: "state" });
 }
 
-/** 只看缓存（模型下拉用）：不给 provider 就返回全部。 */
+/** Look at the cache only (for the model dropdown): no provider = return everything. */
 export async function fingerprintCache(
   provider = "",
   model = "",
@@ -552,7 +613,8 @@ export async function fingerprintCache(
   return doc.entries ?? [];
 }
 
-/** 真打一轮指纹。**会花 token**：界面上的按钮措辞要说清楚。 */
+/** Really run one round of fingerprinting. **Costs tokens**: the button's wording on the
+    UI must say so. */
 export function fingerprintRun(
   provider: string,
   model: string,
@@ -568,20 +630,21 @@ export function fingerprintRun(
   });
 }
 
-// ---------- 前端插件（契约见 Go 侧 api.go 的「前端插件」） ----------
+// ---------- front-end plugins (contract: "front-end plugins" in api.go on the Go side) ----------
 //
-// 界面在这里**不认识任何一个插件**：它只拿一张清单（名字、入口地址、要填的槽位），
-// 在自己版面上的槽位里给每个插件一个空容器，然后把 host 交给它。插件里画什么、
-// 问哪个扩展端点、说什么话，全是插件所在的那个模块的事。
+// The UI here **knows no plugin**: it only takes a manifest (name, entry address, which
+// slots to fill), gives each plugin an empty container in its slot on its own layout, then
+// hands the host over. What a plugin draws, which extension endpoint it asks, what it
+// says -- all of that is the business of the module the plugin lives in.
 
 export interface PluginDoc {
   name: string;
-  /** 相对 BASE_URL 的入口地址（带内容哈希的 ?v=）。 */
+  /** Entry address relative to BASE_URL (with a content-hashed ?v=). */
   entry: string;
   slots: string[];
 }
 
-/** 交给插件的 host（版本 1）。 */
+/** The host handed to plugins (version 1). */
 export interface PluginHost {
   name: string;
   lang: string;
@@ -591,12 +654,14 @@ export interface PluginHost {
 
 let pluginList: Promise<PluginDoc[]> | null = null;
 
-/** 这次打开页面时的插件清单。只问一次：插件跟着二进制走，换二进制会换页面。 */
+/** The plugin manifest as of opening this page. Asked once: plugins follow the binary, and
+    changing the binary changes the page. */
 export function pluginManifest(): Promise<PluginDoc[]> {
   pluginList ??= fetch(`${API}/plugins`)
     .then((r) => (r.ok ? r.json() : { plugins: [] }))
     .then((doc: { plugins?: PluginDoc[] }) => doc.plugins ?? [])
-    // 老 daemon 没有这条路由 / 网络错：当作一个插件都没有，界面照常。
+    // Old daemon without this route / network error: treat it as no plugins, the UI works
+    // as usual.
     .catch(() => []);
   return pluginList;
 }

@@ -70,35 +70,37 @@ func TestBackgroundOwnsRouteAndObservability(t *testing.T) {
 	}
 }
 
-// TestClassifierIsRecognisedByEveryGate：Claude Code 的**四个 gate** 发的
-// 分类器请求都必须被认出来，判据见 isClassifier 的注释（system 标记，四个 gate
-// 共用一句；**或**顶层 stop_sequences——分类器独有的结构判据）。表里的形状按
-// 2.1.295 反混淆出来的四种 flavour 摆。
+// TestClassifierIsRecognisedByEveryGate: classifier requests from Claude Code's **four gates**
+// must all be recognized; the test is in the comment on isClassifier (the system marker, one
+// sentence shared by the four gates; **or** the top-level stop_sequences -- the classifier's unique
+// structural test). The shapes in the table follow the four flavours deobfuscated out of 2.1.295.
 //
-// 下半张表是反向的，而且比上半张重要：compact 总结、起标题、以及**会话正文里
-// 引用了分类器话术**的请求，一个都不许认。认错的后果不是「多短路一次」，是
-// compact 的答复会被换成一句 `<block>no</block>`——那等于把会话历史换掉。
+// The lower half of the table is the reverse, and more important than the upper half:
+// compact summaries, title generation, and requests whose **session body quotes the
+// classifier's wording** must not be recognized at all. The consequence of a false
+// positive is not "one extra short-circuit", it is that the compact's answer becomes
+// a `<block>no</block>` -- which is to say, the session history gets replaced.
 func TestClassifierIsRecognisedByEveryGate(t *testing.T) {
 	cases := []struct {
 		name string
 		body string
 		want bool
 	}{
-		{"Bash gate（block 那套）",
+		{"Bash gate (the block kind)",
 			`{"system":"You are a security monitor for autonomous AI coding agents","stop_sequences":["</block>"],"max_tokens":2112}`, true},
-		{"沙箱网络 gate（severity 那套）",
+		{"sandbox network gate (the severity kind)",
 			`{"system":"You are a security monitor for autonomous AI coding agents","stop_sequences":["</severity>"],"max_tokens":2112}`, true},
-		{"fast flavour（不设 stop_sequences）",
+		{"fast flavour (no stop_sequences)",
 			`{"system":"You are a security monitor for autonomous AI coding agents","max_tokens":2304}`, true},
-		{"两段式 stage 2（不设 stop_sequences）",
+		{"two-stage stage 2 (no stop_sequences)",
 			`{"system":"You are a security monitor for autonomous AI coding agents","max_tokens":10240}`, true},
-		{"提示词换了措辞，终止符还在",
+		{"the prompt was reworded, the terminator is still there",
 			`{"system":"You monitor an autonomous agent","stop_sequences":["</severity>"],"max_tokens":2112}`, true},
-		{"compact 总结",
+		{"compact summary",
 			`{"system":"You are a helpful AI assistant tasked with summarizing conversations","max_tokens":64000,"messages":[{"role":"user","content":"…"}]}`, false},
-		{"起标题",
+		{"generate a title",
 			`{"system":"You are coming up with a title and a git branch name","max_tokens":64,"messages":[{"role":"user","content":"fix the parser"}]}`, false},
-		{"会话正文引用了分类器话术，壳上却没有标记",
+		{"the session body quotes the classifier wording, but the shell has no marker",
 			`{"system":"You are Claude Code","max_tokens":8192,"messages":[{"role":"user","content":"the prompt begins You are a security monitor and Stage 1 does NOT apply user intent"}]}`, false},
 	}
 	for _, tt := range cases {

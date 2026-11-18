@@ -9,14 +9,16 @@ import (
 	"github.com/rzbdz/newgate-ext/modules/config/domain"
 )
 
-// 写盘之前留一份「上一版」。
+// Keep a copy of "the previous version" before writing.
 //
-// 这几条锁的是**一次改坏之后还能翻回去**：2026-09-20 现场是一个前端 bug 把用户
-// 某个 profile 的档位写没了，而当时没有任何地方能找回写之前那一份（`backups/`
-// 是接管用的、配置目录不在 git 里）。判据是代价不对称——留备份是几 KB，丢一次
-// 是用户手上的配置。
+// These pin **being able to go back after breaking something once**: the
+// scene on 2026-09-20 was a front-end bug writing away the tiers of one of the user's
+// profiles, when nowhere could retrieve the copy from before the write (`backups/` is
+// for takeover, and the config directory is not in git). The criterion is asymmetric
+// cost -- a backup is a few KB, losing one is the config in the user's hands.
 
-// TestAWriteKeepsThePreviousVersion：写一次之后，**上一版**能从历史里读回来。
+// TestAWriteKeepsThePreviousVersion: after one write,
+// **the previous version** can be read back from history.
 func TestAWriteKeepsThePreviousVersion(t *testing.T) {
 	dir := sandbox(t)
 	path := filepath.Join(dir, "mappings", "x.json")
@@ -30,29 +32,29 @@ func TestAWriteKeepsThePreviousVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 盘上是新的。
+	// On disk is the new one.
 	b, _ := os.ReadFile(path)
 	if string(b) != "after" {
-		t.Fatalf("写入没生效: %q", b)
+		t.Fatalf("the write did not take effect: %q", b)
 	}
-	// 历史里是旧的。
+	// In history is the old one.
 	hist := HistoryEntries(path)
 	if len(hist) != 1 {
-		t.Fatalf("该留一版历史，实际 %d 版", len(hist))
+		t.Fatalf("one version of history should be kept, actual %d", len(hist))
 	}
 	old, err := os.ReadFile(hist[0])
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(old) != "before" {
-		t.Errorf("历史里该是写之前那份，实际 %q", old)
+		t.Errorf("the history should hold the version from before the write, actual %q", old)
 	}
 }
 
-// TestTheHistoryIsARing：只留最近 20 版，不能无限长。
+// TestTheHistoryIsARing: keep only the most recent 20 versions, it cannot grow forever.
 //
-// 配置目录会被反复写（界面上每点一次保存就是一次），留全量等于把配置目录撑成
-// 一个只涨不消的日志。
+// The config directory is written over and over (every save click in the UI is
+// one), and keeping everything amounts to inflating it into a log that only grows.
 func TestTheHistoryIsARing(t *testing.T) {
 	dir := sandbox(t)
 	path := filepath.Join(dir, "state.json")
@@ -66,28 +68,28 @@ func TestTheHistoryIsARing(t *testing.T) {
 	}
 	hist := HistoryEntries(path)
 	if len(hist) != historyKeep {
-		t.Fatalf("该只留 %d 版，实际 %d 版", historyKeep, len(hist))
+		t.Fatalf("only %d versions should be kept, actual %d", historyKeep, len(hist))
 	}
-	// 留下的必须是**最近**的那 20 版：最旧的那一版里是 v5（v0..v4 已被挤掉），
-	// 最新那一版里是 v24（= 倒数第二次写之前的内容）。
+	// What is kept must be **the most recent** 20 versions: the oldest one has v5 (v0..v4 were
+	// squeezed out), and the newest has v24 (= the content before the second-to-last write).
 	oldest, err := os.ReadFile(hist[len(hist)-1])
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(oldest) != fmt.Sprintf("v%d", 5) {
-		t.Errorf("挤掉的该是最旧的几版，实际最旧一版是 %q", oldest)
+		t.Errorf("the evicted ones should be the oldest, actual oldest is %q", oldest)
 	}
 	newest, err := os.ReadFile(hist[0])
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(newest) != fmt.Sprintf("v%d", historyKeep+4) {
-		t.Errorf("最新一版该是最后一次写之前的内容，实际 %q", newest)
+		t.Errorf("the newest version should be the content before the last write, actual %q", newest)
 	}
 }
 
-// TestCreatingAFileLeavesNoHistory：新建（盘上本来没有）没什么可留的——留一个空
-// 版本只会让「翻历史」的人以为那一刻文件是空的。
+// TestCreatingAFileLeavesNoHistory: creating (nothing was on disk) has nothing to keep -- keeping
+// an empty version would only make whoever browses history think the file was empty at that moment.
 func TestCreatingAFileLeavesNoHistory(t *testing.T) {
 	dir := sandbox(t)
 	path := filepath.Join(dir, "mappings", "fresh.kv")
@@ -95,12 +97,12 @@ func TestCreatingAFileLeavesNoHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	if hist := HistoryEntries(path); len(hist) != 0 {
-		t.Errorf("新建一份文件不该留下历史，实际 %d 版", len(hist))
+		t.Errorf("creating a new file should not leave history, actual %d", len(hist))
 	}
 }
 
-// TestHistoryIsPerFile：历史按文件分家。共用一锅的话，回滚某一份时会看到别人的
-// 内容，而那比没有备份更危险。
+// TestHistoryIsPerFile: history is separated per file. Sharing one pot, rolling back
+// one would show someone else's content, which is more dangerous than no backup at all.
 func TestHistoryIsPerFile(t *testing.T) {
 	dir := sandbox(t)
 	a := filepath.Join(dir, "mappings", "a.kv")
@@ -117,34 +119,35 @@ func TestHistoryIsPerFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	if hist := HistoryEntries(b); len(hist) != 0 {
-		t.Errorf("没写过的文件不该有历史，实际 %d 版", len(hist))
+		t.Errorf("a file never written should have no history, actual %d", len(hist))
 	}
 	hist := HistoryEntries(a)
 	if len(hist) != 1 {
-		t.Fatalf("写过的那个该有一版，实际 %d", len(hist))
+		t.Fatalf("the one that was written should have one version, actual %d", len(hist))
 	}
 	got, _ := os.ReadFile(hist[0])
 	if string(got) != "old-a.kv" {
-		t.Errorf("历史串了别人的内容: %q", got)
+		t.Errorf("the history got someone else's content: %q", got)
 	}
 }
 
-// TestEverythingThatWritesGoesThroughTheSamePath：**所有**落盘都走同一条路
-// （原子替换 + 备份环）。
+// TestEverythingThatWritesGoesThroughTheSamePath: **every** disk
+// write goes through the same path (atomic replace + backup ring).
 //
-// 为什么值得一条测试：这条路上有两个真实存在过的漏口——`writeJSON` 自己拼
-// `path + ".tmp"`（**固定名**：两个并发写者撞在同一个 inode 上，一个 rename 走的
-// 是对方写了一半的内容），以及 `newgate profile kv --write` 直接 os.WriteFile
-// （进程死在半路留下一份被截断的配置，而那一版连备份都没有）。两份实现并存只会让
-// 其中一份慢慢腐坏——所以这里按**行为**钉：不管是哪个入口，写完之后上一版都在，
-// 而且不留临时文件。
+// Why this deserves a test: this path has had two real leaks -- `writeJSON` assembling
+// `path + ".tmp"` itself (**a fixed name**: two concurrent writers collide on the same
+// inode, and one rename carries the half-written content of the other), and `newgate profile
+// kv --write` calling os.WriteFile directly (the process dying halfway leaves a truncated
+// config, and that version has not even a backup). Two implementations coexisting only makes
+// one of them rot slowly -- so here the criterion is pinned by **behavior**: whichever entry
+// point, after writing the previous version is there, and no temporary file is left behind.
 func TestEverythingThatWritesGoesThroughTheSamePath(t *testing.T) {
 	dir := sandbox(t)
 	if err := os.MkdirAll(filepath.Join(dir, "mappings"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 
-	// 1. store.Write：不走 CAS 的那种（`newgate profile kv --write` 用的就是它）。
+	// 1. store.Write: the one that does not go through CAS (`newgate profile kv --write` uses it).
 	kv := filepath.Join(dir, "mappings", "x.kv")
 	if err := Write(kv, []byte("first\n")); err != nil {
 		t.Fatal(err)
@@ -154,42 +157,44 @@ func TestEverythingThatWritesGoesThroughTheSamePath(t *testing.T) {
 	}
 	ents := HistoryEntries(kv)
 	if len(ents) != 1 {
-		t.Fatalf("写两次该只留一版历史（第一次是新建，没有上一版），实际 %d 版", len(ents))
+		t.Fatalf("writing twice should keep only one version of history (the first was a create, there is no previous one), actual %d", len(ents))
 	}
 	if b, _ := os.ReadFile(ents[0]); string(b) != "first\n" {
-		t.Errorf("历史里那份不是上一版: %q", b)
+		t.Errorf("the one in history is not the previous version: %q", b)
 	}
 
-	// 2. SaveProfile：JSON 那条（曾经自己拼固定临时名的那条）。
+	// 2. SaveProfile: the JSON one (the one that used to assemble a fixed temporary name itself).
 	empty := map[string]domain.Candidates{}
-	for _, body := range []string{"一", "二"} {
+	for _, body := range []string{"one", "two"} {
 		if err := SaveProfile(&domain.Profile{Name: "y", Description: body, Roles: empty}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if got := len(HistoryEntries(filepath.Join(dir, "mappings", "y.json"))); got != 1 {
-		t.Errorf("JSON 那条写路径没留历史（它就是当时自己拼临时名的那条）: %d 版", got)
+		t.Errorf("the JSON write path left no history (it is the one that built its own temp name back then): %d", got)
 	}
 
-	// 3. 不留临时文件：`mappings/` 里只该有我们认识的那两个。
+	// 3. No temporary files left: `mappings/` should only have the two we recognize.
 	names, err := os.ReadDir(filepath.Join(dir, "mappings"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, e := range names {
 		if e.Name() != "x.kv" && e.Name() != "y.json" {
-			t.Errorf("写完之后多了一个文件 %q——临时文件该在 rename 时消失", e.Name())
+			t.Errorf("after the write there is an extra file %q -- the temp file should disappear on rename", e.Name())
 		}
 	}
 }
 
-// TestHistoryIsNewestFirst：`HistoryEntries` 必须**从新到旧**。
+// TestHistoryIsNewestFirst: `HistoryEntries` must be **newest to oldest**.
 //
-// 命令那一层的编号（`#1` = 最近那一版、不带版本号就取它）直接建立在这条上，而它
-// 是靠 `sort.Reverse(sort.StringSlice(...))` 实现的——**字典序**。今天名字是 19 位
-// 的 UnixNano，等长数字的字典序恰好等于数值序，所以它碰巧是对的；哪天名字格式一改
-// （补零、加前缀、换成别的单调量），这条会**静默**反过来，而症状是「default 取回
-// 的是最老的那一版」——一个只在人最慌的时候才被发现的方向错。所以钉住它。
+// The numbering at the command layer (`#1` = the most recent
+// version, and no version number takes that one) is built directly on this, and it is implemented
+// with `sort.Reverse(sort.StringSlice(...))` -- **lexicographic** order. Today names are 19-digit
+// UnixNano, and for equal-length numbers lexicographic order happens to equal numeric order, so
+// it is coincidentally right; the day the name format changes (zero padding, a prefix, a different
+// monotonic quantity), this **silently** flips, and the symptom is "default retrieves the oldest
+// version" -- a direction error only discovered when someone is at his most panicked. So pin it.
 func TestHistoryIsNewestFirst(t *testing.T) {
 	dir := sandbox(t)
 	path := filepath.Join(dir, "mappings", "x.kv")
@@ -203,22 +208,24 @@ func TestHistoryIsNewestFirst(t *testing.T) {
 	}
 	ents := HistoryEntries(path)
 	if len(ents) != 2 {
-		t.Fatalf("写三次该留两版（第一次是新建，没有上一版），实际 %d", len(ents))
+		t.Fatalf("writing three times should keep two versions (the first is a create, no previous one), actual %d", len(ents))
 	}
-	// ents[0] 该是**较新**的那一版，也就是 v2（v3 还在盘上，没进环）。
+	// ents[0] should be the **newer** one, i.e. v2 (v3 is still on disk and did not enter the ring).
 	if b, _ := os.ReadFile(ents[0]); string(b) != "v2" {
-		t.Errorf("第一项该是较新那版 v2，实际 %q", b)
+		t.Errorf("the first entry should be the newer version v2, actual %q", b)
 	}
 	if b, _ := os.ReadFile(ents[1]); string(b) != "v1" {
-		t.Errorf("第二项该是较老那版 v1，实际 %q", b)
+		t.Errorf("the second entry should be the older version v1, actual %q", b)
 	}
 }
 
-// TestRestoringIsItselfUndoable：取回一版之后，**被顶掉的那一版也在环里**。
+// TestRestoringIsItselfUndoable: after retrieving a
+// version, **the one pushed out is in the ring too**.
 //
-// 这条不是锦上添花：恢复的全部使用场景都是「我正在慌」，而一个不可撤销的「撤销」
-// 没人在慌的时候敢按。`cmdProfileRestore` 走的是 store.Write（与别的写同一条路），
-// 所以这条性质是**从写路径来的**，不是那条命令额外做了什么——测试盯的正是这个事实。
+// This is not a flourish: every use case of restore is "I am panicking", and an irreversible
+// "undo" is one nobody dares press while panicking. `cmdProfileRestore` goes through
+// store.Write (the same path as other writes), so this property **comes from the write path**,
+// not from something that command does extra -- and the test watches exactly that fact.
 func TestRestoringIsItselfUndoable(t *testing.T) {
 	dir := sandbox(t)
 	path := filepath.Join(dir, "mappings", "x.kv")
@@ -232,25 +239,25 @@ func TestRestoringIsItselfUndoable(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 「取回 v1」= 把环里那一版写回去（命令做的就是这一件事）。
+	// "Retrieve v1" = write that version in the ring back (that is what the command does).
 	ents := HistoryEntries(path)
 	if len(ents) != 1 {
-		t.Fatalf("前提：写两次该有一版历史，实际 %d", len(ents))
+		t.Fatalf("precondition: writing twice should give one version of history, actual %d", len(ents))
 	}
 	old, _ := os.ReadFile(ents[0])
 	if err := Write(path, old); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := os.ReadFile(path); string(got) != "v1" {
-		t.Errorf("取回之后盘上该是 v1，实际 %q", got)
+		t.Errorf("after restoring, the disk should hold v1, actual %q", got)
 	}
 
-	// 被顶掉的 v2 现在也取得到——恢复是一次普通的写。
+	// The pushed-out v2 is retrievable too now -- restore is an ordinary write.
 	ents = HistoryEntries(path)
 	if len(ents) != 2 {
-		t.Fatalf("取回本身也是一次写，环里该有两版，实际 %d", len(ents))
+		t.Fatalf("restoring is itself a write, so the ring should hold two versions, actual %d", len(ents))
 	}
 	if b, _ := os.ReadFile(ents[0]); string(b) != "v2" {
-		t.Errorf("最近那一版该是被顶掉的 v2，实际 %q", b)
+		t.Errorf("the most recent version should be the displaced v2, actual %q", b)
 	}
 }

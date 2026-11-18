@@ -11,14 +11,16 @@ import (
 	"github.com/rzbdz/newgate-ext/testing/testkit"
 )
 
-// 原文那一栏（`kind: code`）的 data **必须带基线**。
+// The source-text column (`kind: code`)'s data **must carry the baseline**.
 //
-// 这是 2026-09-20 的现场：改 kv 的原文点保存**永远失败**，改控件却好好的。根因
-// 是 fileData 少了 `base` 字段——界面把它交回来的是空串，而后端把空串读成「我
-// 加载时它还不存在」，盘上却明明有这份文件，于是 CAS 当场判过期，报「这个文件在
-// 页面加载之后被别人改过」。控件那半一直带 base，所以只有原文那一半坏。
+// This is the scene from 2026-09-20: saving a kv source-text edit **always failed**,
+// while editing controls worked fine. The root cause was fileData missing the `base`
+// field -- the UI handed back an empty string, and the backend read the empty string as
+// "it did not exist when I loaded", while the file plainly was on disk, so the CAS judged
+// it stale on the spot and reported "this file was changed by someone else after the page
+// loaded". The controls half always carried base, so only the source-text half was broken.
 //
-// 一条断言就够：拿这个概念自己报的 base 去写，必须能写成。
+// One assertion is enough: writing with the base this concept reports itself must succeed.
 func TestTheRawHalfCarriesItsBaseline(t *testing.T) {
 	testkit.Sandbox(t)
 	abs := seedFile(t, "demo.kv", "desc=demo\nnormal=p/m\n")
@@ -30,34 +32,34 @@ func TestTheRawHalfCarriesItsBaseline(t *testing.T) {
 		}
 	}
 	if code.ID == "" {
-		t.Fatal("没报出 mappings/demo.kv 那张原文卡")
+		t.Fatal("the raw-text card for mappings/demo.kv was not reported")
 	}
 	data, ok := code.Data.(fileData)
 	if !ok {
-		t.Fatalf("Data 不是 fileData，是 %T", code.Data)
+		t.Fatalf("Data is not fileData, it is %T", code.Data)
 	}
 	if data.Base == "" {
-		t.Fatal("原文那一半没带基线——界面交回空串，后端会把它读成「文件不存在」，保存必被判过期")
+		t.Fatal("the raw-text half carries no baseline -- the UI hands back an empty string, the backend reads that as \"the file does not exist\", and the save is guaranteed to be judged stale")
 	}
 	if want := store.Revision(abs); data.Base != want {
-		t.Errorf("基线与盘上那份对不上:\n  卡片说 %s\n  盘上说 %s", data.Base, want)
+		t.Errorf("the baseline does not match the one on disk:\n  the card says %s\n  the disk says %s", data.Base, want)
 	}
 	if code.Apply == nil {
-		t.Fatal("原文卡该是可写的（不是每一份都带凭据）")
+		t.Fatal("the raw-text card should be writable (not every one of them carries a credential)")
 	}
 
-	// 拿它自己报的基线写一次——必须成功。这就是用户那个动作。
-	body, _ := json.Marshal(map[string]string{"text": "desc=改过了\n"})
+	// Write once with the baseline it reports itself -- must succeed. That is the user's action.
+	body, _ := json.Marshal(map[string]string{"text": "desc=edited\n"})
 	if _, err := code.Apply(body, data.Base); err != nil {
-		t.Fatalf("用卡片自己报的基线保存原文都失败: %v", err)
+		t.Fatalf("saving the raw text with the baseline the card itself reported failed: %v", err)
 	}
 	got, _ := os.ReadFile(abs)
-	if string(got) != "desc=改过了\n" {
-		t.Errorf("原文没写进去: %q", got)
+	if string(got) != "desc=edited\n" {
+		t.Errorf("the raw text was not written: %q", got)
 	}
-	// 被别人抢先改过之后仍然要拦住（基线不是摆设）。
+	// After someone else got ahead, it must still be blocked (the baseline is not decoration).
 	if _, err := code.Apply(body, data.Base); err == nil {
-		t.Error("基线过期还让写？两次改动会互相静默覆盖")
+		t.Error("a stale baseline was allowed to write? two changes would silently overwrite each other")
 	}
 	_ = paths.Mappings()
 }

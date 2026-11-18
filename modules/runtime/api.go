@@ -5,56 +5,56 @@ import (
 	modules "github.com/rzbdz/newgate/component"
 )
 
-// Runtime 封装被接管客户端的启动边界，使 CLI 不需要知道 shim、环境注入和 argv 细节。
+// Runtime wraps a taken-over client's launch boundary, so the CLI need not know shim/env/argv.
 type Runtime interface {
-	// Launch 注入 env 并 exec 真实客户端。facts 由调用方从目录端口取来（见
-	// agentapi.AgentFacts）——「这个客户端此刻怎么样」是客户端的知识，本模块只转交。
+	// Launch injects env and execs the real client. facts are fetched by the caller from the
+	// catalog port (agentapi.AgentFacts) - "how this client is now" is its knowledge; we pass it.
 	Launch(agent *agentapi.Agent, facts agentapi.AgentFacts, args []string, profile string) int
 }
 
-// Control 是**接管与生命周期**那条端口：`start` / `on` / `off` / `status` 底下的
-// 那件事，2026-11-17 从命令里升成公开端口（理由见 control.go 的文件头）。
+// Control is the **takeover and lifecycle** port: the thing underneath `start` / `on` /
+// `off` / `status`, promoted from commands to a public port on 2026-11-17 (control.go's note).
 //
-// # 为什么它与 Runtime 分成两个口子
+// # Why it is a separate port from Runtime
 //
-// 两个原因，一个原则性的、一个很实际的：
+// Two reasons, one of principle and one very practical:
 //
-//   - **谁需要哪一半**是不同的。包装启动（wrapper、`newgate claude`）只需要
-//     Launch——它绝不修改磁盘上的接管状态；而发行版的安装向导只需要这四件，
-//     它从不启动客户端。合成一个宽接口，等于让每个消费者都依赖另一半
-//     （以及那一半将来还会长出来的东西）。
-//   - 合并会让**已经存在的测试桩**全部编译不过：wrapper 的测试桩只实现 Launch，
-//     它装在 Runtime 上就必须补四个自己永远不调的方法。宽接口把「不关我事」变成
-//     「我得知道」。实测（2026-11-17）：先加进 Runtime 时 wrapper_test 当场红。
+//   - **Who needs which half** differs. Wrapped launch (wrapper, `newgate claude`) needs
+//     only Launch - it never touches the on-disk takeover state; the distribution's setup
+//     wizard needs only these four and never launches a client. One wide interface would make
+//     every consumer depend on the other half (and on whatever it grows later).
+//   - Merging breaks **every existing test stub**: the wrapper's stub implements only Launch,
+//     and on Runtime it must add four methods it never calls. A wide interface turns "not my
+//     business" into "I must know". Measured 2026-11-17: on Runtime it went red at once.
 //
-// 两个口子由**同一个组件**提供（modules/runtime 的 service 两个都实现），
-// 所以「接管与启动是同一个模块」这一点没有变——变的只是消费者能声明自己只要
-// 哪一半。
+// Both ports come from **the same component** (modules/runtime's service implements both),
+// so "takeover and launch are one module" is unchanged - only consumers can now declare
+// which half they need.
 type Control interface {
-	// ---- 接管 ----
+	// ---- takeover ----
 	//
-	// 这四条是 `start` / `on` / `off` / `status` 底下的那件事，2026-11-17 升成
-	// 端口（理由见 control.go 的文件头）。返回值与命令打印的是同一份类型——
-	// 「一次接管改了什么」只有一种形状。
+	// These four are the thing underneath `start` / `on` / `off` / `status`, promoted to a
+	// port on 2026-11-17 (see control.go's header). The return types are the ones the
+	// commands print - "what one takeover changed" has exactly one shape.
 
-	// TakeOver 接管一个 agent 并记下「用户要接管它」。
+	// TakeOver takes over one agent and records "the user wants it taken over".
 	TakeOver(agent string, port int) Result
-	// Release 释放一个 agent 并记下「用户不要它被接管」。
+	// Release frees one agent and records "the user does not want it taken over".
 	Release(agent string) Result
-	// TakeOverAll 接管所有没被用户显式关掉的 agent。
+	// TakeOverAll takes over every agent not explicitly turned off by the user.
 	TakeOverAll(port int) []Result
-	// TakeoverStatus 列出每个已知 agent 的接管状态。
+	// TakeoverStatus lists the takeover state of every known agent.
 	TakeoverStatus() []Status
 
-	// ---- 生命周期 ----
+	// ---- lifecycle ----
 
-	// Start 起代理并全面接管（`newgate start` 的语义）。命令与向导走同一份实现：
-	// 同一个令牌先落盘、同一道「没 key 就别接管」的闸、同一次全面接管。
+	// Start brings up the proxy and takes over everything (`newgate start` semantics). Command
+	// and wizard share one implementation: same token written first, same "no key, no takeover" gate.
 	Start(opts StartOptions) (StartReport, error)
 }
 
-// Capability 标识唯一的客户端运行时实现。
+// Capability identifies the one client-runtime implementation.
 var Capability = modules.NewCapability[Runtime]("runtime")
 
-// ControlCapability 标识唯一的接管/生命周期实现。
+// ControlCapability identifies the one takeover/lifecycle implementation.
 var ControlCapability = modules.NewCapability[Control]("runtime-control")

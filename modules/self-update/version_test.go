@@ -26,8 +26,8 @@ func TestParseVersion(t *testing.T) {
 	}
 }
 
-// 开发机的常态是「比最新 Release 新」：v0.8.0 之后 40 个提交不能被当成 v0.8.0，
-// 否则 `newgate upgrade` 会把开发机换回 Release。
+// A dev machine is normally "newer than the latest Release": 40 commits after v0.8.0
+// must not read as v0.8.0, or `newgate upgrade` swaps the dev machine back to a Release.
 func TestCompareCountsCommitsAfterTheTag(t *testing.T) {
 	v := func(s string) version {
 		t.Helper()

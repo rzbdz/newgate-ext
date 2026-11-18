@@ -9,11 +9,12 @@ import (
 	"testing"
 )
 
-// 带基线的写：**读的时候是哪一份，写的时候就还得是哪一份**。
+// Baseline-carrying writes: **whichever copy you
+// read, that is the copy you must still be writing**.
 //
-// 这几条锁的是「两个写者（命令行 + 浏览器）撞在同一份配置上」那件事的正确性。
-// 破了它的症状是最难查的一类：用户的改动**静默消失**，没有报错、没有日志，
-// 只有「我明明改过啊」。
+// These pin the correctness of "two writers (the command line + the browser) colliding
+// on one config". The symptom of breaking it is the hardest kind to trace: the
+// user's change **vanishes silently**, no error, no log, only "but I did change it".
 
 func sandbox(t *testing.T) string {
 	t.Helper()
@@ -35,18 +36,19 @@ func TestWriteIfUnchangedAcceptsMatchingBaseline(t *testing.T) {
 
 	rev, err := WriteIfUnchanged(path, base, []byte("second"))
 	if err != nil {
-		t.Fatalf("基线对得上却写失败了: %v", err)
+		t.Fatalf("the baseline matched yet the write failed: %v", err)
 	}
 	if got, _ := os.ReadFile(path); string(got) != "second" {
-		t.Errorf("内容没写进去: %q", got)
+		t.Errorf("the content was not written: %q", got)
 	}
 	if rev != Revision(path) {
-		t.Errorf("返回的新基线 %q 与磁盘上的对不上（%q）", rev, Revision(path))
+		t.Errorf("the returned new baseline %q does not match the one on disk (%q)", rev, Revision(path))
 	}
 }
 
-// TestWriteIfUnchangedRefusesStaleBaseline 是这套东西存在的理由：**发现冲突并
-// 把两边都交出来**。只回一句「过期了」等于让用户去猜自己丢了什么。
+// TestWriteIfUnchangedRefusesStaleBaseline is the reason this whole
+// thing exists: **find the conflict and hand both sides out**. Replying
+// with just "it is stale" leaves the user guessing what he lost.
 func TestWriteIfUnchangedRefusesStaleBaseline(t *testing.T) {
 	dir := sandbox(t)
 	path := filepath.Join(dir, "state.json")
@@ -56,43 +58,46 @@ func TestWriteIfUnchangedRefusesStaleBaseline(t *testing.T) {
 
 	_, err := WriteIfUnchanged(path, "sha256:0000000000000000000000000000000000000000000000000000000000000000", []byte("mine"))
 	if err == nil {
-		t.Fatal("基线对不上却写成功了——那正是静默覆盖")
+		t.Fatal("the baseline did not match yet the write succeeded -- that is exactly a silent overwrite")
 	}
 	var stale *StaleError
 	if !errors.As(err, &stale) {
-		t.Fatalf("该回 *StaleError，实际 %T: %v", err, err)
+		t.Fatalf("should return *StaleError, actual %T: %v", err, err)
 	}
 	if string(stale.Disk) != "theirs" {
-		t.Errorf("冲突时该带上磁盘现状原文，实际 %q", stale.Disk)
+		t.Errorf("on conflict it should carry the current raw text on disk, actual %q", stale.Disk)
 	}
 	if stale.Current != Revision(path) || stale.Base == stale.Current {
-		t.Errorf("两边的身份该分别给出: base=%q current=%q", stale.Base, stale.Current)
+		t.Errorf("both identities should be given separately: base=%q current=%q", stale.Base, stale.Current)
 	}
 	if got, _ := os.ReadFile(path); string(got) != "theirs" {
-		t.Errorf("冲突时**什么都不该写**，实际变成了 %q", got)
+		t.Errorf("on conflict **nothing should be written**, actual became %q", got)
 	}
 	if !errors.Is(err, ErrStale) {
-		t.Error("该能用 errors.Is(err, ErrStale) 判，不然调用方只能靠字符串")
+		t.Error("it should be testable with errors.Is(err, ErrStale), otherwise callers can only match on strings")
 	}
 }
 
-// TestWriteIfUnchangedCreatesWithEmptyBaseline：空基线 = 「我加载时它还不存在」。
-// 文件真不存在时该放行（建新文件），存在时该拦下（有人抢先建了）。
+// TestWriteIfUnchangedCreatesWithEmptyBaseline: an empty baseline = "it did not
+// exist when I loaded". When the file really does not exist it should pass (creating
+// a new file); when it exists it should be blocked (someone got there first).
 func TestWriteIfUnchangedCreatesWithEmptyBaseline(t *testing.T) {
 	dir := sandbox(t)
 	path := filepath.Join(dir, "mappings", "new.json")
 	if _, err := WriteIfUnchanged(path, "", []byte("{}")); err != nil {
-		t.Fatalf("空基线上不存在的文件该能建: %v", err)
+		t.Fatalf("a nonexistent file should be creatable with an empty baseline: %v", err)
 	}
 	if _, err := WriteIfUnchanged(path, "", []byte("{}")); err == nil {
-		t.Error("文件已经存在了，空基线该算冲突（有人抢先建了它）")
+		t.Error("the file already exists, so an empty baseline should count as a conflict (someone created it first)")
 	}
 }
 
-// TestConcurrentWritersCannotBothWin 是「两个前端同时跑」那条 race 保护点。
+// TestConcurrentWritersCannotBothWin is the race-protection
+// point for "two front ends running at once".
 //
-// 没有锁的话：两个写者各自读到旧内容、各自通过基线比对、后一个 rename 把前一个
-// 的改动盖掉——而**两边都收到了成功**。跑 -race 才有意义。
+// Without the lock: two writers each read the old content, each pass
+// the baseline comparison, and the later rename overwrites the earlier
+// change -- while **both received success**. Only meaningful under -race.
 func TestConcurrentWritersCannotBothWin(t *testing.T) {
 	dir := sandbox(t)
 	path := filepath.Join(dir, "mappings", "x.json")
@@ -124,13 +129,13 @@ func TestConcurrentWritersCannotBothWin(t *testing.T) {
 		}
 	}
 	if wins != 1 {
-		t.Fatalf("%d 个写者同时用同一条基线提交，成功了 %d 个——必须恰好一个（其余的该拿到冲突）", writers, wins)
+		t.Fatalf("%d writers committed with the same baseline at once, %d succeeded -- exactly one must (the rest should get a conflict)", writers, wins)
 	}
 }
 
-// TestWriteLeavesNoTempFiles：临时文件是随机名（不是固定的 .tmp），所以并发写者
-// 不会撞在同一个 inode 上；而且写完必须清干净——留下的垃圾会让下一次 `git status`
-// 或配置目录审计看起来像有东西坏了。
+// TestWriteLeavesNoTempFiles: temporary files are randomly named (not a fixed .tmp), so concurrent
+// writers do not collide on the same inode; and after writing it must be cleaned up -- leftover
+// garbage would make the next `git status` or config directory audit look like something is broken.
 func TestWriteLeavesNoTempFiles(t *testing.T) {
 	dir := sandbox(t)
 	path := filepath.Join(dir, "x.json")
@@ -143,14 +148,14 @@ func TestWriteLeavesNoTempFiles(t *testing.T) {
 	}
 	for _, e := range ents {
 		if strings.HasSuffix(e.Name(), ".tmp") {
-			t.Errorf("写完留下了临时文件 %s", e.Name())
+			t.Errorf("the write left a temp file behind: %s", e.Name())
 		}
 	}
 }
 
-// TestRevisionOfEmptyAndMissing；文件不存在与空文件是**两种不同的身份**——
-// 前者是「还没有」，后者是「有一个空文件」。混为一谈的话，「删掉它」与「清空它」
-// 在冲突检测里就分不出来了。
+// TestRevisionOfEmptyAndMissing: a missing file and an empty file are **two different
+// identities** -- the former is "not there yet", the latter is "there is an empty file".
+// Conflate them and "delete it" and "empty it" become indistinguishable in conflict detection.
 func TestRevisionDistinguishesMissingFromEmpty(t *testing.T) {
 	dir := sandbox(t)
 	missing := filepath.Join(dir, "nope.json")
@@ -159,9 +164,9 @@ func TestRevisionDistinguishesMissingFromEmpty(t *testing.T) {
 		t.Fatal(err)
 	}
 	if Revision(missing) == Revision(empty) {
-		t.Error("不存在的文件与空文件的基线不该相同")
+		t.Error("a nonexistent file and an empty file must not have the same baseline")
 	}
 	if Revision(missing) != "" {
-		t.Errorf("不存在的文件基线该是空串，实际 %q", Revision(missing))
+		t.Errorf("the baseline of a nonexistent file should be an empty string, actual %q", Revision(missing))
 	}
 }

@@ -11,12 +11,13 @@ import (
 	"github.com/rzbdz/newgate/lib/i18n"
 )
 
-// cmdDoctor 体检。
+// cmdDoctor health check.
 //
-// **界面在这里一项都不认识**：每一行都由拥有那件事的模块经 RegisterDiagnostics
-// 报上来（文件/链路归 config，环境/代理归 gateway，接管/备份归 runtime），界面只
-// 做统一的排版与「有没有红的」这个结论。上一版这里写死了六项，于是界面为了它们
-// import 了 paths / store / resolve / takeover ——那都是别人的知识。
+// **The UI knows not one item here**: every row is reported by the module that owns
+// that thing via RegisterDiagnostics (files/links belong to config, env/proxy to gateway,
+// takeover/backup to runtime), and the UI only does the uniform layout and the "is anything
+// red" conclusion. The previous version hardcoded six items here, so the UI imported
+// paths / store / resolve / takeover for them -- all of which is someone else's knowledge.
 func cmdDoctor(service *service) int {
 	fmt.Println(style.Title("newgate doctor", buildinfo.Version()))
 	fmt.Println(style.Rule(64))
@@ -48,29 +49,33 @@ func cmdDoctor(service *service) int {
 		fmt.Println(style.Green(i18n.T("all checks passed", nil)))
 		return 0
 	}
-	// 结论行走 N（带数量的消息）：英文有单复数，中文不分——中文那份只写一条即可。
-	// 前面的状态标记留在消息外（它是版式符号，不是文案）。
+	// The conclusion line uses i18n N (messages with a count): English has singular
+	// and plural, Chinese does not -- the Chinese catalog only needs one entry. The
+	// status mark in front stays outside the message (it is a layout symbol, not copy).
 	fmt.Println(style.Mark(style.Bad) + " " +
 		i18n.N("{n} check failed", "{n} checks failed", bad, i18n.A{"n": bad}))
 	return 1
 }
 
-// cmdAllLogs 诊断包：**把各模块交上来的原文拼起来**。
+// cmdAllLogs is the diagnostic bundle: **it pastes together the raw text modules submit**.
 //
-// 界面在这里只做两件事：打自己的那一段（版本、环境、状态），以及把模块交上来的
-// 素材按 Rank 顺序拼好。原文从哪来、长什么样，全是各模块自己的事——谁的数据谁
-// 自己交（见 cliapi.Dumper），界面不认识 providers.json，也不认识接管改了哪些文件。
+// The UI does only two things here: print its own section (version, env, state), and
+// assemble the material modules submit in Rank order. Where the raw text comes from and what
+// it looks like is entirely each module's business -- whoever owns the data submits it (see
+// cliapi.Dumper), and the UI does not know providers.json, nor which files takeover changed.
 //
-// 上一版这一整个函数长在界面里，于是它得知道 providers 的结构、profile 的档位表、
-// 目标文件在哪、证据文件叫什么、日志在哪。这一轮把那些知识全部还了回去。
+// In the previous version this whole function lived in the UI, so it had to know the
+// providers' structure, the profile's tier table, where target files are, what evidence
+// files are called, and where the logs are. This round gave all that knowledge back.
 func cmdAllLogs(service *service) int {
 	line := func(t string) { fmt.Printf("\n===== %s =====\n", t) }
 
-	// 这一段是界面自己的：它讲的是「这个进程跑在哪、什么版本、什么环境」。
+	// This section is the UI's own: it is about "where this process runs, what version, what env".
 	line(i18n.T("Version and environment", nil))
 	fmt.Println(VersionLine())
-	// 字段标签过目录（它是文案），值不过（那是路径与进程事实）。列宽固定，
-	// 三行才对得齐——`env` 是**机器名**（环境变量的原文段），不翻译。
+	// Field labels go through the catalog (they are copy), values do not (they
+	// are paths and process facts). The column width is fixed, so three rows line up --
+	// `env` is a **machine name** (the raw segment of an env var) and is not translated.
 	const dumpLabelW = 12
 	field := func(label, value string) { fmt.Println(style.Pad(label, dumpLabelW) + value) }
 	field(i18n.T("Config dir", nil), paths.Config())
@@ -94,11 +99,12 @@ func cmdAllLogs(service *service) int {
 	return 0
 }
 
-// cmdStatus 一屏概览。
+// cmdStatus is the one-screen overview.
 //
-// **这一屏的每一行都归它的所有者**：谁的状态谁自己报（RegisterStatus /
-// RegisterStatusBlocks）。界面在这里一行都不认识——代理、接管、配置各由
-// gateway / runtime / config 报上来，界面的全部工作是按 Rank 排一下然后打印。
+// **Every line of this screen belongs to its owner**: whoever owns a state
+// reports it (RegisterStatus / RegisterStatusBlocks). The UI knows not one
+// line here -- proxy, takeover, and config are each reported by gateway /
+// runtime / config, and the UI's whole job is to sort by Rank and print.
 func cmdStatus(service *service) int {
 	fmt.Println(style.Title("newgate "+buildinfo.Version(), buildinfo.BuildTimeDisplay()))
 	fmt.Println(style.Rule(64))
@@ -117,5 +123,5 @@ func cmdStatus(service *service) int {
 	return 0
 }
 
-// routingOf 已被 runtime/takeover.List() 取代——那里是接管状态的唯一事实源，
-// CLI / TUI / Web 都读同一份，不再各自判断一遍机制。
+// routingOf has been replaced by runtime/takeover.List() -- that is the single source of truth for
+// takeover state, read by CLI / TUI / Web alike, so none of them judges the mechanism separately.

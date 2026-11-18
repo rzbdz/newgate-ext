@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// IsLoopback 判断 host 是不是本机回环。
+// IsLoopback reports whether host is a local loopback address.
 func IsLoopback(host string) bool {
 	switch host {
 	case "localhost", "127.0.0.1", "::1", "0.0.0.0", "":
@@ -19,16 +19,19 @@ func IsLoopback(host string) bool {
 	return false
 }
 
-// LoopbackAwareTransport 对回环地址绕过出站代理，其它照旧走环境变量里的代理。
+// LoopbackAwareTransport bypasses the outbound proxy for loopback addresses
+// and lets everything else use the proxy from the environment as usual.
 //
-// 为什么必须这么做：集群/公司机器上常配 HTTP_PROXY，而 Go 的
-// http.DefaultTransport 用 ProxyFromEnvironment——于是 newgate 自己发往
-// 127.0.0.1 的请求也会被送去出站代理，代理连不上本机 loopback 就回 502。
-// 后果极其难查：start 的探活失败 → 判定"代理没起来" → 反过来把刚起好的
-// 代理杀掉，最后 ss 看不到端口，日志里只有一行"监听 …"。
+// Why it is necessary: cluster/corporate machines often set HTTP_PROXY,
+// and Go's http.DefaultTransport uses ProxyFromEnvironment -- so newgate's own requests
+// to 127.0.0.1 also get sent to the outbound proxy, which cannot reach local loopback
+// and returns 502. The consequence is extremely hard to trace: start's health probe
+// fails -> judged "the proxy did not come up" -> the freshly started proxy gets killed in
+// response, and in the end ss shows no port and the log has only one line, "listening …".
 //
-// 反过来也不能一刀切禁用代理：访问真实上游（api.xxx.com）在这种机器上
-// 往往必须经过出站代理。所以只能按目标区分。
+// Nor can the proxy be disabled wholesale: reaching the real
+// upstream (api.xxx.com) on such machines often must go through the
+// outbound proxy. So the only option is to distinguish by target.
 func LoopbackAwareTransport() *http.Transport {
 	t := http.DefaultTransport.(*http.Transport).Clone()
 	t.Proxy = func(req *http.Request) (*url.URL, error) {
@@ -40,13 +43,13 @@ func LoopbackAwareTransport() *http.Transport {
 	return t
 }
 
-// LocalClient 专门用于打本机的客户端。
+// LocalClient is the client dedicated to talking to the local machine.
 func LocalClient(timeout time.Duration) *http.Client {
 	return &http.Client{Timeout: timeout, Transport: LoopbackAwareTransport()}
 }
 
-// TCPAlive 直接 TCP 拨号探活。不走 HTTP、不受任何代理设置影响，
-// 是判断「端口到底有没有在听」最可靠的手段。
+// TCPAlive probes liveness with a direct TCP dial. It does not use HTTP and is unaffected by any
+// proxy settings, making it the most reliable way to tell whether a port is actually listening.
 func TCPAlive(host string, port int, timeout time.Duration) bool {
 	c, err := net.DialTimeout("tcp",
 		net.JoinHostPort(host, itoa(port)), timeout)

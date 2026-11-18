@@ -41,11 +41,11 @@ func names(steps []Step) []string {
 func eq(t *testing.T, got []string, want ...string) {
 	t.Helper()
 	if strings.Join(got, " | ") != strings.Join(want, " | ") {
-		t.Errorf("链不对\n got:  %v\n want: %v", got, want)
+		t.Errorf("chain is wrong\n got:  %v\n want: %v", got, want)
 	}
 }
 
-// ---------- 三种绑定写法 ----------
+// ---------- the three binding spellings ----------
 
 func TestCandidatesAcceptsThreeForms(t *testing.T) {
 	var p domain.Profile
@@ -62,11 +62,11 @@ func TestCandidatesAcceptsThreeForms(t *testing.T) {
 	} {
 		got := p.CandidatesFor(role)
 		if len(got) != len(want) {
-			t.Fatalf("%s: 长度 %d 应为 %d", role, len(got), len(want))
+			t.Fatalf("%s: length %d should be %d", role, len(got), len(want))
 		}
 		for i := range want {
 			if got[i].String() != want[i] {
-				t.Errorf("%s[%d] = %s 应为 %s", role, i, got[i], want[i])
+				t.Errorf("%s[%d] = %s should be %s", role, i, got[i], want[i])
 			}
 		}
 	}
@@ -78,19 +78,19 @@ func TestModelNameCanContainSlash(t *testing.T) {
 		t.Fatal(err)
 	}
 	if b.Provider != "prov" || b.Model != "org/model-1" {
-		t.Errorf("得到 %+v", b)
+		t.Errorf("got %+v", b)
 	}
 }
 
 func TestBadBindingString(t *testing.T) {
 	for _, bad := range []string{"noslash", "/leading", "trailing/"} {
 		if _, err := domain.ParseBindingString(bad); err == nil {
-			t.Errorf("%q 应该报错", bad)
+			t.Errorf("%q should error", bad)
 		}
 	}
 }
 
-// ---------- 链的顺序 ----------
+// ---------- chain order ----------
 
 func TestChainOrder_ActiveFirstThenPriority(t *testing.T) {
 	ps := []*domain.Profile{
@@ -110,7 +110,7 @@ func TestChainOrder_ProfileMajorListMinor(t *testing.T) {
 			"h": list("pC/m3", "pD/m4")}},
 	}
 	steps, _ := BuildChain("h", ps, mkProvs("pA", "pB", "pC", "pD"), Opts{Active: "cheap"})
-	// 先把 cheap 内部走完，才降到 rich
+	// Finish everything inside cheap first, then drop to rich
 	eq(t, names(steps), "cheap:pA/m1", "cheap:pB/m2", "rich:pC/m3", "rich:pD/m4")
 }
 
@@ -144,21 +144,22 @@ func TestChainSparseProfileIsSkipped(t *testing.T) {
 			"heavy": one("pB", "opus"), "light": one("pB", "haiku")}},
 	}
 	provs := mkProvs("pA", "pB")
-	// heavy：稀疏层生效
+	// heavy: the sparse level takes effect
 	steps, _ := BuildChain("heavy", ps, provs, Opts{Active: "full"})
 	eq(t, names(steps), "full:pB/opus", "onlyheavy:pA/fable")
-	// light：稀疏层整层跳过
+	// light: the sparse level is skipped entirely
 	steps, skips := BuildChain("light", ps, provs, Opts{Active: "full"})
 	eq(t, names(steps), "full:pB/haiku")
 	found := false
 	for _, sk := range skips {
-		// 断言**类目**（机器标记）而不是那句话：文案是给人看的，随语言变。
+		// Assert the **category** (machine marker) rather than the
+		// sentence: the wording is for humans and changes with language.
 		if sk.Profile == "onlyheavy" && sk.Kind == SkipUndefined {
 			found = true
 		}
 	}
 	if !found {
-		t.Error("稀疏层应记录「未定义该档位」的跳过原因")
+		t.Error("a sparse layer should record the reason \"tier not defined\"")
 	}
 }
 
@@ -182,7 +183,7 @@ func TestNormalFallbackToMidStaysWithinEachProfile(t *testing.T) {
 		}
 	}
 	if duplicateSkips != 0 {
-		t.Fatalf("profile 内 normal→mid 不应反复展开全链，得到 %+v", skips)
+		t.Fatalf("normal->mid inside a profile should not expand the whole chain repeatedly, got %+v", skips)
 	}
 }
 
@@ -204,7 +205,7 @@ func TestPinnedStopsChain(t *testing.T) {
 		{Name: "other", Priority: prio(20), Roles: map[string]domain.Candidates{"h": one("pB", "m3")}},
 	}
 	steps, _ := BuildChain("h", ps, mkProvs("pA", "pB"), Opts{Active: "strict"})
-	// pinned 仍然走完自己内部的 list，但不降到别的 profile
+	// pinned still walks its own internal list, but does not drop to other profiles
 	eq(t, names(steps), "strict:pA/m1", "strict:pA/m2")
 }
 
@@ -215,7 +216,7 @@ func TestPinnedOnlyAppliesWhenItIsHead(t *testing.T) {
 		{Name: "head", Priority: prio(20), Roles: map[string]domain.Candidates{"h": one("pB", "m2")}},
 	}
 	steps, _ := BuildChain("h", ps, mkProvs("pA", "pB"), Opts{Active: "head"})
-	// strict 不是链头，它的 pinned 不生效，正常参与
+	// strict is not the chain head, so its pinned does not take effect and it participates normally
 	eq(t, names(steps), "head:pB/m2", "strict:pA/m1")
 }
 
@@ -229,12 +230,12 @@ func TestExcludedNotAutoSelected(t *testing.T) {
 	steps, _ := BuildChain("h", ps, provs, Opts{Active: "normal"})
 	eq(t, names(steps), "normal:pA/m1") // pricey 优先级更高但被 excluded
 
-	// 显式选中时 excluded 不挡链头
+	// when explicitly selected, excluded does not block the chain head
 	steps, _ = BuildChain("h", ps, provs, Opts{Active: "pricey"})
 	eq(t, names(steps), "pricey:pB/m2", "normal:pA/m1")
 }
 
-// ---------- 过滤器 ----------
+// ---------- filters ----------
 
 func TestUnavailableFilterFiltersStep(t *testing.T) {
 	ps := []*domain.Profile{{Name: "a", Roles: map[string]domain.Candidates{"h": list("pA/m1", "pB/m2")}}}
@@ -242,18 +243,20 @@ func TestUnavailableFilterFiltersStep(t *testing.T) {
 		Active: "a",
 		Available: func(p, _ string) (bool, string) {
 			if p == "pA" {
-				// 理由的措辞属于提供判据的人：今天 controlplane 给的就是这句。
+				// The wording of the reason belongs to whoever provides the
+				// criterion: today it is this sentence from controlplane.
 				return false, "circuit open"
 			}
 			return true, ""
 		},
 	})
 	eq(t, names(steps), "a:pB/m2")
-	// 类目归 resolve（这一关拒绝了它），理由原样透传（它属于提供判据的人，
-	// 今天就是 controlplane 的那句 i18n.T("circuit open")）。
+	// The category is resolve's (this gate rejected it); the reason is
+	// passed through as is (it belongs to whoever provides the criterion
+	// -- today that sentence is controlplane's i18n.T("circuit open")).
 	if len(skips) == 0 || skips[0].Kind != SkipUnavailable ||
 		!strings.Contains(skips[0].Reason, "circuit open") {
-		t.Errorf("应记录「不可用」的跳过与它给的理由，得到 %+v", skips)
+		t.Errorf("should record the \"unavailable\" skip and its reason, got %+v", skips)
 	}
 }
 
@@ -268,7 +271,7 @@ func TestDisabledFiltersStep(t *testing.T) {
 	eq(t, names(steps), "a:pB/m2")
 	if len(skips) == 0 || skips[0].Kind != SkipDisabled ||
 		!strings.Contains(skips[0].Reason, "2h ago") {
-		t.Errorf("应带上禁用原因，得到 %+v", skips)
+		t.Errorf("should carry the disabled reason, got %+v", skips)
 	}
 }
 
@@ -282,7 +285,7 @@ func TestMissingProviderOrKeyIsSkippedNotFatal(t *testing.T) {
 	steps, skips := BuildChain("h", ps, provs, Opts{Active: "a"})
 	eq(t, names(steps), "a:good/m2")
 	if len(skips) != 2 {
-		t.Errorf("应有 2 条跳过记录，得到 %+v", skips)
+		t.Errorf("there should be 2 skip records, got %+v", skips)
 	}
 }
 
@@ -294,7 +297,7 @@ func TestMaxStepsTruncates(t *testing.T) {
 	eq(t, names(steps), "a:pA/m1", "a:pB/m2")
 	last := skips[len(skips)-1]
 	if !strings.Contains(last.Reason, "maxAttempts") {
-		t.Errorf("应说明因 maxAttempts 被截断，得到 %+v", last)
+		t.Errorf("should say it was truncated because of maxAttempts, got %+v", last)
 	}
 }
 
@@ -312,11 +315,11 @@ func TestTiebreakByNameIsDeterministic(t *testing.T) {
 func TestDefaultPriorityWhenAbsent(t *testing.T) {
 	p := &domain.Profile{Name: "x"}
 	if p.Prio() != domain.DefaultPriority {
-		t.Errorf("没写 priority 应为 %d，得到 %d", domain.DefaultPriority, p.Prio())
+		t.Errorf("with no priority written it should be %d, got %d", domain.DefaultPriority, p.Prio())
 	}
 }
 
-// ---------- 兼容：现有格式仍能读 ----------
+// ---------- compatibility: existing formats still read ----------
 
 func TestBackwardCompatOldProfileFormat(t *testing.T) {
 	old := `{"name":"ds","description":"d","roles":{
@@ -327,10 +330,10 @@ func TestBackwardCompatOldProfileFormat(t *testing.T) {
 	}
 	b, ok := p.Resolve("heavy")
 	if !ok || b.String() != "upstream-a/model-large" {
-		t.Errorf("旧格式读不出来: %+v %v", b, ok)
+		t.Errorf("cannot read the old format: %+v %v", b, ok)
 	}
 	if p.Prio() != domain.DefaultPriority {
-		t.Error("旧格式没有 priority，应取默认值")
+		t.Error("the old format has no priority, it should take the default")
 	}
 }
 
@@ -344,10 +347,10 @@ func TestOverrideChainHeadsChain(t *testing.T) {
 		"light", ps, mkProvs("pA", "pB", "pC"), Opts{Active: "a"})
 	eq(t, names(steps), "(classifier_override):pC/m3", "a:pA/m1", "a:pB/m2")
 	if !applied {
-		t.Error("覆盖应生效")
+		t.Error("the override should take effect")
 	}
 	if len(skips) != 0 {
-		t.Errorf("不该有跳过，得到 %+v", skips)
+		t.Errorf("there should be no skips, got %+v", skips)
 	}
 }
 
@@ -359,7 +362,7 @@ func TestOverrideChainFallsBackOnUnknownProvider(t *testing.T) {
 		"light", ps, mkProvs("pA"), Opts{Active: "a"})
 	eq(t, names(steps), "a:pA/m1")
 	if applied {
-		t.Error("provider 未定义时覆盖不应生效")
+		t.Error("the override should not take effect when the provider is undefined")
 	}
 	found := false
 	for _, sk := range skips {
@@ -368,7 +371,7 @@ func TestOverrideChainFallsBackOnUnknownProvider(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Errorf("应记录覆盖失效原因，得到 %+v", skips)
+		t.Errorf("should record why the override did not take effect, got %+v", skips)
 	}
 }
 
@@ -383,7 +386,7 @@ func TestOverrideChainFallsBackOnMissingKey(t *testing.T) {
 		"light", ps, provs, Opts{Active: "a"})
 	eq(t, names(steps), "a:pA/m1")
 	if applied {
-		t.Error("provider 无 key 时覆盖不应生效")
+		t.Error("the override should not take effect when the provider has no key")
 	}
 }
 
@@ -402,7 +405,7 @@ func TestOverrideChainFallsBackWhenUnavailable(t *testing.T) {
 		})
 	eq(t, names(steps), "a:pA/m1")
 	if applied {
-		t.Error("熔断时覆盖不应生效")
+		t.Error("the override should not take effect when the breaker is open")
 	}
 }
 
@@ -412,9 +415,9 @@ func TestOverrideChainDedupsWhenOverrideAlreadyInChain(t *testing.T) {
 	steps, _, applied := OverrideChain("classifier_override",
 		domain.Binding{Provider: "pA", Model: "m1"},
 		"light", ps, mkProvs("pA", "pB"), Opts{Active: "a"})
-	// pA/m1 原本在 light 链里，覆盖后只出现一次且在最前
+	// pA/m1 was originally on the light chain; after the override it appears once and first
 	eq(t, names(steps), "(classifier_override):pA/m1", "a:pB/m2")
 	if !applied {
-		t.Error("覆盖 binding 已在链里时也应生效（提到最前）")
+		t.Error("the override should also take effect when the binding is already in the chain (moved to the front)")
 	}
 }

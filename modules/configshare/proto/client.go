@@ -14,29 +14,29 @@ import (
 	"github.com/rzbdz/newgate/lib/i18n"
 )
 
-// maxEnvelopeBytes 单次拉取的大小上限。
+// maxEnvelopeBytes is the size cap on a single pull.
 //
-// 配置快照就是几十 KB 的 JSON，密钥更小。给上限是因为**对端的行为不由我们
-// 控制**（中间还可能有跳板/代理宿主，endpoint 也可能配错打到别的东西上）：
-// 没有上限的话一次拉取就能把 daemon 的内存吃光。8 MiB 是"离现实很远、
-// 离危险也很远"的一个数。
+// A config snapshot is tens of KB of JSON, secrets less. The cap exists because **the
+// peer's behavior is not ours to control** (a jump chain or proxy host may sit in
+// between, and the endpoint may be misconfigured): without one, a single pull could eat
+// all the daemon's memory. 8 MiB is "far from reality, and far from danger".
 const maxEnvelopeBytes = 8 << 20
 
-// 两种要说人话的拉取失败。它们都是**第一分钟就会遇到**的错（没设 role、
-// blob 拷错），所以文案直接写排查方向，而不是抛一个状态码。
+// Two pull failures that must speak plainly. Both are **first-minute** errors (no role
+// set, blob copied wrong), so the text gives the direction to look, not a status code.
 //
-// 这里用 i18n.E 而不是 i18n.T：E 只把源语言原文存下来（消息身份），渲染发生在
-// Error() 被调用的那一刻，也就是语言装好之后。包级变量里写 i18n.T 会把译文
-// 永久冻在源语言上（见 lib/i18n 的包注释）。
+// i18n.E is used, not i18n.T: E stores only the source text (message identity), and
+// rendering happens when Error() is called, i.e. after languages are installed. i18n.T
+// in a package-level variable would freeze the translation on the source language.
 var (
 	ErrNotHost = i18n.E("the peer is not a host (the endpoint returned 404) — is its role not set to host?", nil)
 	ErrAuth    = i18n.E("authentication refused: this machine's root key differs from the host's (the config trust blob was copied wrong or not at all)", nil)
 )
 
-// Config 是构造一个副本客户端需要的全部东西。
+// Config is everything needed to build a replica client.
 //
-// 路径不在这里：一律走 paths 包（本仓库配置目录路径的唯一来源），测试靠
-// NEWGATE_HOME 隔离（testkit.Sandbox 的同一套做法）。
+// Paths are not here: they all come from the paths package (the single source of config
+// dir paths in this repo); tests isolate via NEWGATE_HOME (the testkit.Sandbox way).
 type Config struct {
 	Endpoint string // 形如 https://gateway-host.tailnet.ts.net:8899
 	RootKey  []byte // 预共享根密钥原文
@@ -46,7 +46,7 @@ type Config struct {
 	Now      func() time.Time
 }
 
-// Client 是副本侧的拉取器与应用器。
+// Client is the replica-side puller and applier.
 type Client struct {
 	cfg       Config
 	encKey    []byte
@@ -55,7 +55,7 @@ type Client struct {
 	now       func() time.Time
 }
 
-// New 派生密钥并构造客户端。
+// New derives the keys and builds the client.
 func New(cfg Config) (*Client, error) {
 	if strings.TrimSpace(cfg.Endpoint) == "" {
 		return nil, i18n.E("the endpoint is empty (run newgate config join <endpoint> first)", nil)
@@ -75,13 +75,13 @@ func New(cfg Config) (*Client, error) {
 	return c, nil
 }
 
-// Channel 是一个通道这一轮的结果。
+// Channel is one channel's result for this round.
 type Channel struct {
 	Kind string
 	Gen  int // 这一轮之后生效的代数
 
-	// Changed 内容变了并且已经落盘。**只有它为真才该打"已更新"那行日志**：
-	// 代数涨了但字节没变（宿主重新 publish 了一份一样的内容）不该装作更新过。
+	// Changed: content changed and is on disk. **Only then log "updated"**: a generation
+	// bump with identical bytes (host re-published the same content) is not an update.
 	Changed   bool
 	Refused   bool // 拉到了、但拒绝应用（保留上一份继续服务）
 	Reason    string
@@ -94,17 +94,17 @@ type Channel struct {
 	Warnings  []string
 }
 
-// Outcome 是一轮拉取的结果。
+// Outcome is one pull round's result.
 //
-// 两个通道各自独立：配置端点抖一下不该让密钥轮换也停摆，反过来也一样。
-// 所以错误是按通道记的，Pull 的返回值只报"连记账都写不下去"这种全局失败。
+// The two channels are independent: a flaky config endpoint must not stall secrets
+// rotation, and vice versa. So errors are per channel; the error return is global only.
 type Outcome struct {
 	Config  Channel
 	Secrets Channel
 	Notes   []string // 给调用方展示的旁注（记账损坏、权威变更…）
 
-	// 下面几个是 finalize 汇总出来的"这一轮整体怎么样"，调用方只负责**渲染**
-	// ——记账与判定都发生在 Pull 的锁里面，见 finalize 的注释。
+	// The fields below are what finalize sums up as "how this round went overall"; callers
+	// only **render** it - recording and judging happen inside Pull's lock, see finalize.
 	Failed    bool
 	ErrText   string // 稳定的错误串（同一问题重复出现时字符串不变，日志抑制靠它）
 	FailCount int    // 这一轮之后连续失败的次数
@@ -112,17 +112,17 @@ type Outcome struct {
 	PrevGen   int    // 这一轮之前生效的配置代数（日志里写 "41 → 42" 用）
 }
 
-// Pull 拉一轮并应用。
+// Pull pulls one round and applies it.
 //
-// 顺序是**先配置后密钥**：配置通道会更新记账里的权威身份（HostID），密钥
-// 通道紧跟着用同一个身份判断"权威换了吗"，顺序反了就会多一次多余的代数
-// 基线重置。
+// The order is **config first, then secrets**: the config channel updates the ledger's
+// authoritative identity (HostID), and the secrets channel then uses the same identity
+// to decide "did the authority change"; reversed, a needless extra baseline reset occurs.
 func (c *Client) Pull(ctx context.Context, force bool) (Outcome, error) {
 	var out Outcome
 	run := func() error {
 		st, err := LoadState()
 		if err != nil {
-			// 记账坏了不该让同步彻底停摆：按初始状态重来，但要说出来。
+			// A broken ledger must not stall sync entirely: restart from the initial state, but say so.
 			out.Notes = append(out.Notes, err.Error())
 			c.logf("[configshare] %v", err)
 		}
@@ -132,8 +132,8 @@ func (c *Client) Pull(ctx context.Context, force bool) (Outcome, error) {
 		out.finalize(&st, c.now())
 		return SaveState(st)
 	}
-	// 拿锁跑完整轮：CLI 的 config pull 与后台 poller 可能同时跑，两边都要
-	// 读改写同一份记账。等 3 秒（手动命令的耐心），后台那条走 wait=0。
+	// Take the lock for the whole round: CLI config pull and the background poller can
+	// overlap on the ledger. Wait 3s (manual patience); the background one uses wait=0.
 	ran, err := WithLock(ConfigShareLockFile(), 3*time.Second, run)
 	if err != nil {
 		return out, err
@@ -144,15 +144,15 @@ func (c *Client) Pull(ctx context.Context, force bool) (Outcome, error) {
 	return out, nil
 }
 
-// finalize 汇总这一轮，并把失败计数写进记账。
+// finalize sums up the round and writes the failure count into the ledger.
 //
-// 为什么在 Pull 里面而不是让每个调用方各写一遍：记账**只有一处写入者**才不会
-// 互相覆盖，而 Pull 已经在锁里了。调用方（后台 poller / config pull）只负责
-// 按自己的语气渲染这个结果。
+// Why inside Pull rather than once per caller: only a **single writer** keeps the ledger
+// from overwriting itself, and Pull is already in the lock. Callers (background poller /
+// config pull) only render this result in their own tone.
 //
-// ErrText 的稳定性是有意的：同一类问题重复出现时字符串必须一模一样，否则
-// poller 的日志抑制（"同一错误只按 1/2/5/10/25/50… 报"）会失效，变成每 30 秒
-// 刷一行。所以拒绝原因的文案里**不放文件名列表**，只放个数。
+// ErrText's stability is intentional: repeated instances of one problem must give the
+// identical string, or the poller's log suppression ("same error only at 1/2/5/10/25/50...")
+// breaks and it spews a line every 30 seconds. So rejection text **carries no file names**.
 func (o *Outcome) finalize(st *State, now time.Time) {
 	var msgs []string
 	for _, ch := range []Channel{o.Config, o.Secrets} {
@@ -173,8 +173,8 @@ func (o *Outcome) finalize(st *State, now time.Time) {
 		return
 	}
 	o.Failed = true
-	// 连接符过 i18n（中文是「；」）。ErrText 的稳定性不受影响：一次进程只装一门
-	// 语言，同一类问题在同一进程里拼出来的串还是一模一样的。
+	// The separator goes through i18n (full-width semicolon in Chinese). ErrText stability
+	// is unaffected: one language per process, so the joined string stays identical.
 	o.ErrText = strings.Join(msgs, i18n.T("; ", nil))
 	st.FailCount++
 	st.LastError = o.ErrText
@@ -182,7 +182,7 @@ func (o *Outcome) finalize(st *State, now time.Time) {
 	o.FailCount = st.FailCount
 }
 
-// pullConfig 是配置通道的一轮。
+// pullConfig is one round of the config channel.
 func (c *Client) pullConfig(ctx context.Context, st *State, force bool) Channel {
 	ch := Channel{Kind: KindConfig}
 	env, err := c.fetch(ctx, KindConfig, PathConfig)
@@ -192,16 +192,16 @@ func (c *Client) pullConfig(ctx context.Context, st *State, force bool) Channel 
 	}
 	ch.Gen = env.Gen
 
-	// ---- 快路径：权威没换、代数没变 ----
+	// ---- fast path: authority unchanged, generation unchanged ----
 	//
-	// 连解密都不做、不写盘、不打日志。这是"空转完全静默"的落地点：一天 2880
-	// 轮里绝大多数走到这里就回去了。
+	// No decryption, no disk write, no log. This is where "idle is fully silent" happens:
+	// the vast majority of the 2880 rounds a day leave right here.
 	//
-	// 这里 <= 而不是 == 是**单调性守卫**：迟到的、乱序的、或者被中间人重放的
-	// 旧快照不能把车队回滚。代价是宿主侧的**故意回滚**（恢复一份旧配置）不会
-	// 传播——要回滚就得让宿主往上 bump 一个代数（宿主侧 newgate config publish
-	// 就是这么做的，见 host.go）。这个代价是有意接受的：一个能悄悄把整个车队
-	// 降级的通道，比一个"回滚要重新发布一次"的通道危险得多。
+	// The `<=` rather than `==` is a **monotonicity guard**: a late, reordered, or
+	// man-in-the-middle-replayed old snapshot must not roll the fleet back. So a
+	// **deliberate rollback** on the host does not propagate - it needs a generation
+	// bump (host-side `newgate config publish` does exactly that, see host.go). That
+	// cost is accepted: a silent fleet-wide downgrade is far worse than a rollback.
 	if st.HostID == env.Host && env.Gen <= st.Generation {
 		ch.Gen = st.Generation
 		return ch
@@ -221,7 +221,7 @@ func (c *Client) pullConfig(ctx context.Context, st *State, force bool) Channel 
 		snap.HostID = env.Host // 宿主没填就用信封上那个（两者本应一致）
 	}
 	if snap.Generation != env.Gen {
-		// 信封说 42、密文里说 41：宿主端拼装出了 bug。记账只认一个数，猜不得。
+		// Envelope says 42, ciphertext says 41: host-side assembly bug. One number; no guessing.
 		ch.Err = i18n.E("the envelope generation {envelope} does not match the generation inside the snapshot {snapshot} (the host assembled it wrong)",
 			i18n.A{"envelope": env.Gen, "snapshot": snap.Generation})
 		return ch
@@ -231,11 +231,11 @@ func (c *Client) pullConfig(ctx context.Context, st *State, force bool) Channel 
 			i18n.A{"from": short(st.HostID), "to": short(snap.HostID)})
 		ch.Warnings = append(ch.Warnings, out)
 		c.logf("[configshare] %s", out)
-		// 重置基线：新宿主的计数从 0 开始，不重置就永远追不上（见 types.go）。
+		// Reset the baseline: a new host counts from 0; without it we never catch up (see types.go).
 		st.Generation = 0
 	}
 
-	// ---- 校验：schema 门 → 内容形状 ----
+	// ---- validation: schema gate -> content shape ----
 	meta, err := ParseMeta(snap.Files)
 	if err != nil {
 		ch.Refused, ch.Reason, ch.Err = true, err.Error(), err
@@ -246,8 +246,8 @@ func (c *Client) pullConfig(ctx context.Context, st *State, force bool) Channel 
 		ch.Warnings = append(ch.Warnings, warn)
 	}
 	if !ok {
-		// 拒绝应用但**不报错**：这不是故障，是一个明确的"这份我解释不了"。
-		// 保留上一份继续服务，状态里显示成需要处理的事。
+		// Refuse to apply, **not** an error: this is no fault, just a clear "I can't
+		// parse this one". Keep the previous one serving; status lists it as to handle.
 		ch.Refused, ch.Reason = true, refuse
 		return ch
 	}
@@ -258,7 +258,7 @@ func (c *Client) pullConfig(ctx context.Context, st *State, force bool) Channel 
 		return ch
 	}
 
-	// ---- 漂移守卫 ----
+	// ---- drift guard ----
 	drift := DetectDrift(paths.Config(), st.Applied, snap.Files)
 	if drift.Blocking() {
 		ch.Drift = &drift
@@ -268,8 +268,8 @@ func (c *Client) pullConfig(ctx context.Context, st *State, force bool) Channel 
 				"{n} managed file on this machine was modified locally; applying the remote configuration stopped (your changes will not be overwritten)",
 				"{n} managed files on this machine were modified locally; applying the remote configuration stopped (your changes will not be overwritten)",
 				len(drift.Paths()), i18n.A{"n": len(drift.Paths())})
-			// 记账**不动**：代数不推进，下一轮还会重试这个决定。这样用户改回去
-			// 或明确 --force 之后，同一个代数会被重新应用一次。
+			// The ledger **doesn't move**: the generation holds, so the next round retries the
+			// decision - after the user reverts or passes --force, the same generation is reapplied.
 			st.Drift = &drift
 			return ch
 		}
@@ -281,7 +281,7 @@ func (c *Client) pullConfig(ctx context.Context, st *State, force bool) Channel 
 		ch.Archive = arch
 	}
 
-	// ---- 落盘 ----
+	// ---- write to disk ----
 	res, err := Materialize(paths.Config(), snap.Files, st.Applied)
 	if err != nil {
 		ch.Refused, ch.Reason, ch.Err = true, err.Error(), err
@@ -290,22 +290,22 @@ func (c *Client) pullConfig(ctx context.Context, st *State, force bool) Channel 
 	ch.Written, ch.Removed, ch.Unchanged = res.Written, res.Removed, len(res.Unchanged)
 	ch.Changed = len(res.Written)+len(res.Removed) > 0
 
-	// ---- 记账 ----
+	// ---- ledger ----
 	st.HostID = snap.HostID
 	st.Generation = env.Gen
 	st.Version = snap.Version
 	st.AppliedAt = c.now()
 	st.Applied = res.Manifest
 	st.Warnings = ch.Warnings
-	// 记账里的漂移要描述**现在**的状况，而不是我们刚修好之前的样子：
-	// 落盘之后再算一次。--force 之后阻断项已经归档并覆盖，重算就干净了；而
-	// 本地层（Extra）会照旧出现在里面——它本来就该一直显示着（不显示就是
-	// silent-override trap）。
+	// Drift in the ledger must describe **now**, not how it looked before we just fixed it:
+	// recompute after writing to disk. After --force the blockers are archived and
+	// overwritten, so the recompute is clean; the local layer (Extra) still shows up -
+	// it should always be visible (hiding it is the silent-override trap).
 	st.Drift = driftOrNil(DetectDrift(paths.Config(), res.Manifest, snap.Files))
 	return ch
 }
 
-// pullSecrets 是密钥通道的一轮。
+// pullSecrets is one round of the secrets channel.
 func (c *Client) pullSecrets(ctx context.Context, st *State, force bool) Channel {
 	ch := Channel{Kind: KindSecrets}
 	env, err := c.fetch(ctx, KindSecrets, PathSecrets)
@@ -340,9 +340,9 @@ func (c *Client) pullSecrets(ctx context.Context, st *State, force bool) Channel
 	}
 	sum := hashBytes(want)
 
-	// 漂移守卫，与配置通道同一个道理：本机的 secrets.json 被人手改过，而远端
-	// 又要写一份不同的，那就是要抹掉别人的改动——必须先说、先归档。
-	// 密钥"只由宿主分发"是它的契约，但契约不构成"可以静默覆盖"的理由。
+	// Drift guard, same rationale as the config channel: the local secrets.json was
+	// hand-edited while the remote wants a different one - that erases someone's change,
+	// so report and archive first. A contract is no license for a silent overwrite.
 	path := secretsPath()
 	if cur, err := readFileIfExists(path); err == nil && cur != nil {
 		curSum := hashBytes(cur)
@@ -375,7 +375,7 @@ func (c *Client) pullSecrets(ctx context.Context, st *State, force bool) Channel
 	st.SecretsGen = env.Gen
 	st.SecretsApplied = written
 	st.SecretsAt = c.now()
-	// 落盘成功了，密钥通道的漂移就解决了（--force 时已经归档过）。
+	// The write succeeded, so the secrets channel's drift is resolved (--force already archived).
 	st.SecretsDrift = nil
 	if sec.HostID != "" {
 		st.HostID = sec.HostID
@@ -383,16 +383,16 @@ func (c *Client) pullSecrets(ctx context.Context, st *State, force bool) Channel
 	return ch
 }
 
-// fetch 取一个端点上的信封。
+// fetch fetches the envelope at one endpoint.
 func (c *Client) fetch(ctx context.Context, kind, path string) (*Envelope, error) {
 	url := strings.TrimRight(c.cfg.Endpoint, "/") + path
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
-	// token 是 HKDF 派生的**另一个**值，不是加密密钥：它进 header、进日志、
-	// 进任何中间件，而这些地方泄露不了加密密钥（见 seal.go 的 DeriveKeys）。
-	// 用 hex 而不是原始字节：header 里只放可见 ASCII。
+	// token is **another** HKDF-derived value, not the encryption key: it goes into headers,
+	// logs, any middleware, and none of those can leak the encryption key (see
+	// DeriveKeys in seal.go). Hex, not raw bytes: headers carry visible ASCII only.
 	req.Header.Set("Authorization", "Bearer "+hex.EncodeToString(c.authToken))
 	req.Header.Set("Accept", "application/json")
 
@@ -427,7 +427,7 @@ func (c *Client) logf(format string, args ...any) {
 	}
 }
 
-// short 把 host_id 截短用于日志（它是 32 位 hex，整串在日志里没用）。
+// short truncates host_id for logging (it is 32 hex chars; the whole string is useless).
 func short(id string) string {
 	if len(id) > 8 {
 		return id[:8]

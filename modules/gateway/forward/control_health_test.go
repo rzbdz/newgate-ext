@@ -14,15 +14,17 @@ import (
 	"github.com/rzbdz/newgate-ext/modules/gateway/policy"
 )
 
-// TestProbeHealthTranslatesAndDispatches 锁住数据面在控制面这个决策点上的
-// **全部**义务：鉴权、把线上的 JSON 翻成中性的 ProbeObservation（含把配置里的
-// classifier 阈值一起递过去）、分发给贡献者、把 ack 计数与日志打出来、以及把
-// 贡献者的状态字段并进响应顶层。
+// TestProbeHealthTranslatesAndDispatches pins **every** duty the data plane has
+// at this control-plane decision point: authentication, translating the wire JSON
+// into a neutral ProbeObservation (including passing the configured classifier
+// threshold along), dispatching to contributors, printing the ack counter and the
+// log, and merging the contributor's state fields into the response's top level.
 //
-// 「这条结论意味着什么、要不要摘牌」不在数据面的义务里——以前它调
-// `Health.RecordProbe` 并断言账本状态，那是在验 breaker 的语义，却写在
-// forward 的测试里（判据要跟着知道它的模块走）。倒置之后数据面只负责翻译与
-// 转发，于是这里用一个桩贡献者收观察值。
+// "What this conclusion means, and whether to strip the binding" is not the data
+// plane's duty - it used to call `Health.RecordProbe` and assert ledger state,
+// which tested breaker's semantics but was written in forward's test (criteria
+// follow the module that owns them). After the inversion the data plane only
+// translates and forwards, so here a stub contributor collects the observations.
 func TestProbeHealthTranslatesAndDispatches(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("NEWGATE_HOME", dir)
@@ -37,7 +39,7 @@ func TestProbeHealthTranslatesAndDispatches(t *testing.T) {
 	const provider = "relay-health-test"
 	srv := newTestServer()
 	rec := &probeFilter{acks: []policy.ProbeAck{
-		{Opened: true, Note: "[probe] 熔断 " + provider + "/slow：laggy"},
+		{Opened: true, Note: "[probe] breaker " + provider + "/slow：laggy"},
 	}}
 	if _, err := srv.Filters.Register(rec); err != nil {
 		t.Fatal(err)
@@ -63,30 +65,32 @@ func TestProbeHealthTranslatesAndDispatches(t *testing.T) {
 
 	obs := rec.observed()
 	if len(obs) != 2 {
-		t.Fatalf("分发给贡献者的观察值有 %d 条, want 2（provider 为空的要丢掉）: %+v", len(obs), obs)
+		t.Fatalf("%d observations distributed to contributors, want 2 (empty provider must be dropped): %+v", len(obs), obs)
 	}
 	if obs[0].Model != "slow" || obs[0].Latency != 20*time.Millisecond ||
 		obs[0].Status != 200 || obs[0].ContextBytes != 1 {
-		t.Errorf("观察值没被如实翻译: %+v", obs[0])
+		t.Errorf("the observation was not translated faithfully: %+v", obs[0])
 	}
-	// SlowAfter 来自配置（classifier_first_byte_ms），由数据面在翻译时填上：
-	// 阈值是「一次请求算不算慢」的判据，属于数据面的配置，贡献者只该拿到值。
+	// SlowAfter comes from config (classifier_first_byte_ms), filled in by the data
+	// plane while translating: the threshold is the criterion for "is one request slow",
+	// which belongs to data plane config, and contributors should only get the value.
 	for _, o := range obs {
 		if o.SlowAfter != 10*time.Millisecond {
-			t.Errorf("%s 的 SlowAfter = %v, want 10ms（来自配置的 classifier 阈值）",
+			t.Errorf("SlowAfter of %s = %v, want 10ms (from the classifier threshold in config)",
 				o.Model, o.SlowAfter)
 		}
 	}
 
-	// ack 的计数与日志：数据面不解释结论，但必须把贡献者的话原样说出来。
+	// ack counters and logs: the data plane does not interpret the
+	// conclusion, but must repeat the contributor's words verbatim.
 	var out struct {
 		OK     bool `json:"ok"`
 		Opened int  `json:"opened"`
 	}
 	if err := json.Unmarshal(got, &out); err != nil {
-		t.Fatalf("响应不是 JSON: %v（%s）", err, got)
+		t.Fatalf("the response is not JSON: %v (%s)", err, got)
 	}
 	if !out.OK || out.Opened != 1 {
-		t.Errorf("响应 = %s, want ok=true opened=1（ack 里 Opened 的条数）", got)
+		t.Errorf("response = %s, want ok=true opened=1 (the number of Opened entries in the ack)", got)
 	}
 }

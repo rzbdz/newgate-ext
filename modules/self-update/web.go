@@ -16,30 +16,30 @@ import (
 	webapi "github.com/rzbdz/newgate-ext/modules/web-dashboard"
 )
 
-// 本文件是本模块在网页界面上的那一面：顶栏一颗「更新」按钮，点开能看当前版本、
-// 检查有没有新的、跳到 GitHub 的 Release 页。
+// This file is this module's face in the web UI: an "Update" button in the top bar
+// that opens the current version, checks for a newer one, links to GitHub Releases.
 //
-// # 它全部住在这里
+// # It all lives here
 //
-// 前端代码是 web/plugin.js（嵌进本模块，经 web-dashboard 的**插件口**发出去），
-// 数据与文案是下面这个扩展端点。web-dashboard 的前端目录里没有一行认识
-// self-update：它只提供「顶栏有一格」与「插件长什么样」这份契约（见那边 api.go
-// 的「前端插件」）。摘掉本模块，那颗按钮跟着消失，界面一个字不用改。
+// The front-end code is web/plugin.js (embedded in this module, served through
+// web-dashboard's **plugin slot**); data and wording come from the extension endpoint
+// below. No line in web-dashboard's front end knows self-update: it only gives the
+// contract (see api.go's "front-end plugins"). Remove this module, the button goes too.
 //
-// # 只查、不装
+// # Check only, never install
 //
-// 网页上不换二进制：页面本身就由要被换掉的那个 daemon 服务着，在里面点一下
-// 「安装」，换的是脚下的地板；而且「问一句 y/N」那道确认是终端的事（见 upgrade
-// 的命令）。这里给的是**看得见**：有没有新的、去哪儿看发布说明、用哪条命令装。
+// The web page never swaps a binary: the page itself is served by the daemon being
+// replaced - clicking "install" swaps the floor under your feet; and the y/N confirm
+// is the terminal's job. What this gives is **visibility**: newer? notes? which command?
 
 //go:embed web
 var webFiles embed.FS
 
 const webName = "self-update"
 
-// autoCheckEvery 是页面自己去查一次的最短间隔。查一次要碰 GitHub（或者 git fetch），
-// 而页面每次打开都会问 status——按页面打开次数查，未认证 API 那每小时 60 次的
-// 额度（按出口 IP 算）很快就是别人的了。
+// autoCheckEvery is the minimum gap between the page's own checks. A check touches
+// GitHub (or git fetch) while the page asks status on every open - checking per page
+// open spends the unauthenticated API's 60/hour (per egress IP) on everyone else.
 const autoCheckEvery = 6 * time.Hour
 
 type checkDoc struct {
@@ -60,11 +60,11 @@ type statusDoc struct {
 	Labels      map[string]string `json:"labels"`
 }
 
-// webState 记最近一次检查的结论（daemon 内存里，重启就忘：那正是「该再查一次」）。
+// webState holds the last check's verdict (daemon memory, lost on restart - "check again").
 type webState struct {
 	mu   sync.Mutex
 	last *checkDoc
-	// check 可以换掉（测试不出网）。
+	// check is swappable (tests never go to the network).
 	check func(ctx context.Context) (upgradeapi.Result, error)
 }
 
@@ -129,8 +129,8 @@ func (w *webState) status() statusDoc {
 	return doc
 }
 
-// webLabels 是插件上的每一句话。文案在后端，是因为它们属于本模块：前端的消息
-// 目录是界面的，插件里写死英文又等于不翻译（与 CLI 走同一份 zh-Hans 目录）。
+// webLabels is every sentence on the plugin. Wording lives in the backend: it belongs
+// to this module, and the UI's catalog is not ours (same zh-Hans catalog as the CLI).
 func webLabels() map[string]string {
 	return map[string]string{
 		"button":    i18n.T("Updates", nil),

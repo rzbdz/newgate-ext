@@ -41,6 +41,6 @@ func TestSpecialTreatmentSkipsNonDeepseek(t *testing.T) {
 
 	want := `{"model":"claude-sonnet-4","messages":[{"role":"assistant","content":"a"}]}`
 	if string(sent) != want {
-		t.Errorf("非 DeepSeek 上游的请求被动了\n want: %s\n got:  %s", want, sent)
+		t.Errorf("a request to a non-DeepSeek upstream was touched\n want: %s\n got:  %s", want, sent)
 	}
 }

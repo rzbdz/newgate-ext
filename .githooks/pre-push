@@ -1,19 +1,22 @@
 #!/usr/bin/env bash
-# 推上去之前，把发行版这边的判据跑一遍（CLAUDE.md §4 的两段 + 端到端），外加一条
-# **只有这里才有机会拦**的检查：gitlink 指向的内核提交必须已经推上去了。
+# Run the distribution's own gates (CLAUDE.md §4's two halves plus the end-to-end suite)
+# before pushing, and one check **only this hook can make**: the kernel commit the gitlink
+# points at must already be pushed.
 #
-# 为什么要有它：CI 只在**推上去之后**才说话。2026-09-20 两次「推完才发现」——
-#   - gitlink 指着内核一个只在本地存在的提交 → CI 在 checkout 那一步整体失败
-#     （`upload-pack: not our ref`），一个 job 都没起；
-#   - 内核的 workflow 文件非法 → GitHub 0 秒拒掉整个 run，六轮 CI 全是假的。
-# 前一条正是下面第三步，后一条本地 `go test`（tools/ciyaml 的棘轮）就会红。
+# Why it exists: CI only speaks **after** the push. On 2026-09-20 there were two
+# "found out only after pushing" incidents --
+#   - the gitlink pointed at a kernel commit that existed only locally -> CI failed as a
+#     whole at the checkout step (`upload-pack: not our ref`), not one job started;
+#   - a kernel workflow file was invalid -> GitHub rejected the whole run in 0 seconds and
+#     six rounds of CI were fake.
+# The first is step three below; the second turns red in local `go test` (tools/ciyaml).
 #
-# 装上（每个 clone 一次，git 不会替你装）：
+# Install it (once per clone; git will not do it for you):
 #
 #	git config core.hooksPath .githooks
 #
-# 绕开：`git push --no-verify`。这个口子**故意留着**——钩子自己出毛病时（这台机器
-# 缺 python3 跑不了假上游）不能把人卡死。
+# Bypass: `git push --no-verify`. That door is **left open on purpose** -- when the hook
+# itself is broken (this machine has no python3 for the fake upstream) it must not trap anyone.
 set -euo pipefail
 
 while read -r _local_ref local_sha _remote_ref _remote_sha; do
@@ -28,64 +31,71 @@ root=$(git rev-parse --show-toplevel)
 cd "$root"
 step() { printf '\n── %s\n' "$1"; }
 
-step "core-test：内核的全部内部测试（发行版带的就是这份依赖）"
+step "core-test: the kernel's entire internal test suite (the dependency this distribution carries)"
 (cd core && GOPROXY=off go test ./... && make check-fmt && make check-generate && go vet ./...)
 
-step "dist-test：发行版自己的"
+step "dist-test: the distribution's own"
 if fmt=$(gofmt -l .) && [ -n "$fmt" ]; then
-  echo "格式不对（跑 gofmt -w）：" >&2
+  echo "bad formatting (run gofmt -w):" >&2
   echo "$fmt" >&2
   exit 1
 fi
 go vet ./...
 go run ./tools/distgen -check
-# -race 与 CI 那条一致（见 ci.yml 的说明）：并发错默认表现是「平时都对，
-# 压一下才崩」，而本地不跑的话，推上去才发现就等于没拦。
+# -race matches CI's flag (see ci.yml): a concurrency bug usually looks fine until the
+# machine is under load, and finding out after the push means nothing was stopped.
 go test -race ./...
 
-step "gitlink 指的那个内核提交，远端有吗"
+step "is the kernel commit the gitlink points at on the remote?"
 core_head=$(git -C core rev-parse HEAD)
 if [ -z "$(git -C core for-each-ref --contains "$core_head" --format='%(refname)' refs/remotes/)" ]; then
   {
-    echo "core/ 的 HEAD ${core_head:0:7} 不在任何**已获取的**远端分支上。"
-    echo "先把它推上去（git -C core push origin main），否则 CI 会在 checkout 那一步整体失败。"
-    echo "（也可能只是本地没 fetch：git -C core fetch 之后再试。）"
+    echo "core/'s HEAD ${core_head:0:7} is not on any **fetched** remote branch."
+    echo "Push it first (git -C core push origin main), or CI fails as a whole at the checkout step."
+    echo "(It may also just be an unfetched local: try git -C core fetch and run again.)"
   } >&2
   exit 1
 fi
-echo "ok：${core_head:0:7} 在远端"
+echo "ok: ${core_head:0:7} is on the remote"
 
-step "端到端（真二进制 + 内核的假上游，零 token）"
+step "end to end (real binary + the kernel's fake upstream, zero tokens)"
 build/build.sh dist >/dev/null
 bash mock/e2e_claude_dist.sh
-# 浏览器那条写路径（快照 / 保存 / 冲突 / 两道门）：与上一条共用同一个产物，
-# 不需要假上游，所以很便宜。
+# The browser's write path (snapshot / save / conflict / the two gates): shares the same
+# artifact as the check above and needs no fake upstream, so it is cheap.
 bash mock/e2e_dashboard.sh
-# 没装客户端时的安装路径（假 npm）：也不出网、不装东西，纯本地。这一条在本地
-# 尤其值——它判的是**这台机器上没有那个工具**时才走得到的代码，而开发机上通常
-# 装着 codex，随手一跑反而验不到（沙箱靠密闭 PATH 把它挡在外面）。
+# The install path when no client is installed (fake npm): no network, installs nothing,
+# purely local. It is worth more locally -- it judges code reachable only when **this
+# machine lacks that tool**, and a dev box usually has codex, so a casual run never
+# exercises it (the sandbox's sealed PATH keeps it out).
 bash mock/e2e_install.sh
-# 消费侧：`newgate ask` 一句话进、正文出。也要假上游，但很快。
+# The consumer side: `newgate ask` takes one sentence in and gets the body out. Also
+# needs the fake upstream, but it is fast.
 bash mock/e2e_ask.sh
-# codex 的两种接管模式，以及「codex 自己的模型名认回档位」那条链（含「加一行
-# 新模型不用重启就生效」）。也要假上游。
+# Codex's two takeover modes, and the chain that maps Codex's own model names back to
+# tiers (including "a new model line takes effect without a restart"). Also needs the
+# fake upstream.
 bash mock/e2e_codex_modes.sh
-# hermes 的接管：config.yaml 字节手术、两种用法、清单自动同步（不改回用户的选择）、
-# 按键还原。也要假上游。
+# Hermes takeover: config.yaml byte surgery, both usages, the /model list syncing by
+# itself (never reverting the user's own choice), and key-by-key restore. Also needs the
+# fake upstream.
 bash mock/e2e_hermes.sh
-# Codex × DeepSeek 的工具交叉（抬/降级两个方向 + 响应侧改回 + 开关点真的被读）。
-# 也要假上游。它锁的是**不报错**的那一类故障：不抬的话模型看不见工具，请求照样
-# 200、正文看着也像模像样，只有一个 tool_result 都拿不到。
+# Codex x DeepSeek tool crossing (both directions of the lift/downgrade, the response
+# side written back, and the switch actually read). Also needs the fake upstream. It
+# locks down the **silent** class of failure: without the lift the model cannot see the
+# tools, the request still returns 200 and the body still looks plausible -- only no
+# tool_result ever comes back.
 bash mock/e2e_codex_tools.sh
 
-# ssh-tunnel：**真 sshd、真密钥**。这一条与上面几条不同——它要本机的 sshd，
-# 而 CI 里没有（所以它不进 CI，与 e2e_reasoning_affinity.sh 同一条理由）。
-# 没有 sshd 就**跳过并说明**，不是静默略过：静默略过的话，「这条到底跑没跑」
-# 在输出里看不出来，而它下一次说话就是在别人机器上红。
+# ssh-tunnel: **a real sshd, real keys**. Unlike the checks above it needs a local sshd,
+# which CI does not have (so it stays out of CI, same reason as e2e_reasoning_affinity.sh).
+# Without sshd it **skips and says so** rather than skipping silently: a silent skip
+# leaves "did this run at all" invisible in the output, and its next word is red on
+# someone else's machine.
 if command -v sshd >/dev/null 2>&1; then
   bash mock/e2e_tunnel.sh
 else
-  echo "· 跳过 e2e_tunnel.sh（这台机器上没有 sshd）"
+  echo "- skipping e2e_tunnel.sh (no sshd on this machine)"
 fi
 
-printf '\n✓ pre-push 全绿（core-test / dist-test / gitlink / 端到端）\n'
+printf '\n+ pre-push all green (core-test / dist-test / gitlink / end-to-end)\n'

@@ -5,22 +5,23 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// SwitchLiftTools 这一手：把 Codex 的 additional_tools 抬到顶层 tools（见 st-tools.go）。
+// SwitchLiftTools is this move: lift Codex's
+// additional_tools to the top-level tools (see st-tools.go).
 //
-// 关掉它 = 回到 2026-09-23 之前的行为：模型看不见任何工具，于是用训练里的文本
-// 格式去「调工具」，客户端解析不出来，一个 tool_result 都没有。所以它默认开着，
-// 关掉是排查动作。
+// Turning it off = the behavior before 2026-09-23: the model sees no tools at all, so it falls
+// back to the text format from training to "call tools", the client cannot parse it, and not
+// one tool_result comes back. So it is on by default, and turning it off is a debugging action.
 //
-// **为什么开关归本模块而不是 crossing**：这一手修的是「Codex 发的形状」，与上游
-// 是谁无关（Ark / DeepSeek / Gemini / … 都只读顶层）。开关跟着**行为的拥有者**
-// 走——2026-09-23 之前这一个开关挂在 codex_deepseek 上（`codex-deepseek.lift-tools`），
-// 于是「Codex 配 Ark」那条路上根本没有开关可关，而同一个行为在同一份二进制里
-// 有两个名字。
+// **Why the switch belongs to this module rather than the crossing**: this move fixes "the shape
+// Codex sends", independent of which upstream it is (Ark / DeepSeek / Gemini / ... read only the
+// top level). The switch follows **the behavior's owner** -- before 2026-09-23 this one switch
+// hung on codex_deepseek (`codex-deepseek.lift-tools`), so on the "Codex with Ark" path there
+// was no switch to turn off at all, while the same behavior had two names in the same binary.
 const SwitchLiftTools = "codex.lift-tools"
 
-// Switches 本模块上报的开关点清单，供 module.go 注册。
+// Switches is the list of switch points this module reports, for module.go to register.
 //
-// 前缀是 `codex`（= Component.Name），由 pluginmanager 在注册期强制。
+// The prefix is `codex` (= Component.Name), enforced by pluginmanager at registration time.
 func Switches() []pluginmanager.Switch {
 	return []pluginmanager.Switch{{
 		Path:  SwitchLiftTools,

@@ -1,9 +1,11 @@
-// Package store 是 Config Store：磁盘上的单一事实源。
+// Package store is the Config Store: the single source of truth on disk.
 //
-// 职责边界（docs/03-architecture.md）：
-//   - core 只有类型和纯逻辑，一行 IO 都没有
-//   - store 负责所有读写、原子替换、密钥的环境变量查找、schema 校验
-//   - 上层拿到的是**不可变快照**，避免边解析边读文件带来的竞态
+// Boundary of responsibility (docs/03-architecture.md):
+//   - core has only types and pure logic, not one line of IO
+//   - store handles all reads and writes, atomic
+//     replacement, env var lookup for keys, schema validation
+//   - the upper layer gets an **immutable snapshot**,
+//     avoiding races from reading files while resolving
 package store
 
 import (
@@ -25,20 +27,21 @@ import (
 	"github.com/rzbdz/newgate/lib/i18n"
 )
 
-// Snapshot 一次性读齐的配置快照。解析阶段只看它，不再回头读盘。
+// Snapshot a config snapshot read all at once. The resolution
+// phase looks only at it, and never goes back to disk.
 type Snapshot struct {
 	Providers *domain.Providers
 	Profiles  []*domain.Profile
 	State     *domain.State
 }
 
-// Load 读取完整快照。坏掉的 profile 文件跳过而不是让整体失败——
-// 一个手改坏的文件不该让所有 agent 停摆；doctor 会报出来。
+// Load reads a complete snapshot. A broken profile file is skipped rather than failing
+// everything -- one hand-broken file should not stall every agent; doctor reports it.
 func Load() (*Snapshot, error) {
-	// 模块贡献的动态角色键（omo 的 omo-sisyphus / cat-deep …）跟着快照一起
-	// 刷新：它们也是配置——键是谁、缺省跟哪一档走，都写在模块自己的文件里。
-	// 读失败不挡住加载（失败开放）：那个模块的键退化成「没注册」，
-	// 用户在 `newgate omo` / doctor 里能看到原因。
+	// Module-contributed dynamic role keys (omo's omo-sisyphus / cat-deep ...) are refreshed along
+	// with the snapshot: they are config too -- which keys there are, and which tier each defaults to,
+	// are written in the module's own files. A read failure does not block loading (fail-open): that
+	// module's keys degrade to "not registered", and the user can see why in `newgate omo` / doctor.
 	_ = roleprov.Refresh()
 
 	provs, err := LoadProviders()
@@ -58,17 +61,19 @@ func Load() (*Snapshot, error) {
 	return &Snapshot{Providers: provs, Profiles: ps, State: LoadState()}, nil
 }
 
-// ---------- 原子写 ----------
+// ---------- atomic writes ----------
 
-// writeJSON 落一份 JSON 配置：序列化，然后交给 writeFileAtomic 那条唯一的写路径。
+// writeJSON writes a JSON config: serialize, then hand it to writeFileAtomic, the one write path.
 //
-// **不要在这里自己拼 `path + ".tmp"`**——那是这一段原来的写法，也正是
-// writeFileAtomic 当初被改掉的那个 bug：固定临时名会让两个并发写者撞在同一个
-// inode 上，一个 rename 走了，另一个 rename 的是一份被对方写了一半的内容。两份
-// 实现并存，只会让其中一份慢慢腐坏（这一份当时就腐坏了），所以这里直接调它。
+// **Do not assemble `path + ".tmp"` here** -- that was this passage's original spelling,
+// and exactly the bug writeFileAtomic was changed for: a fixed temporary name makes
+// two concurrent writers collide on the same inode, one renames away, and the other
+// renames a copy the first had written halfway. Two implementations coexisting only
+// rot one of them slowly (this one was rotten at the time), so call it directly here.
 //
-// 权限不在参数里了：能到这里的调用方一律要 0660（配置目录是多人共享读的），
-// writeFileAtomic 本来就落这个值，多一个参数只会多一种写法。
+// Permissions are no longer a parameter: every caller that gets here wants
+// 0660 (the config directory is shared for group reading), writeFileAtomic
+// lands that value anyway, and one more parameter is only one more spelling.
 func writeJSON(path string, v interface{}) error {
 	b, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
@@ -78,12 +83,14 @@ func writeJSON(path string, v interface{}) error {
 	return writeFileAtomic(path, b)
 }
 
-// Write 原子地覆盖一份配置文件，并在替换之前把当前那份抄进历史环。
+// Write atomically overwrites a config file, copying the
+// current copy into the history ring before the replacement.
 //
-// 给**不走 CAS 的写**用：`newgate profile kv --write` 这类由人当场发起的转换没有
-// 「加载时的基线」可比，但它仍然必须走这一条路径——直接 os.WriteFile 会让进程死在
-// 半路时留下一份被截断的配置，而且**那一版连备份都没有**（备份恰恰是为一件事存在
-// 的）。判据是代价不对称：多一次 rename 换掉「一次截断 = 配置没了」。
+// For **writes that do not go through CAS**: conversions initiated by a person on the spot,
+// like `newgate profile kv --write`, have no "baseline at load" to compare, but must still take
+// this path -- a direct os.WriteFile leaves a truncated config when the process dies halfway,
+// and **that version has not even a backup** (the backup exists for exactly this). The criterion
+// is asymmetric cost: one more rename in exchange for "a truncation = the config is gone".
 func Write(path string, data []byte) error { return writeFileAtomic(path, data) }
 
 func readJSON(path string, v interface{}) error {
@@ -96,10 +103,11 @@ func readJSON(path string, v interface{}) error {
 
 // ---------- providers ----------
 
-// LoadProviders 读 provider 表，并把 api_key_env 指向的环境变量解析成明文。
+// LoadProviders reads the provider table, and resolves the
+// environment variables api_key_env points at into plaintext.
 //
-// 这个解析放在 store 而不是 core：读环境变量是 IO，core 必须保持纯净
-// （domain.Provider.Key() 因此只返回 APIKey 字段）。
+// This resolution is in store rather than core: reading env vars is IO, and core
+// must stay pure (domain.Provider.Key() therefore returns only the APIKey field).
 func LoadProviders() (*domain.Providers, error) {
 	p := &domain.Providers{Providers: map[string]domain.Provider{}}
 	if err := readJSON(paths.ProvidersFile(), p); err != nil {
@@ -119,26 +127,28 @@ func LoadProviders() (*domain.Providers, error) {
 	return p, nil
 }
 
-// SaveProviders 写 provider 表。
+// SaveProviders writes the provider table.
 //
-// 0660 而不是 0600：共享部署模型（同一台机器、developer 组的多用户管理
-// 同一个 newgate，见 docs/03）里组员要能读它——`newgate status` / wrapper
-// 都要解析 provider。组边界就是信任边界；单用户部署想收紧，chmod 0600
-// providers.json 即可，代码不会把它改回去（只在写入时用这个 mode）。
-// 注意：不能把 LoadProviders 解析出来的环境变量值写回去，否则密钥就落盘了。
-// 调用方必须传入原始形态。
+// 0660 rather than 0600: in the shared deployment model (one machine, several users
+// in the developer group managing the same newgate, see docs/03) group members must be
+// able to read it -- `newgate status` / the wrapper both need to resolve providers. The
+// group boundary is the trust boundary; a single-user deployment that wants it tighter
+// can chmod 0600 providers.json, and the code will not change it back (it only uses
+// this mode when writing). Note: the env var values LoadProviders resolved must not be
+// written back, otherwise the key lands on disk. The caller must pass the original form.
 func SaveProviders(p *domain.Providers) error {
 	return writeJSON(paths.ProvidersFile(), p)
 }
 
 // ---------- profiles ----------
 
-// LoadProfile 读一个 profile，**含 extends 合并**（变体只写差异项，
-// 其余从 base 继承，见 domain.Profile.MergeFrom）。
+// LoadProfile reads one profile, **including extends merging** (a variant writes only
+// the differences, the rest is inherited from base, see domain.Profile.MergeFrom).
 //
-// 文件形态两种：`name.json`（canonical，程序写）或 `name.kv`（手写友好，
-// 见 kv.go）。并存时 **.kv 赢**——kv 只会被人刻意创建，它出现就是最新的
-// 意图；`newgate profile kv --write` 转换时会把旧 json 改名 .bak。
+// Two file forms: `name.json` (canonical, written by programs) or `name.kv`
+// (hand-writing friendly, see kv.go). When both exist **.kv wins** -- a kv
+// is only ever created deliberately, and its appearance is the latest intent;
+// `newgate profile kv --write` renames the old json to .bak when converting.
 func LoadProfile(name string) (*domain.Profile, error) {
 	return loadProfile(name, map[string]bool{})
 }
@@ -179,8 +189,9 @@ func readProfileFile(name string) (*domain.Profile, error) {
 	return &pr, nil
 }
 
-// LoadProfileRaw 读**未合并**的原始 profile（extends 声明原样保留）。
-// 给编辑/转换用：对一个紧凑的派生声明改一个字段，不该把它展开成全量。
+// LoadProfileRaw reads the **unmerged** raw profile (the extends
+// declaration kept as is). For editing/conversion: changing one field of
+// a compact derived declaration should not expand it into the whole thing.
 func LoadProfileRaw(name string) (*domain.Profile, error) {
 	pr, err := readProfileFile(name)
 	if err != nil {
@@ -192,8 +203,9 @@ func LoadProfileRaw(name string) (*domain.Profile, error) {
 	return pr, nil
 }
 
-// SaveProfile 写 profile。不含密钥（只有 provider/model 绑定），组内共享读
-// 没有暴露面：wrapper 启动（launch.Launch）本就要解析它来注入真实模型名。
+// SaveProfile writes a profile. Contains no key (only provider/model
+// bindings), so group-shared reading exposes nothing: the wrapper at start-up
+// (launch.Launch) has to resolve it anyway to inject real model names.
 func SaveProfile(pr *domain.Profile) error {
 	return writeJSON(filepath.Join(paths.Mappings(), pr.Name+".json"), pr)
 }
@@ -218,7 +230,7 @@ func ListProfiles() ([]string, error) {
 		default:
 			continue
 		}
-		// 同名 json/kv 只出一个名字（谁赢见 LoadProfile）
+		// A json/kv with the same name yields only one name (for who wins see LoadProfile)
 		if !seen[n] {
 			seen[n] = true
 			out = append(out, n)
@@ -230,17 +242,19 @@ func ListProfiles() ([]string, error) {
 
 // ---------- state ----------
 
-// ValidateState 只回答一件事：state.json **读得出来吗**。
+// ValidateState answers one thing only: can state.json **be read**.
 //
-// 为什么需要它（2026-09-18）：LoadState 是 fail-open 的（读不出来就给零值），
-// 那是对的——一个手改坏的文件不该让所有 agent 停摆。但零值 State 里有两个字段
-// 要命：`DefaultProfile == ""` 让链头是个不存在的 profile（每个请求「无可用候选」），
-// `Port == 0` 让 daemon 监听随机端口（CLI 与客户端按配置里的端口找它，于是
-// 「代理在跑但连不上」）。而 doctor 的「文件」那一项原来只 os.Stat——**存在即 ok**，
-// 于是一个半截 JSON 会被列进 ok 里，doctor 打「全部通过」。
+// Why it is needed (2026-09-18): LoadState is fail-open (gives a zero value when it cannot
+// read), and that is right -- one hand-broken file should not stall every agent. But two fields
+// in a zero-value State are fatal: `DefaultProfile == ""` makes the chain head a nonexistent
+// profile (every request "no usable candidate"), and `Port == 0` makes the daemon listen on
+// a random port (the CLI and clients look for it at the port in the config, hence "the proxy
+// is running but cannot be connected"). And doctor's "files" item used to be only os.Stat --
+// **existing means ok** -- so a half JSON was listed in ok and doctor printed "all passed".
 //
-// 用户手上于是是一组自相矛盾的现象：配置件件都在、doctor 全绿、但没有候选 /
-// 连不上。这一项就该在他会去看的地方报出来。
+// The user was then left with a set of mutually contradictory phenomena:
+// every config file is there, doctor is all green, but no candidate
+// / cannot connect. This item should be reported where he will look.
 func ValidateState() error {
 	b, err := ioutil.ReadFile(paths.StateFile())
 	if err != nil {
@@ -253,7 +267,8 @@ func ValidateState() error {
 	if len(probe) == 0 {
 		return i18n.E("the file is empty", nil)
 	}
-	// 顶层能解析还不够：真正要的是它能填进 domain.State（字段类型对得上）。
+	// Being parsable at the top level is not enough: what is really
+	// needed is that it can fill domain.State (the field types match).
 	var st domain.State
 	return json.Unmarshal(b, &st)
 }
@@ -296,19 +311,23 @@ func SaveState(s *domain.State) error {
 	if err != nil {
 		return err
 	}
-	// 临时文件名随机、同目录（见 writeFileAtomic）：固定名 "<path>.tmp" 是两个
-	// 并发写者会撞上的名字，撞上就是「你 rename 了别人的字节」。
+	// Temporary file names are random and in the same directory (see
+	// writeFileAtomic): a fixed "<path>.tmp" is a name two concurrent writers
+	// will collide on, and a collision means "you renamed someone else's bytes".
 	return writeFileAtomic(paths.StateFile(), b)
 }
 
-// StateBytes 是 SaveState 会写下去的那份字节：已知字段 + 各模块自己那段原文。
+// StateBytes is the bytes SaveState would write: known
+// fields + each module's own source-text section.
 //
-// 导出它是因为**写这份文件的路径不止一条**（命令行改档位/改开关点，浏览器改同一个
-// 开关点），而安全的那条是「读基线 → 比对 → 原子写」（WriteIfUnchanged）。只给一个
-// SaveState 的话，第二个写者要么绕开基线检查直接写（把别人的改动盖掉，而且是静默
-// 的），要么自己拼一遍序列化——拼漏了 ModuleConfig，别人的模块段就整段消失。
+// Exported because **more than one path writes this file** (the command line changes tiers /
+// switches, the browser changes the same switch), and the safe one is "read baseline -> compare ->
+// atomic write" (WriteIfUnchanged). With only a SaveState, the second writer would either bypass
+// the baseline check and write directly (overwriting someone's change, and silently), or assemble
+// the serialization itself -- forget ModuleConfig and someone's whole module section vanishes.
 //
-// 序列化的规则只在这里有一份：哪些键是已知字段、哪些是别人寄存的原文。
+// The serialization rules exist in only one copy: which keys
+// are known fields, which are source text deposited by others.
 func StateBytes(s *domain.State) ([]byte, error) {
 	typed, err := json.Marshal(s)
 	if err != nil {
@@ -330,26 +349,27 @@ func StateBytes(s *domain.State) ([]byte, error) {
 	return append(b, '\n'), nil
 }
 
-// NewControlToken 生成控制端点令牌（crypto/rand，48 位十六进制）。
+// NewControlToken generates a control endpoint token (crypto/rand, 48 hex digits).
 func NewControlToken() string {
 	b := make([]byte, 24)
 	if _, err := crand.Read(b); err != nil {
-		// rand 失败几乎只在早期 boot 的虚拟机里发生；退化到时间熵也比
-		// 空令牌（= 端点永远 403）好
+		// rand failing almost only happens in VMs early in boot; degrading to time
+		// entropy is still better than an empty token (= the endpoint forever 403)
 		return fmt.Sprintf("%x", time.Now().UnixNano())
 	}
 	return hex.EncodeToString(b)
 }
 
-// EnsureControlToken 幂等地保证 state.json 里有控制令牌，返回最新 state。
+// EnsureControlToken idempotently guarantees state.json
+// has a control token, returning the latest state.
 //
-// 必须在 daemon.Spawn **之前**调用（cmdStart / launch.Launch / Serve 各自
-// 兜一次底）：令牌先落盘，daemon 起来时 watcher 的初次加载就能读到，
-// 不存在「daemon 拿着空令牌跑着」的窗口。之后所有 LoadState→SaveState
-// 的调用方（--set-profile 等）都从盘上重新读，令牌不会被冲掉。
-// 写盘失败**必须报出去**：令牌写不出去时 /__newgate/stop 与 /__newgate/upgrade
-// 会拒掉所有请求（跨用户停机就没了），而调用方原来拿不到任何信号。与
-// CLAUDE.md §3.1 记的那个 umask 权限坑是同一条现场。
+// Must be called **before** daemon.Spawn (cmdStart / launch.Launch / Serve each catch it once):
+// the token lands on disk first, so the daemon's watcher reads it on its first load, and there
+// is no window of "the daemon running with an empty token". Afterwards every LoadState->SaveState
+// caller (--set-profile etc.) re-reads from disk, and the token is not washed away.
+// A failed write **must be reported**: when the token cannot be written, /__newgate/stop and
+// /__newgate/upgrade reject every request (cross-user stop is gone), while the caller used to get
+// no signal at all. It is the same scene as the umask permission pit recorded in CLAUDE.md §3.1.
 func EnsureControlToken() (*domain.State, error) {
 	s := LoadState()
 	if s.ControlToken != "" {
@@ -362,9 +382,10 @@ func EnsureControlToken() (*domain.State, error) {
 	return s, nil
 }
 
-// SetActiveProfile 设置某个 agent 的链头。agent 为空 = 设全局默认。
+// SetActiveProfile sets an agent's chain head. An empty agent = set the global default.
 //
-// 校验存在后才写，**绝不静默回落**——那正是「切了没生效」这类故障的来源。
+// Writes only after validating existence; **never falls back silently**
+// -- that is exactly where "switched it and nothing happened" comes from.
 func SetActiveProfile(agent, profile string) error {
 	if _, err := LoadProfile(profile); err != nil {
 		avail, _ := ListProfiles()
@@ -383,18 +404,20 @@ func SetActiveProfile(agent, profile string) error {
 	return SaveState(s)
 }
 
-// ClearActiveProfile 让某个 agent 回落到全局默认。
+// ClearActiveProfile makes an agent fall back to the global default.
 func ClearActiveProfile(agent string) error {
 	s := LoadState()
 	delete(s.Active, agent)
 	return SaveState(s)
 }
 
-// SetDefaultProfile 改全局默认；clearAgents 为真时顺带把每个 agent 的链头清掉。
+// SetDefaultProfile changes the global default; when
+// clearAgents is true, also clears each agent's chain head.
 //
-// 两件事**一次写完**（一次 Load + 一次 Save）：分两次的话，中间那一刻 state.json
-// 是半成品——默认已经改了、客户端还没收敛——而另一次编辑恰好落在那一刻就会被
-// 后一次 Save 整个盖掉。这与「保存是 CAS」那条防的是同一类事故。
+// The two things are **written in one go** (one Load + one Save): done in two, state.json
+// is half-finished for a moment -- the default already changed, the clients not yet
+// converged -- and another edit landing exactly in that moment would be overwritten entirely
+// by the later Save. This guards against the same class of accident as "saving is CAS".
 func SetDefaultProfile(profile string, clearAgents bool) error {
 	if _, err := LoadProfile(profile); err != nil {
 		avail, _ := ListProfiles()
@@ -409,15 +432,17 @@ func SetDefaultProfile(profile string, clearAgents bool) error {
 	return SaveState(s)
 }
 
-// ClearAllAgentProfiles 让**每一个** agent 都回落到全局默认，返回清掉了几条。
+// ClearAllAgentProfiles makes **every** agent fall back to
+// the global default, returning how many entries were cleared.
 //
-// 它是「force apply」那件事的落点：改全局默认 profile 时，单独设过的那些 agent
-// 不会跟着走——那是**对的**（它们是被明确指定过的），但用户常常想要的是「全部
-// 收敛回跟随，然后我只要维护一个默认」。逐个客户端去点一遍是十六次操作，而这个
-// 动作就是那件事本身。
+// It is where "force apply" lands: when changing the global default profile, the agents set on
+// their own do not follow -- that is **right** (they were explicitly designated), but what the
+// user often wants is "converge everything back to following, then I maintain just one default".
+// Clicking through each client is sixteen operations, and this action is that thing itself.
 //
-// 返回条数是为了让调用方能说一句「清了 N 条」：一个把十六行配置删掉的动作，
-// 如果屏幕上什么都不说，用户没法确认它到底做了没有。
+// It returns the count so the caller can say "cleared N": an action
+// that deletes sixteen lines of config, saying nothing on screen,
+// leaves the user unable to confirm whether it did anything at all.
 func ClearAllAgentProfiles() (int, error) {
 	s := LoadState()
 	n := len(s.Active)
@@ -428,15 +453,17 @@ func ClearAllAgentProfiles() (int, error) {
 	return n, SaveState(s)
 }
 
-// SetTakeoverWanted 记下「用户要不要接管这个 agent」（期望态）。
-// 只改期望态，不碰磁盘——具体怎么接管是 runtime/takeover 的事。
+// SetTakeoverWanted records "does the user want this agent taken over"
+// (desired state). Changes only the desired state, not touching disk
+// -- how takeover is actually done is runtime/takeover's business.
 func SetTakeoverWanted(agent string, want bool) error {
 	s := LoadState()
 	if s.Takeover == nil {
 		s.Takeover = map[string]bool{}
 	}
 	if want {
-		// 默认就是想接管，所以「想要」用删除条目表示，state.json 保持干净
+		// The default is wanting takeover, so "wanted" is
+		// expressed by deleting the entry, keeping state.json clean
 		delete(s.Takeover, agent)
 	} else {
 		s.Takeover[agent] = false
@@ -447,9 +474,9 @@ func SetTakeoverWanted(agent string, want bool) error {
 	return SaveState(s)
 }
 
-// ---------- 校验 ----------
+// ---------- validation ----------
 
-// Validate 检查所有 profile 引用的 provider 都存在、都有 key。
+// Validate checks that every provider referenced by any profile exists and has a key.
 func Validate() []string {
 	var problems []string
 	provs, err := LoadProviders()

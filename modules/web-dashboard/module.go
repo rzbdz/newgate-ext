@@ -1,17 +1,17 @@
-// Package webdashboard 是 web 界面 + 它的 BFF。
+// Package webdashboard is the web UI plus its BFF.
 //
-// 它挂在 gateway 那个端口上（默认 8899）的 /ui 前缀下——**共用一个端口**是部署
-// 上的硬要求（防火墙、反代、ACL 都按端口配），而这件事的机制在内核的 porthub：
-// 这里只负责「把我的 handler 挂上去」，分派是 porthub 的事。
+// It mounts under /ui on the gateway port (8899 by default) - **one shared port** is a
+// hard deployment requirement (firewall, reverse proxy, ACLs are per-port), and the
+// mechanism is the kernel's porthub: here only "mount my handler"; dispatch is porthub's.
 //
-// # 它不认识任何模块
+// # It knows no module
 //
-// BFF 读的是一本**概念账本**（core/lib/view）：各模块自己 Optional 依赖这个能力，
-// 在自己的 Start 里注册「我这一面长什么样、怎么改」。所以加一个模块的界面不需要
-// 改这个包，也不需要改前端——这跟 cli 与它的注入点（modules/cli/extension）是
-// 同一条规矩的两份实现。
+// The BFF reads a **concept ledger** (core/lib/view): each module Optionally depends on
+// that capability and registers in its own Start "what this face looks like, how to
+// change it". So adding a module's UI changes neither this package nor the front end -
+// the same rule as cli and its injection point (modules/cli/extension), implemented twice.
 //
-// 提供出去的 Service 只有 Register：查询那半边留给界面自己（它要渲染）。
+// The Service handed out has only Register: the query half is left to the UI (it renders).
 package webdashboard
 
 import (
@@ -28,67 +28,67 @@ import (
 	modules "github.com/rzbdz/newgate/component"
 )
 
-// assets 是前端构建产物。**产物进版本控制**（与 manifest/modules_gen.go 同一套
-// 做法）：这样 `go build` 与 CI 仍然完全离线，前端工具链只在开发机上出现。
+// assets is the front-end build output. **Artifacts go in version control** (same as
+// manifest/modules_gen.go): `go build` and CI stay fully offline; front-end tooling dev-only.
 //
 //go:embed all:web/dist
 var assets embed.FS
 
-// Name 是这个模块在装配表、概念账本与 `newgate plugin` 里的名字（= 目录名）。
+// Name is this module's name in assembly, the ledger and `newgate plugin` (= dir name).
 //
-// 它同时是**概念账本的来源名**（见 Start 里那个 Register）：账本按来源给每一节分栏，
-// 而这一节的来源就是本模块。
+// It is also **the concept ledger's source name** (see the Register in Start): the ledger
+// groups each section by source, and this section's source is this module.
 const Name = "web-dashboard"
 
 const (
-	// Prefix 是它在共享端口上的落脚点。改这里要同时改前端的 base 路径。
+	// Prefix is its landing spot on the shared port. Change it, change the front-end base too.
 	Prefix = "/ui"
-	// AssetDir 是构建产物目录。**只有一处真相**：embed 读它、前端构建写它、
-	// 以后那条「产物是否过期」的检查也读它（同 modules/i18n 的 CatalogDir）。
+	// AssetDir is the build output directory. **One source of truth**: embed reads it, the
+	// front-end build writes it, a future "artifact stale?" check reads it (like CatalogDir).
 	AssetDir = "web/dist"
 )
 
-// New 声明 web 界面组件。
+// New declares the web UI component.
 //
-// 依赖全是 Optional：
-//   - porthub 在 → 挂到共享端口（这是常规形态）；
-//   - porthub 不在、serving 在 → 退路：自己监听一个端口（见 standalone.go）。
-//     它**只在服务进程里**起来——登记到 serving 那本账上，等拥有端口的那位说
-//     「我要开始服务了」。为什么不在这里自己判断：模块的 Start 每一条
-//     `newgate …` 命令都会跑（modules/i18n 的教训），自己起监听等于敲一次
-//     `newgate status` 就开一台服务器；而模块读 os.Args 判断「我是不是服务进程」
-//     是内核明文禁止的。
-//   - cliapi 在 → 挂 `newgate web`（告诉用户界面上哪儿找）。
+// All dependencies are Optional:
+//   - porthub present -> mount on the shared port (the normal shape);
+//   - porthub absent, serving present -> fallback: listen on a port of our own (standalone.go).
+//     It comes up **only in the serving process** - registers on serving's ledger and waits
+//     for whoever owns the port to say "I am about to serve". Why not decide here: a
+//     module's Start runs on every `newgate …` command (the modules/i18n lesson), so
+//     listening here means one `newgate status` opens a server; and reading os.Args to
+//     tell "am I the serving process" is explicitly forbidden in the kernel.
+//   - cliapi present -> mount `newgate web` (tells the user where to find the UI).
 func New() modules.Component {
 	views := viewapi.NewRegistry()
-	// 皮肤登记处（见 api.go 与 theme.go）：与概念账本同一条路——界面提供端口，
-	// 皮肤模块在自己的 Start 里往里注册。装一个皮肤不必改这个包，删光皮肤模块
-	// 界面也照常工作（走出厂那套令牌）。
+	// Theme registry (see api.go and theme.go): same path as the concept ledger - the UI
+	// offers the port and theme modules register in their own Start. Adding a theme needs no
+	// change here, and with every theme module gone the UI still works (factory tokens).
 	themes := newThemeRegistry()
-	// 扩展端点的登记处（见 api.go 与 extension.go）：与概念账本同一条路——界面
-	// 提供端口，模块在自己的 Start 里登记一个名字与一个函数。没装任何扩展时
-	// 端点一律 404，界面回落到自己能拿到的那份数据。
+	// Extension endpoint registry (see api.go and extension.go): same path as the concept
+	// ledger - the UI offers the port, modules register a name and a function in their Start.
+	// With no extensions installed endpoints 404, and the UI falls back to its own data.
 	extensions := newExtensionRegistry()
 	plugins := newPluginRegistry()
-	// self 是这次装配的事实：挂上了没有、挂上之后怎么撤。命令要用它如实回答
-	// 「界面上哪儿找」——装了本模块**不等于**它有入口（porthub 缺席时就没有），
-	// 让命令按实际挂载结果说话，而不是按「我装了没有」猜。
+	// self is this assembly's fact: mounted or not, and how to undo the mount. The command
+	// uses it to answer "where is the UI" truthfully - having this module **is not** having an
+	// entry (absent porthub there is none); let the actual mount speak, not "am I installed".
 	self := &instance{views: views}
 	return modules.Component{
 		Name: Name,
 		Desc: func() string { return i18n.T("the web configuration interface: a BFF and the front-end bundle", nil) },
 		Type: "cli", // 「界面壳」这一类的既有取值（tui / simple-cli 也是它）
 		Requires: []modules.Requirement{
-			// 共享端口（常态）。
+			// Shared port (the norm).
 			modules.Optional(porthubapi.Capability),
-			// 服务期回调（退路：没装 porthub 时自己监听一个端口）。它**只有这一
-			// 处用**——判据不是「我是谁」，而是「有人开始服务了吗」。
+			// Serve-time callback (fallback: own port when porthub is absent). Used **in exactly
+			// one place** - the criterion is not "who am I" but "has someone started serving".
 			modules.Optional(servingapi.Capability),
 			modules.Optional(cliapi.Capability),
 		},
-		// 这本账就是**它提供出去的东西**：别的模块 Optional 依赖它，在自己的
-		// Start 里往里注册概念。所以它必须在 Bind 期就存在（New 里建），而不是
-		// Start 里——后者的话，比它先 Start 的模块就注册不进来了。
+		// This ledger is **what it provides**: other modules Optionally depend on it and
+		// register concepts in their own Start. So it must exist at Bind time (built in New),
+		// not in Start - else modules that Start earlier could not register.
 		Provides: []modules.Provision{
 			modules.Provide(viewapi.Capability, viewapi.Service(views)),
 			modules.Provide(ThemeCapability, ThemeService(themes)),
@@ -100,17 +100,17 @@ func New() modules.Component {
 			if err != nil {
 				return err
 			}
-			// 皮肤那张卡（见 theme.go 的 themeConcept）：注册进**本模块自己提供的那本
-			// 账**——与别的模块注册自己的节是同一条路，只不过这里的贡献者与账本是同一个
-			// 模块。它**无条件注册**，不跟「这次有没有入口」走：这一格说的是本模块的
-			// 一个设置，而没有入口的装配（porthub 与 serving 都不在）是个罕见的退路，
-			// 为它加一条分支只会多一个没人跑的状态。
+			// The theme card (see themeConcept in theme.go): registered into **the ledger this
+			// module itself provides** - the same path other modules use, except contributor and
+			// ledger are one module. It registers **unconditionally**, not per "is there an
+			// entry this time": the cell is one of this module's settings; an entry-less assembly
+			// (no porthub, no serving) is a rare fallback; a branch adds an unrun state.
 			//
-			// 读函数是**惰性**的：快照那一刻才求值，所以皮肤模块（它们排在本模块之后
-			// Start）那时已经登记完了——下拉里才不会少几档。
+			// The read function is **lazy**: evaluated at snapshot time, so theme modules (they
+			// Start after this one) have registered by then - the dropdown loses no options.
 			if _, err := views.Register(Name,
-				// 消息必须是**字面量**（i18n 的扫描器只认它——拼接出来的句子没法
-				// 翻译，见那条错误的原文）。所以这里不抽常量。
+				// The message must be a **literal** (the i18n scanner only sees those - a concatenated
+				// sentence cannot be translated, see that error's source). So no constant here.
 				viewapi.Title(func() string { return i18n.T("Interface", nil) }).Of(viewapi.FieldSettings),
 				func() ([]viewapi.Concept, error) {
 					return []viewapi.Concept{themeConcept(themes)}, nil
@@ -118,31 +118,31 @@ func New() modules.Component {
 				return err
 			}
 			handler := NewHandler(sub, views, themes, extensions, plugins)
-			// 两条路，只能走一条，而且都要先问「这条路存不存在」：
+			// Two paths, only one taken, and each asks first "does this path exist":
 			//
-			//   - **porthub 在**：挂到共享端口上（常态）。挂载是进程内注册（不产生
-			//     socket、不产生 goroutine），所以即便在 CLI 进程里跑也没有副作用
-			//     ——那个进程根本没有 HTTP 服务在读这张表。
-			//   - **porthub 不在、serving 在**：退路，自己监听一个端口。但**只在
-			//     服务进程里**（见 serving 包）：登记回调，等拥有端口的那位说
-			//     「我要开始服务了」。
-			//   - 两个都不在：这次装配里界面没有入口（`newgate web` 会说清楚）。
+			//   - **porthub present**: mount on the shared port (normal). Mounting is an in-process
+			//     registration (no socket, no goroutine), so even in a CLI process it has no side
+			//     effect - that process has no HTTP server reading this table.
+			//   - **porthub absent, serving present**: fallback, own port. But **only in the serving
+			//     process** (see the serving package): register a callback, wait for whoever owns the
+			//     port to say "I am about to serve".
+			//   - neither: this assembly's UI has no entry (`newgate web` will say so).
 			hub, hasHub := modules.Get(ctx, porthubapi.Capability)
 			listeners, hasServing := modules.Get(ctx, servingapi.Capability)
 			switch {
 			case hasHub:
-				// 挂在 Prefix 上（不是 Prefix+"/"）：porthub 的 matches 认「正好等于
-				// 前缀」与「前缀 + /」两种，都由这一条挂载接住（见 lib/porthub）。
-				// 于是 `/ui` 落进来时，StripPrefix 交出来的是**空路径**。
+				// Mounted on Prefix (not Prefix+"/"): porthub's matches accepts "exactly the prefix"
+				// and "prefix + /", both caught by this mount (see lib/porthub). So when `/ui`
+				// arrives, StripPrefix hands over an **empty path**.
 				//
-				// 空路径本身能画（static 把它当 index.html），但**浏览器解析相对地址
-				// 时会拿当前文档的路径去截**：从 `/ui` 出发，`api/snapshot` 成了
-				// `/api/snapshot`——那个路径没人认领，落进数据面的 catch-all，被当成
-				// 一次形状不认识的转发请求（400，还算进了数据面流量）。所以空路径先
-				// 重定向到带斜杠的那一份。
+				// An empty path renders fine (static treats it as index.html), but **the browser
+				// resolves relative URLs by truncating at the document path**: from `/ui`,
+				// `api/snapshot` becomes `/api/snapshot` - nobody claims it, it lands in the data
+				// plane's catch-all as a forward request of unknown shape (400, counted as data
+				// traffic). So an empty path redirects to the version with a trailing slash.
 				//
-				// 302 而不是 301：永久重定向会被浏览器近乎永久地缓存，将来 Prefix 一
-				// 改，见过 301 的机器就再也纠正不回来了（standalone.go 那边同理）。
+				// 302, not 301: permanent redirects are cached almost forever, so after a Prefix
+				// change a machine that saw 301 can never be corrected (same in standalone.go).
 				stem := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					if r.URL.Path == "" {
 						http.Redirect(w, r, Prefix+"/", http.StatusFound)
@@ -155,8 +155,8 @@ func New() modules.Component {
 				if err != nil {
 					return err
 				}
-				// Mount 的放销是 func()，OnServe 的是 component.Release
-				// （func() error）——归一成后者，停机路径只认一种形状。
+				// Mount's release is func(), OnServe's is component.Release (func() error) -
+				// normalize to the latter, so the shutdown path knows one shape only.
 				self.mode = modeShared
 				self.release = func() error { rel(); return nil }
 			case hasServing:
@@ -170,8 +170,8 @@ func New() modules.Component {
 			default:
 				self.mode = modeNone
 			}
-			// 命令是**弱依赖**：没装任何界面时本模块的功能一个都不少（概念照常
-			// 注册，模块照常工作），只是没人能敲 `newgate web`。
+			// The command is a **weak dependency**: with no UI installed nothing is lost (concepts
+			// still register, the module still works), just nobody can type `newgate web`.
 			if ui, ok := modules.Get(ctx, cliapi.Capability); ok {
 				rel, err := ui.RegisterCommand(&webCommand{self: self})
 				if err != nil {
@@ -196,12 +196,12 @@ func New() modules.Component {
 	}
 }
 
-// instance 是这次装配里本模块的事实，Start 与命令共享它。
+// instance is this module's fact in this assembly; Start and the command share it.
 //
-// 为什么命令不能自己判断「porthub 在不在」：那是**装配期**的事实，而命令跑在
-// 「这次调用」里——两者在同一个进程里（每条命令都会装配一遍），但让命令去问
-// porthub 等于让它重复一遍装配期的判断，还会在「装配期挂失败、命令期看着像在」
-// 时给出错误答案。
+// Why the command cannot judge "is porthub there" itself: that is an **assembly-time**
+// fact, and the command runs in "this call" - same process (every command assembles
+// once), but asking porthub means repeating the assembly-time judgement, and it
+// answers wrong when "mount failed at assembly, looks present at command time".
 type instance struct {
 	views    *viewapi.Registry
 	mode     string
@@ -209,13 +209,13 @@ type instance struct {
 	releases []func() error
 }
 
-// 这次装配里界面**入口**的三种形态。命令要按它说话：装了本模块不等于它有入口。
+// The three shapes of the UI's **entry**. The command speaks by it: installed is not entry.
 const (
-	// modeShared：挂在共享端口上（porthub 在）。
+	// modeShared: mounted on the shared port (porthub present).
 	modeShared = "shared"
-	// modeStandalone：自己监听一个端口（porthub 不在、serving 在），且只在服务
-	// 进程里真的起来。
+	// modeStandalone: own port (porthub absent, serving present), and it really comes up
+	// only in the serving process.
 	modeStandalone = "standalone"
-	// modeNone：这次装配里没有任何入口（两个都没有）。
+	// modeNone: no entry at all in this assembly (both absent).
 	modeNone = "none"
 )

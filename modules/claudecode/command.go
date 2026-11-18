@@ -14,20 +14,21 @@ import (
 
 const nakedDefaultTTL = 60 * time.Second
 
-// nakedCommand 是 `newgate naked`：把 Bash 安全分类器短路成直接批准。
+// nakedCommand is `newgate naked`: short-circuit the Bash safety classifier into direct approval.
 //
-// **它住在这里而不是 modules/cli**：裸奔是 classifier-naked 这个插件的用户
-// 界面，而插件的配置类型（NakedConfig / NakedConfigKey）就归本模块。2026-09-18
-// 之前它写在 modules/cli 里，于是 cli 为了一个配置结构体 import 了整个
-// claudecode 模块——「cli 认识一个客户端模块」，正是 everything is module 要
-// 消灭的那种依赖。现在由本模块经 cli.RegisterCommand 注入，cli 不认识本模块。
+// **It lives here rather than in modules/cli**: naked mode is the user interface of the
+// classifier-naked plugin, and the plugin's config types (NakedConfig / NakedConfigKey)
+// belong to this module. Before 2026-09-18 it was written in modules/cli, so cli
+// imported the whole claudecode module for one config struct -- "cli knows a client
+// module", exactly the dependency everything is module exists to kill. Now this
+// module injects it via cli.RegisterCommand, and cli does not know this module.
 //
-// 用法：
+// Usage:
 //
-//	newgate naked off         关闭（默认）
-//	newgate naked on          开 60 秒自限窗口
-//	newgate naked 30s         自定义时长（支持 30s / 2m / 2min / 1h …）
-//	newgate naked forever     永久开（每次请求打 [naked] 日志 + status 红色警告）
+//	newgate naked off         turn off (default)
+//	newgate naked on          open a self-limiting 60-second window
+//	newgate naked 30s         custom duration (30s / 2m / 2min / 1h … supported)
+//	newgate naked forever     turn on permanently (logs [naked] per request + red status warning)
 type nakedCommand struct{}
 
 var (
@@ -45,9 +46,9 @@ func (nakedCommand) Help() cliapi.HelpLine {
 	}
 }
 
-// Run 分派子命令。为什么不复用 `newgate st on/off`：st 管的是插件层整体开关、
-// 不带时间语义；裸奔需要细粒度到期，而且输出必须足够醒目——用户打开的是自家
-// 安全门。
+// Run dispatches the subcommand. Why not reuse `newgate st on/off`: st manages the plugin
+// layer's overall switch and carries no time semantics; naked mode needs fine-grained expiry,
+// and its output must be loud enough -- what the user is opening is their own safety gate.
 func (nakedCommand) Run(host cliapi.Host, args []string) int {
 	sub := cliapi.Positional(args, 0)
 	switch sub {

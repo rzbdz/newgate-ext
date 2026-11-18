@@ -13,16 +13,16 @@ import (
 	"github.com/rzbdz/newgate/component/entry"
 )
 
-// 这一组锁的是**发行版自己那张图**的不变式：每份规格书能不能装起来、规格书点名与
-// 关掉的东西是不是真的生效、自己的模块是不是真的可摘。
+// This group pins **the distribution's own graph** invariants: can each spec assemble,
+// do the spec's named and disabled things really take effect, are our modules removable.
 //
-// 它与内核那条摘除矩阵（core 仓库的 app/matrix_test.go）是**互补**的：那条管内核
-// 自带的十三个模块，这条管本发行版装的那几个 + 规格书本身的语义。两边的判据是同一
-// 句：**装不起来可以，但得是因为有人硬依赖它，而且报错要点名缺哪个端口。**
+// It is **complementary** to the kernel's removal matrix (core's app/matrix_test.go):
+// that covers the kernel's thirteen modules, this the distribution's few + spec semantics;
+// same criterion: **removal may fail only on a hard dependency, naming the missing port.**
 
-// servesEntry 报告组件是不是**入口账本**的提供者——组合根自己要用的那个端口。
-// 判据从组件的 Provides 里读：内核的 app.Selection.Load 用的也是这一条
-// （compositionRootPorts），两边是同一句话的两种说法。
+// servesEntry reports whether a component provides the **entry ledger** - the port the
+// composition root itself needs. Read from Provides: the kernel's app.Selection.Load uses
+// the same one (compositionRootPorts) - two statements of one sentence.
 func servesEntry(c modules.Component) bool {
 	for _, p := range c.Provides {
 		if p.Name() == modules.Name(entry.Capability) {
@@ -32,8 +32,8 @@ func servesEntry(c modules.Component) bool {
 	return false
 }
 
-// staticLoader 把一张写死的组件表交出去（内核 app/matrix_test.go 用的是同一招：
-// 组合根的 Loader 接口只有一个方法，测试里没必要造一个真 Loader）。
+// staticLoader hands out a hard-coded component table (same trick as the kernel's
+// app/matrix_test.go: the composition root's Loader has one method; no real Loader needed).
 type staticLoader []modules.Component
 
 func (s staticLoader) Load() ([]modules.Component, error) { return s, nil }
@@ -52,15 +52,15 @@ func TestEverySpecBuilds(t *testing.T) {
 
 			sel, ok := manifest.Specs()[name]
 			if !ok {
-				t.Fatalf("SpecNames 报了 %q，Specs() 里却没有", name)
+				t.Fatalf("SpecNames reported %q but it is not in Specs()", name)
 			}
 			comps, err := sel.Load()
 			if err != nil {
-				t.Fatalf("装配选择：%v", err)
+				t.Fatalf("assembly selection: %v", err)
 			}
 			manager, err := modules.NewContext(context.Background(), staticLoader(comps))
 			if err != nil {
-				t.Fatalf("起图：%v", err)
+				t.Fatalf("starting the graph: %v", err)
 			}
 			t.Cleanup(func() { _ = manager.Stop(context.Background()) })
 
@@ -70,7 +70,7 @@ func TestEverySpecBuilds(t *testing.T) {
 			}
 			for _, e := range sel.Extra {
 				if !got[e.Component.Name] {
-					t.Errorf("规格书点名了 %s（目录 %s），图上没有它——点名的东西必须真的装上；图 = %v",
+					t.Errorf("the spec names %s (directory %s) but it is not in the graph -- anything named must really be installed; graph = %v",
 						e.Component.Name, e.Dir, manager.ComponentNames())
 				}
 			}
@@ -92,21 +92,21 @@ func TestEverySpecBuilds(t *testing.T) {
 	}
 }
 
-// TestEverySpecHasAtMostOneUI 每份规格书里界面**最多一个**，而旗舰那份必须正好有一个。
+// TestEverySpecHasAtMostOneUI: **at most one** UI per spec, and the flagship exactly one.
 //
-// 为什么值得单独一条（内核侧有一条同样的 TestExactlyOneUI）：端口不声明基数，而
-// cli 的 capability 恰恰是按设计唯一的——装第二个 ui 的后果是**完全静默**的：装配
-// 成功、不报错，而它拿到的命令/状态行/体检项全是零个（注入只进声明顺序里的第一个，
-// 而顺序是**目录名字母序**）。`dist-simple-cli.json` 这份规格书存在的全部意义就是
-// 把内核的 cli 换成 simple-cli；这里就是那个「换」字有没有做对的判据。
+// Why its own test (the kernel has a matching TestExactlyOneUI): ports do not declare
+// cardinality, yet cli's capability is unique by design - a second ui is **fully silent**:
+// assembly succeeds, no error, but it gets zero commands/status rows/probe items (injection
+// reaches only the first in declaration order = **directory-name order**).
+// `dist-simple-cli.json` exists only to swap the kernel's cli; this is the criterion on it.
 //
-// 为什么上界才是判据（2026-09-20 改，原来是「正好一个」）：骨架配置
-// `dist-hello.json` **根本没有界面**——它整个发行版就是「框架 + 一个 hello」，
-// `newgate` 那个入口由 hello 自己申报（见 modules/hello）。所以「多于一个」是
-// 那条静默失效，「一个都没有」只是骨架配置的常态。
+// Why the upper bound (changed 2026-09-20, was "exactly one"): the skeleton `dist-hello.json`
+// **has no UI** - it is "framework + one hello", and `newgate` is declared by hello itself
+// (see modules/hello). So "more than one" is the silent failure; "none" is the skeleton's
+// normal state.
 //
-// 「至少有一个」这件事没有丢，只是换了个更贴事实的说法——见下面那条
-// TestEverySpecClaimsTheBareInvocation：界面只是申报入口的一种方式。
+// "At least one" is not lost, just rephrased closer to fact - see
+// TestEverySpecClaimsTheBareInvocation below: a UI is only one way to declare an entry.
 func TestEverySpecHasAtMostOneUI(t *testing.T) {
 	for _, name := range manifest.SpecNames() {
 		t.Run(name, func(t *testing.T) {
@@ -115,43 +115,43 @@ func TestEverySpecHasAtMostOneUI(t *testing.T) {
 			sel := manifest.Specs()[name]
 			comps, err := sel.Load()
 			if err != nil {
-				t.Fatalf("装配选择：%v", err)
+				t.Fatalf("assembly selection: %v", err)
 			}
 			manager, err := modules.NewContext(context.Background(), staticLoader(comps))
 			if err != nil {
-				t.Fatalf("起图：%v", err)
+				t.Fatalf("starting the graph: %v", err)
 			}
 			t.Cleanup(func() { _ = manager.Stop(context.Background()) })
 
 			names := manager.ComponentNames()
 			uis := modules.GetAll(manager.Context(), cliapi.Capability)
 			if len(uis) > 1 {
-				t.Fatalf("装了 %d 个 ui，最多只能 1 个——多于一个时只有目录名排最前的那个生效，"+
-					"其余完全静默；图 = %v", len(uis), names)
+				t.Fatalf("installed %d uis, at most 1 is allowed -- with more than one only the one whose directory name sorts first takes effect,"+
+					"and the rest are completely silent; graph = %v", len(uis), names)
 			}
 
-			// 兜底入口（entry.DefaultRank）只能有一个申报者：cli 与 hello 都在那一档
-			// 上，两个同图时谁被 Resolve 选中会退化成「目录名字母序决定进程行为」。
-			// 那是隐式判据，所以在规格书这一层直接禁掉这个组合。
+			// The fallback entry (entry.DefaultRank) takes one declarant only: cli and hello
+			// both sit there, and with both in one graph Resolve degrades into
+			// "directory-name order decides process behaviour". So the spec layer forbids it.
 			if len(uis) == 1 && contains(names, "hello") {
-				t.Fatalf("这张图里既有界面又有 hello：两者都在兜底档上申报入口，"+
-					"谁被选中取决于目录名字母序（cli 排在前面）——hello 属于骨架配置，"+
-					"别把它装进带界面的发行版；图 = %v", names)
+				t.Fatalf("this graph has both a UI and hello: both claim the entry at the fallback rank,"+
+					"so which one is picked depends on directory-name alphabetical order (cli sorts first) -- hello belongs to the skeleton config,"+
+					"do not install it into a distribution that has a UI; graph = %v", names)
 			}
 		})
 	}
 }
 
-// TestEverySpecClaimsTheBareInvocation 每份规格书装出来的二进制，**裸调用
-// `newgate` 必须有人认领**。
+// TestEverySpecClaimsTheBareInvocation: in every spec's binary, a **bare `newgate`
+// must be claimed by someone**.
 //
-// 为什么这是比「必须有界面」更准的判据：界面只是申报入口的**一种**方式。骨架配置
-// （框架 + hello）没有任何界面，它的 `newgate` 由 hello 申报——两张图在这条判据下
-// 都成立，而它们真正共有的、不许坏的东西也正好是这一条：**用户敲下 `newgate`
-// 得到的必须是一个行为，不是一句「没人认领这次调用」加退出码 69**。
+// Why better than "must have a UI": a UI is only **one** way to declare an entry. The
+// skeleton (framework + hello) has no UI; hello declares `newgate` - both graphs pass,
+// and what they truly share, not-to-break, is this: **typing `newgate` must yield
+// behaviour, not "nobody claimed this call" plus exit code 69**.
 //
-// 它守的退化很具体：某个发行版只装了数据面模块（网关、接管），忘了装任何申报入口
-// 的东西——编译过、测试过、`newgate status` 一切正常，而裸敲 `newgate` 直接退出。
+// The degeneration is concrete: a distribution with only data-plane modules (gateway,
+// takeover) and nothing declaring an entry - builds, tests, status fine, bare call exits.
 func TestEverySpecClaimsTheBareInvocation(t *testing.T) {
 	for _, name := range manifest.SpecNames() {
 		t.Run(name, func(t *testing.T) {
@@ -160,39 +160,39 @@ func TestEverySpecClaimsTheBareInvocation(t *testing.T) {
 			sel := manifest.Specs()[name]
 			comps, err := sel.Load()
 			if err != nil {
-				t.Fatalf("装配选择：%v", err)
+				t.Fatalf("assembly selection: %v", err)
 			}
-			// NewContext 会真的 Start 一遍，所以申报是发生过的（不是"摆了个组件"）。
+			// NewContext really Starts, so declarations happened (not "a component is sitting there").
 			manager, err := modules.NewContext(context.Background(), staticLoader(comps))
 			if err != nil {
-				t.Fatalf("起图：%v", err)
+				t.Fatalf("starting the graph: %v", err)
 			}
 			t.Cleanup(func() { _ = manager.Stop(context.Background()) })
 
 			registry := modules.MustGet(manager.Context(), entry.Capability)
 			if h, why, ok := registry.Resolve(entry.Process{Argv0: "newgate"}); !ok {
-				t.Fatalf("`newgate` 没人认领（%s）——这个二进制裸跑只会打一句人话就退出；图 = %v",
+				t.Fatalf("`newgate` is unclaimed (%s) -- this binary just prints one human sentence and exits when run bare; graph = %v",
 					why, manager.ComponentNames())
 			} else {
-				t.Logf("裸调用归 %s", h.Name())
+				t.Logf("the bare invocation goes to %s", h.Name())
 			}
 		})
 	}
 }
 
-// TestDistModulesAreRemovable 发行版自己的模块逐个摘一遍。
+// TestDistModulesAreRemovable removes the distribution's own modules one by one.
 //
-// 判据与内核那条矩阵逐字相同：**摘掉一个模块，要么装得起来**（它没人硬依赖），
-// **要么当场失败并点名缺的那个端口**（有人硬依赖它）。两种都是对的结果，错的是
-// 第三种：摘掉之后装不起来，却没人声明过依赖——那说明有人在不声明的情况下伸手拿
-// 别人提供的东西（`MustGet`），摘模块的人会拿到一个指不到真因的错。
+// The criterion is word-for-word the kernel matrix: **remove a module, either it assembles**
+// (nobody hard-depends), **or it fails on the spot naming the missing port** (someone does).
+// Both are right; the third is wrong: does not assemble yet nobody declared a dependency -
+// someone reached for another's data via `MustGet`; the remover gets an unhelpful error.
 func TestDistModulesAreRemovable(t *testing.T) {
 	const specName = "dist.json"
 	testkit.Sandbox(t)
 
 	base, ok := manifest.Specs()[specName]
 	if !ok {
-		t.Fatalf("没有 %s 这份规格书", specName)
+		t.Fatalf("there is no spec named %s", specName)
 	}
 	if len(base.Extra) < 2 {
 		t.Fatalf("%s only names %d modules — the matrix degenerated", specName, len(base.Extra))
@@ -211,7 +211,7 @@ func TestDistModulesAreRemovable(t *testing.T) {
 			}
 			comps, err := sel.Load()
 			if err != nil {
-				t.Fatalf("装配选择：%v", err)
+				t.Fatalf("assembly selection: %v", err)
 			}
 			dependents := hardDependents(comps, victim.Component)
 			manager, err := modules.NewContext(context.Background(), staticLoader(comps))
@@ -219,28 +219,28 @@ func TestDistModulesAreRemovable(t *testing.T) {
 			if err == nil {
 				t.Cleanup(func() { _ = manager.Stop(context.Background()) })
 				if len(dependents) > 0 {
-					t.Fatalf("摘掉 %s 竟然装起来了，但 %v 声明了硬依赖它的端口——"+
-						"说明那条依赖没进图（Requires 里写成了 Optional？）", victim.Dir, dependents)
+					t.Fatalf("removing %s still assembles, but %v declares a hard dependency on a capability it provides --"+
+						"which means that dependency is missing from the graph (was Requires written as Optional?)", victim.Dir, dependents)
 				}
 				return
 			}
 			if len(dependents) == 0 {
-				t.Fatalf("摘掉 %s 装不起来，可是没有任何模块声明硬依赖它——有人在不声明的情况下"+
-					"伸手拿它提供的东西：\n%v", victim.Dir, err)
+				t.Fatalf("removing %s does not assemble, but no module declares a hard dependency on it -- someone reaches"+
+					"for what it provides without declaring it:\n%v", victim.Dir, err)
 			}
 			for _, provision := range victim.Component.Provides {
 				if strings.Contains(err.Error(), provision.Name()) {
 					return
 				}
 			}
-			t.Fatalf("摘掉 %s 的报错没有点名它提供的端口（%v），无法判断失败原因：\n%v",
+			t.Fatalf("the error from removing %s does not name the capability it provides (%v), so the cause cannot be told:\n%v",
 				victim.Dir, provisionNames(victim.Component), err)
 		})
 	}
 }
 
-// hardDependents 返回那些**硬依赖**了 victim 提供的端口的组件名（弱依赖不算：
-// 它本来就在说「你不在我也能跑」）。
+// hardDependents returns the components that **hard-depend** on the ports victim provides
+// (weak ones excluded: they already say "I run without you").
 func hardDependents(all []modules.Component, victim modules.Component) []string {
 	provided := map[string]bool{}
 	for _, p := range victim.Provides {

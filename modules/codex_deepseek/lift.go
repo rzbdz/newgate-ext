@@ -6,69 +6,76 @@ import (
 	"github.com/rzbdz/newgate-ext/modules/gateway/rewrite"
 )
 
-// Tools 是 Codex 放工具定义的那条 input 项的类型名。
+// Tools is the type name of the input item where Codex puts tool definitions.
 //
-// 它是**客户端的方言**，不是上游的字段名——所以它住在这里，而内核里一个字都不
-// 该出现（转发热路径那条链上连 "responses" 都不认识）。
+// It is **the client's dialect**, not an upstream field name -- so it lives here, and not a word
+// of it should appear in the kernel (the forwarding hot path does not even know "responses").
 const Tools = "additional_tools"
 
-// ApplyPatch 是上游唯一原生支持的 custom 工具名。
+// ApplyPatch is the only custom tool name the upstream natively supports.
 //
-// 实测（2026-09-21，打真实 smt-deepseek/deepseek-flash）：把别的 custom 工具原样
-// 发过去是 400 `Unsupported custom tool: 'exec'. Only 'apply_patch' is supported.`
-// 所以除了它，其余 custom 一律降级成 function。
+// Measured (2026-09-21, against real smt-deepseek/deepseek-flash): sending another
+// custom tool as is returns 400 `Unsupported custom tool: 'exec'. Only 'apply_patch'
+// is supported.` So apart from it, every custom is downgraded to function.
 const ApplyPatch = "apply_patch"
 
-// freeformParams 是给降级出来的 function 补的参数表。
+// freeformParams is the parameter table added to a downgraded function.
 //
-// 它必须存在：OpenAI 的 function 工具**要求**有 parameters，而 custom 工具没有
-// 这个字段。形状是一个字符串参数——custom 工具的输入本来就是一整段自由文本
-// （Codex 的 exec 收的是一段 JavaScript），塞进一个 `input` 字段是语义上最接近的
-// 表达，模型也一眼看得懂「把原文放这儿」。
+// It must exist: OpenAI's function tools **require** parameters, while
+// custom tools have no such field. The shape is a single string parameter -- a
+// custom tool's input is a whole free-form block of text anyway (Codex's exec takes
+// a piece of JavaScript), and putting it in an `input` field is the semantically
+// closest expression; the model also sees at a glance "put the original text here".
 var freeformParams = []byte(`{"type":"object","properties":{"input":{"type":"string"}},"required":["input"]}`)
 
-// liftTools 把 Codex 的工具树抬成 DeepSeek 认的顶层 tools 数组。
+// liftTools lifts Codex's tool tree into the top-level tools array DeepSeek recognizes.
 //
-// 返回 (新数组, 被降级的工具名, 抬出了东西没有)。
+// Returns (new array, names of downgraded tools, whether anything was lifted).
 //
-// **抬本身才是修根因的那一步**，降级只是顺带：哪怕一个 custom 都没有（全是原生
-// function），只要它们挂在 input[0] 里，模型就一个工具也看不见。所以「有没有抬出
-// 东西」看的是**叶子数**，不是「有没有降级过」。
+// **The lift itself is the step that fixes the root cause**; the downgrade is incidental: even
+// with not one custom (all native function), as long as they hang in input[0] the model sees
+// not a single tool. So "was anything lifted" counts **leaves**, not "was anything downgraded".
 //
-// 抬的是**两层结构**：`namespace`（Codex 用来分组，如 functions / collaboration）
-// 在上游没有对应概念，拍平成同一个数组——工具名本来就是全局唯一的，分组只是给
-// 人看的。拍平之后每个叶子要么原样（原生 function），要么降级（custom → function）。
+// What is lifted is a **two-level structure**: `namespace` (Codex's grouping, e.g. functions
+// / collaboration) has no upstream counterpart and is flattened into the same array -- tool
+// names are globally unique anyway, and the grouping is only for humans. After flattening,
+// each leaf is either as is (native function) or downgraded (custom -> function).
 //
-// 全程字节手术：叶子元素的字节除了被降级的那几个（改一个字段值、插一个字段）
-// 之外逐字不动。reasoning 那条规矩在这里同样成立——能不动就不动。
-// degradeTopLevel 处理「工具已经躺在顶层 tools 里」的形状。
+// Byte surgery throughout: the bytes of leaf elements are untouched verbatim except
+// for the few that were downgraded (one field value changed, one field added).
+// The reasoning rule holds here too -- if it can be left alone, leave it alone.
+// degradeTopLevel handles the shape where tools already sit in the top-level tools.
 //
-// 两种来源（见 Apply 的注释）：Codex 旧版把工具挂在 input[0].additional_tools 里，
-// 新版直接放在顶层 tools（含 namespace 分组、web_search）。顶层那份是 DeepSeek
-// 已经在读的，**不需要抬**，但仍可能夹着一条 `custom`——而 DeepSeek 只认
-// apply_patch 一个 custom，别的一律 400。所以对顶层这份只做一件事：把非
-// apply_patch 的 custom 降级成 function。其余字节一个不动。
+// Two sources (see the Apply comment): old Codex
+// hangs tools in input[0].additional_tools, new Codex puts them directly in the top-level
+// tools (including namespace groups and web_search). The top-level copy is what DeepSeek
+// already reads, so it **needs no lift**, but it may still hold a `custom` -- and DeepSeek
+// knows only one custom, apply_patch; any other gets a 400. So the only thing done to
+// the top-level copy: downgrade non-apply_patch customs to function. The rest untouched.
 //
-// **namespace 里面也要扫**：`custom` 藏在 namespace 里时上游报的是**另一句** 400
-// ——`Currently custom tools are not allowed inside a namespace. Found custom tool
-// 'exec' in tools[1].tools[0].`（实测 2026-09-21，打真实 deepseek-flash）。只看
-// 顶层的写法会漏掉这一族，而漏掉的后果与顶层那条一模一样：400、沿链换人。
-// 所以判据只有一条「`type: "custom"` 且不是 apply_patch」，与 liftInto 逐字一致
-// ——两处不能各有一套「什么算 custom」。
+// **Inside a namespace is scanned too**: when `custom` hides in a namespace the upstream
+// reports a **different** 400 -- `Currently custom tools are not allowed inside a namespace.
+// Found custom tool 'exec' in tools[1].tools[0].` (measured 2026-09-21 against real
+// deepseek-flash). A version that looks only at the top level misses this family, and the
+// consequence is exactly the same as the top-level one: 400, switch along the chain. So there
+// is only one criterion -- "`type: "custom"` and not apply_patch" -- word for word the same
+// as liftInto; the two places cannot each have their own notion of "what counts as custom".
 //
-// 返回：改写后的数组、被降级的工具名、有没有真的动过。没 custom 时 changed 为
-// false，调用方据此原样转发——「没有要修的就不动手」，与 reasoning 那条规矩同。
+// Returns: the rewritten array, the downgraded tool names, whether anything was
+// actually changed. With no custom, changed is false, and the caller forwards as is
+// based on that -- "do not touch what needs no fixing", the same rule as reasoning.
 func degradeTopLevel(arr []byte) (out []byte, degraded map[string]bool, changed bool) {
 	degraded = map[string]bool{}
 	out, touched := degradeLevel(arr, degraded)
 	return out, degraded, touched
 }
 
-// degradeLevel 降级一层数组里的 custom，并递归进 namespace。
+// degradeLevel downgrades the customs in one level of an array, recursing into namespaces.
 //
-// 递归只走 namespace 这一种容器：它是 Codex 唯一用来分组的结构，也是上游那句
-// 「not allowed inside a namespace」点名的位置。别的 type（function /
-// web_search / 以后新加的）一律原样留着——不认识的形状不动，与 liftInto 同。
+// The recursion only follows the namespace container: it is Codex's
+// only grouping structure, and the spot the upstream's "not allowed inside a
+// namespace" names. Any other type (function / web_search / ones added later)
+// is left as is -- an unrecognized shape is not touched, same as liftInto.
 func degradeLevel(arr []byte, degraded map[string]bool) (out []byte, changed bool) {
 	items, ok := rewrite.ArrayItems(arr)
 	if !ok {
@@ -123,21 +130,24 @@ func degradeLevel(arr []byte, degraded map[string]bool) (out []byte, changed boo
 	return buf.Bytes(), touched
 }
 
-// liftTools 把 Codex 的工具树抬成 DeepSeek 认的顶层 tools 数组。
+// liftTools lifts Codex's tool tree into the top-level tools array DeepSeek recognizes.
 //
-// 返回 (新数组, 被降级的工具名, 抬出来的叶子数)。
+// Returns (new array, names of downgraded tools, number of leaves lifted).
 //
-// **抬本身才是修根因的那一步**，降级只是顺带：哪怕一个 custom 都没有（全是原生
-// function），只要它们挂在 input[0] 里，模型就一个工具也看不见。所以返回值里那个
-// 数是**叶子数**而不是「降级过几条」——调用方用它报一句真话（「抬上来 N 条」），
-// 也用它判断「有没有抬出东西」（0 = 什么都没抬，原样转发）。
+// **The lift itself is the step that fixes the root cause**; the downgrade
+// is incidental: even with not one custom (all native function), as long as they hang in
+// input[0] the model sees not a single tool. So the number in the return is **leaves**,
+// not "how many were downgraded" -- the caller uses it to report a true sentence
+// ("lifted N"), and to decide "was anything lifted" (0 = nothing lifted, forward as is).
 //
-// 抬的是**两层结构**：`namespace`（Codex 用来分组，如 functions / collaboration）
-// 在上游没有对应概念，拍平成同一个数组——工具名本来就是全局唯一的，分组只是给
-// 人看的。拍平之后每个叶子要么原样（原生 function），要么降级（custom → function）。
+// What is lifted is a **two-level structure**: `namespace` (Codex's grouping, e.g. functions
+// / collaboration) has no upstream counterpart and is flattened into the same array -- tool
+// names are globally unique anyway, and the grouping is only for humans. After flattening,
+// each leaf is either as is (native function) or downgraded (custom -> function).
 //
-// 全程字节手术：叶子元素的字节除了被降级的那几个（改一个字段值、插一个字段）
-// 之外逐字不动。reasoning 那条规矩在这里同样成立——能不动就不动。
+// Byte surgery throughout: the bytes of leaf elements are untouched verbatim except
+// for the few that were downgraded (one field value changed, one field added).
+// The reasoning rule holds here too -- if it can be left alone, leave it alone.
 func liftTools(arr []byte) (out []byte, degraded map[string]bool, lifted int) {
 	degraded = map[string]bool{}
 	leaves := liftInto(nil, arr, degraded)
@@ -156,14 +166,16 @@ func liftTools(arr []byte) (out []byte, degraded map[string]bool, lifted int) {
 	return buf.Bytes(), degraded, len(leaves)
 }
 
-// liftInto 递归拍平工具树，把每个叶子收进 dst，顺路记下被降级的工具名。
+// liftInto recursively flattens the tool tree, collecting each
+// leaf into dst and recording downgraded tool names along the way.
 //
-// 单条叶子降级失败（形状不认识）时**保留原样**并继续：一条坏工具不该把整份工具表
-// 丢掉——那会让模型连别的工具都看不见，比发一条它可能不认的声明糟得多
-// （fail-open，与插件层那条规矩同）。
+// When a single leaf fails to downgrade (unrecognized shape) it is **kept as is**
+// and the loop goes on: one bad tool should not throw away the whole tool table --
+// that would hide even the other tools from the model, far worse than sending one
+// declaration it may not understand (fail-open, the same rule as the plugin layer).
 //
-// 认不出的 type 也原样留着（default 那一支）：将来 Codex 加一种新的工具类型时，
-// 抬上去的是它写的原文，而不是我们猜的形状。
+// An unrecognized type is kept as is too (the default branch): when Codex adds a
+// new tool type later, what is lifted is the text it wrote, not a shape we guessed.
 func liftInto(dst [][]byte, arr []byte, degraded map[string]bool) [][]byte {
 	items, ok := rewrite.ArrayItems(arr)
 	if !ok {
@@ -199,10 +211,11 @@ func liftInto(dst [][]byte, arr []byte, degraded map[string]bool) [][]byte {
 	return dst
 }
 
-// toFunction 把一条 custom 声明改写成 function 声明。
+// toFunction rewrites a custom declaration into a function declaration.
 //
-// 只动两处：`type` 的值，和补一个 `parameters`。description 原样留着——模型挑
-// 工具靠的就是它（Codex 那段 exec 说明长得像文档，是有用的）。
+// Only two things change: the value of `type`, and an added `parameters`.
+// description stays as is -- it is what the model picks tools by
+// (Codex's exec description reads like documentation, and it is useful).
 func toFunction(item []byte) ([]byte, error) {
 	out, err := rewrite.ReplaceTopLevelString(item, "type", "function")
 	if err != nil {
@@ -214,9 +227,10 @@ func toFunction(item []byte) ([]byte, error) {
 	return rewrite.InsertTopLevelRaw(out, "parameters", freeformParams)
 }
 
-// codexTools 取出客户端请求里那条 additional_tools 的工具数组。
+// codexTools pulls the tool array of the additional_tools item out of the client request.
 //
-// 找不到就返回 false——「这份请求不是 Codex 的形状」不是错误，是「不归我管」。
+// Returns false when not found -- "this request is not the
+// Codex shape" is not an error, it is "not mine to handle".
 func codexTools(body []byte) ([]byte, bool) {
 	input, ok := rewrite.TopLevelRaw(body, "input")
 	if !ok {
@@ -235,11 +249,12 @@ func codexTools(body []byte) ([]byte, bool) {
 	return nil, false
 }
 
-// setTopLevelTools 把顶层 `tools` 写成本次抬出来的数组。
+// setTopLevelTools writes the top-level `tools` as the array lifted this time.
 //
-// 客户端那份请求里 `tools` 通常是**缺席**或 `null`（实测 0.155.1 两种都见过），
-// 所以插入与替换都要处理。这条区别不能用「先插再替换」抹平：InsertTopLevelRaw
-// 对已存在的键直接报错，而报错会被上层当成「这个插件的这一手没跑」。
+// In the client's request `tools` is usually **absent** or `null` (measured: 0.155.1
+// showed both), so both insertion and replacement must be handled. This distinction cannot be
+// flattened with "insert then replace": InsertTopLevelRaw errors outright on an existing key,
+// and that error would be taken by the upper layer as "this move of this plugin did not run".
 func setTopLevelTools(body, tools []byte) ([]byte, error) {
 	if _, has := rewrite.TopLevelRaw(body, "tools"); has {
 		return rewrite.ReplaceTopLevelRaw(body, "tools", tools)

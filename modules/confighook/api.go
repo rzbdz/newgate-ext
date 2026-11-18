@@ -11,91 +11,104 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// ConfigHooks 是客户端模块写入配置扩展的所有权端口。
-// 每次注册都返回 Release，使模块停止时能精确撤销自己的贡献。
+// ConfigHooks is the ownership port through which client modules
+// write their config extensions. Every registration returns a Release,
+// so a module can precisely undo its own contribution on stop.
 type ConfigHooks interface {
 	RegisterAgent(*Agent) (modules.Release, error)
-	// RegisterAgentInstaller 交上「我家工具怎么装」（见 AgentInstaller）。
-	// 不交 = 这个客户端不提供自助安装，`newgate <agent>` 在没装的机器上照旧报错。
+	// RegisterAgentInstaller submits "how my tool is installed" (see
+	// AgentInstaller). Not submitting = this client offers no self-install,
+	// and `newgate <agent>` reports an error as before on a machine without it.
 	RegisterAgentInstaller(agentID string, installer AgentInstaller) (modules.Release, error)
-	// RegisterAgentFacts 交上「我自己那个客户端此刻怎么样」（见 AgentFacts）。
+	// RegisterAgentFacts submits "how my client is doing right now" (see AgentFacts).
 	//
-	// 它是**另一条**注册而不是描述符上的字段：描述符在 Start 里交一次就定了，
-	// 而事实每次被问都可能不一样，而且**可以不交**（不交就用缺省判据）。
+	// It is **another** registration rather than a field on the descriptor: the descriptor
+	// is settled once when submitted in Start, while the facts may differ every time they
+	// are asked, and **need not be submitted** (without them the default criterion applies).
 	RegisterAgentFacts(agentID string, facts AgentFacts) (modules.Release, error)
 	BindTakeover(agentID string, takeover ConfigTakeover) (modules.Release, error)
 	RegisterStateField(owner, name string) (modules.Release, error)
 }
 
-// AgentCatalog 是运行时和 CLI 的只读客户端目录，
-// 与 ConfigHooks 分离后，消费者无法借查询能力修改注册表。
+// AgentCatalog is the read-only client catalog for runtime and the CLI, separated from
+// ConfigHooks so consumers cannot modify the registry through the query capability.
 type AgentCatalog interface {
 	Get(id string) (*Agent, bool)
 	Names() []string
-	// Facts 拿到某个客户端交上来的运行时事实；nil = 它没交。
+	// Facts gets the runtime facts some client submitted; nil = it submitted none.
 	Facts(id string) AgentFacts
-	// Installer 拿到某个客户端的安装方式；nil = 它没交（那就不提供自助安装）。
+	// Installer gets some client's install method; nil = it submitted none (then no self-install).
 	Installer(id string) AgentInstaller
-	// Installed 报告这个客户端在不在**这台机器**上。
+	// Installed reports whether this client is on **this machine**.
 	//
-	// 有事实就问事实（那是客户端自己的判据），没有就按 Bin 在 PATH 上找（跳过我们
-	// 自己的 shim 目录，见 InstalledDefault）。缺省为什么是「找 PATH」而不是
-	// 「假定在」：这个判据的用途正是回答「到底有没有」，假定在就回到了它要修的那个 bug。
+	// With facts, ask the facts (that is the client's own criterion); without them, look for
+	// Bin on PATH (skipping our own shim directory, see InstalledDefault). Why the default is
+	// "look on PATH" rather than "assume present": the whole use of this criterion is answering
+	// "is it there at all", and assuming present returns to the bug it was meant to fix.
 	Installed(id string) bool
 }
 
-// 两个 capability 是同一注册表的读写分面：写端只交给扩展模块，
-// 读端交给 runtime 和 CLI，防止查询者获得注册权限。
+// The two capabilities are the write and read faces of one registry:
+// the write end goes only to extension modules, the read end to
+// runtime and the CLI, so queriers cannot gain registration permission.
 var (
 	ConfigHooksCapability  = modules.NewCapability[ConfigHooks]("config-hooks")
 	AgentCatalogCapability = modules.NewCapability[AgentCatalog]("agent-catalog")
 )
 
-// Slot 描述客户端的一个模型槽位如何映射到 newgate 语义档位。
-// EnvVar 为空的槽位仍可供配置接管使用，但不会参与进程环境注入。
+// Slot describes how one model slot of a client maps to a newgate semantic tier. A slot with an
+// empty EnvVar can still be used by config takeover, but takes no part in process env injection.
 type Slot struct {
 	Name string
-	// Tier 是这个槽位的**缺省**归属。用户可以在配置里改（见 AgentFacts.SlotTier）
-	// ——改了之后生效的是那个，不是这个。所以读「此刻走哪儿」要走 Facts，别直接
-	// 读它。
+	// Tier is this slot's **default** assignment. The user can change it in the
+	// config (see AgentFacts.SlotTier) -- once changed, that one takes effect, not
+	// this. So to read "where it goes right now" go through Facts, not this directly.
 	Tier string
-	// Also 是这个槽位**除档位之外**还认的取值——客户端自己的约定，不是我们的档位。
+	// Also are the values this slot recognizes **besides
+	// tiers** -- the client's own convention, not our tiers.
 	//
-	// 为什么要有它：Claude Code 的 subagent 槽位可以写 `inherit`（「跟父会话走」），
-	// 那是**它的**语义，newgate 只是原样注入这个字符串。没有这一格的话，槽位映射
-	// 那条可配置的路会把 `inherit` 当成打错的档位名滤掉——界面上设不了，手改的还会
-	// 被静默忽略（看着像没生效，而说明里明明写着可以这么写）。
+	// Why it is needed: Claude Code's subagent slot can be written `inherit` ("follow
+	// the parent session"), which is **its** semantics, and newgate only injects that string as
+	// is. Without this cell, the configurable slot-mapping path would filter `inherit` out as a
+	// mistyped tier name -- unsettable in the UI, and a hand edit silently ignored (looks like
+	// it did not take effect, while the description plainly says it can be written that way).
 	//
-	// 取值归**客户端模块**声明（那是它的知识）；内核与配置层只负责「这些也是合法的」。
+	// The values are declared by **the client module** (that is its knowledge); the
+	// kernel and the config layer are only responsible for "these are legal too".
 	Also []string
-	// ModelSuffix 是注入这个槽位时**无条件**拼在模型名后面的后缀——同样也是
-	// **客户端自己的能力标记**，不是我们的档位语义。
+	// ModelSuffix is the suffix **unconditionally** appended to the model name when injecting
+	// this slot -- equally **the client's own capability marker**, not our tier semantics.
 	//
-	// 出现的理由（2026-09-28）：Claude Code 用 `[1m]` 后缀声明「这个模型有 100 万
-	// 上下文」。它是客户端侧的一个开关，不是上游模型 id 的一部分——数据面转发前
-	// 会把它剥掉（见 gateway/protocol.NormalizeRole），反向解析则靠这一层：剥掉
-	// 之后剩下的模型名正是配置里那个名字，所以点名解析照旧命中。
+	// Why it appeared (2026-09-28): Claude Code uses the `[1m]` suffix to declare "this
+	// model has 1M of context". It is a client-side switch, not part of the upstream model
+	// id -- the data plane strips it before forwarding (see gateway/protocol.NormalizeRole),
+	// and the reverse resolution relies on this layer: the model name left after
+	// stripping is exactly the name in the config, so naming resolution hits as before.
 	//
-	// 为什么装在槽位上、而不是「整个 agent 一个开关」：槽位之间可以不同。Claude
-	// Code 的 subagent 槽位允许取 `inherit`（见 Also），给那个值加后缀会注入一个
-	// 它不认识的模型名；开关挂在槽位上，客户端自己按槽位表态。
+	// Why it sits on slots, rather than "one switch per whole agent": slots can
+	// differ. Claude Code's subagent slot may take `inherit` (see Also), and adding
+	// a suffix to that value would inject a model name it does not recognize;
+	// with the switch on the slot, the client speaks for itself slot by slot.
 	//
-	// 为什么内核不校验它、也不认识 `[1m]`：后缀是个**字符串**，含义归声明它的
-	// 客户端模块。我们绕开内核 import 客户端模块的那条线，于是契约只剩「注入时
-	// 拼在值后面」这一件事——两端用的是同一个常量，谁也没在核心里写死 `[1m]`。
+	// Why the kernel neither validates it nor knows `[1m]`: the suffix is **a string**, and what
+	// it means belongs to the client module that declares it. We go around the line where the
+	// kernel would import the client module, so the contract is only "append it to the value when
+	// injecting" -- both ends use the same constant, and nobody hardcodes `[1m]` in the kernel.
 	//
-	// 空 = 不拼。它**只作用于模型名**，窗口声明那两个变量是数字，永远不沾它
-	// （见 Agent.ContextWindowEnv 与 modules/runtime/launch）。
+	// Empty = append nothing. It **applies only to model names**; the two window-declaration variables
+	// are numbers and never touch it (see Agent.ContextWindowEnv and modules/runtime/launch).
 	ModelSuffix string
 	EnvVar      string
 	Desc        string
 }
 
-// Apply 把要注入这个槽位的值补成最终形态：拼上客户端自己的能力标记。
+// Apply fills the value to inject for this slot into its
+// final form: appending the client's own capability marker.
 //
-// 动态模式（值 = 档位名）与钉死模式（值 = 真实模型名）都走这里，所以「标记一定
-// 在」这条只写一次。空值不拼——一个空的槽位变量注入进去等于告诉客户端「模型叫
-// 空字符串」，那是另一个 bug，不该被这里顺手制造出来。
+// Both dynamic mode (value = tier name) and pinned mode (value = real model name) go
+// through here, so "the marker is always there" is written once. An empty value appends
+// nothing -- an empty slot variable injected tells the client "the model is called the
+// empty string", which is another bug and should not be manufactured in passing here.
 func (s Slot) Apply(model string) string {
 	if model == "" || s.ModelSuffix == "" {
 		return model
@@ -103,23 +116,26 @@ func (s Slot) Apply(model string) string {
 	return model + s.ModelSuffix
 }
 
-// Agent 是一个可接管 AI CLI 的完整描述符。
-// 它集中声明二进制发现、协议、模型槽位和配置接管，避免这些知识散落在 runtime。
+// Agent is the complete descriptor of a take-overable AI CLI. It
+// declares binary discovery, protocol, model slots and config takeover
+// in one place, so that knowledge does not scatter across runtime.
 type Agent struct {
 	ID      string
 	Bin     []string
 	Dialect string
-	// Icon 是这个客户端在界面上的图标，SVG **path 的 d 那一串**（`24 24` 视口）。
+	// Icon is this client's icon in the UI, the SVG **path's `d` string** (`24 24` viewport).
 	//
-	// 为什么是「一串路径数据」而不是一个文件名或一个 URL：图标是**客户端的知识**
-	// （与下面的 ContextWindowEnv 同一条），所以由它自己带；而带成路径数据，界面就
-	// 只需要一个 `<svg viewBox="0 0 24 24">` 把它放进去——不必认识任何一套图标库、
-	// 不必读盘、也不必联网。`currentColor` 由界面那一侧填，所以一套图标跟着皮肤走。
+	// Why "a string of path data" rather than a file name or a URL: the
+	// icon is **the client's knowledge** (the same rule as ContextWindowEnv below),
+	// so it brings its own; and as path data the UI only needs an `<svg viewBox="0 0
+	// 24 24">` to put it in -- no icon library to know, no disk to read, no network.
+	// `currentColor` is filled on the UI side, so one set of icons follows the skin.
 	//
-	// 为什么不是前端按 ID 查一张表：那张表就是「界面认识客户端」，而这一层的规矩
-	// 正是它不认识——加一家客户端要改前端，就等于这一格从来没被设计过。
+	// Why not a front-end table looked up by ID: that table would be "the UI knows
+	// the clients", while the rule of this layer is exactly that it does not -- adding a client
+	// would mean changing the front end, which amounts to this cell never having been designed.
 	//
-	// 空 = 这个客户端没给图标（界面画它自己的通用记号，不是画一个空白）。
+	// Empty = this client gave no icon (the UI draws its own generic mark, not a blank).
 	Icon  string
 	Slots []Slot
 
@@ -129,62 +145,72 @@ type Agent struct {
 	Notes      string
 	Config     ConfigTakeover
 
-	// ContextWindowEnv / AutoCompactEnv 是「窗口声明」两个环境变量的**名字**：
-	// 前者走客户端对「未知模型」的窗口假设，后者是它自己的 compact 触发点。
+	// ContextWindowEnv / AutoCompactEnv are the **names** of the two "window
+	// declaration" environment variables: the former drives the client's window
+	// assumption for an "unknown model", the latter is its own compact trigger.
 	//
-	// 名字是**客户端的知识**（Claude Code 叫 CLAUDE_CODE_MAX_CONTEXT_TOKENS），
-	// 所以由 agent 定义填，内核只负责「配置里声明了就注进去」。
-	// 空 = 这个客户端不认识这两种变量（比如 opencode），那就不注入。
+	// The names are **the client's knowledge** (Claude Code's is
+	// CLAUDE_CODE_MAX_CONTEXT_TOKENS), so they are filled in by the agent definition, and the
+	// kernel is only responsible for "if it is declared in the config, inject it". Empty = this
+	// client does not recognize those two variables (opencode, say), and nothing is injected.
 	//
-	// 2026-09-20 之前这两个名字硬编码在 modules/runtime/launch 里——那是内核在
-	// 认识某一家客户端的内部变量名，方向反了。搬到定义上是同一个动作的延续：
-	// 客户端接入归发行版（见发行版的 modules/claudecode），内核只提供这张表。
+	// Before 2026-09-20 these two names were hardcoded in modules/runtime/launch -- that was the
+	// kernel knowing one client's internal variable names, the wrong direction. Moving them onto the
+	// definition is the continuation of the same move: client integration belongs to the distribution
+	// (see the distribution's modules/claudecode), and the kernel only provides this table.
 	ContextWindowEnv string
 	AutoCompactEnv   string
 
-	// ContextWindowCap / AutoCompactCap 是**客户端自己的安全上限**：无论
-	// profile 声明多大，注进去的窗口与 compact 数字都不超过它。0 = 不设上限。
+	// ContextWindowCap / AutoCompactCap are **the client's own safety cap**: however large the
+	// profile declares, the injected window and compact numbers do not exceed it. 0 = no cap.
 	//
-	// 为什么需要（2026-11-12 现场）：Claude Code 的 `[1m]` 名称后缀 + 1M 的
-	// 窗口声明会把会话顶到真实窗口的最后一格。一旦超了，上游的 400 连
-	// /compact 也一起拒——压缩请求本身也带着整段会话，于是**客户端没有自救
-	// 路径**，只能手工删历史。留出余量是唯一能自动恢复的做法；具体数字归
-	// 客户端模块（Claude Code 现在是 512K）。
+	// Why it is needed (the scene on 2026-11-12): Claude Code's `[1m]` name suffix + a
+	// 1M window declaration pushes the session to the very last cell of the real window.
+	// Once over, the upstream's 400 rejects /compact too -- the compaction request itself
+	// carries the whole session, so **the client has no self-rescue path**, only manually
+	// deleting history. Leaving headroom is the only way to recover automatically;
+	// the specific numbers belong to the client module (Claude Code's is 512K now).
 	//
-	// ContextWindowCap 在 profile **没声明**窗口时也当声明用：客户端对未知
-	// 模型的缺省假设通常更小（Claude Code 是 200k），而这台客户端明确能接受
-	// 这个上限。AutoCompactCap 不这样兜底——没声明 compact 就交给客户端按
-	// 它自己的窗口算压缩点，避免在窗口很小时注入一个比窗口还大的值。
+	// ContextWindowCap also counts as a declaration when the profile **does not declare**
+	// a window: the client's default assumption for an unknown model is usually smaller (Claude
+	// Code's is 200k), and this client can plainly take this cap. AutoCompactCap does not backstop
+	// that way -- without a declared compact, let the client compute its compaction point from
+	// its own window, avoiding injecting a value larger than the window when the window is small.
 	ContextWindowCap int
 	AutoCompactCap   int
 }
 
-// AgentFacts 是贡献者对自己那个客户端的**运行时事实**：这一刻它装没装、某个槽位
-// 走哪个档位。
+// AgentFacts are a contributor's **runtime facts** about its own client:
+// whether it is installed at this moment, and which tier some slot takes.
 //
-// # 为什么是一个端口，而不是描述符上的两个函数字段
+// # Why a port rather than two function fields on the descriptor
 //
-// Agent 是**描述符**：Bin、方言、槽位表、环境变量名——那些是「这个客户端是什么」，
-// 不变的、可以打印出来给人看的。而这两个问题的答案随磁盘与配置变（今天卸了、
-// 明天装了；用户改了槽位映射）。把「是什么」与「此刻怎么样」塞进同一个 struct，
-// 依赖注入的那一侧就没了：谁提供、能不能替换、测试里怎么塞一个假的，全都无从谈起
-// ——内核只是捡到一个恰好被赋了值的函数指针。
+// Agent is a **descriptor**: Bin, dialect, slot table, environment variable names --
+// those are "what this client is", unchanging, printable for humans. While the answers
+// to those two questions change with disk and config (uninstalled today, installed
+// tomorrow; the user changed the slot mapping). Stuffing "what it is" and "how it is
+// right now" into one struct removes the dependency-injection side: who provides it,
+// whether it can be replaced, how a fake goes in during tests -- none of it can be
+// discussed; the kernel just picks up a function pointer that happens to be assigned.
 //
-// 端口这一侧是完整的：贡献者**注册**进来（拿得到 Release）、消费者**问**端口、
-// 没注册时有一份写死的缺省（见 AgentCatalog.Installed）。与「注册型 capability
-// 必须返回 Release，consumer 在 Stop 中逆序释放」那条规矩同源。
+// The port side is complete: contributors **register** in (getting a Release),
+// consumers **ask** the port, and without any registration there is a hardcoded default
+// (see AgentCatalog.Installed). Same origin as the rule "a registration-type capability
+// must return a Release, and the consumer releases in reverse order in Stop".
 type AgentFacts interface {
-	// Installed 报告这台机器上有没有这个工具。实现里通常就一句
-	// `Agent().OnPath()`——那条已经跳过了我们自己的 shim 目录。
+	// Installed reports whether this tool is on this machine. The implementation is
+	// usually just `Agent().OnPath()` -- which already skips our own shim directory.
 	Installed() bool
-	// SlotTier 报告某个槽位此刻走哪个档位；空串 = 用描述符里的缺省。
+	// SlotTier reports which tier some slot takes right
+	// now; the empty string = use the descriptor's default.
 	SlotTier(slot Slot) string
 }
 
-// TierOf 是一个槽位此刻实际走的档位：贡献者交了事实就问它，否则用描述符里的缺省。
+// TierOf is the tier a slot actually takes right now: with facts from
+// the contributor, ask them, otherwise use the descriptor's default.
 //
-// 它是**纯函数**（喂事实进来），所以「没交事实时用缺省」这条规则只有一份实现，
-// 谁调用都一样。
+// It is a **pure function** (feed the facts in), so "use the default
+// when no facts" has only one implementation, the same for every caller.
 func TierOf(facts AgentFacts, slot Slot) string {
 	if facts != nil {
 		if t := facts.SlotTier(slot); t != "" {
@@ -194,13 +220,15 @@ func TierOf(facts AgentFacts, slot Slot) string {
 	return slot.Tier
 }
 
-// InstalledDefault 是「这个客户端在不在这台机器上」的**唯一一份判据**：客户端交了
-// 事实就问事实（它有它的知识），没交才在 PATH 上找它的 Bin——且**排除 skipDirs**
-// （我们自己的 shim 目录，由调用方给：shim 放在哪是 runtime 的知识）。
+// InstalledDefault is the **single** criterion for "is this client on this
+// machine": if the client submitted facts ask the facts (it has its knowledge), and
+// only without them look for its Bin on PATH -- and **exclude skipDirs** (our own
+// shim directory, given by the caller: where the shim goes is runtime's knowledge).
 //
-// 为什么是自由函数而不是各处自己写一遍：实现 AgentCatalog 的地方不止一处（真注册表、
-// 测试里的假目录），而「装没装」出现两种答案是这类判据最坏的失效方式——一处说装了、
-// 一处说没装，而两边看起来都对。
+// Why a free function rather than each place writing it: more than one place
+// implements AgentCatalog (the real registry, the fake catalog in tests),
+// and "installed or not" having two answers is the worst way this kind of
+// criterion fails -- one says installed, one says not, and both look right.
 func InstalledDefault(a *Agent, facts AgentFacts) bool {
 	if facts != nil {
 		return facts.Installed()
@@ -211,7 +239,8 @@ func InstalledDefault(a *Agent, facts AgentFacts) bool {
 	return a.OnPath()
 }
 
-// TakeoverReport 记录一次配置接管实际改了什么；接管不能静默成功。
+// TakeoverReport records what one config takeover
+// actually changed; takeover must not succeed silently.
 type TakeoverReport struct {
 	File     string
 	Rewrites []string
@@ -219,8 +248,8 @@ type TakeoverReport struct {
 	Skipped  string
 }
 
-// ConfigTakeover 定义可逆的持久配置接管。
-// Apply 与 Restore 成对，Targets/IsTakenOver 则让 CLI 能在执行前解释当前状态。
+// ConfigTakeover defines a reversible persistent config takeover. Apply and Restore come
+// in pairs, while Targets/IsTakenOver let the CLI explain the current state before acting.
 type ConfigTakeover interface {
 	Targets() []string
 	IsTakenOver(target string) bool
@@ -228,7 +257,8 @@ type ConfigTakeover interface {
 	Restore() ([]string, error)
 }
 
-// EnvSlots 返回需要注入环境变量的槽位，同时保留原始 Slots 供配置型客户端使用。
+// EnvSlots returns the slots that need environment variables
+// injected, keeping the original Slots for config-type clients.
 func (a *Agent) EnvSlots() []Slot {
 	var out []Slot
 	for _, slot := range a.Slots {
@@ -239,10 +269,12 @@ func (a *Agent) EnvSlots() []Slot {
 	return out
 }
 
-// BuildEnv 生成启动客户端所需的最小环境覆盖，不复制当前进程的完整环境。
+// BuildEnv produces the minimal environment override needed to start
+// the client, without copying the current process's whole environment.
 //
-// facts 是「这个客户端此刻怎么样」（见 AgentFacts），由调用方从目录端口取来交给它
-// ——本函数不认识它是怎么算出来的，也不该认识。nil = 用描述符里的缺省。
+// facts is "how this client is right now" (see AgentFacts), fetched by the
+// caller from the catalog port and handed in -- this function does not know
+// how it was computed, and should not. nil = use the descriptor's default.
 func (a *Agent) BuildEnv(port int, authToken string, facts AgentFacts) map[string]string {
 	env := map[string]string{}
 	if a.BaseURLEnv != "" {
@@ -252,14 +284,15 @@ func (a *Agent) BuildEnv(port int, authToken string, facts AgentFacts) map[strin
 		env[a.AuthEnv] = authToken
 	}
 	for _, slot := range a.EnvSlots() {
-		// Apply：客户端的**能力标记**（`[1m]` 那类）在这里拼上去，两种模式
-		// 共用同一次拼接——标记只写一遍，见 Slot.ModelSuffix。
+		// Apply: the client's **capability marker** (`[1m]` and such) is appended here, and
+		// both modes share the same append -- the marker is written once, see Slot.ModelSuffix.
 		env[slot.EnvVar] = slot.Apply(TierOf(facts, slot))
 	}
 	return env
 }
 
-// FindReal 跳过 newgate 自己的 shim 查找真实客户端，防止接管后递归启动自身。
+// FindReal skips newgate's own shim to find the real
+// client, preventing a recursive self-launch after takeover.
 func (a *Agent) FindReal(skipDir string) (string, error) {
 	if p := a.realBin(); p != "" {
 		return p, nil
@@ -268,20 +301,24 @@ func (a *Agent) FindReal(skipDir string) (string, error) {
 		i18n.A{"names": strings.Join(a.Bin, "/"), "dir": skipDir})
 }
 
-// OnPath 报告这家客户端的**真实**可执行文件在不在 PATH 上——**排除我们自己的 shim**。
+// OnPath reports whether this client's **real**
+// executable is on PATH -- **excluding our own shim**.
 //
-// 「排除」是这条判据的全部要点：接管就是往 PATH 前面的目录里放一个同名的链接，所以
-// 一次天真的 PATH 查找**永远**能找到它，而那个文件正是我们放的那个。不排除的话，
-// 判据会回答「我们做过接管」而不是「这台机器上有这个工具」——而那两件事在「装过、
-// 后来卸了」的时候是分开的（2026-09-21 实测：`which opencode` 找不到，而 status 报 ✓，
-// 因为 opencode 走 config 机制，「已接管」判的是我们改过的配置文件在不在）。
+// "Excluding" is the whole point of this criterion: takeover puts a same-named
+// link in a directory earlier on PATH, so a naive PATH lookup **always** finds it, and
+// that file is the one we put there. Without exclusion the criterion would answer "we
+// did a takeover" rather than "this machine has this tool" -- and the two are separate
+// in the "installed, then uninstalled" case (measured 2026-09-21: `which opencode` finds
+// nothing, while status reports a check mark, because opencode goes through the config
+// mechanism, and "taken over" is judged by whether the config file we changed is there).
 //
-// 要排除的目录是**写死的一条**（paths.ShimDir），不是调用方传进来的参数：需要跳过的
-// 永远是同一个目录，让每个调用方各传一次只会多出「传错了/忘了传」这一种故障，而那种
-// 故障的表现正是这条判据又开始撒谎。
+// The directory to exclude is **one hardcoded entry** (paths.ShimDir), not
+// a parameter passed by callers: there is always the same directory to skip, and
+// making each caller pass it only adds the fault of "passed it wrong / forgot to
+// pass it", and the symptom of that fault is exactly this criterion lying again.
 func (a *Agent) OnPath() bool { return a.realBin() != "" }
 
-// realBin 是上面两条共用的那一次查找。
+// realBin is the one lookup the two above share.
 func (a *Agent) realBin() string {
 	skipDir := filepath.Clean(paths.ShimDir())
 	skipped := func(dir string) bool { return filepath.Clean(dir) == skipDir }
@@ -294,7 +331,8 @@ func (a *Agent) realBin() string {
 			if !isExec(path) {
 				continue
 			}
-			// 解析链接之后还指着 newgate 的也不算（有人会把 shim 复制到别处）。
+			// One that still points at newgate after resolving the link
+			// does not count either (people copy the shim elsewhere).
 			if real, err := filepath.EvalSymlinks(path); err == nil {
 				if skipped(filepath.Dir(real)) ||
 					strings.HasSuffix(filepath.Base(real), "newgate") {

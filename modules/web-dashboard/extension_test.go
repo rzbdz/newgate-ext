@@ -6,16 +6,16 @@ import (
 	"testing"
 )
 
-// 扩展端点是 BFF 的**第二条口子**：概念账本管「画得出来的东西」，这条管「点一下
-// 要做一件事」。它仍然不认识任何模块——只认「有人登记了这个名字」。
+// Extension endpoints are the BFF's **second door**: the concept ledger owns "things you
+// can draw", this one "a click does something". Knows no module, only registered names.
 //
-// 这几条锁的是那句话：BFF 只做形状，不做业务。
+// These pin that sentence: the BFF does shape only, not business.
 
 func registerExtension(t *testing.T, h *Handler, name string, run ExtensionHandler) func() error {
 	t.Helper()
 	rel, err := h.extensions.Register(name, run)
 	if err != nil {
-		t.Fatalf("登记 %s: %v", name, err)
+		t.Fatalf("registering %s: %v", name, err)
 	}
 	return rel
 }
@@ -30,23 +30,23 @@ func TestExtensionForwardsTheRequestOpaque(t *testing.T) {
 
 	rec := post(t, h, "/api/ext/echo?x=1", `{"provider":"p","refresh":true}`)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("扩展该 200，实际 %d: %s", rec.Code, rec.Body)
+		t.Fatalf("the extension should answer 200, actual %d: %s", rec.Code, rec.Body)
 	}
 	if got.Method != http.MethodPost {
-		t.Errorf("扩展该看到原始请求方法，实际 %q", got.Method)
+		t.Errorf("the extension should see the original request method, actual %q", got.Method)
 	}
 	if got.Query.Get("x") != "1" {
-		t.Errorf("查询串该原样传下去，实际 %v", got.Query)
+		t.Errorf("the query string should be passed down as is, actual %v", got.Query)
 	}
 	if string(got.Body) != `{"provider":"p","refresh":true}` {
-		t.Errorf("请求体该**逐字**传下去（BFF 不解析它），实际 %s", got.Body)
+		t.Errorf("the request body should be passed down **verbatim** (the BFF does not parse it), actual %s", got.Body)
 	}
 	var doc map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &doc); err != nil {
-		t.Fatalf("响应不是 JSON: %v", err)
+		t.Fatalf("the response is not JSON: %v", err)
 	}
 	if doc["ok"] != true {
-		t.Errorf("响应该原样端出扩展的返回值，实际 %v", doc)
+		t.Errorf("the response should serve the extension's return value as is, actual %v", doc)
 	}
 }
 
@@ -62,35 +62,35 @@ func TestExtensionErrorsAndGates(t *testing.T) {
 		body string
 		want int
 	}{
-		{"没登记的名字", "/api/ext/nope", `{}`, http.StatusNotFound},
-		{"空名字", "/api/ext/", `{}`, http.StatusNotFound},
-		{"名字里带斜杠", "/api/ext/a/b", `{}`, http.StatusNotFound},
-		{"扩展自己报错", "/api/ext/boom", `{}`, http.StatusBadRequest},
-		{"坏 JSON", "/api/ext/boom", `{`, http.StatusBadRequest},
+		{"unregistered name", "/api/ext/nope", `{}`, http.StatusNotFound},
+		{"empty name", "/api/ext/", `{}`, http.StatusNotFound},
+		{"name containing a slash", "/api/ext/a/b", `{}`, http.StatusNotFound},
+		{"the extension errors itself", "/api/ext/boom", `{}`, http.StatusBadRequest},
+		{"bad JSON", "/api/ext/boom", `{`, http.StatusBadRequest},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			rec := post(t, h, c.path, c.body)
 			if rec.Code != c.want {
-				t.Errorf("%s 该 %d，实际 %d: %s", c.path, c.want, rec.Code, rec.Body)
+				t.Errorf("%s should be %d, actual %d: %s", c.path, c.want, rec.Code, rec.Body)
 			}
 		})
 	}
 
-	// GET 不是这条口子的形状：扩展会去碰上游、改运行期状态，没有理由让它比保存
-	// 更宽松。
+	// GET is not this door's shape: extensions touch upstreams and change runtime state;
+	// nothing justifies it being looser than saving.
 	rec := get(t, h, "/api/ext/boom")
 	if rec.Code != http.StatusMethodNotAllowed {
-		t.Errorf("GET 该 405，实际 %d", rec.Code)
+		t.Errorf("GET should be 405, actual %d", rec.Code)
 	}
 	if allow := rec.Header().Get("Allow"); allow != http.MethodPost {
-		t.Errorf("405 该带 Allow: POST，实际 %q", allow)
+		t.Errorf("405 should carry Allow: POST, actual %q", allow)
 	}
 
-	// 与 apply 同一道门：跨站表单能发 text/plain，发不出 application/json。
+	// Same gate as apply: a cross-site form can send text/plain, not application/json.
 	rec = raw(t, h, http.MethodPost, "/api/ext/boom", `{}`, loopback, "text/plain")
 	if rec.Code != http.StatusUnsupportedMediaType {
-		t.Errorf("没声明 application/json 该 415，实际 %d", rec.Code)
+		t.Errorf("without declaring application/json it should be 415, actual %d", rec.Code)
 	}
 }
 
@@ -99,27 +99,27 @@ func TestExtensionRegistrationRejectsCollisions(t *testing.T) {
 	rel := registerExtension(t, h, "one", func(ExtensionRequest) (any, error) { return nil, nil })
 
 	if _, err := h.extensions.Register("one", func(ExtensionRequest) (any, error) { return nil, nil }); err == nil {
-		t.Fatal("重名该当场报错——否则只有先登记的那个能收到请求，另一个静默失效")
+		t.Fatal("a duplicate name should error on the spot -- otherwise only the one registered first receives requests and the other silently fails")
 	}
 	if _, err := h.extensions.Register("Bad Name", func(ExtensionRequest) (any, error) { return nil, nil }); err == nil {
-		t.Fatal("名字里的空格/大写该被拒绝（它会进 URL 路径段）")
+		t.Fatal("spaces/uppercase in a name should be rejected (it goes into a URL path segment)")
 	}
 	if _, err := h.extensions.Register("nil", nil); err == nil {
-		t.Fatal("nil handler 该被拒绝")
+		t.Fatal("a nil handler must be rejected")
 	}
 
-	// 撤销之后那个名字该真的消失：界面手里的快照可能还在，于是它下一次点击
-	// 得到 404，而不是一个已经停掉的模块还挂着。
+	// After undo the name must really vanish: the UI may still hold a snapshot, so its next
+	// click gets 404, not a stopped module still hanging there.
 	if err := rel(); err != nil {
 		t.Fatal(err)
 	}
 	if rec := post(t, h, "/api/ext/one", `{}`); rec.Code != http.StatusNotFound {
-		t.Errorf("撤销之后该 404，实际 %d", rec.Code)
+		t.Errorf("after revoke it should be 404, actual %d", rec.Code)
 	}
 }
 
-// errString 是一个只有 Error() 的 error 替身：测试不关心错误类型，只关心那句话
-// 原样到了界面上。
+// errString is an error stand-in with only Error(): the test cares not about the type,
+// only that the sentence reaches the UI verbatim.
 type errString string
 
 func (e errString) Error() string { return string(e) }

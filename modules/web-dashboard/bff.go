@@ -15,38 +15,38 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// Contract 是前端与 BFF 之间的契约版本。
+// Contract is the contract version between the front end and the BFF.
 //
-// 前端**必须**先看它：不认识的版本号宁可白屏报一句「界面比后端旧/新」，也不要
-// 拿旧前端去猜新形状——猜错的表现是「界面上少了一个开关」，没人会发现。
+// The front end **must** check it first: for an unknown version, better a blank page saying
+// "the UI is older/newer" than guessing shapes - a wrong guess hides a switch, silently.
 const Contract = 1
 
-// Handler 是 BFF：一组 JSON 端点 + 静态资源。
+// Handler is the BFF: a set of JSON endpoints plus static assets.
 //
-// # 它不认识任何模块
+// # It knows no module
 //
-// 这个文件里没有 config、没有 gateway、没有 profile 这个词——它只做三件事：
-// 把账本里的**概念**端给前端、把前端的修改**转交**给贡献它的那个模块、发静态
-// 资源。所以加一个模块的界面不用改这里（模块自己 Optional 依赖 view 能力，
-// 在它自己的 Start 里注册概念，见 core/lib/view 的包注释）。
+// This file has no config, no gateway, no "profile" - it does three things: serve the
+// ledger's **concepts** to the front end, **forward** the front end's edits to the module
+// that contributed them, and serve static assets. So adding a module's UI needs no change
+// here (the module optionally depends on the view capability and registers in its own Start).
 //
-// 这不是洁癖：BFF 一旦自己读配置、自己写文件，它就必须知道文件的字段、目录的
-// 布局、哪些字段不能碰——那些知识会长在这里，然后每加一个模块就再长一块。
-// 第一版就是这么写的，然后被删掉了。
+// Not fussiness: once the BFF reads config or writes files, it must know the fields, the
+// directory layout, which fields are off limits - that knowledge grows here, one block per
+// module. The first version was written that way, then deleted.
 //
-// 挂在 /ui 前缀下（porthub 挂载时 StripPrefix），所以这里的路径都以 / 开头。
+// Mounted under /ui (porthub's StripPrefix), so paths here start with /.
 type Handler struct {
 	assets fs.FS
 	views  *view.Registry
-	// themes 是皮肤登记处（见 api.go / theme.go）。它是**本模块自己**的东西，
-	// 不是从装配图里取来的：装皮肤的模块 Optional 依赖本端口，而 port 的生命周期
-	// 就是这次装配，两边看到的是同一个实例。
+	// themes is the skin registry (see api.go / theme.go). It is **this module's own**, not
+	// pulled from the assembly graph: skin modules optionally depend on this port, and the
+	// port lives for this assembly, so both sides see one instance.
 	themes *themeRegistry
-	// extensions 是**模块登记进来的额外 JSON 端点**（见 api.go 的
-	// ExtensionService）。与 themes 同一条：本模块自己建、别的模块往里注册，
-	// 生命周期就是这次装配。
+	// extensions are **extra JSON endpoints registered by modules** (see api.go's
+	// ExtensionService). Same as themes: this module builds it, other modules register
+	// into it, and it lives for this assembly.
 	extensions *extensionRegistry
-	// plugins 是**模块自带的前端代码**（见 api.go 的「前端插件」）。
+	// plugins is **front-end code modules ship** (see api.go's "front-end plugins").
 	plugins *pluginRegistry
 }
 
@@ -55,8 +55,8 @@ func NewHandler(assets fs.FS, views *view.Registry, themes *themeRegistry, exten
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// 第一道门：这次请求**确实是冲着本机来的**（见 loopbackHost）。它挡的不是
-	// 外面的人——那个由「只监听 loopback」挡——而是**别人网页上的一段脚本**。
+	// First gate: this request **really targets this machine** (see loopbackHost). Not against
+	// outsiders - loopback-only handles them - but **a script on someone else's page**.
 	if !loopbackHost(r) {
 		h.writeJSONStatus(w, http.StatusForbidden, map[string]any{
 			"error": i18n.T("this interface answers on loopback only; reach it as http://127.0.0.1:{port} "+
@@ -68,16 +68,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.URL.Path == "/api/snapshot":
 		doc, err := h.snapshot(r.URL.Query()["source"]...)
 		if err != nil {
-			// 贡献者自己产不出来（配置目录整个读不了这类）。说清楚是哪一步坏了，
-			// 而不是回一份空快照——空快照在界面上表现成「一个模块都没有」。
+			// A contributor cannot produce anything (the whole config dir is unreadable). Say
+			// which step broke instead of an empty snapshot - which reads as "no modules".
 			h.writeJSONStatus(w, http.StatusInternalServerError, map[string]any{"error": err.Error()})
 			return
 		}
 		h.writeJSONStatus(w, http.StatusOK, doc)
 	case r.URL.Path == "/api/themes":
-		// 皮肤是**界面自己的偏好**，不在概念账本里——所以它走自己这条口，而不是
-		// 塞进快照。快照那份数据是各模块贡献出来的「我这一面长什么样」，
-		// 而「这一屏用什么颜色」不属于任何一个模块。
+		// The skin is the **UI's own preference**, not in the concept ledger - so it goes
+		// through its own door, not into the snapshot. The snapshot is each module's "what
+		// my side looks like"; "what colors this screen uses" belongs to no module.
 		if r.Method == http.MethodPost {
 			h.setTheme(w, r)
 			return
@@ -131,19 +131,19 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// ---------- 这道界面只认本机 ----------
+// ---------- this UI only answers the local machine ----------
 
-// loopbackHost 报告这次请求的 Host 头**指向本机**。
+// loopbackHost reports whether this request's Host header **points at this machine**.
 //
-// 为什么必须查：这个界面能改配置、能拨运行期开关。只监听 loopback 挡得住外面的
-// 连接，挡不住**别人网页上的一段脚本**——攻击者把自己控制的域名解析到 127.0.0.1
-// （DNS rebinding），浏览器就认为那是同源，于是可以带任意 Content-Type、读任意
-// 响应。浏览器唯一不会骗人的东西是它自己填的 Host：请求发给 evil.com，Host 就是
-// evil.com，哪怕那个名字此刻指向 127.0.0.1。
+// Why it must be checked: this UI can change config and flip runtime switches. Listening on
+// loopback stops outside connections, not **a script on someone else's page** - the attacker
+// resolves a domain they control to 127.0.0.1 (DNS rebinding), the browser deems it same
+// origin, and it can send any Content-Type and read any response. The one thing the browser
+// never lies about is the Host it fills in: the request goes to evil.com, the Host is
+// evil.com, even if that name currently points to 127.0.0.1.
 //
-// 允许的名字：127.0.0.1、::1、localhost（端口随意）。别的——包括这台机器在局域网
-// 里的 IP、以及任何域名——一律拒绝。**代价说清楚**：在 /etc/hosts 里给自己起个
-// newgate.local 的人会被挡在外面，报错里写明了该用什么地址打开。
+// Allowed: 127.0.0.1, ::1, localhost (any port). Everything else - this machine's LAN IP,
+// any domain - is refused. The cost is plain: a newgate.local in /etc/hosts is shut out.
 func loopbackHost(r *http.Request) bool {
 	host := r.Host
 	if h, _, err := net.SplitHostPort(host); err == nil {
@@ -154,37 +154,37 @@ func loopbackHost(r *http.Request) bool {
 	}
 	ip := net.ParseIP(strings.Trim(host, "[]"))
 	if ip == nil {
-		// 名字（域名）一律拒——**这正是这道门存在的理由**：DNS rebinding 要靠一个
-		// 攻击者控制的域名解析到本机。用户想从别处打开界面时用的是 IP，所以拦掉
-		// 名字不会挡住任何正常用法。
+		// Names (domains) are always refused - **that is why this gate exists**: DNS rebinding
+		// needs an attacker-controlled domain resolving to the local machine. Users opening the
+		// UI from elsewhere use an IP, so refusing names blocks no normal use.
 		return false
 	}
-	// IP 字面量：回环、Tailscale 网段、以及任何别的（局域网 / WSL 的 172.x）。
+	// IP literals: loopback, the Tailscale range, and anything else (LAN / WSL's 172.x).
 	//
-	// 为什么「任何 IP」都行得通：Host 是**浏览器自己填的**，它填的是用户导航到的
-	// 那个地址。要伪造它，攻击者得先让用户的浏览器访问 `http://192.168.1.5:8899`
-	// ——那已经不是 rebinding 了。而写操作还有第二道门（必须是 JSON，浏览器会先发
-	// 预检，跨源读不到我们的响应），所以「允许 IP」不等于「允许任意网页改配置」。
+	// Why "any IP" is fine: the Host is **filled in by the browser** with the address the
+	// user navigated to. Forging it means making the user's browser visit
+	// `http://192.168.1.5:8899` - no longer rebinding. Writes also have a second gate (JSON
+	// only, pre-flight, no cross-origin read), so "IP allowed" is not "any page may write".
 	_ = ip
 	return true
 }
 
-// isTailscale 说这个地址是不是 Tailscale 的网段（100.64.0.0/10，运营商级 NAT 那段）。
+// isTailscale says whether this address is in Tailscale's range (100.64.0.0/10, carrier NAT).
 //
-// 今天它不再单独收口（IP 字面量已经一律放行，见 allowedHost），留着是因为它是
-// **唯一一处**说清「100.64/10 是什么」的地方，而那句话在配置界面（state 的监听
-// 地址那一格）里正是用户要读的。
+// It no longer gates anything on its own (IP literals are all allowed, see allowedHost); it
+// stays as the **only** place stating "what 100.64/10 is" - the sentence users read in
+// the config UI's listen-address cell.
 func isTailscale(ip net.IP) bool {
 	v4 := ip.To4()
 	if v4 == nil {
 		return false
 	}
-	// 100.64.0.0/10：第一段 100，第二段的高 2 位是 01（64..127）。
+	// 100.64.0.0/10: first octet 100, second octet's top 2 bits 01 (64..127).
 	return v4[0] == 100 && v4[1] >= 64 && v4[1] <= 127
 }
 
-// portOf 取这次请求连的端口。只为了报错里能拼出一个**能用的** URL——「请用
-// 127.0.0.1 打开」而不说端口，用户还得自己猜。
+// portOf takes the port this request connected to. Only so the error can build a **usable**
+// URL - "open 127.0.0.1" without a port leaves the user guessing.
 func portOf(r *http.Request) string {
 	if _, port, err := net.SplitHostPort(r.Host); err == nil {
 		return port
@@ -192,118 +192,118 @@ func portOf(r *http.Request) string {
 	return ""
 }
 
-// ---------- 快照 ----------
+// ---------- snapshot ----------
 
 type conceptDoc struct {
 	ID    string `json:"id"`
 	Kind  string `json:"kind"`
 	Title string `json:"title"`
-	// Source 是谁贡献的：前端按它分栏、也用它把概念跟 sectionDoc 对上。
-	// **机器标记**（模块名），不翻译——界面那一栏叫什么由 sectionDoc 说。
+	// Source is who contributed it: the front end groups by it, and maps concepts to
+	// sectionDoc. A **machine tag** (module name), not translated - sectionDoc names the column.
 	Source string `json:"source"`
-	// Writable 为 false = 这个概念只读（贡献者没给 Apply）。
+	// Writable false = this concept is read-only (the contributor gave no Apply).
 	Writable bool `json:"writable"`
-	// Locked 非空 = 这张卡此刻**没有意义**（见 lib/view 的 Concept.Locked），值是
-	// 理由，显示在卡片上。界面据它整张锁灰、控件全部禁掉——**卡片仍然画出来**：
-	// 藏掉的话用户会以为那个功能不存在，而真相是「它在，只是这台机器上用不上」。
+	// Non-empty Locked = this card is **meaningless right now** (see lib/view's Concept.Locked);
+	// the value is the reason shown on the card. The UI greys it and disables the controls -
+	// **still drawn**: hiding says the feature does not exist, but it does, just not here.
 	Locked string `json:"locked,omitempty"`
-	// Live 为 true = 这一面的数据会自己变，界面该把它所在的源一起放进那几秒
-	// 一次的刷新里（见 lib/view 的 Concept.Live）。**由贡献者声明**：谁的东西谁
-	// 知道读一次贵不贵，界面无从推断。
+	// Live true = this side's data changes by itself, so the UI should include its source in the
+	// few-second refresh (see lib/view's Concept.Live). **Declared by the contributor**: owners
+	// know whether a read is expensive; the UI cannot infer it.
 	Live bool `json:"live,omitempty"`
-	// Group 是左栏分组（见 lib/view 的 Concept.Group）：同组的卡在竖栏里归到一个
-	// 标题下。空串 = 自己一档。**只影响排列**，不参与任何身份判断。
+	// Group is the left-column grouping (see lib/view's Concept.Group): cards in one group share
+	// a heading. Empty string = its own group. **Affects order only**, no identity judgment.
 	Group string `json:"group,omitempty"`
-	// Previewable = 贡献者给了 Preview（见 lib/view 的 Concept.Preview）：这张卡
-	// 能拿同一份文件另一半的草稿问一句「我该显示成什么样」。界面据此决定要不要在
-	// 原文改动之后去问——没有它就别问，问了也是白跑一趟。
+	// Previewable = the contributor gave a Preview (see lib/view's Concept.Preview): this card
+	// can take a draft from the other half of the same file and say "how should I show this".
+	// The UI decides whether to ask after a text edit - without it, do not ask; it is a wasted trip.
 	Previewable bool `json:"previewable,omitempty"`
-	// Order 是同一节里谁排前面（见 lib/view 的 Concept.Order）。
+	// Order is who comes first within a section (see lib/view's Concept.Order).
 	//
-	// **必须端出去**：快照里的数组本来就是按 (Source, Order, ID) 排好的，但前端会
-	// 在**局部刷新**时把新拿到的几张卡并回手里那份，合并这一步要自己排一次——没有
-	// Order 它只能按 ID 字母序，于是「全局设置」「上游」这种 Order 为 0/1 的卡在
-	// 每次静默刷新之后掉到十几张档位卡下面（实测：不刷新时在上面，一刷新就到最底，
-	// 用户看到的正是「它们经常会自己跑到下面」）。
+	// **Must go out**: the snapshot arrays are sorted by (Source, Order, ID), but the front
+	// end merges fresh cards into its copy on a **partial refresh**, and that merge sorts
+	// again - without Order it sorts by ID, so Order 0/1 cards like "global settings" drop
+	// below a dozen tier cards on each silent refresh (measured: on top until refreshed, then
+	// at the bottom - exactly what users reported as "they keep jumping down by themselves").
 	Order int `json:"order"`
 	Data  any `json:"data"`
-	// Actions 是**这张卡上**的按钮（见 view.Concept.Actions）。与 sectionDoc.Actions
-	// 同一个形状、同一条规矩：BFF 只搬 ID 与标签，「点了会发生什么」住在贡献者那边。
+	// Actions are the buttons **on this card** (see view.Concept.Actions). Same shape and rule
+	// as sectionDoc.Actions: the BFF moves only ID and label; the click handler stays with the owner.
 	Actions []view.ActionInfo `json:"actions,omitempty"`
-	// Note 是**一句状态说明**（见 view.Concept.Note）：「这一份就是当前配置」这类。
-	// 与 Actions 一样整份透传（`view.Note` 自己带 json 标签），BFF 不解释它的语气
-	// 色彩——`ok`/`warn`/`bad` 这套词在表格的格子上（`view.Cell.Tone`）早就是同一份
-	// 词汇表，前端只认这三个词，其余一律当着色没给。
+	// Note is **a sentence of state** (see view.Concept.Note): "this is the current config"
+	// and the like. Like Actions it passes through whole (`view.Note` has its own json tags),
+	// and the BFF does not read its tone - `ok`/`warn`/`bad` is already the same vocabulary as
+	// table cells (`view.Cell.Tone`); the front end knows those three words and colors nothing else.
 	//
-	// 它不是按钮：界面上点了没有任何事发生（对比 Actions，那些的 Run 会跑）。
+	// It is not a button: clicking it does nothing (contrast Actions, whose Run runs).
 	Note *view.Note `json:"note,omitempty"`
-	// Error 非空 = 这个概念**此刻读不出来**（文件被删了、JSON 坏了）。卡片照
-	// 常出现、写着原因，而不是从列表里消失——消失了用户会以为它不存在。
+	// Non-empty Error = this concept **cannot be read right now** (file deleted, JSON broken).
+	// The card still appears with the reason instead of vanishing - vanishing says it is gone.
 	Error string `json:"error,omitempty"`
 }
 
 type snapshotDoc struct {
 	Contract    int    `json:"contract"`
 	GeneratedAt string `json:"generated_at"`
-	// Lang 是这个进程**解析出来**的语言（NEWGATE_LANG > 配置 > LC_ALL > …，见
-	// modules/locale）。前端拿它挑自己那份界面文案——概念标题已经是后端翻译好的，
-	// 而按钮、提示这些界面骨架上的字属于前端自己。
+	// Lang is the language this process **resolved** (NEWGATE_LANG > config > LC_ALL > ..., see
+	// modules/locale). The front end picks its own UI copy with it - concept titles are already
+	// translated by the backend, while buttons and hints are the front end's own words.
 	//
-	// 为什么由后端给而不是前端猜：语言的解析规则只有一处实现（那个模块），前端
-	// 再猜一遍（navigator.language？）就等于有了第二处，两处不一致时页面会中英
-	// 混排，而那种错没人会报成 bug。
+	// Why the backend gives it instead of the front end guessing: language resolution has one
+	// implementation (that module); a second guess (navigator.language?) means two sites, and
+	// when they disagree the page mixes languages - and nobody reports that as a bug.
 	Lang string `json:"lang"`
-	// Sections 是侧栏的栏目表：**登记过的全部来源**，包括此刻一条概念都产不出来
-	// 的那几位（配置目录整个读不了、omo 还没接管过）。从概念里反推来源会让那些
-	// 栏目消失，而用户看到的是「这个模块不存在」——然后去别处找。
+	// Sections is the sidebar's column table: **every registered source**, including those
+	// that can produce no concept right now (config dir unreadable, omo never taken over).
+	// Deriving sources from concepts makes those columns vanish, and users see "this module
+	// does not exist" - then go looking elsewhere.
 	//
-	// 名字由各模块在登记时报（`view.Title`），BFF 只搬——它不认识任何模块，
-	// 也不该认识。
+	// Names are reported at registration (`view.Title`); the BFF only moves them, knowing no module.
 	Sections []sectionDoc `json:"sections"`
 	Concepts []conceptDoc `json:"concepts"`
 }
 
-// sectionDoc 是栏目表的一行：机器标记 + 给人看的名字（+ 可选的分组）。
+// sectionDoc is one row of the column table: machine tag + human name (+ optional group).
 type sectionDoc struct {
 	Source string `json:"source"`
 	Title  string `json:"title"`
-	// Group 是这一栏在侧栏里归到哪个标题下（空 = 不归，排在最上面）。**由贡献者
-	// 报**（view.Section.Group）：BFF 不认识任何模块，也就无从判断「熔断该跟网关
-	// 一类」这件事。
+	// Group is the heading this column falls under (empty = none, at the top). **Reported by
+	// the contributor** (view.Section.Group): the BFF knows no module, so it cannot decide
+	// "the breaker belongs with the gateway".
 	Group string `json:"group,omitempty"`
-	// Actions 是这一栏上的按钮（见 view.Section.Actions）。BFF 只搬 ID 与标签，
-	// 「点了会发生什么」住在贡献者那边——它的 Run 是个函数，端不出去。
+	// Actions are this column's buttons (see view.Section.Actions). The BFF moves only ID and
+	// label; "what happens on click" is the contributor's - its Run is a function, not shippable.
 	Actions []view.ActionInfo `json:"actions,omitempty"`
-	// Default 是「没有位置时落在这里」（见 view.Section.Default）。**由贡献者声明**：
-	// 首屏落在哪一栏是产品取舍（「先让用户看见一屏全能」），而 BFF/前端都不认识
-	// 任何模块，也就无从判断谁该在那儿。它们只搬这一格。
+	// Default is "land here when there is no position" (see view.Section.Default). **Declared
+	// by the contributor**: which column the first screen lands on is a product choice, and
+	// the BFF/front end know no module, so they cannot tell who should be there. They move it.
 	Default bool `json:"default,omitempty"`
-	// Fields 说这一栏**是干什么的**（见 view.SectionInfo.Fields）。界面据它在目录里
-	// 分类——显示的字由界面定（要翻译），归到哪一类由这个机器标记定。
+	// Fields say **what this column is for** (see view.SectionInfo.Fields). The UI classifies
+	// by it - the displayed word is the UI's (translated), the class is this machine tag.
 	//
-	// 这一格是**手工搬运**的（本文件在好几个地方逐字段抄账本），所以它漏过一次：
-	// 2026-09-29 加上 Fields 之后这里没跟上，症状是侧栏的分组一直没变——而账本、
-	// 内核、各个模块全是对的。
+	// This cell is **moved by hand** (this file copies ledger fields in places), so it was
+	// missed once: Fields was added 2026-09-29 and this did not follow, so the sidebar
+	// grouping never changed - with the ledger, kernel and every module all correct.
 	Fields string `json:"fields,omitempty"`
 }
 
-// snapshot 问一遍贡献者要这一刻的样子。
+// snapshot asks the contributors for what this moment looks like.
 //
-// 「问」这件事本身是有代价的（有人要重新读盘、重新算指标），所以它只发生在这里
-// ——有人真的打开界面/点刷新的时候。装配期一次都不问。
+// "Asking" costs something (someone re-reads disk, recomputes metrics), so it only happens
+// here - when someone really opens the UI or hits refresh. Never during assembly.
 //
-// `?source=` 是给**自动刷新**用的（可以重复给）：界面每隔几秒刷的是计数器与日志，
-// 而那两位的产出是便宜的；配置那一位要重读并重新解析每一份 profile、每一个源
-// 文件，不该被顺带叫醒。不带 = 全部（首次加载要的就是全部）。
+// `?source=` is for **auto refresh** (repeatable): every few seconds the UI refreshes
+// counters and logs, which are cheap; the config source re-reads and re-parses every profile
+// and every source file, and should not be woken along the way. Absent = all (the first load).
 func (h *Handler) snapshot(sources ...string) (snapshotDoc, error) {
 	doc := snapshotDoc{
 		Contract:    Contract,
 		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
 		Lang:        i18n.Current(),
 	}
-	// 栏目表**每次都带**，即使这是一次按来源过滤的刷新：它不调用任何产出函数
-	// （只是把登记的栏目名取出来），所以不花钱；而侧栏的徽标数与「这个模块还在
-	// 不在」正是那几秒一次的刷新最该跟上的东西。
+	// The column table **comes every time**, even on a source-filtered refresh: it calls no
+	// producer (only reads the registered names), so it is free; and the sidebar's badge counts
+	// and "is this module still here" are what the few-second refresh most needs to track.
 	for _, s := range h.views.Sections() {
 		doc.Sections = append(doc.Sections, sectionDoc{
 			Source: s.Source, Title: s.Title, Group: s.Group,
@@ -331,23 +331,23 @@ func (h *Handler) snapshot(sources ...string) (snapshotDoc, error) {
 	return doc, nil
 }
 
-// ---------- 保存 ----------
+// ---------- save ----------
 
 type applyRequest struct {
-	// ID 是概念的稳定身份（快照里那个）。
+	// ID is the concept's stable identity (the one in the snapshot).
 	ID string `json:"id"`
-	// Base 是前端加载时拿到的基线。空串表示「加载时它还不存在」。
+	// Base is the baseline the front end got at load. Empty string = "it did not exist then".
 	Base string `json:"base"`
-	// Edit 的形状**由这个概念自己定义**：BFF 不解析它，原样转交。
+	// Edit's shape is **defined by the concept itself**: the BFF does not parse it, just forwards.
 	Edit json.RawMessage `json:"edit"`
 }
 
 type applyResponse struct {
 	OK bool `json:"ok"`
-	// Base 是写完之后的**新基线**：前端续着改不用刷新页面。
+	// Base is the **new baseline** after writing: the front end keeps editing without a reload.
 	Base string `json:"base,omitempty"`
-	// Focus 是**动作做完之后该切到哪个概念**（见 view.Action.Run）——「新建」最需要
-	// 它：新建出来的东西叫什么名字只有实现者知道，界面据此切过去。空 = 留在原地。
+	// Focus is **which concept to switch to after the action** (see view.Action.Run) - "new"
+	// needs it most: only the implementer knows what the new thing is called. Empty = stay put.
 	Focus    string       `json:"focus,omitempty"`
 	Conflict *conflictDoc `json:"conflict,omitempty"`
 	Error    string       `json:"error,omitempty"`
@@ -363,12 +363,12 @@ type conflictDoc struct {
 }
 
 func (h *Handler) apply(w http.ResponseWriter, r *http.Request) {
-	// 第二道门：**写操作必须声明自己是 JSON**。
+	// Second gate: **a write must declare itself JSON**.
 	//
-	// 这不是格式洁癖，是把「别的网页替我按保存」挡在门外：跨站的表单提交、以及
-	// no-cors 的 fetch 都发不出 `Content-Type: application/json`（那会触发预检，
-	// 而我们不回任何 CORS 头），但它们**能**发一个 body 长得像 JSON 的 text/plain
-	// 请求——而解码器并不看 Content-Type。所以这一条是那条路唯一的墙。
+	// Not fussiness: it keeps "another page pressed save for me" out. Cross-site forms and
+	// no-cors fetches cannot send `Content-Type: application/json` (that pre-flights, and we
+	// return no CORS headers), but they **can** send text/plain whose body looks like JSON -
+	// and the decoder does not look at Content-Type. So this is the only wall on that path.
 	if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
 		h.writeJSONStatus(w, http.StatusUnsupportedMediaType, applyResponse{
 			Error: i18n.T("saving needs Content-Type: application/json (got {ct})", i18n.A{"ct": ct})})
@@ -381,8 +381,8 @@ func (h *Handler) apply(w http.ResponseWriter, r *http.Request) {
 	}
 	c, err := h.views.Get(req.ID)
 	if errors.Is(err, view.ErrUnknownConcept) {
-		// 404 而不是静默成功：前端的 ID 是从快照里来的，对不上只可能是**它手里的
-		// 那份快照已经过期**（比如模块刚被关掉）。说清楚比装作写好了强。
+		// 404 rather than a silent success: the front end's ID came from a snapshot, so a
+		// mismatch means **its snapshot is stale** (the module was just turned off); say so.
 		h.writeJSONStatus(w, http.StatusNotFound, applyResponse{
 			Error: i18n.T("no such concept: {id} — the page is probably stale, reload it", i18n.A{"id": req.ID})})
 		return
@@ -406,30 +406,30 @@ func (h *Handler) apply(w http.ResponseWriter, r *http.Request) {
 			}})
 			return
 		}
-		// 贡献者的报错原样带出去：那是**它**对自己数据的说法（哪个字段读不出来、
-		// 哪一行不合法），BFF 转述只会转丢信息。
+		// The contributor's error goes out verbatim: that is **its** account of its data (which
+		// field is unreadable, which line is invalid); the BFF paraphrasing only loses information.
 		h.writeJSONStatus(w, http.StatusBadRequest, applyResponse{Error: err.Error()})
 		return
 	}
 	h.writeJSONStatus(w, http.StatusOK, applyResponse{OK: true, Base: newBase})
 }
 
-// ---------- 栏目动作 ----------
+// ---------- section actions ----------
 
 type sectionActionRequest struct {
-	// Source 是哪一节（机器标记，快照里那个）。
+	// Source is which section (machine tag, the one in the snapshot).
 	Source string `json:"source"`
-	// Action 是那一节里的哪个动作（见 view.Action.ID）。
+	// Action is which action in that section (see view.Action.ID).
 	Action string `json:"action"`
 }
 
-// sectionAction 跑一个挂在栏目上的动作——「再建一份档位文件」这类。
+// sectionAction runs an action mounted on a column - "create another tier file" and the like.
 //
-// 与 apply 分开是本条设计的要点：动作**不属于任何一张卡**（新建出来的东西此刻还
-// 没有概念），所以它没有 base、没有 edit，只有「哪一节、哪个动作」。BFF 依旧只
-// 转交：它不知道那个动作会干什么。
+// Kept apart from apply on purpose: an action **belongs to no card** (what it creates has no
+// concept yet), so it has no base, no edit, only "which section, which action". The BFF still
+// only forwards: it does not know what the action does.
 //
-// 与 apply 同一道门（必须是 JSON）：它改的是磁盘上的配置。
+// Same gate as apply (must be JSON): it touches config on disk.
 func (h *Handler) sectionAction(w http.ResponseWriter, r *http.Request) {
 	if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
 		h.writeJSONStatus(w, http.StatusUnsupportedMediaType, applyResponse{
@@ -444,19 +444,19 @@ func (h *Handler) sectionAction(w http.ResponseWriter, r *http.Request) {
 	}
 	focus, err := h.views.RunAction(req.Source, req.Action)
 	if err != nil {
-		// 贡献者的报错原样带出去（「那一节里没有这个动作」也在这里）——它比 BFF
-		// 转述一句「操作失败」有用得多。
+		// The contributor's error goes out verbatim ("no such action in that section" too) -
+		// far more useful than a BFF-paraphrased "operation failed".
 		h.writeJSONStatus(w, http.StatusBadRequest, applyResponse{Error: err.Error()})
 		return
 	}
 	h.writeJSONStatus(w, http.StatusOK, applyResponse{OK: true, Focus: focus})
 }
 
-// setTheme 换一套皮肤（POST /api/themes，体是 `{"id": "..."}`）。
+// setTheme changes the skin (POST /api/themes, body `{"id": "..."}`).
 //
-// 空 id 是**合法的**，意思是「回到出厂那套令牌」——所以它不是一个需要特殊对待的
-// 输入，而是这一格本来就有第四个取值。不认识的 id 报错而不是悄悄落回出厂：那多半
-// 是模块被关掉了，而用户点了没反应与「这套皮肤没了」是两句话。
+// An empty id is **legal**: it means "back to the factory tokens" - a fourth value this cell
+// already has. An unknown id errors instead of silently falling back: usually a module was
+// turned off, and "the click did nothing" and "that skin is gone" are two different sentences.
 func (h *Handler) setTheme(w http.ResponseWriter, r *http.Request) {
 	if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
 		h.writeJSONStatus(w, http.StatusUnsupportedMediaType, applyResponse{
@@ -483,11 +483,11 @@ func (h *Handler) setTheme(w http.ResponseWriter, r *http.Request) {
 	h.writeJSONStatus(w, http.StatusOK, applyResponse{OK: true})
 }
 
-// actionInfos 把贡献者那份动作表端成界面认识的样子（求值标签）。
+// actionInfos serves the contributor's action table in the shape the UI knows (labels evaluated).
 //
-// 与 Registry.Sections 里那段是同一件事，抽出来只因为现在有两个调用点（栏目与概念）
-// ——两处各写一遍的话，其中一处会忘了在最前面求值 Label，而那个错误的症状是
-// **按钮上没有字**。
+// Same as the block in Registry.Sections; extracted because there are now two call sites
+// (sections and concepts) - written twice, one would forget to evaluate Label up front, and
+// the symptom of that mistake is **buttons with no text**.
 func actionInfos(acts []view.Action) []view.ActionInfo {
 	var out []view.ActionInfo
 	for _, a := range acts {
@@ -500,22 +500,22 @@ func actionInfos(acts []view.Action) []view.ActionInfo {
 	return out
 }
 
-// ---------- 概念动作 ----------
+// ---------- concept actions ----------
 
 type conceptActionRequest struct {
-	// ID 是哪张卡（概念的稳定身份，快照里那个）。
+	// ID is which card (the concept's stable identity, the one in the snapshot).
 	ID string `json:"id"`
-	// Action 是那张卡上的哪个动作（见 view.Action.ID）。
+	// Action is which action on that card (see view.Action.ID).
 	Action string `json:"action"`
 }
 
-// conceptAction 跑一个挂在**某张卡**上的动作——「把这一份设为默认」这类。
+// conceptAction runs an action mounted on **a card** - "make this one the default" and the like.
 //
-// 与 sectionAction 分开而不是合成一个端点，是因为它们的**身份**不同：栏目动作认
-// 来源名，概念动作认概念 ID。合成一个的话，请求里那两个字段就得有一个是可选的，
-// 而「哪一个是空的」这件事会在两处各判断一遍。
+// Kept apart from sectionAction rather than merged because their **identities** differ: a
+// section action knows a source name, a concept action knows a concept ID. Merged, one of the
+// two fields would be optional, and "which one is empty" would be checked in two places.
 //
-// 与 apply 同一道门（必须是 JSON）：它改的是磁盘上的配置。
+// Same gate as apply (must be JSON): it touches config on disk.
 func (h *Handler) conceptAction(w http.ResponseWriter, r *http.Request) {
 	if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
 		h.writeJSONStatus(w, http.StatusUnsupportedMediaType, applyResponse{
@@ -536,22 +536,22 @@ func (h *Handler) conceptAction(w http.ResponseWriter, r *http.Request) {
 	h.writeJSONStatus(w, http.StatusOK, applyResponse{OK: true, Focus: focus})
 }
 
-// ---------- 行内动作 ----------
+// ---------- row actions ----------
 
 type rowActionRequest struct {
-	// ID 是哪张卡（概念的稳定身份）。
+	// ID is which card (the concept's stable identity).
 	ID string `json:"id"`
-	// Row 是那一行（见 lib/view 的 Row.ID）。**机器标记**，不翻译。
+	// Row is which row (see lib/view's Row.ID). A **machine tag**, not translated.
 	Row string `json:"row"`
-	// Action 是那一行上的哪个动作。
+	// Action is which action on that row.
 	Action string `json:"action"`
 }
 
-// rowAction 跑表格里**某一行**上的一个动作——「探一下这条 binding」这类。
+// rowAction runs an action on **one row** of a table - "probe this binding" and the like.
 //
-// 三个字段而不是两个，因为一张表里每一行是**一条独立的东西**：少了 Row 这一层，
-// 「测试」就不知道该测谁。BFF 依旧只转交：它不知道那一行是什么，也不知道那个动作
-// 会干什么（它连「这是个表」都不该知道）。
+// Three fields rather than two because each row in a table is **a separate thing**: without
+// the Row layer, "test" would not know what to test. The BFF still only forwards: it does not
+// know what that row is or what the action does (it should not even know "this is a table").
 func (h *Handler) rowAction(w http.ResponseWriter, r *http.Request) {
 	if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
 		h.writeJSONStatus(w, http.StatusUnsupportedMediaType, applyResponse{
@@ -572,12 +572,12 @@ func (h *Handler) rowAction(w http.ResponseWriter, r *http.Request) {
 	h.writeJSONStatus(w, http.StatusOK, applyResponse{OK: true, Focus: focus})
 }
 
-// ---------- 预览 ----------
+// ---------- preview ----------
 
 type previewRequest struct {
-	// ID 是那张**要被预览的**概念的稳定身份（控件那一半，不是交草稿的那一半）。
+	// ID is the stable identity of the concept **being previewed** (the controls half).
 	ID string `json:"id"`
-	// Text 是同一份文件**还没落盘的**草稿（界面从原文那一半手里拿的）。
+	// Text is the **unsaved** draft of the same file (the UI took it from the raw-text half).
 	Text string `json:"text"`
 }
 
@@ -586,14 +586,14 @@ type previewResponse struct {
 	Error string `json:"error,omitempty"`
 }
 
-// preview 把一份草稿交给拥有那份文件的贡献者，换回「这张卡此刻该显示成什么样」。
+// preview hands a draft to the contributor owning the file, getting back "how should this
+// card show right now".
 //
-// 与 apply 同一道门（必须是 JSON）：它虽然不落盘，但**请求里带的是用户的配置
-// 内容**，而且响应会把配置的形状回给页面。两道门的理由在 apply 那里写全了。
+// Same gate as apply (must be JSON): it saves nothing, but **the request carries the user's
+// config content**, and the response returns config shapes to the page. apply says why.
 //
-// 失败一律 200：草稿解析不出来是**打字途中的常态**（正敲着的那一行本来就不完整），
-// 不是「这次请求坏了」。用 4xx 的话，界面就得为「正常的半成品」和「真的出错了」
-// 写两套分支，而它想做的事两处一模一样——保持上一次的样子。
+// Failures are always 200: a draft that does not parse is **normal mid-typing**, not a
+// broken request. With 4xx the UI needs two branches for "half-built" and "broken".
 func (h *Handler) preview(w http.ResponseWriter, r *http.Request) {
 	if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
 		h.writeJSONStatus(w, http.StatusUnsupportedMediaType, previewResponse{
@@ -608,13 +608,13 @@ func (h *Handler) preview(w http.ResponseWriter, r *http.Request) {
 	}
 	c, err := h.views.Get(req.ID)
 	if err != nil {
-		// 贡献者没有这个 id：回空。界面那边这只是一次「顺手更新」，不是用户按的
-		// 某个按钮——为它弹一条报错，等于让一次打字在屏幕上变成一次故障。
+		// The contributor has no such id: empty. On the UI side this is a passing update, not a
+		// button the user pressed - an error popup would turn typing into a visible failure.
 		h.writeJSONStatus(w, http.StatusOK, previewResponse{})
 		return
 	}
 	if c.Preview == nil {
-		// 这个概念没有第二半（它自己就是原文），没什么可预览的。
+		// This concept has no second half (it is the raw text), so there is nothing to preview.
 		h.writeJSONStatus(w, http.StatusOK, previewResponse{})
 		return
 	}
@@ -626,16 +626,16 @@ func (h *Handler) preview(w http.ResponseWriter, r *http.Request) {
 	h.writeJSONStatus(w, http.StatusOK, previewResponse{Data: data})
 }
 
-// ---------- 扩展端点 ----------
+// ---------- extension endpoints ----------
 
-// extension 把一次 `/api/ext/<name>` 调用转交给登记了那个名字的模块。
+// extension forwards one `/api/ext/<name>` call to the module that registered that name.
 //
-// BFF 在这里做的四件事都是**形状**，没有一件是业务：认动词、认 JSON、找名字、
-// 原样转交。它不知道 `<name>` 是什么、请求体里该有什么、回什么算成功——那些
-// 属于登记的那个模块（见 api.go 的 ExtensionService）。
+// The four things the BFF does are all **shape**, none business: recognize the verb, require
+// JSON, find the name, forward verbatim. It does not know what `<name>` is, what the body
+// should hold, or what counts as success - that is the registering module's (see api.go).
 //
-// 与 apply 同一道门（必须是 JSON）：扩展会去碰上游、改运行期状态，没有理由让它
-// 比保存更宽松。Host 门在 ServeHTTP 的最前面，已经过过了。
+// Same gate as apply (must be JSON): extensions touch upstreams and runtime state, and
+// there is no reason they should be looser than saving.
 func (h *Handler) extension(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
@@ -649,17 +649,17 @@ func (h *Handler) extension(w http.ResponseWriter, r *http.Request) {
 	}
 	name := strings.TrimPrefix(r.URL.Path, "/api/ext/")
 	if name == "" || strings.Contains(name, "/") {
-		// `/api/ext/` 与 `/api/ext/a/b` 都不是一个扩展的名字。回 404 而不是让
-		// 名字带着斜杠去查表——查不到时的那句话会变成「没有 a/b 这个扩展」，
-		// 而真相是「这个 URL 形状根本不对」。
+		// `/api/ext/` and `/api/ext/a/b` are not extension names. 404 rather than look up a
+		// name containing a slash - the miss would say "no extension a/b", while the truth is
+		// "this URL shape is wrong".
 		h.writeJSONStatus(w, http.StatusNotFound, map[string]any{
 			"error": i18n.T("no API extension at {path}", i18n.A{"path": r.URL.Path})})
 		return
 	}
 	run, ok := h.extensions.Lookup(name)
 	if !ok {
-		// 404 而不是 500：多半是提供它的模块没装进这份装配（或者刚被摘掉）。
-		// 界面据此回落到自己能拿到的那份数据，而不是白屏。
+		// 404 rather than 500: usually the providing module is not in this assembly (or was just
+		// removed). The UI then falls back to available data instead of going blank.
 		h.writeJSONStatus(w, http.StatusNotFound, map[string]any{
 			"error": i18n.T("there is no API extension named {name} in this build — "+
 				"the page may be newer than the daemon, or the module that provides it is not installed",
@@ -685,8 +685,8 @@ func (h *Handler) extension(w http.ResponseWriter, r *http.Request) {
 	}
 	out, err := run(ExtensionRequest{Context: r.Context(), Method: r.Method, Query: r.URL.Query(), Body: body})
 	if err != nil {
-		// 扩展的报错原样带出去：它比 BFF 转述一句「操作失败」有用得多（与 apply
-		// 那条同一条规矩）。
+		// The extension's error goes out verbatim: far more useful than the BFF paraphrasing
+		// "operation failed" (same rule as apply).
 		h.writeJSONStatus(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
 	}
@@ -696,10 +696,10 @@ func (h *Handler) extension(w http.ResponseWriter, r *http.Request) {
 	h.writeJSONStatus(w, http.StatusOK, out)
 }
 
-// ---------- 静态资源 ----------
+// ---------- static assets ----------
 
-// static 从嵌进二进制的产物里发文件；找不到的路径落回 index.html（前端自己
-// 路由）。这样前端加一个页面不需要在后端登记路径。
+// static serves files from the embedded build output; unknown paths fall back to index.html
+// (the front end routes). So a new front-end page needs no backend path registration.
 func (h *Handler) static(w http.ResponseWriter, r *http.Request) {
 	p := strings.TrimPrefix(r.URL.Path, "/")
 	if p == "" {
@@ -709,8 +709,8 @@ func (h *Handler) static(w http.ResponseWriter, r *http.Request) {
 		serve(w, p, b)
 		return
 	}
-	// SPA 兜底：只有 GET 且看起来不是资源请求时才回 index.html，否则一个拼错的
-	// .js 会静默变成本页 HTML（浏览器报的错会指向别处）。
+	// SPA fallback: serve index.html only for GET and when it does not look like an asset
+	// request; otherwise a typo'd .js silently becomes this page's HTML (errors point elsewhere).
 	if r.Method == http.MethodGet && !strings.Contains(filepath.Base(p), ".") {
 		if b, err := fs.ReadFile(h.assets, "index.html"); err == nil {
 			serve(w, "index.html", b)
@@ -726,29 +726,29 @@ func serve(w http.ResponseWriter, p string, b []byte) {
 	_, _ = w.Write(b)
 }
 
-// cacheControl 说这个文件能被浏览器存多久。
+// cacheControl says how long a browser may keep this file.
 //
-// # 为什么必须有这条（2026-09-20 实测的坑）
+// # Why this is mandatory (the 2026-09-20 trap)
 //
-// 一个 `Cache-Control` 都不给的响应，浏览器**不会**就不缓存它——它会按启发式
-// 自己拿主意（通常是「距上次修改时间的 10%」，没有 Last-Modified 就按会话猜）。
-// 而这份界面的产物名字里带内容哈希：`index-<hash>.js`。发一版新二进制，哈希变了、
-// 旧文件从嵌入的产物里消失了，**但用户浏览器手里那份旧 index.html 还指着旧名字**
-// ——它自己那份旧 JS 也还在缓存里，于是页面照常渲染、只不过渲染的是**上一版的
-// 界面**。
+// A response with no `Cache-Control` is **not** left uncached - the browser decides by
+// heuristic (usually 10% of the age since last modified; without Last-Modified, per session).
+// And this UI's build output has content hashes in names: `index-<hash>.js`. A new binary
+// changes the hash and the old file leaves the embedded output, **but the browser still holds
+// an old index.html pointing at the old name** - its old JS is cached too, so the page
+// renders fine, just the **previous version** of the UI.
 //
-// 症状就是这么来的：服务端一切正常（curl 拿到的是新产物），用户那边「新加的按钮
-// 没有」「新版面没生效」，而且**没有任何报错**。唯一的出路是手动硬刷新，而没人会
-// 往那上面想。用户报的三次「你没做」有两次是这一条（见 git log 里这一版的提交）。
+// That is the symptom: the server is fine (curl gets the new output), the user says "the new
+// button is not there", and **no error anywhere**. The only way out is a hard refresh, and
+// nobody thinks of that. Two of the three "you did not do it" reports came from this.
 //
-// 所以入口文件必须**每次都问服务器**：它只有几百字节，且它是唯一知道哈希变了的
-// 那份文件。剩下的按「名字里有没有内容哈希」分：
+// So the entry document must ask the server **every time**: it is a few hundred bytes and the
+// only file that knows the hash changed. The rest splits on "does the name carry a hash":
 //
-//   - `assets/` 下面的是 Vite 算过哈希的产物：内容一变名字就变，于是同一个名字
-//     永远对应同一份字节，可以无限期缓存（这是 SPA 性能的常规做法，也让刷新只
-//     重新下那几百字节的 index.html）。
-//   - 别的（将来手工放进 dist 的 favicon 之类）没有那道保证，让它每次带 ETag 问
-//     一遍：宁可多一个 304 往返，也不要把一个改了内容的同名文件永久钉在用户机器上。
+//   - under `assets/` are Vite-hashed outputs: content changes, name changes, so one name is
+//     always one set of bytes and can be cached forever (the SPA convention, letting refresh
+//     re-download only the few hundred bytes of index.html).
+//   - others (a favicon dropped into dist later) lack that guarantee, so they get an ETag
+//     check each time: one more 304 round trip beats pinning a changed same-name file forever.
 func cacheControl(p string) string {
 	if strings.HasSuffix(p, ".html") {
 		return "no-store"

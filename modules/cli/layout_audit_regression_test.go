@@ -7,21 +7,22 @@ import (
 	"testing"
 )
 
-// TestLayoutAuditLeavesRawOutputAlone 锁住「谁不排版谁自己说」这条：界面不再
-// 维护一张命令名名单（见 cliapi.Unstyled），所以这里对着**真账本**验。
+// TestLayoutAuditLeavesRawOutputAlone pins "whoever is not laid out says
+// so themselves": the UI no longer maintains a list of command names
+// (see cliapi.Unstyled), so this is checked against the **real ledger**.
 func TestLayoutAuditLeavesRawOutputAlone(t *testing.T) {
 	t.Setenv("NEWGATE_LAYOUT_AUDIT", "1")
 
 	var s service
-	// tui 是模块注入的命令：它自己声明 Unstyled，界面不必认识它。
+	// tui is a command injected by a module: it declares Unstyled itself, and the UI need not know it.
 	if err := s.registerOwnCommands(); err != nil {
 		t.Fatal(err)
 	}
 	if shouldAuditLayout(&s, []string{"alllogs"}) {
-		t.Fatal("alllogs 是原始转储，不该审计版式")
+		t.Fatal("alllogs is a raw dump, its layout should not be audited")
 	}
 	if !shouldAuditLayout(&s, []string{"doctor"}) {
-		t.Fatal("doctor 的输出是版式，必须审计")
+		t.Fatal("the output of doctor is layout, it must be audited")
 	}
 }
 

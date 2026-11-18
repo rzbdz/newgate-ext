@@ -16,19 +16,19 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// 本文件是源码那条路：git 模式在本地 checkout 里同步 + 编，`@<ref>` 没有可用
-// Release 时在临时目录里 clone + 编。两者编的都是 `build/build.sh`——**唯一的构建
-// 入口**（发行版 CLAUDE.md §3），这里不自己拼 go build：版本号、ldflags、静态断言、
-// 生成清单，全都只在那一处。
+// This file is the source route: git mode syncs + builds in the local checkout;
+// `@<ref>` with no usable Release clones + builds in a temp dir. Both go through
+// `build/build.sh` - the **only build entry point** (distribution CLAUDE.md §3).
+// No go build assembled here: version, ldflags, static asserts, manifest - one place.
 
-// gitEnv 让 git 永远不停下来问人：没有凭据时 clone/fetch 应该**失败**，而不是在
-// 一个看不见终端的子进程里等一个永远不会来的密码。
+// gitEnv keeps git from ever stopping to ask a human: without credentials
+// clone/fetch must **fail**, not wait in a terminal-less child for a password.
 func gitEnv() []string {
 	return append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=true")
 }
 
-// git 在 dir 里跑一条 git，返回去掉首尾空白的 stdout；失败时错误带上 stderr 的
-// 第一行（那通常就是原因：not a git repository / couldn't find remote ref）。
+// git runs one git command in dir and returns trimmed stdout; on failure the
+// error carries stderr's first line (the cause: not a git repository / couldn't find remote ref).
 func git(ctx context.Context, dir string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
 	cmd.Env = gitEnv()
@@ -44,8 +44,8 @@ func git(ctx context.Context, dir string, args ...string) (string, error) {
 	return strings.TrimSpace(stdout.String()), nil
 }
 
-// requireTools 在动手之前核对源码构建要的工具都在 PATH 上。缺一个就早早说清楚
-// ——否则会在 clone 了几十 MB 之后才死在 build.sh 的某一行。
+// requireTools checks before doing anything that the tools a source build needs
+// are on PATH. Missing one is said early - else it dies in build.sh after tens of MB.
 func requireTools() error {
 	var missing []string
 	for _, t := range []string{"git", "go", "bash", "python3"} {
@@ -59,11 +59,11 @@ func requireTools() error {
 	return checkGo()
 }
 
-// minGo 是能编本仓库的最老的 go 命令：1.21 起 go 会按 go.mod 的 `go` 行自己去下
-// 对应的工具链（GOTOOLCHAIN=auto），更老的直接报一串看不懂的语法错。
+// minGo is the oldest go command that can build this repo: since 1.21, go reads
+// go.mod's `go` line and fetches that toolchain (GOTOOLCHAIN=auto); older ones error out.
 //
-// 2026-10-29 snode1 的现场：PATH 上是 go1.13.8，而 go.mod 写着 1.27——不拦的话，
-// `upgrade@<ref>` 会先 clone 几十 MB，再死在 build.sh 里的 `go run ./tools/distgen`。
+// 2026-10-29 on snode1: PATH had go1.13.8, go.mod says 1.27 - unguarded,
+// `upgrade@<ref>` clones tens of MB, then dies in `go run ./tools/distgen`.
 const minGo = 21
 
 var goVersionRe = regexp.MustCompile(`go1\.(\d+)`)
@@ -84,7 +84,7 @@ func checkGo() error {
 	return nil
 }
 
-// repoState 是一份 checkout 此刻的样子（同步前后各取一次）。
+// repoState is what a checkout looks like right now (taken before and after sync).
 type repoState struct {
 	branch   string // 空 = detached
 	upstream string // 空 = 没有上游
@@ -107,32 +107,32 @@ func readRepoState(ctx context.Context, repo string) repoState {
 			}
 		}
 	}
-	// 未跟踪的文件不算脏：它们不进构建（build.sh 的 describe --dirty 同一条判据）。
+	// Untracked files do not count as dirty: they miss the build (same rule as describe --dirty).
 	if out, err := git(ctx, repo, "status", "--porcelain", "--untracked-files=no"); err == nil && out != "" {
 		s.dirty = true
 	}
 	return s
 }
 
-// syncRepo 把 git 模式的 checkout 带到「能编的最新」：fetch，然后**只在安全时**快进。
+// syncRepo brings a git-mode checkout to "the newest buildable": fetch, then fast-forward
+// **only when it is safe**. It is the developer's tree: decide nothing for them.
 //
-// 这是开发者正在用的树，所以规矩是「绝不替人做决定」：
+//   - working tree changed -> leave it (built as-is; the version gets -dirty);
+//   - unpushed commits or a fork from upstream -> leave it (merge/rebase is theirs);
+//   - detached, no upstream -> leave it;
+//   - only behind -> `merge --ff-only`, then move the submodule onto the new gitlink,
+//     **provided it was on the old one**. If core/ sits elsewhere (kernel work in progress)
+//     update would switch it away, so just say so.
 //
-//   - 工作区有改动 → 不动（编的就是他手上这份，版本号会带 -dirty）；
-//   - 本地有没推的提交、和上游分叉 → 不动（快进做不到，合并/变基是他的事）；
-//   - detached、没有上游 → 不动；
-//   - 只落后 → `merge --ff-only`，再把 submodule 带到新的 gitlink 上——**前提是它
-//     本来就在旧 gitlink 上**。core/ 停在别处（正在改内核）时 update 会把它切走，
-//     那就只说一声。
-//
-// check 为真时只 fetch（只动远端跟踪分支，不碰工作区）并报告。返回给人看的几行。
+// With check true, only fetch (remote-tracking refs, never the tree) and report it.
+// Returns the lines for humans.
 func syncRepo(ctx context.Context, repo string, check bool) []string {
 	var notes []string
 	fctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	_, ferr := git(fctx, repo, "fetch", "--tags", "--prune", "origin")
 	cancel()
 	if ferr != nil {
-		// fetch 失败不致命：离线的开发机照样能编手上那份。
+		// A failed fetch is not fatal: an offline dev machine still builds what it has.
 		notes = append(notes, i18n.T("fetch failed, building what is checked out: {err}", i18n.A{"err": ferr.Error()}))
 	}
 	st := readRepoState(ctx, repo)
@@ -180,8 +180,8 @@ func syncRepo(ctx context.Context, repo string, check bool) []string {
 	return notes
 }
 
-// submodulesInSync：每个 submodule 都正好停在 gitlink 记的那个提交上。
-// `git submodule status` 的行首 `+` = 停在别处，`-` = 没初始化，`U` = 冲突。
+// submodulesInSync: every submodule sits exactly on the commit its gitlink records.
+// A leading `+` in `git submodule status` = elsewhere, `-` = not initialized, `U` = conflict.
 func submodulesInSync(ctx context.Context, repo string) bool {
 	out, err := git(ctx, repo, "submodule", "status", "--recursive")
 	if err != nil {
@@ -195,7 +195,7 @@ func submodulesInSync(ctx context.Context, repo string) bool {
 	return true
 }
 
-// describe 是 build.sh 会写进版本号的那一段（与它同一条命令）。
+// describe is the part build.sh writes into the version (the very same command).
 func describe(ctx context.Context, repo string) string {
 	out, err := git(ctx, repo, "describe", "--tags", "--always", "--dirty")
 	if err != nil {
@@ -204,8 +204,8 @@ func describe(ctx context.Context, repo string) string {
 	return out
 }
 
-// buildRepo 在 repo 里跑 build/build.sh，只编这份规格书 × 本平台，返回产物路径
-// 与清理函数。构建输出原样流到 log（几十秒到几分钟，人要看得见它在动）。
+// buildRepo runs build/build.sh in repo, building only this spec x this platform,
+// returning the artifact path and cleanup; output streams to log (one must see it move).
 func buildRepo(ctx context.Context, repo, spec, goos, goarch string, log io.Writer) (string, func(), error) {
 	out, err := os.MkdirTemp("", "newgate-build-")
 	if err != nil {
@@ -231,8 +231,8 @@ func buildRepo(ctx context.Context, repo, spec, goos, goarch string, log io.Writ
 	return matches[0], cleanup, nil
 }
 
-// buildEnv 把「编哪份、编哪个平台」钉死：环境里残留的 NEWGATE_ALL / NEWGATE_DISTS
-// 在 build.sh 里**优先级更高**，不剥掉的话会编出一堆别的规格书，而产物数对不上。
+// buildEnv pins down "which spec, which platform": stray NEWGATE_ALL / NEWGATE_DISTS
+// in the environment **win** inside build.sh - unpeeled, they build other specs; count is wrong.
 func buildEnv(spec, platform string) []string {
 	var env []string
 	for _, kv := range gitEnv() {
@@ -248,12 +248,12 @@ func buildEnv(spec, platform string) []string {
 	return append(env, "NEWGATE_DIST="+spec, "NEWGATE_PLATFORMS="+platform)
 }
 
-// commitish 是「看起来像一个提交号」：ls-remote 只列 ref，查不到提交。
+// commitish is "looks like a commit id": ls-remote only lists refs, never commits.
 var commitish = regexp.MustCompile(`^[0-9a-f]{7,40}$`)
 
-// refExists 在 clone 之前问一句远端有没有这个 tag/分支（ls-remote 只传 ref 表，
-// 几 KB）。敲错一个版本号不该先花一分钟 clone 再报错——--check 尤其要答对。
-// 提交号问不出来（ls-remote 不列提交），放行给 clone 去判。
+// refExists asks the remote before cloning whether this tag/branch exists
+// (ls-remote sends only the ref table, a few KB). A typo in a version must not cost
+// a minute-long clone first - --check must answer right; a commit id goes to clone.
 func refExists(ctx context.Context, url, ref string) error {
 	if commitish.MatchString(ref) {
 		return nil
@@ -270,16 +270,16 @@ func refExists(ctx context.Context, url, ref string) error {
 	return nil
 }
 
-// cloneRef 把 url 的 ref（tag、分支或提交）clone 进一个临时目录，带上 submodule。
+// cloneRef clones url's ref (tag, branch or commit) into a temp dir, with submodules.
 //
-// 不做浅 clone：build.sh 的版本号来自 `git describe --tags`，浅 clone 拿不到 tag
-// 与通往它的历史，编出来的版本号就只剩一个提交号（`default-d5899f6`）——之后的
-// `upgrade` 没法再比新旧。换成 `--filter=blob:none`（部分 clone：提交历史全要，文件
-// 内容按需取），describe 照常、下载量和浅 clone 差不多；服务器不支持时退回完整
-// clone。`--branch` 认不得提交号，那时 clone 默认分支再 checkout。
+// No shallow clone: build.sh's version comes from `git describe --tags`; a shallow
+// clone misses the tag and the history to it, leaving only a commit id
+// (`default-d5899f6`), and later `upgrade`s cannot compare old and new. So use
+// `--filter=blob:none` (all history, contents on demand) - describe works, download
+// ~shallow; fall back to a full clone. `--branch` takes no commit: clone default, checkout.
 //
-// submodule 先浅后深：内核的版本号不进产物名，浅取就够；gitlink 指的提交不一定是
-// 对方某个分支的头，有的服务器不让按提交号浅取，那就退回完整的。
+// Submodules shallow first: the kernel version is not in the artifact name, so shallow
+// suffices; a gitlink commit may be no branch head, so some servers refuse - go full.
 func cloneRef(ctx context.Context, url, ref string, log io.Writer) (string, func(), error) {
 	tmp, err := os.MkdirTemp("", "newgate-src-")
 	if err != nil {

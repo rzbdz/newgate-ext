@@ -56,7 +56,7 @@ func TestDualURLRoutesByDialect(t *testing.T) {
 		defer resp.Body.Close()
 		if resp.StatusCode != 200 {
 			b, _ := ioutil.ReadAll(resp.Body)
-			t.Fatalf("POST %s 状态 %d: %s", path, resp.StatusCode, b)
+			t.Fatalf("POST %s status %d: %s", path, resp.StatusCode, b)
 		}
 	}
 
@@ -64,10 +64,10 @@ func TestDualURLRoutesByDialect(t *testing.T) {
 	post("/a/claude/v1/messages",
 		`{"model":"heavy","max_tokens":8,"messages":[{"role":"user","content":"hi"}]}`)
 	if anthHit != "/api/coding/v1/messages" {
-		t.Errorf("anthropic 方言该走 anthropic_url：实际打到 %q（期望 /api/coding/v1/messages）", anthHit)
+		t.Errorf("the anthropic dialect should use anthropic_url: actually hit %q (want /api/coding/v1/messages)", anthHit)
 	}
 	if openaiHit != "" {
-		t.Errorf("anthropic 方言不该碰 base_url：实际打到 %q", openaiHit)
+		t.Errorf("the anthropic dialect must not touch base_url: actually hit %q", openaiHit)
 	}
 
 	// count_tokens 也是 anthropic 方言的端点，同样走 anthropic_url
@@ -75,7 +75,7 @@ func TestDualURLRoutesByDialect(t *testing.T) {
 	post("/a/claude/v1/messages/count_tokens",
 		`{"model":"heavy","max_tokens":8,"messages":[{"role":"user","content":"hi"}]}`)
 	if anthHit != "/api/coding/v1/messages/count_tokens" {
-		t.Errorf("count_tokens 该走 anthropic_url：实际打到 %q", anthHit)
+		t.Errorf("count_tokens should use anthropic_url: actually hit %q", anthHit)
 	}
 
 	// opencode 形态：裸 /v1 + /chat/completions，一个字节都不该往 anthropic 那边去
@@ -83,9 +83,9 @@ func TestDualURLRoutesByDialect(t *testing.T) {
 	post("/v1/chat/completions",
 		`{"model":"heavy","max_tokens":8,"messages":[{"role":"user","content":"hi"}]}`)
 	if openaiHit != "/api/coding/v3/chat/completions" {
-		t.Errorf("openai 方言该走 base_url：实际打到 %q（期望 /api/coding/v3/chat/completions）", openaiHit)
+		t.Errorf("the openai dialect should use base_url: actually hit %q (want /api/coding/v3/chat/completions)", openaiHit)
 	}
 	if anthHit != "" {
-		t.Errorf("openai 方言不该碰 anthropic_url：实际打到 %q", anthHit)
+		t.Errorf("the openai dialect must not touch anthropic_url: actually hit %q", anthHit)
 	}
 }

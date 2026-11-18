@@ -14,7 +14,7 @@ import (
 type listerFixture struct{}
 
 func (listerFixture) Name() string                { return "lister-fixture" }
-func (listerFixture) Why() string                 { return "ModelLister 的测试夹具" }
+func (listerFixture) Why() string                 { return "ModelLister test fixture" }
 func (listerFixture) Before() []string            { return nil }
 func (listerFixture) After() []string             { return nil }
 func (listerFixture) Match(*special.Request) bool { return false }
@@ -68,14 +68,14 @@ func TestModelListerAnswersForItsOwnClient(t *testing.T) {
 	defer front.Close()
 
 	if got := strings.Join(modelIDs(t, front.URL+"/a/fixture/v1/models"), ","); got != "normal" {
-		t.Errorf("跟着走的那一行 = %s", got)
+		t.Errorf("the following row = %s", got)
 	}
 	if got := strings.Join(modelIDs(t, front.URL+"/a/fixture/p/ds/v1/models"), ","); got != "normal,prov/ds-model" {
-		t.Errorf("钉住 ds 的那一行 = %s", got)
+		t.Errorf("the row pinning ds = %s", got)
 	}
 	other := modelIDs(t, front.URL+"/a/claude/v1/models")
 	bare := modelIDs(t, front.URL+"/v1/models")
 	if len(other) < 5 || other[0] != "heavy" || strings.Join(other, ",") != strings.Join(bare, ",") {
-		t.Errorf("别的客户端与裸路径拿缺省清单：%v / %v", other, bare)
+		t.Errorf("other clients and the bare path get the default list: %v / %v", other, bare)
 	}
 }

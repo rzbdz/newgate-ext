@@ -12,32 +12,34 @@ import (
 	"github.com/rzbdz/newgate-ext/tools/archmap"
 )
 
-// Handler 服务架构图：每次请求**现生成**一份。
+// Handler serves the architecture diagram: **generated fresh** on every request.
 //
-// 为什么不缓存：这张图的价值全在「当下」——刚加的那条依赖、刚拆掉的那个模块，
-// 刷新一下就该看见。而它的成本是 `go list` 那一趟（本机几百毫秒），是开发者点了
-// 一下才付的，不是每个请求都付。
+// Why not cache it: the whole value of this diagram is "right now" -- the dependency just
+// added, the module just removed, should show up on refresh. And its cost is the `go list` run
+// (a few hundred milliseconds locally), paid when a developer clicks, not on every request.
 type Handler struct {
 	svc *service
-	// build 是重的（要跑 go list），串行化：几个人同时刷不会同时开几趟扫描，
-	// 而扫描本身也不是并发的（它读同一棵树的同一批文件）。
+	// build is heavy (it runs go list), so serialize: several people refreshing
+	// at once will not start several scans at once, and the scan itself is not
+	// concurrent either (it reads the same set of files from the same tree).
 	build sync.Mutex
 }
 
 func NewHandler(svc *service) *Handler { return &Handler{svc: svc} }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// 只答本机：这张图把内部结构（模块名、包路径、谁依赖谁）整个摊开，而它挂在
-	// 一个 loopback 端口上——挡得住外面的连接，挡不住别人网页上的一段脚本把
-	// 自己的域名解析到 127.0.0.1（DNS rebinding）。**只看 Host**，理由与
-	// web-dashboard 那道门一字不差（那边有两道，因为那边能写；这边只读，一道够）。
+	// Answer only to this machine: this diagram lays out the internal structure (module names, package
+	// paths, who depends on whom) entirely, and it hangs on a loopback port -- that stops outside
+	// connections, but not a script on someone's web page resolving its own domain to 127.0.0.1
+	// (DNS rebinding). **Look only at Host**, for exactly the same reason as the web-dashboard
+	// gate (that one has two, because it can write; this one is read-only, one is enough).
 	if !loopbackHost(r) {
 		http.Error(w, i18n.T("this diagram answers on loopback only; open it as http://127.0.0.1:{port}{prefix}/",
 			i18n.A{"port": portOf(r), "prefix": Prefix}), http.StatusForbidden)
 		return
 	}
-	// 只读，而且只认 GET/HEAD：别的动词没有意义，而放行它们等于给「随手 POST 一下
-	// 试试」留一个会真的跑一遍 go list 的入口。
+	// Read-only, and only GET/HEAD: other verbs make no sense, and allowing
+	// them leaves an entry point where "just try a POST" really runs go list.
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		w.Header().Set("Allow", "GET, HEAD")
 		http.Error(w, i18n.T("the diagram is read-only", nil), http.StatusMethodNotAllowed)
@@ -45,8 +47,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.build.Lock()
-	// 名单是内核在装配完成后递来的（见 service.SetCatalog）。这张图画的是
-	// **这个进程此刻装着什么**——不是「这份产物里有哪些规格书」，理由见那边。
+	// The list is handed over by the kernel after assembly finishes (see
+	// service.SetCatalog). This diagram draws **what this process has installed
+	// right now** -- not "which specs this artifact contains"; see there for why.
 	report := archmap.BuildCatalog("this-process",
 		i18n.T("this process", nil),
 		i18n.T("what is installed right now: {version}, assembled {took}", i18n.A{
@@ -60,17 +63,18 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	// 不缓存：这张图新鲜才有意义（见上面为什么现生成）。
+	// Not cached: this diagram is only meaningful fresh (see why it is generated per request above).
 	w.Header().Set("Cache-Control", "no-store")
 	_, _ = w.Write([]byte(html))
 }
 
-// loopbackHost 报告这次请求的 Host 头**指向本机**。
+// loopbackHost reports whether this request's Host header **points at this machine**.
 //
-// **不是** lib/httpx.IsLoopback：那个判的是出站拨号（「我要连的目标是不是本机」），
-// 所以空串与 0.0.0.0 都算本机——拨号时那是合理的默认值。这里是入口判据，问的是
-// 「这次请求是冲着哪个名字来的」，空 Host 必须**拒**（HTTP/1.0 的请求可以没有
-// Host，而那正是脚本工具的常见形状）。两个问题，两个答案，不要合并。
+// **Not** lib/httpx.IsLoopback: that one tests outbound dialing ("is the target I
+// want to connect to this machine"), so the empty string and 0.0.0.0 both count as local -- a
+// reasonable default when dialing. This is an entry gate, asking "which name is this request
+// aimed at", and an empty Host must be **refused** (an HTTP/1.0 request may have no Host, and
+// that is the usual shape for script tools). Two questions, two answers; do not merge them.
 func loopbackHost(r *http.Request) bool {
 	host := r.Host
 	if h, _, err := net.SplitHostPort(host); err == nil {
@@ -83,7 +87,7 @@ func loopbackHost(r *http.Request) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
-// portOf 取这次请求连的端口（报错里要拼一个能用的地址出来）。
+// portOf gets the port this request connected to (the error needs a usable address assembled).
 func portOf(r *http.Request) string {
 	if _, port, err := net.SplitHostPort(r.Host); err == nil {
 		return port

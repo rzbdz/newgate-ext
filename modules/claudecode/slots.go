@@ -4,32 +4,33 @@ import (
 	agentapi "github.com/rzbdz/newgate-ext/modules/confighook"
 )
 
-// 槽位 → 档位的映射，从 2026-09-21 起可配。
+// Slot -> tier mapping, configurable since 2026-09-21.
 //
-// # 为什么本来就该可配
+// # Why it should have been configurable all along
 //
-// 这个映射说的是「Claude Code 的哪一个槽位归到哪个语义档位」，而它同时是两件事的
-// 交汇：客户端的**槽位身份**（ANTHROPIC_DEFAULT_SONNET_MODEL 是谁）与产品的
-// **档位阶梯**（normal 比 mid 强）。
+// This mapping says "which Claude Code slot belongs to which semantic tier", the meeting
+// point of two things: the client's **slot identity** (who ANTHROPIC_DEFAULT_SONNET_MODEL
+// is) and the product's **tier ladder** (normal is stronger than mid).
 //
-//	前者是客户端的知识 —— 归本模块，写死在 agent.go 里，不该可配；
-//	后者是**用户的取舍** —— 归用户。「Bash 分类器我想让它走 normal，
-//	省得 Sonnet 一挂就断」「subagent 全部降一档」这类事，改代码改不了。
+//	the former is the client's knowledge -- this module, hardcoded in agent.go, not configurable;
+//	the latter is the **user's trade-off** -- the user. "I want the Bash classifier to go through
+//	normal, so it does not break whenever Sonnet is down", "drop every subagent one tier".
 //
-// 所以缺省值留在 Go 里（那是产品的出厂设置，也是没配过的人拿到的东西），
-// 用户改过的住在配置里。
+// So the defaults stay in Go (they are the product's factory settings and what someone
+// who has never configured anything gets), and what the user changed lives in config.
 //
-// # 实现 2026-09-21 搬去了内核
+// # The implementation moved to the kernel on 2026-09-21
 //
-// 读、写、筛、以及「只留与缺省不同的那些」这套逻辑现在住在
-// `confighook.SlotOverrides`（见那边的说明：codex 也要一张同样的表，留在本模块
-// 里的代价只能是抄一遍，而里面几处错了不会红）。本文件只剩**本家的两件知识**：
-// state.json 里用哪个键、本模块有哪些槽位。
+// The read, write, filter, and "keep only what differs from the default" logic
+// now lives in `confighook.SlotOverrides` (see the note there: codex needs the same
+// table too, and keeping it in this module would only mean copying it, where several
+// mistakes inside would not go red). This file is left with **this module's two pieces
+// of knowledge**: which key to use in state.json, and which slots this module has.
 //
-// SlotsKey 是 state.json 的 `module_config` 里的键。
+// SlotsKey is the key inside `module_config` in state.json.
 const SlotsKey = "claude_slots"
 
-// slotsOf 是本模块那张覆盖表。包级一份：它没有状态，只有两个常量。
+// slotsOf is this module's override table. One per package: it has no state, only two constants.
 func slotsOf() agentapi.SlotOverrides {
 	return agentapi.SlotOverrides{
 		Key:     SlotsKey,
@@ -38,57 +39,63 @@ func slotsOf() agentapi.SlotOverrides {
 	}
 }
 
-// ReadSlotTiers / WriteSlotTiers / allowedFor / defaultTier / slotTier / slotNote
-// 是本文件里对内核那几件的叫法，保留短名字：调用点很多（界面、命令、注入），
-// 而写成 agentapi.X 会把这一屏塞满包名。
+// ReadSlotTiers / WriteSlotTiers / allowedFor / defaultTier / slotTier / slotNote are this
+// file's names for those kernel pieces, keeping the short names: call sites are many (UI,
+// commands, injection), and writing agentapi.X would fill this screen with package names.
 func ReadSlotTiers() (ok, bad map[string]string) { return slotsOf().Read() }
 
 func WriteSlotTiers(m map[string]string) error { return slotsOf().Write(m) }
 
 func allowedFor(slot string) []string { return slotsOf().AllowedFor(slot) }
 
-// profileOf 是这个客户端的**链头**那一格（读写的实现在内核，见
-// confighook.AgentProfile）：它整条链从哪条 profile 起步。
+// profileOf is this client's **chain-head** cell (the read/write implementation is in
+// the kernel, see confighook.AgentProfile): which profile its whole chain starts from.
 //
-// 它与槽位表是同一张卡上的两件事：先有链（哪些档位绑到哪家 provider），才有
-// 「这个槽位走哪一档」。所以它在界面上排第一格。
+// It and the slot table are two things on the same card: first there
+// is a chain (which provider each tier binds to), then there is
+// "which tier this slot takes". So it is the first cell on the UI.
 func profileOf() agentapi.AgentProfile { return agentapi.AgentProfile{AgentID: ID} }
 
 func defaultTier(slot string) (string, bool) { return slotsOf().Default(slot) }
 
-// facts 是本模块交给内核的**运行时事实**（见 confighookapi.AgentFacts）。
+// facts are the **runtime facts** this module hands the kernel (see confighookapi.AgentFacts).
 //
-// # 为什么是一个类型，而不是描述符上的两个函数字段
+// # Why a type, rather than two function fields on the descriptor
 //
-// 描述符（Agent）说的是「这个客户端是什么」：二进制名、方言、槽位表、环境变量名
-// ——那些是不变的、可以打印给人看的。而「装没装」「某个槽位此刻走哪个档位」是
-// **此刻怎么样**，随磁盘与配置变。塞进同一个 struct 的话，依赖注入那一侧就没了：
-// 内核只是捡到一个恰好被赋了值的函数指针，谁提供、能不能替换、测试里怎么塞一个
-// 假的，全都无从谈起。
+// The descriptor (Agent) says "what this client is": binary name, dialect, slot table,
+// env var names -- those are constant and printable. While "is it installed" and "which
+// tier does some slot take right now" are **how it is right now**, changing with disk and
+// config. Stuffed into the same struct, the dependency-injection side is gone: the kernel
+// just picks up a function pointer that happened to be assigned, and who provides it,
+// whether it can be replaced, and how to put a fake in a test all become unanswerable.
 //
-// 端口这一侧是完整的：RegisterAgentFacts 拿得到 Release（Stop 时自动撤销）、
-// 没注册时内核有一份写死的缺省（见 confighookapi.InstalledDefault）。
+// The port side is complete: RegisterAgentFacts gets a Release (automatically undone on Stop), and
+// with nothing registered the kernel has a hardcoded default (see confighookapi.InstalledDefault).
 type facts struct{}
 
 var _ agentapi.AgentFacts = facts{}
 
-// Installed 这台机器上有没有 claude。
+// Installed: does this machine have claude.
 //
-// 走内核那份通用判据（在 PATH 上找 Bin 里的名字，**已经跳过我们自己的 shim 目录**，
-// 见 confighook.Agent.OnPath），**不必自己写**：本客户端没有什么特别的知识。
+// It goes through the kernel's generic test (look for the name in Bin on PATH,
+// **already skipping our own shim directory**, see confighook.Agent.OnPath),
+// and **need not be written here**: this client has no particular knowledge.
 func (facts) Installed() bool { return Agent().OnPath() }
 
-// SlotTier 这个槽位此刻走哪个档位：用户改过就用改的，没改返回空串（内核据此回落到
-// 描述符里的缺省）。**不在这里兜底**——「没改过就用缺省」只有一份实现（内核的
-// confighookapi.TierOf），两处各兜一遍的话，那个问题就又要看两个地方才知道答案。
+// SlotTier: which tier this slot takes right now -- the user's change if any, else the empty
+// string (the kernel then falls back to the descriptor's default). **No fallback here**
+// -- "unchanged means default" has exactly one implementation (confighookapi.TierOf in the
+// kernel), and if both sides did it, that question would again need two places to answer.
 func (facts) SlotTier(s agentapi.Slot) string { return slotsOf().Tier(s) }
 
-// slotNote 说这个槽位有没有被改过、改成了什么；没改返回空串。
+// slotNote says whether this slot was changed and to what; unchanged returns the empty string.
 func slotNote(name, def string) string { return slotsOf().Note(name, def) }
 
-// lockReason 说这两张卡此刻有没有意义；有意义返回空串（见 confighook.NotInstalled）。
+// lockReason says whether these two cards make sense right now; they
+// do if it returns the empty string (see confighook.NotInstalled).
 //
-// facts{} 要走同一份判据：本客户端目前没有额外的知识（Installed 就是 OnPath），
-// 但把它传进去，将来真加了探测（比如 claude 装在别处）时这张卡会跟着变——
-// 漏传的症状是「卡锁着、可它明明装了」，而那种不一致在界面上看不出来源。
+// facts{} must use the same test: this client has no extra knowledge right now (Installed
+// is just OnPath), but passing it in means that if real detection is added later (say claude
+// installed elsewhere) this card follows -- the symptom of forgetting to pass it is "the card
+// is locked, but it is clearly installed", an inconsistency with no visible origin in the UI.
 func lockReason() string { return agentapi.NotInstalled(Agent(), facts{}) }

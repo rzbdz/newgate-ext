@@ -20,141 +20,141 @@ var (
 
 func Treatments() []special.Plugin { return []special.Plugin{reasoning{}} }
 
-// deepseek 修 DeepSeek（含各类转发 DeepSeek 的网关）在思考模式下的 400。
+// deepseek fixes thinking-mode 400s from DeepSeek (and gateways forwarding to DeepSeek).
 //
-// 现场报错，三种方言各一句：
+// The field errors, one per dialect:
 //
 //	API Error: 400 The `reasoning_content` in the thinking mode must be
-//	passed back to the API.                          （OpenAI 方言端点）
+//	passed back to the API.                          (OpenAI dialect endpoint)
 //	API Error: 400 The `content[].thinking` in the thinking mode must be
-//	passed back to the API.                          （Anthropic 方言端点）
+//	passed back to the API.                          (Anthropic dialect endpoint)
 //	API Error: 400 The `reasoning_text` in the thinking mode must be
-//	passed back to the API.                          （Responses 方言端点）
+//	passed back to the API.                          (Responses dialect endpoint)
 //
-// 成因是同一件事：DeepSeek 的思考模型把思考内容当**对话状态的一部分**。
-// 它上一轮回给客户端的 assistant 消息里带了思考内容，下一轮就要求你原样
-// 回传；一旦某轮出现过 tool call，之后每一轮都查。而 Claude Code 这类
-// 客户端对非 anthropic.com 的端点会**主动把 thinking 块剥掉**（它假定只有
-// 官方端点签名的 thinking 块能回传），于是从第二轮起必然缺失，每次都 400。
-// 上游不放过，客户端不可能知道，只能中间层补。
+// One cause: DeepSeek's thinking model treats reasoning as **conversation state**.
+// Its assistant message last round carried reasoning, and the next round wants it back
+// verbatim; once a round has a tool call, every later round is checked. Clients like
+// Claude Code **strip thinking blocks** for non-anthropic.com endpoints, so from round
+// two they are always missing and every request 400s. The upstream will not relax, and
+// the client cannot know, so the middle layer fills in.
 //
-// 五手一起上，对应上游的五种口味：
+// Five passes, matching five upstream tastes:
 //
-//  1. **只有 Claude Code** 没写 thinking 时 → 补顶层
-//     thinking:{"type":"disabled"}，从根上不进思考模式。这是 Anthropic 协议
-//     里的合法字段，disabled 也是默认值，对不认识它的上游是语义无操作；
-//     而 DeepSeek 是**必须显式写**才算关，省略不算。
-//  2. messages 里的 assistant 消息补 reasoning_content（OpenAI 方言）——
-//     **只在缓存/客户端真有原文时补**，没有就跳过，绝不编。
-//  3. 思考模式确实开着、且这次是 Anthropic 方言时，给 assistant 消息的
-//     content[] **开头**补 thinking 块（Anthropic 方言）。位置是协议的一部分
-//     ——thinking 必须排在 text / tool_use 之前。同样只在有原文时补。
-//  4. **尾部形状**：最后一条 role:user 消息的 content[] 里全是 tool_result 块、
-//     一个字都没有时，给它追加一条最简指令（见 toolLoopRebasePrompt）。
-//  5. **Responses 方言的尾部形状**：顶层 input[] 的**最后一项**是
-//     function_call_output、且历史里存在别家产的 call_id 时，往 input[] 末尾
-//     追加一条普通 user 指令（同样是 toolLoopRebasePrompt）。第 4、5 手是修
-//     **根因**的两手（都是尾部形状），前三手都只是把字段补齐。
+//  1. **Claude Code only**, when it wrote no thinking -> add a top-level
+//     thinking:{"type":"disabled"} so thinking mode is never entered. A legal field in
+//     the Anthropic protocol, disabled is the default, so a no-op for upstreams that
+//     do not know it; DeepSeek requires it to be **explicitly** written.
+//  2. Add reasoning_content to assistant messages (OpenAI dialect) - **only when the
+//     cache/client has the original**, skip otherwise, never invent.
+//  3. When thinking mode is on and this is the Anthropic dialect, add a thinking block
+//     at the **start** of the assistant message's content[]. Position is part of the
+//     protocol - thinking must precede text / tool_use. Also only with the original.
+//  4. **Tail shape**: when the last role:user message's content[] is all tool_result
+//     blocks with no text, append a minimal instruction (see toolLoopRebasePrompt).
+//  5. **Responses dialect tail shape**: when input[]'s **last** entry is a
+//     function_call_output and history has a foreign call_id, append a plain user
+//     instruction (again toolLoopRebasePrompt). Passes 4 and 5 fix the **root
+//     cause**; the first three only fill in fields.
 //
-// 第 3 手只在思考模式开着时做：思考关掉时再塞 thinking 块，反而会被上游
-// 以「关了还给我思考块」拒掉。第 4 手**不能**挂在 thinkingOn 上（实测：
-// thinking:disabled 且不带 tools，这条校验照样触发）。
+// Pass 3 runs only when thinking is on: adding thinking blocks while it is off gets
+// rejected upstream ("off yet you send thinking blocks"). Pass 4 **cannot** hang off
+// thinkingOn (measured: thinking:disabled with no tools still triggers the check).
 //
-// 第 4 手的判据里带**出身**这一维（见 repairTailShape）：只有历史里的 tool id
-// **全是**聚合器自产的 `call_NN_…`（NN 是两位序号，见 isSelfProducedToolCall）
-// 才跳过注入。依据是 docs/06-reasoning.md §1.1 那张实测表——裸尾 + 全部自产 → 200，
-// 混进任何一个别家 id（含认不出的形态）→ 400。方向保守：宁可多补一次，也不要
-// 欠补（欠补的后果是 400 + 悄悄沿链转移）。
+// Pass 4's criterion carries a **provenance** dimension (see repairTailShape): skip the
+// injection only when every tool id in history is aggregator-produced `call_NN_...`
+// (NN is a two-digit serial, see isSelfProducedToolCall). Basis: the measured table in
+// docs/06-reasoning.md §1.1 - bare tail + all self-produced -> 200, any foreign id
+// (even unrecognizable ones) -> 400. Conservative: rather over-add than under-add.
 //
-// 第 5 手是同一件事在 Responses 方言（/v1/responses）上的版本。2026-09-22 实测
-// （独立探针直打真实 smt-deepseek/deepseek-flash，每格 3/3）：自产 `call_NN_…`
-// 的 call_id + [function_call, function_call_output] 收尾 → 200；外来
-// `call_faedac…` 的 call_id + 同样收尾 → 400，文案逐字是
-// "The `reasoning_text` in the thinking mode must be passed back to the API."；
-// 同一个 body 末尾再补一条普通 user 消息 → 200，把 reasoning item 原样带回来也
-// → 200。注意上游对 input[] 是结构化校验的：自产 id 但只有 tool output、缺
-// 对应的 function_call 会报**另一句** `No tool call found for tool output`，
-// 所以这里只按「尾部是 function_call_output + 有外来 call_id」这两条动。
+// Pass 5 is the same in the Responses dialect (/v1/responses). Measured 2026-09-22
+// (direct probe against real smt-deepseek/deepseek-flash, 3/3 per cell): self-produced
+// `call_NN_...` call_id + [function_call, function_call_output] ending -> 200; a
+// foreign `call_faedac...` call_id with the same ending -> 400, verbatim
+// "The `reasoning_text` in the thinking mode must be passed back to the API.";
+// appending one plain user message -> 200, and bringing the reasoning item back
+// verbatim -> 200. Note upstream validates input[] structurally: a self-produced id
+// with only a tool output and no matching function_call gives another error,
+// `No tool call found for tool output` - so only the two conditions above trigger.
 //
-// ---- 第 4 手曾被删掉一次，2026-09-18 当天恢复（值得记下来）----
+// ---- Pass 4 was once deleted and restored the same day, 2026-09-18 (worth noting) ----
 //
-// 起因是它的**措辞**：原来注入的是一句英文长句（"Continue from the tool
-// results above. …"），那句话会进上游、也会进用户下一轮的对话历史，读起来像
-// 「有人在替我说话」。用户报的是这个（原话：「就算以后要用，也只用最少字」）。
+// It began with the **wording**: it injected a long English sentence ("Continue from
+// the tool results above...") which went upstream and into the user's history, reading
+// like "someone speaking for me". The user asked for the fewest characters possible.
 //
-// 但当天一并把它**整手删掉**是错的，而且错得很隐蔽：删掉之后不再有那条
-// note，日志里也看不到 400——因为上游 400 之后**自动沿链转移**，客户端拿到
-// 的是下一个 provider 的 200。「看起来没坏」实际是「每一发都悄悄降级到别的
-// 模型」。恢复当天实测（打真实 smt-deepseek/deepseek-flash）：
+// But deleting the whole pass that day was wrong, and subtly so: without it there is no
+// note and no 400 in the log - because a 400 triggers **silent chain failover** and the
+// client gets the next provider's 200. "Looks fine" was really "every request is
+// silently downgraded". Measured on restoration day (real upstream):
 //
-//	裸 [tool_result] 尾部             → 400
-//	裸 [tool_result] + 尾随 system    → 400
-//	裸 [tool_result] + text" "        → 200
+//	bare [tool_result] tail             -> 400
+//	bare [tool_result] + trailing system -> 400
+//	bare [tool_result] + text" "         -> 200
 //
-// 复现路径（写成命令，下次别再靠猜）：把 dump 里任意一份 Claude Code 的
-// client-sent 原样 POST 到 /p/ds/v1/messages，日志里就会出现
-// `-> 400 ... must be passed back` 紧跟 `→ 沿链下一步`。
+// Repro (as a command, so nobody guesses again): POST any Claude Code client-sent body
+// from a dump verbatim to /p/ds/v1/messages, and the log shows
+// `-> 400 ... must be passed back` right before `-> next in chain`.
 //
-// 结论：判据（形状）是对的，措辞是错的。**只改措辞，别删判据。**
-// 详见 docs/06-reasoning.md §2b。
+// Conclusion: the criterion (shape) was right and the wording was wrong. **Change the
+// wording, never the criterion.** See docs/06-reasoning.md §2b.
 //
-// 第 1 手只给 Claude Code（`/a/claude/` 认出来，见 claudeCode）：它剥掉思考块，
-// 思考开着也回不来，白花思考的时间和 token。**别的客户端不能关**——2026-09-15
-// 现场：opencode 走 OpenAI 方言（`/chat/completions`），压根不会写 thinking 这个
-// Anthropic 字段，于是条条请求都被当成「客户端没要思考」而关掉，用户报
-// 「deepseek 不思考了」。opencode 要的是模型的默认思考，推理由第 2 手替它送回去。
+// Pass 1 is Claude Code only (recognized by `/a/claude/`, see claudeCode): it strips
+// thinking blocks, so thinking never comes back even when on, wasting time and tokens.
+// **Other clients must not be turned off** - 2026-09-15 field report: opencode speaks
+// the OpenAI dialect, never writes the Anthropic thinking field, so every request was
+// read as "wants no thinking"; the user said "deepseek stopped thinking".
 //
-// 第 3 手只对 Anthropic 方言做：OpenAI 方言里回传推理的载体是 reasoning_content
-// （第 2 手），往人家的 content[] 里塞 thinking 块是塞一个它不认识的块类型。
+// Pass 3 is Anthropic dialect only: in the OpenAI dialect the carrier is
+// reasoning_content (pass 2), and a thinking block in content[] would be an unknown type.
 //
-// 补什么内容，两级来源，逐级降级：
+// What to fill in, two sources, degrading step by step:
 //
-//  1. 客户端自己带回的 thinking 块原文——它保留了就直接用，不依赖缓存；
-//  2. gateway/thinkcache 里那一轮**真实**的推理内容；
-//  3. **都没有 → 一个字节都不补**（这条是 2026-09-18 按实测改的）。
+//  1. the thinking block text the client itself sent back - use it if kept, no cache;
+//  2. the **real** reasoning for that round from gateway/thinkcache;
+//  3. **neither -> not a single byte** (changed to this on 2026-09-18 from measurement).
 //
-// 第 3 条原来补的是一个非空占位符（「这一轮的推理内容没有被保留…」，后来
-// 缩成 "No thinking in this round"）。**那整件事是错的**，2026-09-18 实测推翻：
+// Step 3 used to insert a non-empty placeholder ("No thinking in this round"), and
+// measurement on 2026-09-18 disproved **that whole thing**:
 //
-// 用户的判断是对的，而且是最简单的那条逻辑：上游自己都没给我们推理，那
-// 「must be passed back」要求回传的东西**根本不存在**，我们凭什么替它编一个？
-// 编出来的东西会进上游、进对话历史、每轮烧 token，而它一个字的信息量都没有。
+// The user was right, with the simplest logic: the upstream never gave us reasoning, so
+// what "must be passed back" asks for **does not exist** - why invent one? Invented
+// text goes upstream, into history, burns tokens every round, and carries no information.
 //
-// 实测（打真实上游 smt-deepseek/deepseek-flash，每格 3/3）——把 reasoning_content
-// 的形态和**尾部形状**两个因素交叉：
+// Measured (real smt-deepseek/deepseek-flash, 3/3 per cell) - crossing reasoning_content
+// shape against tail shape:
 //
-//	reasoning_content   尾部                 结果
-//	真实原文            [tool_result]        400 400 400
-//	真实原文            [tool_result, text]  200 200 200
-//	省略字段            [tool_result]        400 400 400
-//	省略字段            [tool_result, text]  200 200 200
+//	reasoning_content   tail                  result
+//	real text           [tool_result]        400 400 400
+//	real text           [tool_result, text]  200 200 200
+//	field omitted       [tool_result]        400 400 400
+//	field omitted       [tool_result, text]  200 200 200
 //
-// 也就是说：**reasoning_content 在不在、是什么内容，对这个 400 毫无影响**，
-// 唯一起作用的是尾部形状（见 docs/06-reasoning.md §2b）。再补测「两条
-// assistant 消息都缺 reasoning_content、尾部干净」也是 3/3 200 —— 「历史里
-// 每条 assistant 都得带推理」那条文档口径在这个上游上压根不成立。
+// In other words: **whether reasoning_content is there and what it says does not affect
+// this 400**; only the tail shape does (docs/06-reasoning.md §2b). A further probe with
+// two assistant messages missing reasoning_content and a clean tail was 3/3 200 - so the
+// documented rule "every assistant message must carry reasoning" does not hold upstream.
 //
-// 所以第 2、3 手的**补内容**这一半是白干的：真实原文该补（客户端会剥块，
-// 不补模型下一轮读不到自己的推理，那是质量问题不是 400 问题），但**没有
-// 原文时补任何东西都是错的**，正确动作是**跳过这条消息**。
+// So content-filling in passes 2 and 3 was wasted work: real text should be filled in
+// (clients strip blocks, and without it the model cannot read its reasoning next round
+// - a quality issue, not a 400), but filling without the original is wrong: skip it.
 //
-// 补的范围仍然是**所有** assistant 消息（有原文的都补上）。已经带了思考
-// 内容的消息一律不碰。
+// The range stays **all** assistant messages (fill in those that have text). Messages
+// that already carry reasoning are never touched.
 //
-// 摘除条件：哪天 DeepSeek 允许缺省这些字段了，`newgate st off deepseek`
-// 就能验证；确认不需要了整个文件可以直接删掉。
+// Removal: once DeepSeek tolerates these fields being absent, `newgate st off deepseek`
+// verifies it; if confirmed unnecessary, the whole file can be deleted.
 type reasoning struct{}
 
 func (reasoning) Name() string { return "deepseek" }
 
-// Before/After 是**产品这一侧**的排序声明——内核 2026-09-20 起不再认识产品插件名
-// （那条边以前写在内核的 st-always.go / st-background.go 里，方向是反的，而且
-// 未注册的名字在排序图里静默忽略，所以在纯内核构建里一直空转）。
-// 只有本插件同时知道两边的名字，所以由本插件声明：
+// Before/After are **product-side** ordering declarations - the kernel stopped
+// knowing product plugin names on 2026-09-20 (that edge was in the kernel's
+// st-always.go / st-background.go, reversed, and unknown names are silently ignored
+// in the ordering graph, so it idled in pure-kernel builds).
 //
-//	After(["claude-bg"])       claude-bg 先动手（后台非流式请求改道/补 thinking），
-//	                           本插件处理剩下的形态
-//	Before(["always-thinks"]) 本插件先动手，内核那个兜底翻译器最后扫尾
+//	After(["claude-bg"])      claude-bg acts first (background re-route / thinking)
+//	                          and this plugin handles the remaining shapes
+//	Before(["always-thinks"]) this plugin acts first, the kernel translator sweeps last
 func (reasoning) Before() []string { return []string{"always-thinks"} }
 func (reasoning) After() []string  { return []string{"claude-bg"} }
 
@@ -176,16 +176,16 @@ func (reasoning) Metrics() []special.MetricInfo {
 	}}
 }
 
-// NeedsToolLoopRebase 标出 DeepSeek 接手别家未闭合 tool loop 时需要有损重建。
+// NeedsToolLoopRebase marks that DeepSeek needs a lossy rebuild on unclosed tool loops.
 //
-// 这不是通用限制。2026-09-16 对同一份真实 thinking + tool_use 做 A/B：
-//   - Ark → Ark:      3/3 200
-//   - Ark → DeepSeek: 3/3 400 reasoning_content must be passed back
-//   - DeepSeek → Ark: 3/3 200
-//   - DeepSeek → DS:  3/3 200
+// Not a general limitation. A/B on the same real thinking + tool_use, 2026-09-16:
+//   - Ark -> Ark:      3/3 200
+//   - Ark -> DeepSeek: 3/3 400 reasoning_content must be passed back
+//   - DeepSeek -> Ark: 3/3 200
+//   - DeepSeek -> DS:  3/3 200
 //
-// API 是无状态的；不兼容的是请求里携带的 reasoning/tool 编码。只拦迁入
-// DeepSeek，别把这个上游怪癖扩大成所有 provider 都失去 fallback。
+// The API is stateless; the encoding in the request is what is incompatible. Block
+// only moves into DeepSeek - do not take every provider's fallback away over it.
 func (d reasoning) NeedsToolLoopRebase(originProvider, originModel string,
 	candidate *special.Request) (bool, string) {
 	if !d.Match(candidate) ||
@@ -196,59 +196,59 @@ func (d reasoning) NeedsToolLoopRebase(originProvider, originModel string,
 		"needs a lossy rebuild first", nil)
 }
 
-// toolLoopRebasePrompt 是「尾部没有用户指令」时补上去的那一句话。
+// toolLoopRebasePrompt is the sentence added when "the tail has no user instruction".
 //
-// **三个调用点共用它**：
-//   - repairTailShape（Apply 第 4 步，messages 方言的尾部）：尾部形状本身就有
-//     问题，客户端没意识到；
-//   - repairResponsesTailShape（Apply 第 5 步，Responses 方言的 input[]）：
-//     同一件事在另一个方言里的版本；
-//   - RebaseToolLoop：跨上游迁移，外来 hidden reasoning 不能原样接手。
+// **Shared by three call sites**:
+//   - repairTailShape (Apply step 4, messages dialect tail): the tail shape itself is
+//     the problem, and the client does not realize it;
+//   - repairResponsesTailShape (Apply step 5, Responses dialect input[]): the same
+//     thing in another dialect;
+//   - RebaseToolLoop: foreign hidden reasoning cannot be taken over as-is.
 //
-// 2026-09-18 从一句英文长句改成一个词，2026-09-22 又把那个词从「继续」定成
-// "continue"。起因是用户的原话：「prompt 注入也尽可能用最简单的、不影响流程的，
-// 比如（"继续"）这种，别搞太复杂了」。这句注入会进上游、**也会进对话历史**
-// ——长句在那里就是一段用户没写过的正文，越长越像「有人在替我说话」。
+// 2026-09-18 it went from a long English sentence to one word, and on 2026-09-22 that
+// word was fixed as "continue", from the user's words: "the prompt injection should
+// also be as simple as possible, like ('continue')". The injection goes upstream and
+// **into history** too, where a long sentence is text the user never wrote.
 //
-// 必须诚实说清的一点：当初那次 A/B（Ark → DeepSeek，追加前稳定 400、追加后
-// 5/5 200）用的是那句长英文。起作用的是「尾部多了一条**普通用户指令**」这个
-// 事实本身，不是那句话的内容——上游要的是「这一轮有新指令」，不是一个解释。
-// 当时用「继续」在真实 Claude Code 请求体上复测过（2026-09-18）：裸
-// [tool_result] 尾部 400，同一个请求体只加一个 " "（空格）就 200。
+// One honest caveat: the first A/B (Ark -> DeepSeek, a stable 400 before appending,
+// 5/5 200 after) used the long sentence. What mattered was the **fact** of an extra
+// plain user instruction, not its content - upstream wants "a new instruction", not
+// an explanation. Re-tested with "continue" on a real Claude Code body: bare
+// [tool_result] tail 400, plus one " " (space) in the same body 200 (2026-09-18).
 //
-// 也**不是**随便什么内容都行：空串不行。实测 [tool_result, text""] 会被上游
-// 以 `missing field text` 拒掉（它的解析层对空串等同于字段缺席）。
+// And it is **not** anything-goes: an empty string fails. Measured: [tool_result,
+// text""] is rejected upstream with `missing field text` (empty string = absent field).
 //
-// **这一句不走 i18n，而且永远不该走**：它被 json.Marshal 之后写进**请求体的
-// 字节**，是发给上游的协议数据，不是给谁看的文案。翻译它等于改变发出去的内容
-// （上游对这段文本没有语义要求，但用户的历史里会长住这段字）。它同时也是包级
-// const，而包初始化早于装语言。
+// **This does not go through i18n, and never should**: json.Marshal writes it into the
+// **request body bytes**, so it is protocol data sent upstream, not copy for anyone.
+// Translating it changes what is sent (upstream has no semantic requirement on it, but
+// the text lives on in the user's history). It is a package const evaluated early.
 const toolLoopRebasePrompt = "continue"
 
-// RebaseToolLoop 把 tool_result 变成同时带普通用户指令的新回合。旧 reasoning、
-// tool_use、tool_result 全部保留作可见上下文，只追加这一段；实测 Ark →
-// DeepSeek 原请求稳定 400，追加后 5/5 200。
+// RebaseToolLoop turns a tool_result into a new turn that also carries a plain user
+// instruction. Old reasoning, tool_use and tool_result all stay as visible context;
+// only this segment is appended. Measured: Ark -> DeepSeek 400 before, 5/5 200 after.
 //
-// **两个方言各一支**（2026-09-23 补上 Responses 那支）。跨上游迁移这条路上，
-// 「未闭合的 tool loop」在两种方言里的形状完全不同：
+// **One branch per dialect** (the Responses branch added 2026-09-23). On the
+// cross-upstream migration path, "an unclosed tool loop" looks different per dialect:
 //
-//	messages（Anthropic / OpenAI）：尾部那条 user 消息的 content[] 里只有
-//	    tool_result → 往**那个 content[] 里**追加一个 text 块；
-//	Responses（Codex）：顶层 input[] 末尾是 function_call_output → 往 **input[]
-//	    末尾**追加一条普通 user 消息项。
+//	messages (Anthropic / OpenAI): the last user message's content[] holds only
+//	    tool_result -> append a text block **into that content[]**;
+//	Responses (Codex): the top-level input[] ends with function_call_output -> append
+//	    a plain user message item **at the end of input[]**.
 //
-// 只写 messages 那支的后果不是「少修一发」，而是**一条都修不了**：Codex 的请求
-// 顶层根本没有 messages，AppendLastArrayItemArray 会返回 changed=false，于是
-// 跨上游迁移静默 no-op——而这正是 RebaseToolLoop 存在的唯一理由（DeepSeek
-// 接手别家未闭合的 reasoning/tool 状态 :3/3 400，见上）。同一条判据在
-// ContinuationOrigin 里也补了 Responses 分支，两处缺一不可：那边不认，这里
-// 根本不会被调用。
+// Writing only the messages branch does not mean "one case unfixed" but **none fixed**:
+// a Codex request has no top-level messages, AppendLastArrayItemArray returns
+// changed=false, and the cross-upstream migration is a silent no-op - which is exactly
+// RebaseToolLoop's only reason to exist (DeepSeek taking over another's unclosed
+// reasoning/tool state: 3/3 400, see above). ContinuationOrigin got the same Responses
+// branch, and both are needed: without that side recognizing it, this is never called.
 func (reasoning) RebaseToolLoop(body []byte, _ *special.Request) ([]byte, string, error) {
 	q, _ := json.Marshal(toolLoopRebasePrompt)
 
-	// Responses 方言：没有 messages 时才走这一支。判据用「顶层有没有 input」，
-	// 不用 r.Path——AppendLastArrayItemArray 那边本来就会因为找不到 messages
-	// 而 no-op，这里只是把那件事说清楚。
+	// Responses dialect: this branch runs only when there are no messages. The test is
+	// "does the top level have input", not r.Path - AppendLastArrayItemArray already
+	// no-ops when messages are missing; this just says so explicitly.
 	if _, hasMessages := rewrite.TopLevelRaw(body, "messages"); !hasMessages {
 		if _, hasInput := rewrite.TopLevelRaw(body, "input"); hasInput {
 			block := []byte(`{"type":"message","role":"user","content":[{"type":"input_text","text":` +
@@ -282,14 +282,14 @@ func (reasoning) RebaseToolLoop(body []byte, _ *special.Request) ([]byte, string
 		"appended a plain user instruction to continue", nil), nil
 }
 
-// Match 只认 DeepSeek：模型名、provider 名、base URL 任一处出现 deepseek。
+// Match recognizes DeepSeek only: the model name, provider name or base URL says deepseek.
 //
-// 为什么看这三处：模型名最可靠（deepseek-chat / deepseek-reasoner），但经过
-// 聚合网关时可能被改名，此时 provider 名或 endpoint 里通常仍留着痕迹。
+// Why all three: the model name is most reliable (deepseek-chat / deepseek-reasoner),
+// but an aggregating gateway may rename it and the provider name or endpoint keeps a trace.
 //
-// 反向兜底：Anthropic 官方端点一律不碰。它对未知字段是严格的，而它也从来
-// 不会报这个错——真有人在官方端点上挂了个叫 deepseek 的 provider，也不该
-// 让这个补丁去给它加字段。
+// Reverse guard: Anthropic's official endpoint is never touched. It is strict about
+// unknown fields and never reports this error anyway - even if someone did hang a
+// provider called deepseek off it, this patch should not add fields for it.
 func (reasoning) Match(r *special.Request) bool {
 	return r != nil && MatchTarget(r.Model, r.Provider, r.BaseURL)
 }
@@ -298,34 +298,34 @@ func (reasoning) Apply(body []byte, r *special.Request) ([]byte, []string, error
 	var notes []string
 	out := body
 
-	// 是否开启思考只看请求的显式字段。Claude Code × DeepSeek 的缺省关闭
-	// 由组合模块 claudecode_deepseek 负责，本模型模块不认识调用端。
+	// Whether thinking is on comes only from explicit request fields. The Claude Code x
+	// DeepSeek default-off case belongs to claudecode_deepseek; this module ignores callers.
 	thinkingOn := true
 	if raw, has := rewrite.TopLevelRaw(out, "thinking"); has {
 		if t, _ := rewrite.TopLevelString(raw, "type"); t == "disabled" {
 			thinkingOn = false
 		}
 	}
-	// 认不出 type（adaptive、或形状不认识）时按「开着」处理：多试一步顶多是
-	// 冗余，漏试就少补一块。
+	// An unrecognized type (adaptive, or an unknown shape) is treated as "on": one extra
+	// attempt is only redundant, while a missed one leaves a block unfilled.
 
-	// 没有 messages（如 /v1/models 之类）就到此为止，不算错。
+	// No messages (say /v1/models) means we stop here, and that is not an error.
 	//
-	// 例外：Responses 方言（/v1/responses）把对话放在顶层 input[]，本来就没有
-	// messages——第 5 手要修的正是它。所以「messages 与 input 都不在」才收工；
-	// 手里那些手各自对不上形状时会自己 no-op（见下面的 hasMessages 闸门）。
+	// Exception: the Responses dialect (/v1/responses) keeps the conversation in a
+	// top-level input[] and never has messages - pass 5 fixes exactly that. So we stop
+	// only when both messages and input are absent; passes that do not match no-op.
 	_, hasMessages := rewrite.TopLevelRaw(out, "messages")
 	_, hasInput := rewrite.TopLevelRaw(out, "input")
 	if !hasMessages && !hasInput {
 		return out, notes, nil
 	}
 
-	// 2) 给 assistant 消息补 reasoning_content（OpenAI 方言那句报错）。
-	//    有真实原文才补；没有就跳过这条消息，并记下**为什么**没原文。
+	// 2) Add reasoning_content to assistant messages (the OpenAI dialect 400).
+	//    Fill only with real text; otherwise skip the message and record **why**.
 	//
-	//    note 的规矩（2026-09-18 定）：**动过手才报**。一步都没动手就没
-	//     notes——「不静默」管的是改写，不是每次路过。跳过的原因分类先攒
-	//     pending，最后一步之后如果这个请求确实被改过，再连同原因一起报出来。
+	//    The note rule (set 2026-09-18): **report only if we acted**. No action means
+	//    no notes - "never silent" governs rewrites, not pass-throughs. Skip causes are
+	//    gathered in pending and reported, with the reasons, only if this request changed.
 	var sk1 skipTally
 	var pending []string
 	restored := 0
@@ -337,40 +337,40 @@ func (reasoning) Apply(body []byte, r *special.Request) ([]byte, []string, error
 		sk1.add(skipCauseOf(item), toolIDsAny(item))
 		return nil // 没有原文 → 这条一个字节都不补
 	}
-	//    被开关点关掉的那一手**不打** per-request note：那是用户自己拧的，每发
-	//    都报一遍正是上面那条规矩要消掉的噪音。可见性走 `newgate plugin` 与
-	//    `newgate status`，不走日志。
+	//    The pass turned off by a switch point **does not** emit a per-request note:
+	//    that is the user's own setting, and repeating it is the noise the rule
+	//    above removes. Visibility: `newgate plugin` and `newgate status`, not the log.
 	if !hasMessages {
-		// Responses 方言：没有 messages 可补，第 2 手跳过。别让它去
-		// EnsureArrayItemFieldFunc 上撞一个「找不到 messages」，那会平白打一条
-		// 「messages left untouched」的假 note。
+		// Responses dialect: there are no messages to fill, so pass 2 is skipped. Do not
+		// let it hit EnsureArrayItemFieldFunc's "no messages": that would emit a bogus
+		// "messages left untouched" note for nothing.
 	} else if !enabled(r, SwitchBackfillReasoning) {
-		// 第 2 手被关掉，跳过。
+		// Pass 2 is switched off; skip.
 	} else if nb, n, err := rewrite.EnsureArrayItemFieldFunc(out, "messages",
 		"reasoning_content", valReasoning, isAssistant); err != nil {
-		// messages 形状不认识：前面那些仍然有效，这步放弃。
+		// Unrecognized messages shape: the earlier passes still hold; give up on this step.
 		notes = append(notes, i18n.T("messages left untouched ({err})",
 			i18n.A{"err": err.Error()}))
 	} else if n > 0 {
 		out = nb
 		notes = append(notes, reasoningNote("reasoning_content", n, restored, sk1))
 	} else if sk1.total > 0 {
-		// 一条都没补上：**先攒着**，等看这一发到底有没有被改过（见函数末尾）。
+		// Not a single one filled: **hold it back** and see whether this request changed.
 		pending = append(pending, reasoningNote("reasoning_content", sk1.total, 0, sk1))
 	}
 
-	// 3) 思考模式开着 → assistant 的 content[] 开头必须有 thinking 块
-	//    （Anthropic 方言那句报错）。同样：只有真实原文才补。
-	//    只对 Anthropic 方言做：OpenAI 方言里回传推理的载体是 reasoning_content。
+	// 3) Thinking mode on -> assistant's content[] must start with a thinking block
+	//    (the Anthropic dialect 400). Same rule: fill only with real text.
+	//    Anthropic dialect only: in the OpenAI dialect reasoning rides reasoning_content.
 	if hasMessages && thinkingOn && anthropicDialect(r) &&
 		enabled(r, SwitchBackfillThinkingBlock) {
 		restored := 0
 		var sk2 skipTally
 		valBlock := func(item []byte) []byte {
-			// 与第 2 步同一份来源（pickReasoning）：客户端带回的 thinking 块
-			// 原文 → thinkcache 真实推理。**不能**图省事去读第 2 步刚写进去的
-			// reasoning_content 当来源——那是循环论证（第 2 步的值本来就是这里
-			// 挑出来的），而且会让日志里的「用了真实原文」计数虚高。
+			// Same source as step 2 (pickReasoning): the client's thinking block text ->
+			// thinkcache real reasoning. **Never** read step 2's freshly written
+			// reasoning_content as a source - that is circular (step 2's value came from
+			// here), and it would inflate the "used real text" count in the log.
 			if q, ok := pickReasoning(item); ok {
 				restored++
 				return []byte(`{"type":"thinking","thinking":` + string(q) + `}`)
@@ -392,14 +392,14 @@ func (reasoning) Apply(body []byte, r *special.Request) ([]byte, []string, error
 		}
 	}
 
-	// 4) 尾部形状：最后一条 user 消息的 content[] 里只有 tool_result、一个字都
-	//    没有时，追加一条最简用户指令。详见 repairTailShape 与文件头第 4 手。
+	// 4) Tail shape: the last user message's content[] holds only tool_result blocks
+	//    with no text, so append a minimal user instruction (see repairTailShape).
 	//
-	//    **不能挂在 thinkingOn 上**：2026-09-17/18 两次实测都确认，把顶层写成
-	//    thinking:{"type":"disabled"} 且不带 tools，同一条校验照样触发。
+	//    **Must not** hang off thinkingOn: measured twice (2026-09-17/18), with the top
+	//    level thinking:{"type":"disabled"} and no tools, the same check still fires.
 	if !enabled(r, SwitchTailShape) {
-		// 第 4 手被关掉，跳过。它是修根因的两手之一，关掉之后裸 tool_result
-		// 尾部会直接撞上游那条误报的 400。
+		// Pass 4 is switched off; skip. It is one of the two root-cause passes, and
+		// without it a bare tool_result tail hits the upstream's false 400 directly.
 	} else if nb, changed, err := repairTailShape(out); err != nil {
 		notes = append(notes, i18n.T("tail shape left untouched ({err})",
 			i18n.A{"err": err.Error()}))
@@ -410,14 +410,14 @@ func (reasoning) Apply(body []byte, r *special.Request) ([]byte, []string, error
 			"an instruction-less tail as a missing reasoning_content)", nil))
 	}
 
-	// 5) Responses 方言（/v1/responses）的尾部形状：顶层 input[] 的最后一项是
-	//    function_call_output、而历史里存在别家产的 call_id 时，往 input[] 末尾
-	//    追加一条普通 user 指令。详见 repairResponsesTailShape 与文件头第 5 手。
+	// 5) Responses dialect (/v1/responses) tail shape: when input[]'s last entry is
+	//    a function_call_output and history holds a foreign call_id, append a plain
+	//    user instruction at the end of input[]. See repairResponsesTailShape.
 	//
-	//    与第 4 手同源（都是「尾部没有新指令」这条误报），只是方言不同：一条补
-	//    进 messages[i].content[]，一条追加成 input[] 的新项。
+	//    Same root as pass 4 (both are the "no new instruction at the tail" false
+	//    report), just another dialect: one fills messages[i].content[], the other adds.
 	if !enabled(r, SwitchTailShapeResponses) {
-		// 第 5 手被关掉，跳过。
+		// Pass 5 is switched off; skip.
 	} else if nb, changed, err := repairResponsesTailShape(out); err != nil {
 		notes = append(notes, i18n.T("Responses input left untouched ({err})",
 			i18n.A{"err": err.Error()}))
@@ -429,14 +429,14 @@ func (reasoning) Apply(body []byte, r *special.Request) ([]byte, []string, error
 			"reasoning_text)", nil))
 	}
 
-	// 前面攒下的「跳过」报告，只在**这一发确实被改过**时才吐出来。
+	// The "skipped" reports held back earlier are emitted only if this request changed.
 	//
-	// 为什么是这个条件：「不静默」管的是**改写**——用户有权知道自己发出去的
-	// 请求被动过哪一笔。而「没原文可补」在没动手的时候不算改写（字段本来就
-	// 缺席，我们一个字节没碰），每天上千条这种日志是这个会话最大的噪音源，
-	// 真出事时反而淹没了有用的行。反过来，只要这一发被改过，跳过就必须
-	// 一并报出来——那时它和「用了真实原文」是同一笔账的两半，少报一半就是
-	// 不诚实。
+	// Why: "never silent" governs **rewrites** - users have a right to know what was
+	// touched. "No text to fill" is not a rewrite when we did nothing (the field was
+	// absent and we touched no byte), and thousands of such lines a day are this
+	// session's biggest noise, drowning the useful ones when something goes wrong.
+	// Conversely, when this request did change, the skips must be reported too - they
+	// and "used real text" are two halves of one account, and half is dishonest.
 	if len(pending) > 0 && len(notes) > 0 {
 		notes = append(notes, pending...)
 	}
@@ -444,39 +444,39 @@ func (reasoning) Apply(body []byte, r *special.Request) ([]byte, []string, error
 	return out, notes, nil
 }
 
-// isSelfProducedToolCall 报告这个 tool call id 是不是聚合器（newgate 走的那家）
-// 自己产的形态：`call_` + **两位序号** + `_`（如 `call_00_6fZJ…`）。
+// isSelfProducedToolCall reports whether a tool call id has the shape the aggregator
+// (the one newgate goes through) produces: `call_` + **two-digit serial** + `_`.
 //
-// 为什么序号要算两位而不是只认 00：**一轮里并行发几个 tool call，聚合器就发几个
-// id**——第一个 00、第二个 01、依次往下。2026-09-22 在真实抓包与本机日志里数过：
-// call_00_ 2917 次、call_01_ 705、call_02_ 16、call_03_ 8、call_04_ 2。只认
-// `call_00_` 会把「一轮里发了两个工具」这种**最常见的正常轮次**判成外来，于是
-// 正常链路继续被塞指令——那正是这次要修的 bug。
+// Why two digits rather than only 00: **the aggregator emits one id per parallel tool
+// call in a turn** - first 00, second 01, and so on. Counted on 2026-09-22 across real
+// captures and local logs: call_00_ 2917 times, call_01_ 705, call_02_ 16, call_03_ 8,
+// call_04_ 2. Matching only `call_00_` would call "two tools in one turn" - the most
+// common normal turn - foreign, and keep injecting into the normal path: the very bug.
 //
-// 依据是 docs/06-reasoning.md §1.1 的实测表（2026-09-18，打真实
-// smt-deepseek/deepseek-flash，每格 3/3）：
+// Basis: the measured table in docs/06-reasoning.md §1.1 (2026-09-18, real
+// smt-deepseek/deepseek-flash, 3/3 per cell):
 //
-//	call_NN_XXXXXXXX…   本聚合器产的——它记得自己发过哪些 id，续写那一轮靠这份
-//	                    记忆把 reasoning_content 补回去
-//	call_<hex>（如 call_faedac561213487ebeea7731）  OpenAI 系上游产的（fallback
-//	                    到别家那一轮混进历史）
-//	toolu_01XXXXXXXX…  Anthropic 系（走 smt-claude 的 Claude）产的
+//	call_NN_XXXXXXXX...   produced by this aggregator - it remembers the ids it issued
+//	                      and fills reasoning_content back in for the continuation turn
+//	call_<hex> (say call_faedac561213487ebeea7731)  from an OpenAI-family upstream (that
+//	                      fallback turn left it in history)
+//	toolu_01XXXXXXXX...   from an Anthropic-family upstream (Claude via smt-claude)
 //
-// 2026-09-22 又把「记忆」这件事本身直接量了一遍：拿一分钟前聚合器刚发过的
-// `call_00_605TMR…` 原样回传 → 200；只把序号改成 `call_01_605TMR…`（后缀一字
-// 不差）→ 400（`reasoning_text … must be passed back`）。可见过的不是前缀，是
-// **它记不记得这个 id**；形态只是这份记忆在真实流量里的代理。
+// On 2026-09-22 "memory" itself was measured directly: replay a `call_00_605TMR...`
+// the aggregator issued a minute earlier verbatim -> 200; change only the serial to
+// `call_01_605TMR...` (same suffix, not a character off) -> 400 (`reasoning_text ...
+// must be passed back`). What was seen is not the prefix but the memory of the id.
 //
-// 所以方向仍然保守：**认不出的形态一律算「不是自产」**（`call_` 后面不是两位
-// 序号 + `_` 的都算，包括 `call_<hex>`、`toolu_…`、以及别的写法）。多判一次外来
-// 只是多发一句 continue，漏判一次是 400 + 悄悄沿链转移（docs/06-reasoning.md
-// §1.2）。
+// So the direction stays conservative: **anything unrecognized counts as "not
+// self-produced"** (anything after `call_` that is not two digits plus `_`, including
+// `call_<hex>`, `toolu_...`, and other spellings). One extra "foreign" verdict adds
+// one continue; one missed is a 400 plus silent failover (docs §1.2).
 //
-// **这条判据看不见的一维**（2026-09-22 实测，docs/06-reasoning.md §1.1）：聚合器
-// 记得还不够，**那一轮要成套**——同一轮的两个 id 只回一个，它照样补不上（3/3
-// 400）。这里只能看 body 里有什么、看不出「它记的那一轮是不是这套」。真实客户端
-// 发整段历史、一轮的 id 不会拆开发，所以这条近似在实测里成立，但它不是物理定律：
-// 真出反例时是**少补一次**（400 + 沿链转移），取舍记在文档里。
+// **One dimension this criterion cannot see** (measured 2026-09-22, docs §1.1): memory
+// is not enough - the **whole set** of that turn must come back; return only one of two
+// ids from the same turn and it still cannot fill in (3/3 400). Real clients send whole
+// history, so a turn's ids are never split, and the approximation held in measurement -
+// but it is no law of physics: a counterexample means **one less fill**, plus failover.
 func isSelfProducedToolCall(id string) bool {
 	const head = "call_"
 	if !strings.HasPrefix(id, head) {
@@ -487,37 +487,37 @@ func isSelfProducedToolCall(id string) bool {
 		rest[0] >= '0' && rest[0] <= '9' && rest[1] >= '0' && rest[1] <= '9'
 }
 
-// repairTailShape 修「最后一条 user 消息只有 tool_result」这个形状。
+// repairTailShape fixes "the last user message holds only tool_result".
 //
-// 判据来自 docs/06-reasoning.md §1：诊断那条 400 有三个条件（缺一不可）——
-// 锚在最后一条 role:user、那块 content[] 全是 tool_result、以及那条 tool_result
-// 引用的 tool call 里**至少有一个不是本聚合器产的**。前两条是**形状**，第三条
-// 是**出身**。这里实现的是「形状全中时，再按出身决定动不动手」：
+// From docs/06-reasoning.md §1: that 400 has three conditions (all required) - anchored
+// on the last role:user, content[] all tool_result, and at least one referenced tool
+// call **not** from this aggregator. Two are **shape**, the third is **provenance**.
+// Here: when the shape hits, provenance decides whether to act.
 //
-//  1. **锚在「最后一条 role:user 的消息」，不是数组的最后一项**。Claude Code
-//     会在 tool_result 之后追加一条 role:"system" 的插话（「The user sent a new
-//     message while you were working: …」），数组最后一项是那条 system，而被上游
-//     拒掉的却是它前面那条只有 tool_result 的 user 轮。上游不认 system 里的指令。
-//     现场：dump/err-400-req000464、err-400-req000412。
-//  2. **那块 content[] 里必须全是 tool_result 块**，不是「没有 text 块」。
-//     后者太宽，会把本来就能过的尾部一起改掉——[image] 和 [tool_result, image]
-//     实测都是 200。所以线画在「除 tool_result 之外的任何块都算有指令」上。
-//  3. **出身**：把历史里所有 tool_use 块的 id 与尾部 tool_result 引用的
-//     tool_use_id 合起来看，**只有全部都是自产形态时才跳过注入**；出现任何别的
-//     形态（含认不出来的）都照旧注入。方向保守是刻意的：过修只花客户端一个
-//     continue，欠修是 400 + 悄悄沿链转移（docs/06-reasoning.md §1.2 记过这个坑）。
+//  1. **Anchor on the last role:user message, not the array's last item**. Claude Code
+//     appends a role:"system" remark after a tool_result ("The user sent a new message
+//     while you were working: ..."), so the array's last item is that system one while
+//     what upstream rejected is the tool_result-only user turn before it. Upstream
+//     ignores instructions in system. Field: dump/err-400-req000464, req000412.
+//  2. **That content[] must be entirely tool_result blocks**, not "has no text block":
+//     too wide, it would alter tails that already pass - [image] and [tool_result,
+//     image] measured 200. The line is "any non-tool_result block counts as text".
+//  3. **Provenance**: take every tool_use block id in history plus the tool_use_id the
+//     tail tool_result references, and **skip the injection only when all are
+//     self-produced**; any other shape (including unrecognizable) still injects.
+//     Over-fixing costs one "continue"; under-fixing is a 400 plus silent failover.
 //
-// 这里用第三条的方式与 §1 的**诊断**判据不同，别混：诊断要的是「至少有一个外来
-// id」才成立；修复要的是「全部都是自产 id」才敢不动手——两者是保守的补集关系。
-// 另外，这一手**不在 thinkingOn 闸门里**（见 Apply 第 4 步），那是调用点的形状，
-// 不是判据的一部分。
+// The third condition differs from §1's **diagnosis** rule: that needs "at least one
+// foreign id" to hold, while repair acts only when "all self-produced" - conservative
+// complements. This pass is **not** behind the thinkingOn gate (Apply step 4 owns it),
+// and the append helper choice below is explained at the end of this comment.
 //
-// 已经带了文字/图片的尾部一律不碰——它本来就能过，多塞一句话只是往用户的对话
-// 里加噪音。
+// Tails that already carry text or images are never touched - they pass as-is, and an
+// extra sentence would only be noise in the user's conversation.
 //
-// 用 AppendArrayItemArrayAt 而不是 AppendLastArrayItemArray：按下标挑。不写成
-// 「从后往前找第一条合形状的」是因为长历史里中段的 tool_result-only 轮到处都是，
-// 从后往前找会去改一条**不该动**的老消息。
+// AppendArrayItemArrayAt rather than AppendLastArrayItemAt: pick by index, not "find
+// the last matching tail", because mid-history tool_result-only turns abound and that
+// would alter an old message that **must not** be touched.
 func repairTailShape(body []byte) ([]byte, bool, error) {
 	raw, ok := rewrite.TopLevelRaw(body, "messages")
 	if !ok {
@@ -528,7 +528,7 @@ func repairTailShape(body []byte) ([]byte, bool, error) {
 		return body, false, nil
 	}
 
-	// 1) 最后一条 role:user 消息的下标。
+	// 1) The index of the last role:user message.
 	idx := -1
 	for i, it := range items {
 		if role, _ := rewrite.TopLevelString(it, "role"); role == "user" {
@@ -539,28 +539,28 @@ func repairTailShape(body []byte) ([]byte, bool, error) {
 		return body, false, nil
 	}
 
-	// 它之后**不能有 assistant 消息**。那种尾部（数组以 assistant 收尾）是另一条
-	// 规则在管，而且追加指令证明**没有用**：实测把继续指令追加到那个 user 轮上，
-	// 3/3 还是 400。既然改不好，就别改：往用户的对话里塞一句模型看不见效果的
-	// 噪音，比 400 更糟。
+	// **No assistant message may follow it**. That tail (array ends with assistant) is
+	// another rule's business, and appending proves **useless**: measured, appending a
+	// continue to that user turn still gave 3/3 400. If it cannot be fixed, do not fix
+	// it: noise the model cannot see is worse than the 400.
 	//
-	// 那一族从真实客户端到不了：Claude Code 的请求要么以 user 的 tool_result 收尾
-	// （等模型接着干），要么以 user 的文字收尾，要么在两者之后追加一条 role:"system"
-	// 的插话。dump 里全部 err-400 过了一遍，没有一份是 assistant 收尾。
+	// That family never arrives from real clients: Claude Code requests end with a user
+	// tool_result, with user text, or with a role:"system" remark appended after those.
+	// Every err-400 in the dump was checked; none ends with assistant.
 	for _, it := range items[idx+1:] {
 		if role, _ := rewrite.TopLevelString(it, "role"); role == "assistant" {
 			return body, false, nil
 		}
 	}
 
-	// 2) 它的 content[] 非空、且**全是** tool_result 块。
+	// 2) Its content[] is non-empty and **all** tool_result blocks.
 	content, ok := rewrite.TopLevelRaw(items[idx], "content")
 	if !ok {
 		return body, false, nil
 	}
 	blocks, ok := rewrite.ArrayItems(content)
 	if !ok || len(blocks) == 0 {
-		// content 是普通字符串（本来就有文字），或形状不认识：不动。
+		// content is a plain string (it already has text) or an unknown shape: leave it.
 		return body, false, nil
 	}
 	for _, b := range blocks {
@@ -569,8 +569,8 @@ func repairTailShape(body []byte) ([]byte, bool, error) {
 		}
 	}
 
-	// 3) 出身：历史里的 tool id 全自产才跳过。tool_use 块扫整段历史（位置无关，
-	//    见 docs §1.1），尾部 tool_result 引用的那个也要算进去。
+	// 3) Provenance: skip only when every tool id is self-produced. tool_use blocks
+	//    are scanned across all history (position-independent, docs §1.1), tail incl.
 	ids := messageToolUseIDs(items)
 	for _, b := range blocks {
 		if id, _ := rewrite.TopLevelString(b, "tool_use_id"); id != "" {
@@ -589,11 +589,11 @@ func repairTailShape(body []byte) ([]byte, bool, error) {
 	return rewrite.AppendArrayItemArrayAt(body, "messages", "content", idx, block)
 }
 
-// allToolIDsSelfProduced 这些 tool id 是否**全是**聚合器自产形态。
+// allToolIDsSelfProduced says whether these tool ids are **all** aggregator-produced.
 //
-// 只认 isSelfProducedToolCall 那一族（`call_NN_…`）；认不出来的形态一律算
-// 一条 id 都没有时也返回 false。方向保守是刻意的：漏判成外来只是多补一次
-// continue，误判成自产会让裸尾 400 悄悄沿链转移（docs/06-reasoning.md §1.2）。
+// Only the isSelfProducedToolCall family (`call_NN_...`) counts; anything unrecognized
+// counts as foreign, and an empty list returns false. Conservative on purpose: calling
+// one foreign just adds a "continue"; calling one self-produced lets a 400 fail over.
 func allToolIDsSelfProduced(ids []string) bool {
 	if len(ids) == 0 {
 		return false
@@ -606,12 +606,12 @@ func allToolIDsSelfProduced(ids []string) bool {
 	return true
 }
 
-// messageToolUseIDs 收集 messages 里所有 tool_use 块的 id（只读，纯字节扫描，
-// 不做整体 JSON 往返）。
+// messageToolUseIDs collects every tool_use block id in messages (read-only, pure byte
+// scanning, no whole-JSON round trip).
 //
-// 与 toolUseIDs 的区别：那个是给**一条** assistant 消息取 id（日志与缓存反查
-// 用），这个要遍历**整段历史**——出身的判据是「历史任何一处出现过外来 id 就
-// 算」（docs/06-reasoning.md §1.1 的实测表：位置无关）。
+// vs toolUseIDs: that one takes ids for **one** assistant message (logs, cache lookup);
+// this walks **all history** - provenance means "any foreign id anywhere counts"
+// (the measured table in docs/06-reasoning.md §1.1 shows position does not matter).
 func messageToolUseIDs(items [][]byte) []string {
 	var ids []string
 	for _, it := range items {
@@ -635,25 +635,25 @@ func messageToolUseIDs(items [][]byte) []string {
 	return ids
 }
 
-// repairResponsesTailShape 修 Responses 方言（/v1/responses）的尾部形状。
+// repairResponsesTailShape fixes the Responses dialect (/v1/responses) tail shape.
 //
-// 判据两条，2026-09-22 实测（独立探针直打真实 smt-deepseek/deepseek-flash，每格
-// 3/3，全过程见文件头第 5 手）：
+// Two criteria, measured 2026-09-22 (a probe against real smt-deepseek/deepseek-flash,
+// 3/3 per cell, full run in pass 5 of the file header):
 //
-//  1. **尾部形状**：顶层 input[] 的**最后一项**是 function_call_output。与
-//     messages 方言不同，这里锚的就是数组最后一项本身（Responses 的对话项就是
-//     数组元素，没有 Claude Code 那种尾随 role:"system" 插话的形状）。
-//  2. **出身**：历史里存在至少一个**不是**本聚合器自产的 call_id（扫
-//     function_call 与 function_call_output 两种项的 call_id）。
+//  1. **Tail shape**: the top-level input[]'s **last entry** is a function_call_output.
+//     Unlike the messages dialect the anchor is the last array item itself (Responses
+//     items are array elements; no Claude Code system remark after them).
+//  2. **Provenance**: history holds at least one call_id that is **not** from this
+//     aggregator (scan call_id on function_call and function_call_output items).
 //
-// 两条都中才动：往 input[] **末尾**追加一项普通 user 消息，正文是
-// toolLoopRebasePrompt。实测外来 call_id + 收尾 function_call_output → 400
-// `The reasoning_text … must be passed back`；同一个 body 末尾补一条普通 user
-// 消息 → 200。
+// Both required: append a plain user message item at the **end** of input[], with
+// toolLoopRebasePrompt as its text. Measured: foreign call_id + trailing
+// function_call_output -> 400 `The reasoning_text ... must be passed back`; the same
+// body with one plain user message appended -> 200.
 //
-// 与 repairTailShape 一样保守：call_id 认不出出身（缺失、或没有这个字段）时按
-// 外来处理。反过来，全部 call_id 都是 `call_NN_…` 时一个字节都不碰——实测那种
-// 形状本来就 200（上游要的是「这一轮有新指令」，不是那条指令的内容）。
+// As conservative as repairTailShape: an undecidable call_id (missing) counts as
+// foreign. Conversely, when every call_id is `call_NN_...`, not a byte is touched -
+// that shape already gives 200 (upstream wants a new instruction, not a particular one).
 func repairResponsesTailShape(body []byte) ([]byte, bool, error) {
 	raw, ok := rewrite.TopLevelRaw(body, "input")
 	if !ok {
@@ -676,16 +676,16 @@ func repairResponsesTailShape(body []byte) ([]byte, bool, error) {
 	}
 	block := []byte(`{"type":"message","role":"user","content":[{"type":"input_text","text":` +
 		string(q) + `}]}`)
-	// 用内核 2026-09-22 加的 AppendTopLevelArrayItem：往顶层数组追加，空数组
-	// 不补逗号，其余字节（含 input 里那些 function_call 的 arguments）原样保留。
+	// Uses the kernel's AppendTopLevelArrayItem (added 2026-09-22): appends to a
+	// top-level array without a comma for an empty one, keeping every other byte as-is.
 	return rewrite.AppendTopLevelArrayItem(body, "input", block)
 }
 
-// hasForeignResponsesCallID 历史里有没有**不是**本聚合器自产的 call_id。
+// hasForeignResponsesCallID says whether history holds a call_id not from this aggregator.
 //
-// 只扫 function_call 与 function_call_output 这两种项的 call_id（Responses 方言
-// 里 tool call 的载体就是它们）。call_id 缺失时按「不是自产」处理——认不出出身
-// 就往保守那边倒：多补一次 continue，好过欠补之后的静默沿链转移。
+// Only call_id on function_call and function_call_output items is scanned (those carry
+// tool calls in the Responses dialect). A missing call_id counts as "not self-produced"
+// - when provenance is unknown, one more continue beats a silent failover.
 func hasForeignResponsesCallID(items [][]byte) bool {
 	for _, it := range items {
 		switch t, _ := rewrite.TopLevelString(it, "type"); t {
@@ -701,15 +701,15 @@ func hasForeignResponsesCallID(items [][]byte) bool {
 	return false
 }
 
-// pickReasoning 为一条 assistant 消息选出回传的推理原文（JSON 编码后的字符串值）。
+// pickReasoning chooses the reasoning text to return for an assistant message (JSON string).
 //
-// 两级来源，严格对应客户端回传的形态：
-//  1. 消息自己的 content[] 里带的 thinking 块——客户端保留了原文就直接用，
-//     不依赖缓存存活；
-//  2. thinkcache 里那轮真实发生的推理（tool id / 正文哈希找回）。
+// Two sources, strictly matching what clients send back:
+//  1. the thinking block in the message's own content[] - if the client kept the text,
+//     use it directly, no dependence on cache survival;
+//  2. the reasoning that really happened that round in thinkcache (tool id or body hash).
 //
-// 都没有 → false，调用方**跳过这条消息**（一个字节都不补），并记下为什么
-// 没有原文可补（见 skipCause）。编一个占位符是错的，理由见文件头。
+// Neither -> false, and the caller **skips that message** (fills in not one byte),
+// recording why there was no text (see skipCause). Inventing a placeholder is wrong.
 func pickReasoning(item []byte) ([]byte, bool) {
 	if t := clientThinkingText(item); t != "" {
 		if q, err := json.Marshal(t); err == nil {
@@ -724,31 +724,31 @@ func pickReasoning(item []byte) ([]byte, bool) {
 	return nil, false
 }
 
-// skipCause 是「这一条为什么没有推理原文可补」的分类计数。
+// skipCause classifies "why this one has no reasoning text to fill in".
 //
-// 为什么要有它：这个分类是 2026-09-18 那次结论的直接证据链。原始疑问是
-// 「为什么没有 thinking？是缓存坏了，还是请求本来就没有？」——这两件事的
-// 处置完全相反：
+// Why it exists: this classification was the evidence chain for the 2026-09-18
+// conclusion. The original question was "why is there no thinking - is the cache
+// broken, or did the request never have it?" - and those need opposite handling:
 //
-//   - 上游那一轮就没给 ⇒ 只能跳过（补任何东西都是编）；
-//   - 上游给了、我们没存住 ⇒ 该去修 thinkcache 的命中率。
+//   - the upstream never gave it that round => skip (anything added is invention);
+//   - it gave it and we failed to keep it => fix thinkcache's hit rate.
 //
-// 分类只取**能从请求本身读出来**的事实（不依赖运行时缓存状态，因为日志是
-// 事后读的，缓存早被顶掉了）：
+// The classification uses only facts readable from the request itself (not runtime cache
+// state: logs are read later, when the cache is long evicted):
 //
-//	notool   这条 assistant 消息没有 tool call——纯文本轮，只能靠正文哈希
-//	         找回，客户端改写正文就 miss（TextKey 的已知弱点）
-//	nocache  有 tool call，但它的 id 在 thinkcache 里查不到
-//	nokey    既没 tool_use 也没正文字段——形状本身就不认识
+//	notool   this assistant message has no tool call - a text-only turn, recoverable
+//	         only by body hash, missed if the client rewrote the text (TextKey's weakness)
+//	nocache  it has a tool call, but its id is not found in thinkcache
+//	nokey    neither tool_use nor a text field - an unrecognized shape
 //
-// 「客户端有没有带回 thinking 块」不在这里分类：clientThinkingText 已经先试过
-// 了，能取到就不会走到这一层。所以**走到这一层就等价于「客户端没带」**，
-// 这是分支结构保证的。
+// "Did the client send a thinking block back" is not classified here: that was
+// clientThinkingText's first try, so **reaching this layer means it sent none**,
+// and that is guaranteed by the branch structure, not by re-deriving it here.
 //
-// 2026-09-18 的实测结果：全库 3494 条跳过、分类**全是 nocache**，逐条拿
-// tool id 反查「记下本轮推理内容」——**一条都没命中**。结论：这些推理上游
-// 从来没给过我们（adaptive 的语义就是模型自己决定想不想），不是缓存问题。
-// 同一份请求连打 6 次，上游 3 次给思考、3 次不给，就是这个原因。
+// The 2026-09-18 measurement: 3494 skips across the store, all classified **nocache**;
+// looking each tool id up under "recorded this round's reasoning" - **not one hit**.
+// So the upstream never gave us this reasoning (adaptive means the model decides whether
+// to think): not a cache problem. Six identical requests in a row: 3 thoughts, 3 not.
 type skipCause string
 
 const (
@@ -757,7 +757,7 @@ const (
 	causeNoIdentity skipCause = "nokey"   // 既无 tool_use 也无正文，认不出
 )
 
-// skipCauseOf 判定一条 assistant 消息为什么没有原文可补（分类见上）。
+// skipCauseOf decides why an assistant message has no text to fill in (classify above).
 func skipCauseOf(item []byte) skipCause {
 	if hasToolUse(item) {
 		return causeToolNotIn
@@ -768,19 +768,19 @@ func skipCauseOf(item []byte) skipCause {
 	return causeNoIdentity
 }
 
-// hasToolUse 这条消息带 tool call 吗（两种方言都认）。
+// hasToolUse says whether this message carries a tool call (both dialects).
 func hasToolUse(item []byte) bool {
 	return len(toolIDsAny(item)) > 0
 }
 
-// toolIDsAny 抽出这条 assistant 消息的 tool call id，两种方言都认。
+// toolIDsAny extracts this assistant message's tool call ids, both dialects.
 //
 //	Anthropic  content[].{type:tool_use, id}
 //	OpenAI     tool_calls[].id
 //
-// 为什么要两种：分类日志和缓存找回必须**认同一批 id**。thinkcache 的
-// KeysForAssistantMessage 就是两方言都认的（那边用 json 解析），这边如果只认
-// Anthropic，OpenAI 方言的轮次会被错报成 notool，日志给出的结论就是错的。
+// Why both: classification logs and cache lookup must **agree on the same ids**.
+// thinkcache's KeysForAssistantMessage accepts both dialects (it parses JSON); if this
+// side knew only Anthropic, OpenAI-dialect turns would be misreported as notool.
 func toolIDsAny(item []byte) []string {
 	ids := toolUseIDs(item) // Anthropic 方言
 	if len(ids) > 0 {
@@ -802,29 +802,29 @@ func toolIDsAny(item []byte) []string {
 	return ids
 }
 
-// skipTally 是分类计数 + 跳过消息的身份样本。
+// skipTally is the classification counts plus id samples of skipped messages.
 //
-// 为什么要记 id（2026-09-18 加）：用户的原话是「为什么没有 thinking？到底是你
-// 缓存机制的问题，还是请求本身就没有/为空——你他妈给我 trace 出来」。只报个数
-// 永远分不清这两件事：跳过是**结果**，日志里没有能对上的**身份**就没法反查。
+// Why ids (added 2026-09-18): the user asked why there is no thinking - the cache, or
+// the request never having it - and demanded it be traced. Counts alone never separate
+// the two: a skip is a **result**, and without an **identity** there is no lookup.
 //
-// 有了 id 就能和另外两条日志对起来：
+// With ids you can match the other two log lines:
 //
 //	[proxy] #N recorded … bytes of reasoning and N keys … this round
-//	            ↑ 这一轮的推理存进了缓存（内核 forward.go 打的）
-//	[proxy] #N 本轮上游没给推理内容（N 个 tool call）
-//	            ↑ 上游压根没给
+//	            ^ this round's reasoning went into the cache (kernel forward.go)
+//	[proxy] #N no reasoning content from upstream this round (N tool calls)
+//	            ^ the upstream never gave it
 //
-// 两条日志行的**原文随 i18n 一起变成了英文**（本模块迁移时同步更新），所以要
-// 去 grep 的是英文那两串，不是这里的转述。
+// Both lines' **text became English with i18n** (updated in this module's migration),
+// so grep those two exact English strings, not this paraphrase.
 //
-// 拿跳过消息的 id 去 grep 这两条：
-//   - 命中「没给推理」⇒ 请求本身就没有（上游没思考），跳过是唯一正确动作；
-//   - 命中「记下推理」⇒ 缓存里**曾经**有过，是后来丢了（TTL/淘汰/重启）⇒ 缓存问题；
-//   - 两条都不命中 ⇒ 这一轮没经过我们（别的 provider 产生的历史）或响应没被观测到。
+// Grep those two with a skipped message's id:
+//   - hits "no reasoning" => the request never had it (upstream did not think);
+//   - hits "recorded" => the cache **had** it and it was lost (TTL/eviction/restart);
+//   - neither => this round did not go through us (history from another provider).
 //
-// 内存代价：每条跳过的消息一个 id 字符串。一次请求最多几百条，且只活到写日志
-// 那一刻——不缓存、不落盘。
+// Memory cost: one id string per skipped message. A request has at most a few hundred,
+// and they live only until the log is written - not cached, not on disk.
 type skipTally struct {
 	total  int
 	byKind map[skipCause]int
@@ -840,11 +840,11 @@ func (t *skipTally) add(c skipCause, ids []string) {
 	t.ids = append(t.ids, ids...)
 }
 
-// detail 渲染成日志片段；没有跳过项时返回空串。
+// detail renders into a log fragment; an empty string when nothing was skipped.
 //
-// 顺序写死（notool → nocache → nokey），因为日志是要**跨请求比对**的：今天
-// 这一栏里 nocache 占多数，明天 notool 占多数，含义完全不同。map 的随机
-// 遍历顺序会让每一行长得不一样，没法比。只报非零项，避免三个 0 占版面。
+// Order is fixed (notool -> nocache -> nokey) because logs are **compared across
+// requests**: nocache dominating today and notool tomorrow mean different things, and
+// map's random iteration would make every line look different. Only non-zero counts.
 func (t *skipTally) detail() string {
 	if t == nil || t.total == 0 {
 		return ""
@@ -858,15 +858,15 @@ func (t *skipTally) detail() string {
 	if len(parts) == 0 {
 		return ""
 	}
-	// 计数之间的分隔符也是**语言数据**（中文是顿号），所以它自己是一条消息：
-	// 把分隔符硬写成 ASCII 逗号的话，中文那一行会变成中英混排。
+	// The separator between counts is **language data** too (a full-width comma in
+	// Chinese), so it is a message of its own: an ASCII comma would mix scripts.
 	items := strings.Join(parts, i18n.T(", ", nil))
 	if len(t.ids) == 0 {
 		return i18n.T("({items}; skipped messages have no tool id (plain text turns))",
 			i18n.A{"items": items})
 	}
-	// 上限 8 个：够看出「是不是同一批老消息每次都出现」，又不至于把一行日志
-	// 撑成几 KB。超出的只报个数。
+	// At most 8: enough to see whether "the same old batch shows up every time", without
+	// stretching one log line to several KB. The rest are reported as a count only.
 	shown := t.ids
 	more := ""
 	if len(shown) > 8 {
@@ -877,11 +877,11 @@ func (t *skipTally) detail() string {
 		i18n.A{"items": items, "ids": strings.Join(shown, " "), "more": more})
 }
 
-// clientThinkingText 抽出这条消息 content[] 里 thinking 块的文本。
+// clientThinkingText extracts the text of thinking blocks in this message's content[].
 //
-// 客户端（开了 interleaved thinking 的 Claude Code）有时会把自己那轮的
-// thinking 块原样带回来——那是推理原文，别浪费。多个块就拼起来。
-// redacted_thinking 没有 thinking 字段，自然取不到文本。
+// The client (Claude Code with interleaved thinking on) sometimes sends its own
+// thinking blocks back - that is the reasoning text, do not waste it. Multiple blocks
+// are joined. redacted_thinking has no thinking field, so no text can be taken.
 func clientThinkingText(item []byte) string {
 	content, ok := rewrite.TopLevelRaw(item, "content")
 	if !ok || len(content) == 0 || content[0] != '[' {
@@ -905,16 +905,16 @@ func clientThinkingText(item []byte) string {
 	return sb.String()
 }
 
-// reasoningNote 把「补回真实原文的」和「跳过没补的」分开报，跳过的那部分
-// **必须带上原因分类**。
+// reasoningNote reports "filled with real text" and "skipped" separately; the skipped
+// part **must carry its cause classification**.
 //
-// 必须分开：跳过意味着模型这一轮读不到自己上一轮的推理，思考质量会掉。
-// 这不是成功，用户有权在日志里一眼看出发生了多少次（docs/01-product.md 的「不静默」）。
+// They must be separate: a skip means the model cannot read its own previous reasoning,
+// so thinking quality drops, and that is not success.
 //
-// 分类的理由见 skipCause 的注释——「上游那一轮本来就没给」和
-// 「给了但我们没存住」是两件处置完全相反的事，只报个数等于没报。
+// Users must see in the log how often it happened (docs/01-product.md, "never silent");
+// a count without a cause cannot tell the two opposite cases apart, see skipCause.
 func reasoningNote(what string, total, restored int, sk skipTally) string {
-	// `assistant` 是 JSON 里的 role 值，留在消息外面；`{n}` 由 N() 注入。
+	// `assistant` is the JSON role value, kept outside the message; `{n}` is injected by N().
 	s := i18n.N("backfilled {what} on {n} assistant message: {restored} used the real "+
 		"reasoning text",
 		"backfilled {what} on {n} assistant messages: {restored} used the real "+
@@ -933,18 +933,18 @@ func isAssistant(item []byte) bool {
 	return role == "assistant"
 }
 
-// anthropicDialect 客户端这次发的是 Anthropic 方言吗（/v1/messages）。
+// anthropicDialect says whether this request is in the Anthropic dialect (/v1/messages).
 //
-// 判据用路径，不用 r.Protocol：protocol 说的是「怎么发到上游」（实测聚合
-// 网关的 provider 全标 "openai"，却照样收 /v1/messages 的 Anthropic 方言
-// 请求），而客户端发什么路径才是这次请求本身的方言。
+// The test is the path, not r.Protocol: protocol says "how it goes upstream" (measured:
+// an aggregating gateway's providers all say "openai" yet receive /v1/messages Anthropic
+// requests), while the path the client sent is this request's own dialect.
 func anthropicDialect(r *special.Request) bool {
 	return r != nil && strings.HasPrefix(r.Path, "/messages")
 }
 
-// lacksThinking 这条 content[] 里有没有思考内容。
-// redacted_thinking 也算——那是上游自己加密过的思考块，有它就说明思考内容
-// 已经原样回传了，再往前插一个空块只会多一个块。
+// lacksThinking says whether this content[] has any reasoning content.
+// redacted_thinking counts too - it is an upstream-encrypted thinking block, and
+// inserting an empty one before it would just add a block.
 func lacksThinking(content []byte) bool {
 	items, ok := rewrite.ArrayItems(content)
 	if !ok {
@@ -962,16 +962,16 @@ func lacksThinking(content []byte) bool {
 	return true
 }
 
-// AuditReasoning 产出「本轮回传推理内容」的逐条审计报告，供 400 现场取证用。
+// AuditReasoning produces a per-message audit of "reasoning sent back this round".
 //
-// 直接解析 we-sent 的 messages，逐条 assistant 消息标出有没有 reasoning_content。
-// **没有的那些不是我们的错**：那是上游那一轮本来就没给（见文件头的实测）。
-// 报告里连 tool_use id 一起打出来，拿它去 grep 日志里的 recorded … bytes of
-// reasoning 那行（内核 forward.go 打的，见报告正文里的原文）就能确认——命中
-// 说明是我们弄丢的，不命中说明上游没给过。
+// It parses the we-sent messages directly and marks each assistant message for
+// reasoning_content. **The missing ones are not our fault**: the upstream never gave it
+// that round (see the measurement in the file header). The report prints tool_use ids
+// too; grep the log's `recorded ... bytes of reasoning` line (kernel forward.go) with
+// them - a hit means we lost it, a miss means it never existed.
 //
-// 这是纯只读分析，不依赖运行时的缓存状态——缓存此刻可能已经被后续请求顶掉，
-// 但 400 发生时写下的这份报告是当时事实的定格。
+// Pure read-only analysis, independent of runtime cache state: the cache may be
+// evicted later, but this report is the snapshot of what was true then.
 func AuditReasoning(out []byte) string {
 	msgs, ok := rewrite.TopLevelRaw(out, "messages")
 	if !ok {
@@ -993,12 +993,12 @@ func AuditReasoning(out []byte) string {
 			continue
 		}
 		missing++
-		// `msg[0]` / `reasoning_content` 都是机器标记（字段名与下标），留在外面。
+		// `msg[0]` / `reasoning_content` are machine markers (field name, index): keep outside.
 		b.WriteString(i18n.T("msg[{i}] has no reasoning_content  {keys}\n",
 			i18n.A{"i": i, "keys": msgKeys(it)}))
 	}
-	// 「bytes of reasoning」那句是内核 thinkcache 侧真正打出来的日志行原文
-	// （forward.go 的 recorded … bytes of reasoning），要 grep 就得给原文。
+	// The "bytes of reasoning" line is the kernel thinkcache side's actual log text
+	// (forward.go's recorded ... bytes of reasoning); grepping needs the verbatim string.
 	return i18n.T("assistant messages: {total} in all, {real} with reasoning text, "+
 		"{missing} without\n"+
 		"(the ones without are **what the upstream never gave us that round**, not "+
@@ -1009,8 +1009,8 @@ func AuditReasoning(out []byte) string {
 
 func (reasoning) AuditResponse(body []byte) string { return AuditReasoning(body) }
 
-// msgKeys 抽出这条 assistant 消息的 tool_use id（缓存找回的 key 就靠它），
-// 纯文本轮没有 tool_use，靠正文哈希。取证时拿 id 反查 thinkcache 该不该有。
+// msgKeys extracts this assistant message's tool_use ids (the cache lookup keys), and
+// text-only turns fall back to the body hash. Evidence uses ids to check thinkcache.
 func msgKeys(item []byte) string {
 	toolIDs := toolUseIDs(item)
 	if len(toolIDs) == 0 {
@@ -1019,11 +1019,11 @@ func msgKeys(item []byte) string {
 	return "tool_use ids: " + strings.Join(toolIDs, " ")
 }
 
-// toolUseIDs 抽出 Anthropic 方言 content[] 里 tool_use 块的 id。
+// toolUseIDs extracts tool_use block ids from an Anthropic dialect content[].
 //
-// 与 thinkcache.KeysForAssistantMessage 认的是同一批 id（那边用 json 解析，
-// 这边是纯字节手术的原语）——**必须是同一批**，否则「没有原文可补的原因」
-// 这个分类就会和缓存实际的 key 对不上，日志里的 nocache 会指向错误的结论。
+// The same ids thinkcache.KeysForAssistantMessage knows (JSON there, byte surgery
+// here) - **they must be the same**, or the "why no text" classification would not
+// match the cache's real keys and the log's nocache would point at the wrong conclusion.
 func toolUseIDs(item []byte) []string {
 	c, ok := rewrite.TopLevelRaw(item, "content")
 	if !ok {

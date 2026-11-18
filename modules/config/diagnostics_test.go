@@ -10,9 +10,10 @@ import (
 	"github.com/rzbdz/newgate-ext/testing/testkit"
 )
 
-// 锁住 2026-10-28 这一条：per-agent 的「单独定过」判据是 state.Active 里有没有
-// 记录，不是「跟全局缺省一不一样」。后者会把「明确给 claude 选了 ds、而缺省正好
-// 也是 ds」藏起来——用户以后改全局缺省会以为 claude 跟着走，而它不会。
+// Pins the 2026-10-28 item: the per-agent "set on its own" criterion is whether there
+// is a record in state.Active, not "is it different from the global default". The latter
+// would hide "ds explicitly chosen for claude while the default happens to be ds too"
+// -- later the user changes the global default thinking claude follows, and it does not.
 func TestStatusShowsExplicitOverrideEvenWhenItEqualsDefault(t *testing.T) {
 	testkit.Sandbox(t)
 	if err := paths.EnsureDirs(); err != nil {
@@ -39,7 +40,7 @@ func TestStatusShowsExplicitOverrideEvenWhenItEqualsDefault(t *testing.T) {
 		t.Fatalf("status value %q does not show the explicit claude override", lines[0].Value)
 	}
 
-	// 没有记录时不能凭空把「跟随缺省」说成「单独定过」。
+	// Without a record it must not turn "follows the default" into "set on its own" out of nothing.
 	if err := store.ClearActiveProfile("claude"); err != nil {
 		t.Fatal(err)
 	}

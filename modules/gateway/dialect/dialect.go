@@ -1,37 +1,40 @@
-// Package dialect 记「这个 (provider, model) 听得懂哪些 API 方言」。
+// Package dialect records "which API dialects this (provider, model) understands".
 //
-// 为什么需要它
+// # Why it is needed
 //
-// newgate 的转发层是纯字节直通：客户端发什么方言，就原样发给上游什么
-// 方言（claude → anthropic /messages，opencode → openai /chat/completions），
-// 不做协议转换。这能成立的前提是**上游听得懂客户端的方言**——聚合器
-// （api.rvcompute.com 实测 2026-09）两个方言都收，但 anthropic 方言的
-// 私有端点不一定实现：
+// newgate's forwarding layer is a pure byte passthrough: whatever dialect the client sends
+// goes upstream as-is (claude → anthropic /messages, opencode → openai /chat/completions),
+// with no protocol conversion. The premise is that **upstream understands the
+// client's dialect** - the aggregator (api.rvcompute.com, measured 2026-09)
+// accepts both dialects, but anthropic's private endpoints may not be implemented:
 //
-//	POST /v1/messages              → 200（anthropic 方言本体）
-//	POST /v1/messages/count_tokens → 404 "Invalid URL"（没实现）
+//	POST /v1/messages → 200 (anthropic dialect proper) POST
+//	/v1/messages/count_tokens → 404 "Invalid URL" (not implemented)
 //
-// count_tokens 是 Claude Code 的水位条/自动压缩阈值，真值只有上游知道。
-// 听得懂就转发拿真值，听不懂退回本地粗估——「听得懂吗」按 (provider,
-// model) 记在这里，来源两个，都往同一个注册表里写：
+// count_tokens is Claude Code's context meter / auto-compaction threshold, and
+// only upstream knows the true value. Understood, we forward and take the real
+// value; otherwise we fall back to a local rough estimate - "is it understood" is
+// recorded here per (provider, model), from two sources, both writing one registry:
 //
-//	Mark*()   转发时撞一次 404 / 200，当场学（gate 层面的 probe：
-//	          第一个 count_tokens 就是一次探测，代价一个来回）
-//	probe 包  newgate probe 主动打一发两种方言 + count_tokens，省掉
-//	          那第一次撞墙，也让人在报告里看得见
+//	Mark*() a 404 / 200 hit while forwarding, learned on the spot (a probe at the
+//	          gate level: the first count_tokens is itself a probe, costing one
+//	trip) probe pkg `newgate probe` actively sends both dialects + count_tokens,
+//	          saving that first collision, and making it visible in the report
 //
-// 注册表本身**只在内存里**，和 quirk 同一哲学：进程重启就从这个包的角度
-// 忘了，重新学的代价是一个请求（daemon 会在第一个请求上补学）。
+// The registry itself is **in memory only**, the same philosophy as quirk:
+// a restart forgets it from this package's point of view, and re-learning
+// costs one request (the daemon relearns on the first request).
 //
-// 但有一层持久化，它住在 probe 而不在这里：`newgate probe` 把探明的结果写进
-// ~/.config/newgate/probe-capabilities.json（`probe.LoadCachedCapabilities`
-// 在 daemon 启动时装回）。所以准确的说法是「这个包不落盘，探明的结论由探针
-// 落盘」——2026-09-18 之前这段注释写的是「进程重启就忘了」，而重启后其实装
-// 得回来，把它当成事实会得出错误的结论（比如以为每次重启都要重探一轮）。
+// But one layer of persistence exists, and it lives in probe, not here: `newgate
+// probe` writes what it learned into ~/.config/newgate/probe-capabilities.json
+// (`probe.LoadCachedCapabilities` loads it when the daemon starts). So the accurate
+// wording is "this package persists nothing; the probe persists what was learned" -
+// before 2026-09-18 this comment said "forgotten on restart", but it does load back, and
+// treating that as fact leads to wrong conclusions (such as re-probing on every restart).
 //
-// 正反两面都要记：只记「支持」的话，每个「不支持」的上游每次请求都得
-// 再撞一次 404。所以 Cap 既是能力位也是已探明位——Known 里为 0 的位
-// 表示「探过了，明确不支持」，和「还没探过」区分开。
+// Both sides must be recorded: recording only "supported" means every "unsupported" upstream
+// is hit with another 404 on every request. So Cap is both a capability bit and a probed bit -
+// a zero bit in Known means "probed, explicitly unsupported", distinct from "not probed yet".
 package dialect
 
 import (
@@ -40,15 +43,15 @@ import (
 	"sync"
 )
 
-// Cap 一种方言能力。位掩码，一个 (provider, model) 可以同时有几个。
+// Cap is one dialect capability. A bitmask; one (provider, model) can have several.
 type Cap uint32
 
 const (
-	// CapOpenAI /chat/completions（openai 方言）可用。
+	// CapOpenAI: /chat/completions (the openai dialect) is available.
 	CapOpenAI Cap = 1 << iota
-	// CapAnthropic /messages（anthropic 方言）可用。
+	// CapAnthropic: /messages (the anthropic dialect) is available.
 	CapAnthropic
-	// CapCountTokens anthropic 方言的 /messages/count_tokens 可用。
+	// CapCountTokens: the anthropic dialect's /messages/count_tokens is available.
 	CapCountTokens
 )
 
@@ -78,14 +81,14 @@ var (
 
 func key(provider, model string) string { return provider + "/" + model }
 
-// SplitKey 是 key() 的逆：把 "provider/model" 拆回两半。
+// SplitKey is the inverse of key(): split "provider/model" back into two halves.
 //
-// 在**第一个** '/' 处切，不在最后一个：provider 是配置里的一个扁平键
-// （实测 ark / smt-deepseek / kimi …，见 providers.json），而 model 是上游
-// 自己的模型 id，**可以含 '/'**（openrouter 那类 `vendor/model` 的写法）。
-// 2026-09-18 之前 Snapshot 用的是 LastIndexByte，于是 `a/openrouter/x` 会被
-// 报成 provider="a/openrouter" —— 而 probe 的缓存恢复走的是另一份实现在
-// 第一个 '/' 处切，两边对同一批键给出不同的 (provider, model)。
+// Split at the **first** '/', not the last: provider is a flat key in config (measured ark
+// / smt-deepseek / kimi ..., see providers.json), while model is upstream's own model id
+// and **may contain '/'** (the `vendor/model` style used by openrouter). Before 2026-09-18
+// Snapshot used LastIndexByte, so `a/openrouter/x` was reported as provider="a/openrouter"
+// - while probe's cache restore used another implementation splitting at the
+// first '/', so the two gave different (provider, model) for the same keys.
 func SplitKey(k string) (provider, model string, ok bool) {
 	i := strings.IndexByte(k, '/')
 	if i <= 0 || i == len(k)-1 {
@@ -94,13 +97,13 @@ func SplitKey(k string) (provider, model string, ok bool) {
 	return k[:i], k[i+1:], true
 }
 
-// Mark 记「支持」。返回 true 表示这是新学到的。
+// Mark records "supported". A true return means this was newly learned.
 func Mark(provider, model string, c Cap) bool {
 	return mark(provider, model, c, true)
 }
 
-// MarkUnsupported 记「探过了，明确不支持」。之后 Supports 永远回 false
-// ——除非上游哪天升级了（那就得重启 daemon 重新探，成本一个请求）。
+// MarkUnsupported records "probed, explicitly unsupported". Supports then always returns false
+// - unless upstream upgrades some day (then restart the daemon to re-probe, costing one request).
 func MarkUnsupported(provider, model string, c Cap) bool {
 	return mark(provider, model, c, false)
 }
@@ -111,7 +114,7 @@ func mark(provider, model string, c Cap, ok bool) bool {
 	defer mu.Unlock()
 	e := caps[k]
 	if ok {
-		// 从「不支持」改口成「支持」也是新信息（上游升级了）
+		// changing from "unsupported" to "supported" is new information too (upstream upgraded)
 		if e.supported&c == c && e.known&c == c {
 			return false
 		}
@@ -129,8 +132,8 @@ func mark(provider, model string, c Cap, ok bool) bool {
 	return true
 }
 
-// Supports 查某个能力。known=false 表示还没探过——调用方自己定默认
-// 行为（count_tokens 的默认是试一发，见 forward 的懒学习）。
+// Supports looks up one capability. known=false means not probed yet - the caller chooses
+// the default behavior (count_tokens' default is to try once, see forward's lazy learning).
 func Supports(provider, model string, c Cap) (ok, known bool) {
 	mu.RLock()
 	defer mu.RUnlock()
@@ -141,7 +144,7 @@ func Supports(provider, model string, c Cap) (ok, known bool) {
 	return e.supported&c != 0, true
 }
 
-// Entry 给 newgate status / probe 报告展示。
+// Entry is for newgate status / probe report display.
 type Entry struct {
 	Provider string
 	Model    string
@@ -169,7 +172,7 @@ func Snapshot() []Entry {
 	return out
 }
 
-// Reset 仅供测试。
+// Reset is for tests only.
 func Reset() {
 	mu.Lock()
 	defer mu.Unlock()

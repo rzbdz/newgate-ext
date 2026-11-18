@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// mkGroup 造一组 dump 文件：base + 四个后缀，mtime 一律钉到 at。
+// mkGroup builds a set of dump files: base + four suffixes, all pinned to mtime at.
 func mkGroup(t *testing.T, dir, base string, at time.Time) {
 	t.Helper()
 	for _, suffix := range []string{".client-sent.json", ".we-sent.json", ".upstream-said.json", ".meta.txt"} {
@@ -22,7 +22,7 @@ func mkGroup(t *testing.T, dir, base string, at time.Time) {
 	}
 }
 
-// touch 造一个单文件，mtime 钉到 at。
+// touch creates a single file with its mtime pinned to at.
 func touch(t *testing.T, dir, name string, at time.Time) {
 	t.Helper()
 	p := filepath.Join(dir, name)
@@ -48,7 +48,7 @@ func listFiles(t *testing.T, dir string) []string {
 	return names
 }
 
-// groupAlive：这组的四个文件是不是一个不差地都还在。
+// groupAlive: whether all four files of the group are still there, not one missing.
 func groupAlive(t *testing.T, dir, base string) bool {
 	t.Helper()
 	for _, suffix := range []string{".client-sent.json", ".we-sent.json", ".upstream-said.json", ".meta.txt"} {
@@ -61,7 +61,7 @@ func groupAlive(t *testing.T, dir, base string) bool {
 
 var epoch = time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC)
 
-// TestPruneDirByKeepsNewestGroup：keep=1 时按 mtime 留最新那组，其余整组删掉。
+// TestPruneDirByKeepsNewestGroup: with keep=1, keep the newest group by mtime, delete the rest.
 func TestPruneDirByKeepsNewestGroup(t *testing.T) {
 	dir := t.TempDir()
 	mkGroup(t, dir, "err-402-req000001", epoch.Add(1*time.Minute))
@@ -71,18 +71,19 @@ func TestPruneDirByKeepsNewestGroup(t *testing.T) {
 	PruneDirBy(dir, "err-", 1)
 
 	if !groupAlive(t, dir, "err-502-req000003") {
-		t.Errorf("最新的 err-502-req000003 该留下，实际剩 %v", listFiles(t, dir))
+		t.Errorf("the newest err-502-req000003 should be kept, but %v are left", listFiles(t, dir))
 	}
 	for _, base := range []string{"err-402-req000001", "err-422-req000002"} {
 		if groupAlive(t, dir, base) {
-			t.Errorf("%s 比留下的那组旧，该被删掉", base)
+			t.Errorf("expected %s to be deleted: older than the group that was kept", base)
 		}
 	}
 }
 
-// TestPruneDirByKeepsNewestEvenIfNameSortsFirst：回归点。名字字典序最小
-// （err-400 < 其余状态码，也 < 同组 req 号更大的）但 mtime 最新的一组必须
-// 活下来——老实现留「名字最大」的，正好把它第一个删掉。
+// TestPruneDirByKeepsNewestEvenIfNameSortsFirst: the regression point. The
+// group with the lexicographically smallest name (err-400 < the other status
+// codes, and < a larger req number) but the newest mtime must survive -- the
+// old implementation kept the "largest name", which deleted exactly it first.
 func TestPruneDirByKeepsNewestEvenIfNameSortsFirst(t *testing.T) {
 	dir := t.TempDir()
 	mkGroup(t, dir, "err-402-req000001", epoch.Add(1*time.Minute)) // 最旧
@@ -93,25 +94,25 @@ func TestPruneDirByKeepsNewestEvenIfNameSortsFirst(t *testing.T) {
 	PruneDirBy(dir, "err-", 2)
 
 	if !groupAlive(t, dir, "err-400-req001840") {
-		t.Fatalf("字典序最小但最新的 err-400-req001840 被删了，剩 %v", listFiles(t, dir))
+		t.Fatalf("err-400-req001840 sorts first but is the newest, yet it was deleted; left %v", listFiles(t, dir))
 	}
 	if !groupAlive(t, dir, "err-429-req000003") {
-		t.Errorf("第二新的 err-429-req000003 该留下，剩 %v", listFiles(t, dir))
+		t.Errorf("the second newest err-429-req000003 should be kept, left %v", listFiles(t, dir))
 	}
 	for _, base := range []string{"err-402-req000001", "err-422-req000002"} {
 		if groupAlive(t, dir, base) {
-			t.Errorf("%s 是最旧两组，该被删掉", base)
+			t.Errorf("%s is among the two oldest groups, expected to be deleted", base)
 		}
 	}
 }
 
-// TestPruneDirByGroupAgeIsNewestFileInGroup：组的年龄取组内最新那份文件的
-// mtime——只补写其中一份，这组就该被当成「新」保住。
+// TestPruneDirByGroupAgeIsNewestFileInGroup: a group's age is the mtime of its
+// newest file -- touch just one of them and the group must be kept as "new".
 func TestPruneDirByGroupAgeIsNewestFileInGroup(t *testing.T) {
 	dir := t.TempDir()
 	mkGroup(t, dir, "err-402-req000001", epoch.Add(1*time.Minute))
 	mkGroup(t, dir, "err-422-req000002", epoch.Add(2*time.Minute))
-	// 这组整体最旧，但 meta 是被刚刚补写的：组年龄 = 最新那份 = 现在。
+	// This group is the oldest overall, but meta was just rewritten: group age = newest file = now.
 	mkGroup(t, dir, "err-502-req000003", epoch.Add(1*time.Minute))
 	late := epoch.Add(9 * time.Minute)
 	if err := os.Chtimes(filepath.Join(dir, "err-502-req000003.meta.txt"), late, late); err != nil {
@@ -121,12 +122,12 @@ func TestPruneDirByGroupAgeIsNewestFileInGroup(t *testing.T) {
 	PruneDirBy(dir, "err-", 1)
 
 	if !groupAlive(t, dir, "err-502-req000003") {
-		t.Errorf("err-502-req000003 的组内最新文件是刚写的，该留下，剩 %v", listFiles(t, dir))
+		t.Errorf("the newest file in the err-502-req000003 group was just written, so it should be kept; left %v", listFiles(t, dir))
 	}
 }
 
-// TestPruneDirBySameMtimeTiebreakByName：mtime 相同时按名字升序留——结果确定，
-// 不靠 ReadDir 顺序。
+// TestPruneDirBySameMtimeTiebreakByName: with equal mtime, keep by name
+// ascending -- a deterministic result that does not depend on ReadDir order.
 func TestPruneDirBySameMtimeTiebreakByName(t *testing.T) {
 	dir := t.TempDir()
 	same := epoch.Add(5 * time.Minute)
@@ -136,15 +137,15 @@ func TestPruneDirBySameMtimeTiebreakByName(t *testing.T) {
 	PruneDirBy(dir, "err-", 1)
 
 	if !groupAlive(t, dir, "err-400-req000001") {
-		t.Errorf("同 mtime 该按名字升序留 err-400-req000001，剩 %v", listFiles(t, dir))
+		t.Errorf("with equal mtime keep err-400-req000001 by ascending name, left %v", listFiles(t, dir))
 	}
 	if groupAlive(t, dir, "err-400-req000002") {
-		t.Error("同 mtime 时名字更大的 err-400-req000002 该被删掉")
+		t.Error("with equal mtime the larger name err-400-req000002 should be deleted")
 	}
 }
 
-// TestPruneDirByIgnoresOtherPrefixes：只动 prefix 命中的组，req-* 等其他前缀
-// 的文件一律不碰（dump 目录里 req-* 与 err-* 共用）。
+// TestPruneDirByIgnoresOtherPrefixes: only groups matching prefix are touched; files with
+// other prefixes such as req-* are never touched (req-* and err-* share the dump dir).
 func TestPruneDirByIgnoresOtherPrefixes(t *testing.T) {
 	dir := t.TempDir()
 	mkGroup(t, dir, "err-402-req000001", epoch.Add(1*time.Minute))
@@ -159,12 +160,12 @@ func TestPruneDirByIgnoresOtherPrefixes(t *testing.T) {
 		"req-000009.upstream-said.json", "req-000009.meta.txt", "notes.txt",
 	} {
 		if _, err := os.Stat(filepath.Join(dir, want)); err != nil {
-			t.Errorf("非 err- 前缀的 %s 不该被删: %v", want, err)
+			t.Errorf("a file without the err- prefix, %s, must not be deleted: %v", want, err)
 		}
 	}
 }
 
-// TestPruneDirByNoopWhenAtOrBelowKeep：组数 ≤ keep 时一个文件都不删。
+// TestPruneDirByNoopWhenAtOrBelowKeep: when the group count is <= keep, not one file is deleted.
 func TestPruneDirByNoopWhenAtOrBelowKeep(t *testing.T) {
 	dir := t.TempDir()
 	mkGroup(t, dir, "err-402-req000001", epoch.Add(1*time.Minute))
@@ -174,23 +175,23 @@ func TestPruneDirByNoopWhenAtOrBelowKeep(t *testing.T) {
 	PruneDirBy(dir, "err-", 2)
 	duringLen := len(listFiles(t, dir))
 	if duringLen != len(before) {
-		t.Fatalf("keep=2、只有 2 组时不该删，文件数 %d → %d", len(before), duringLen)
+		t.Fatalf("keep=2 with only 2 groups must not delete; file count %d -> %d", len(before), duringLen)
 	}
 
 	PruneDirBy(dir, "err-", 5)
 	after := listFiles(t, dir)
 	if len(after) != len(before) {
-		t.Fatalf("keep=5 时不该删，文件数 %d → %d", len(before), len(after))
+		t.Fatalf("keep=5 must not delete; file count %d -> %d", len(before), len(after))
 	}
 	for i := range before {
 		if before[i] != after[i] {
-			t.Fatalf("文件清单变了：%v → %v", before, after)
+			t.Fatalf("the file list changed: %v -> %v", before, after)
 		}
 	}
 }
 
-// TestPruneDirByIgnoresSubdirectories：子目录既不参与分组计数，也不被删——
-// 哪怕它的名字恰好落在某个被清理的 base 前缀下。
+// TestPruneDirByIgnoresSubdirectories: subdirectories neither count toward grouping
+// nor get deleted -- even if their name happens to fall under a pruned base prefix.
 func TestPruneDirByIgnoresSubdirectories(t *testing.T) {
 	dir := t.TempDir()
 	mkGroup(t, dir, "err-402-req000001", epoch.Add(1*time.Minute))
@@ -205,16 +206,16 @@ func TestPruneDirByIgnoresSubdirectories(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// keep=2：err-402-req000001 这组会被清，同名的子目录必须原样在。
+	// keep=2: the err-402-req000001 group is pruned, and the same-named subdirectory must remain.
 	PruneDirBy(dir, "err-", 2)
 
 	if fi, err := os.Stat(sub); err != nil || !fi.IsDir() {
-		t.Fatalf("子目录 %s 被动了: %v", sub, err)
+		t.Fatalf("subdirectory %s was touched: %v", sub, err)
 	}
 	if _, err := os.Stat(inside); err != nil {
-		t.Errorf("子目录里的文件不该被删: %v", err)
+		t.Errorf("files inside the subdirectory must not be deleted: %v", err)
 	}
 	if groupAlive(t, dir, "err-402-req000001") {
-		t.Error("err-402-req000001 的普通文件该被删（被删的只是文件，不含同名子目录）")
+		t.Error("the regular file err-402-req000001 should be deleted (only files are deleted, not the same-named subdirectory)")
 	}
 }

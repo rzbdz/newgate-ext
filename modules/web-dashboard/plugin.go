@@ -14,14 +14,14 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// 前端插件的登记表与发文件的那两条路由（契约见 api.go 的「前端插件」）。
-// 形状照抄 extensionRegistry：一张表、单调序号、重名当场报错。
+// The front-end plugin registry and the two routes that serve its files (contract in api.go).
+// Shape copied from extensionRegistry: one table, monotonic token, duplicate names fail.
 
 type pluginEntry struct {
 	id     int
 	plugin Plugin
-	// version 是入口文件的内容哈希：清单里的地址带着它（`?v=`），换了一版二进制
-	// 浏览器就一定拿新的那份——与 cacheControl 那条「入口每次都问」同一个坑。
+	// version is the entry file's content hash: manifest addresses carry it (`?v=`), so a new
+	// binary always gets the new copy - the same pit as cacheControl's "always ask" for entry.
 	version string
 }
 
@@ -35,8 +35,8 @@ func newPluginRegistry() *pluginRegistry {
 	return &pluginRegistry{entries: map[string]pluginEntry{}}
 }
 
-// RegisterPlugin 收下一个插件。入口文件在登记时就读一遍：它不在、或者槽位拼错，
-// 都是**作者**的错，该在装配时红，而不是在用户打开页面时少一块。
+// RegisterPlugin takes in a plugin. The entry file is read at registration: missing, or a
+// misspelled slot, is the **author's** error - red at assembly, not gone for a user.
 func (r *pluginRegistry) RegisterPlugin(p Plugin) (modules.Release, error) {
 	if !extensionName.MatchString(p.Name) {
 		return nil, i18n.E("web: {name} is not a usable plugin name — use lowercase letters, digits, '-' and '_'",
@@ -78,7 +78,7 @@ func (r *pluginRegistry) RegisterPlugin(p Plugin) (modules.Release, error) {
 	}, nil
 }
 
-// pluginDoc 是 `/api/plugins` 里的一条。地址相对 `/ui/`（前端拼上 BASE_URL）。
+// pluginDoc is one `/api/plugins` entry. Addresses are relative to `/ui/` (BASE_URL is added).
 type pluginDoc struct {
 	Name  string       `json:"name"`
 	Entry string       `json:"entry"`
@@ -96,13 +96,13 @@ func (r *pluginRegistry) manifest() []pluginDoc {
 			Slots: e.plugin.Slots,
 		})
 	}
-	// 稳定的顺序：同一个槽位里谁先谁后不该每次刷新都换。
+	// Stable order: who comes first in a slot must not change on every refresh.
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
 }
 
-// servePlugin 发 `/plugins/<名字>/<路径>`：只从那个插件自己的 Assets 里拿。
-// 不落回 index.html（那是 SPA 兜底，对插件只会把一个拼错的 import 变成一段 HTML）。
+// servePlugin serves `/plugins/<name>/<path>`: only from that plugin's own Assets.
+// no fallback to index.html (SPA only; for a plugin it turns a bad import into HTML).
 func (r *pluginRegistry) servePlugin(w http.ResponseWriter, req *http.Request) {
 	rest := strings.TrimPrefix(req.URL.Path, "/plugins/")
 	name, file, ok := strings.Cut(rest, "/")
@@ -123,7 +123,7 @@ func (r *pluginRegistry) servePlugin(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", contentType(file))
-	// 插件的文件名里没有内容哈希（只有入口地址带 ?v=），所以每次都带条件请求问一遍。
+	// Plugin filenames carry no content hash (only the entry has ?v=), so ask with a condition.
 	w.Header().Set("Cache-Control", "no-cache")
 	_, _ = w.Write(b)
 }

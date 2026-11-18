@@ -1,13 +1,13 @@
 // Package assembly turns the component graph's assembly trace into a log record.
 //
-// Why it is here and not in the kernel: the kernel only offers the fact outlet
-// (component.SetTrace). "Report it or not, where, in what format, and whether to
-// dedupe repeated identical assemblies" is a product decision. This used to live
-// in the kernel's app package together with the distribution's log path, which
-// made the framework unusable without a distribution.
+// Why it is here and not in the kernel: the kernel only offers the fact
+// outlet (component.SetTrace). "Report it or not, where, in what format, and
+// whether to dedupe repeated identical assemblies" is a product decision. This
+// used to live in the kernel's app package together with the distribution's
+// log path, which made the framework unusable without a distribution.
 //
-// 内核只提供事实出口（component.SetTrace），不认识日志、不认识文件、不认识
-// 环境变量；「报不报、报去哪、什么时候报」是产品层的决定，都在这一处。
+// The kernel only offers the fact outlet (component.SetTrace); it knows nothing
+// of logs, files, or env vars. "Report, where, when" is a product decision.
 package assembly
 
 import (
@@ -26,12 +26,12 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// TraceTo 把装配过程（扫描 → 声明 → 构图 → 启动 → 停止）写给这些 writer，
-// 返回收尾函数（进程退出前调用）。不传 writer 等于关掉。
+// TraceTo writes the assembly process (scan -> declare -> compose -> start -> stop)
+// to these writers and returns a finalizer (call it before exit). No writer = off.
 //
-// 它是这一族里唯一的原语，别处（含子进程）都从它出发——所以它不依赖任何
-// 具体目的地，也不需要是 *log.Logger：装配过程一律带时间戳输出，而
-// log.Logger 本身就是个 io.Writer。
+// It is the only primitive in this family; everything else (child processes
+// included) starts from it, so it depends on no concrete destination and need not
+// be a *log.Logger: assembly output is timestamped anyway, and it is an io.Writer.
 func TraceTo(writers ...io.Writer) func() {
 	live := make([]io.Writer, 0, len(writers))
 	for _, w := range writers {
@@ -55,68 +55,79 @@ func TraceTo(writers ...io.Writer) func() {
 	return func() { modules.SetTrace(nil) }
 }
 
-// TraceToLogFile 把装配过程追加进 newgate 的日志文件；`NEWGATE_TRACE=1` 时**同时**
-// 打到 stderr，方便本地跑一发亲眼看清顺序（那一份不该是默认行为——CLI 的输出是
-// 给人读的，`newgate tier normal` 的答案不该被几十行装配日志埋掉）。
+// TraceToLogFile appends the assembly process to newgate's log file; with
+// `NEWGATE_TRACE=1` it **also** writes to stderr, so a local run can see the order
+// first-hand (that must not be the default -- CLI output is for humans, and the answer
+// to `newgate tier normal` must not be buried under dozens of assembly log lines).
 //
-// # 为什么每个进程都记，而不是只记守护进程
+// # Why every process records it, not just the daemon
 //
-// 装配过程是「这一版到底起了哪几个模块、什么顺序、谁的弱依赖没命中」的唯一一手
-// 材料——它只在装配期存在，事后从 Manager 里问不出来（那里只有结果）。
+// The assembly trace is the only first-hand material for "which modules this build actually
+// started, in what order, and whose soft dependency missed" -- it exists only during
+// assembly, and afterwards the Manager cannot answer that (it only holds the result).
 //
-// 最需要它的场合是**优雅交接**：旧进程还在服务，新进程在后台装配，用户全程看不
-// 见它。而 `newgate restart` 的优雅路径是**旧进程**把 socket 交给新进程的，旧二
-// 进制不可能给新二进制带上「你是守护进程」这类的标记——判据必须是进程**自己**
-// 知道的。用「argv 里有 __serve」当判据等于把 gateway 的动词名抄进 main，用环境
-// 变量当判据则恰好在最需要它的那一次升级上失效。所以这里不做区分：**谁装配了
-// 图，谁就留下这一段**。
+// The case that needs it most is **graceful handover**: the old process is still serving and
+// the new one assembles in the background, and the user never sees it. And the graceful path
+// of `newgate restart` has the **old process** hand the socket to the new one, so the old
+// binary cannot brand the new one with "you are the daemon" -- the test must be something
+// the process knows **itself**. Using "`__serve` is in argv" as the test copies gateway's
+// verb names into main; using an env var makes it fail on exactly the upgrade that needs it
+// most. So no distinction is made here: **whoever assembles the graph leaves this record**.
 //
-// # 同一个装配只写一次（2026-09-20）
+// # One assembly is written once (2026-09-20)
 //
-// 上面那条「不做区分」的代价，实测比注释里原来写的数字大得多：整图 24 个组件、
-// 每一条 `newgate …` 命令（`status`、`--help`、agent 启动路径上的 `newgate claude`）
-// 都往日志里写 **104 行**，而且这 104 行**逐字相同**——声明顺序是编译期定下的、
-// 拓扑顺序是稳定排序、时延那几位是唯一会变的东西。一个开发下午的日志实测
-// 38087 行，其中真正的代理流量 **23 行**：这本日志是这个产品最主要的排查面
-// （`newgate logs`、alllogs 诊断包），它 99.9% 是装配回音。
+// The cost of "no distinction" above is far larger than the numbers the comment used
+// to give: with 24 components in the full graph, every `newgate …` command (`status`,
+// `--help`, `newgate claude` on the agent launch path) wrote **104 lines** into the log,
+// and those 104 lines were **identical word for word** -- the declaration order is fixed
+// at compile time, the topological order is a stable sort, and the latency digits are the
+// only thing that changes. One development afternoon measured 38087 log lines, of which
+// real proxy traffic was **23 lines**: this log is the product's main debugging surface
+// (`newgate logs`, the alllogs diagnostic bundle), and 99.9% of it was assembly echo.
 //
-// 所以改成**只在装配变了的时候写整段**，没变就**一个字都不写**：
+// So it now writes the **whole record only when the assembly
+// changed**, and writes **not a single character** when it did not:
 //
-//	2026/09/20 18:48:07 assembly: fingerprint 3f9a1c2b4d5e — 上面这段是新的
+//	2026/09/20 18:48:07 assembly: fingerprint 3f9a1c2b4d5e — this block is new
 //
-// （2026-09-21 又收了一次：原先「没变」时会留一行说明。那一行仍然是回音——
-// 敲一条 `newgate status` 就往守护进程日志里加一行「什么都没变」，而这份日志
-// 上每一行都该是一次跃迁。理由写在 flush 里。）
+// (Tightened again on 2026-09-21: previously a line saying "same as before" was left when nothing
+// changed. That line was still echo -- one `newgate status` added a "nothing changed" line to
+// the daemon log, and every line in this log should be a transition. The reasoning is in flush.)
 //
-// 判据是那段文字**去掉时间戳与耗时之后**的内容哈希。它买到的东西正好是当初要它
-// 的理由：升级那一发的整段记录照样在（新旧二进制装的东西不同 → 指纹不同 → 整段
-// 写出），而同一份二进制敲一万次命令只留下「我装过一次，是这一份」。
-// 这与 watcher、configshare 的日志政策是同一条——**只在状态跃迁时报**。
+// The test is a hash of that text **with timestamps and durations stripped**. What it buys is
+// exactly the reason it was wanted: the whole record from an upgrade is still there (old and new
+// binaries ship different things -> different fingerprint -> the block is written out), while
+// ten thousand commands with the same binary leave only "I assembled once, and it was this one".
+// This is the same policy as watcher and configshare -- **report only on state transitions**.
 //
-// 随之而来的两个取舍，都写明白：
+// Two trade-offs come with it, both spelled out:
 //
-//   - **记录改成攒完再写**，所以装配**中途**进程死掉时这一段不在日志里（原来
-//     是边装配边写，死的时候能留下半截）。要看那半截就用 `NEWGATE_TRACE=1`——
-//     那条路径照旧一路流出去，不缓冲、不判断，它同时是这条的逃生口。代价是
-//     那一发**不写指纹**（它走的是旧路径，末尾没有标记行），于是**紧跟着的
-//     下一发会把整段重写一次**，之后又回到一行。这是有意的：逃生口的意义就是
-//     「旧行为，一个字节不改」，而它是个调试开关，不是常态。
-//   - 指纹**只在当前这份日志里**找（读尾部 8KB，不另开状态文件）。所以日志
-//     轮转之后的第一发会重写整段——那是对的：新的一份日志本来就该自己带上
-//     这份记录，而不是继承一份它没有的。
+//   - **The record is buffered and written at the end**, so if the process
+//     dies **mid-assembly** this block is not in the log (it used to write as it assembled,
+//     so a death left half of it). To see that half, use `NEWGATE_TRACE=1` -- that path still
+//     streams everything out, unbuffered and unjudged, and it is the escape hatch for this
+//     rule. The cost is that such a run **writes no fingerprint** (it takes the old path,
+//     with no marker line at the end), so **the very next run rewrites the whole block**, and
+//     after that it is back to one line. This is deliberate: the point of the escape hatch
+//     is "the old behavior, not one byte changed", and it is a debug switch, not the norm.
+//   - The fingerprint is looked up **only in the current log file** (reads the last 8KB, no
+//     separate state file). So the first run after a log rotation rewrites the whole block -- which
+//     is right: a new log should carry this record itself instead of inheriting one it never had.
 //
-// # 打不开就静默跳过
+// # If it cannot be opened, skip silently
 //
-// 典型现场：root 的 CLI 撞上 claude 建的 `0640 root:developer`（CLAUDE.md §3.1）。
-// 这里不报也不拦，是有意的取舍——留痕是诊断素材，不该让每条 `newgate status` 都
-// 往终端吐一行权限警告，而那个权限问题本身已经在别的路径上响亮地报过
-// （thinkcache 落盘关闭、控制令牌写不出去）。
+// A typical scene: root's CLI hits a `0640 root:developer` file created by claude
+// (CLAUDE.md §3.1). Not reporting or blocking here is a deliberate trade-off -- the
+// trace is diagnostic material, and every `newgate status` should not spit a permission
+// warning at the terminal, while that permission problem is already reported loudly
+// on other paths (thinkcache writes disabled, control token cannot be written out).
 func TraceToLogFile(logFile string) func() {
-	// **O_RDWR 而不是 O_WRONLY**：这里要把上一次的记录读回来看（lastFingerprint）。
-	// 写成只写时 ReadAt 一律 EBADF，回看永远返回空——于是每一发都被当成「第一次」，
-	// 整段照写，这个文件要修的东西原样还在。2026-09-20 实测踩过：单元测试自己用
-	// O_RDWR 开文件，所以它看不见（补了 TestRepeatedInvocationsOfTheRealThing 之后才看得见）。
-	// O_APPEND 保证写入仍然只追加。
+	// **O_RDWR, not O_WRONLY**: the previous record must be read back
+	// here (lastFingerprint). Opened write-only, ReadAt always gives EBADF and the look-back
+	// always comes back empty -- so every run counts as the "first", writes the whole block,
+	// and the thing this file exists to fix is still there. Hit for real on 2026-09-20: the
+	// unit test opened the file with O_RDWR itself, so it could not see it (only after adding
+	// TestRepeatedInvocationsOfTheRealThing did it show). O_APPEND keeps writes append-only.
 	f, err := os.OpenFile(logFile, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0o660)
 	if err != nil {
 		if os.Getenv("NEWGATE_TRACE") != "" {
@@ -124,7 +135,7 @@ func TraceToLogFile(logFile string) func() {
 		}
 		return TraceTo()
 	}
-	// NEWGATE_TRACE 是「我现在就要看着它跑」：不缓冲，边装配边写。
+	// NEWGATE_TRACE means "I want to watch it run right now": no buffering, write as it assembles.
 	if os.Getenv("NEWGATE_TRACE") != "" {
 		stop := TraceTo(f, os.Stderr)
 		return func() {
@@ -141,22 +152,26 @@ func TraceToLogFile(logFile string) func() {
 	}
 }
 
-// fingerprintMarker 是写进日志的那行标记的**机器锚点**。它刻意不走 i18n：
-// 下面是按它找上一次记录的（见 lastFingerprint），翻译了它，中文环境下就再也
-// 找不回自己的记录——每一条命令都会重写整段，正是这个文件要修掉的东西。
-// 一句话的解释跟在它后面，那句是翻译的。
+// fingerprintMarker is the **machine anchor** of the marker line
+// written to the log. It deliberately bypasses i18n: the last record is found by
+// it (see lastFingerprint), and a translated marker would never match again under a
+// Chinese locale -- every command would rewrite the whole block, exactly what this
+// file exists to fix. The one-sentence explanation after it is the translated part.
 var fingerprintMarker = regexp.MustCompile(`assembly: fingerprint ([0-9a-f]{12})`)
 
-// tailWindow 是回看上次记录时读的日志尾部长度。
+// tailWindow is how much of the log tail is read when looking back for the last record.
 //
-// 8KB 的依据：整段记录 24 个组件约 10KB，而标记写在**最末**，所以窗口只要盖得住
-// 「最后一行附近」就够——不必盖住整段。
+// Why 8KB: the full record for 24 components is about 10KB, and the
+// marker is written at the **very end**, so the window only has to
+// cover "around the last line" -- it need not cover the whole block.
 const tailWindow = 8 << 10
 
-// lastFingerprint 在当前日志的尾部找最近一次记下的指纹；没有就返回空。
+// lastFingerprint finds the most recent recorded fingerprint
+// in the current log's tail; with none, it returns empty.
 //
-// 只读当前这一份日志文件，不读 `.1` 那些世代：轮转之后本文件里没有记录，于是
-// 下一发重写整段——新日志自己带上这份记录，正是想要的。
+// Only this one log file is read, not the `.1` generations: after
+// a rotation the file holds no record, so the next run rewrites the whole
+// block -- the new log carrying the record itself is exactly what is wanted.
 func lastFingerprint(f *os.File) string {
 	st, err := f.Stat()
 	if err != nil {
@@ -168,12 +183,12 @@ func lastFingerprint(f *os.File) string {
 		off = size - tailWindow
 	}
 	buf := make([]byte, size-off)
-	// ReadAt 不动文件偏移，所以这次回看不会影响后面的追加。
+	// ReadAt does not move the file offset, so this look-back does not affect later appends.
 	if _, err := f.ReadAt(buf, off); err != nil && err != io.EOF {
 		return ""
 	}
 	if off > 0 {
-		// 窗口可能切在一行中间，第一段是半行，丢掉。
+		// The window may cut through a line, so the first segment is half a line; drop it.
 		i := bytes.IndexByte(buf, '\n')
 		if i < 0 {
 			return ""
@@ -187,35 +202,41 @@ func lastFingerprint(f *os.File) string {
 	return string(all[len(all)-1][1])
 }
 
-// 指纹要把「每次都会变」的两位去掉：时间戳前缀与耗时。剩下的部分（模块、顺序、
-// 弱依赖命中与否）才是「这一版装配成什么样」。
+// The fingerprint strips the two parts that change every time: the
+// timestamp prefix and the durations. What remains (modules, order, whether
+// a soft dependency hit) is "what this build's assembly looks like".
 //
-// **耗时要按形状认，不能按词认**：装配记录是翻过译的（component 调的
-// i18n.T），中文那行是「启动 4/23 locale 完成（用时 3.489ms）」——只认英文的
-// 「(took …)」一条都剥不掉，于是每一行的耗时都进了指纹，**每次运行都是新指纹**，
-// 整段每次都重写。2026-09-20 线上实测：同一份二进制连写四条不同的指纹
-// （e5fe…/c683…），而这台开发机的沙箱是英文，一直没露头。
+// **A duration must be recognized by shape, not by word**: the trace is translated (component
+// calls i18n.T), and the Chinese line reads like the localized "start 4/23 locale done (took
+// 3.489ms)" -- matching only the English "(took …)" strips nothing, so every line's duration enters
+// the fingerprint, **every run is a new fingerprint**, and the whole block is rewritten every
+// time. Measured in production on 2026-09-20: the same binary wrote four different fingerprints
+// in a row (e5fe…/c683…), and this dev box's sandbox is English, so it never showed up.
 //
-// 单位不翻译（`ms` 在中文行里还是 `ms`），所以「数字 + 单位」是语言无关的判据。
+// Units are not translated (`ms` is still `ms` in a Chinese
+// line), so "number + unit" is a language-independent test.
 var (
 	traceStamp = regexp.MustCompile(`^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} `)
-	// 耗时按**形状**剥：数字紧跟单位。单位不翻译（中文那行是「…完成（用时
-	// 3.489ms）」，ms 还是 ms），所以这条判据与语言无关——而只认英文的
-	// 「(took …)」会漏掉全部译文，症状是换个语言就每次都重写整段
-	// （2026-09-20 线上实测：同一份二进制连写四条不同指纹；沙箱是英文，没露头）。
+	// Durations are stripped by **shape**: digits immediately followed by a unit. Units
+	// are not translated (the Chinese line is "... done (took 3.489ms)" with `ms` still
+	// `ms`), so this test is language-independent -- while matching only the English "(took
+	// …)" misses every translation, whose symptom is rewriting the whole block on every run
+	// in another language (measured in production 2026-09-20: the same binary wrote four
+	// different fingerprints in a row; the sandbox was English, so it did not show up).
 	//
-	// 括号与逗号**不用管**：它们每次都在同一处，稳定；这里要的只是稳定，不是好看。
-	// 也正因为如此，这条正则里一个中文标点都不需要——少一样要维护的东西。
+	// Parentheses and commas **do not matter**: they sit in the same place every time
+	// and are stable; all that is wanted here is stability, not looks. That is also
+	// why this regex needs no Chinese punctuation at all -- one less thing to maintain.
 	traceDuration = regexp.MustCompile(`\d+(?:\.\d+)?(?:ns|µs|us|ms|s)\b`)
 )
 
-// normalizeTraceLine 去掉一行装配记录里与「装了什么」无关的部分。
+// normalizeTraceLine strips what in an assembly line has nothing to do with "what was installed".
 func normalizeTraceLine(l string) string {
 	l = traceStamp.ReplaceAllString(l, "")
 	return traceDuration.ReplaceAllString(l, "(d)")
 }
 
-// assemblyFingerprint 是整段记录的哈希（去时间戳、去耗时之后）。
+// assemblyFingerprint is the hash of the whole record (timestamps and durations removed).
 func assemblyFingerprint(lines []string) string {
 	h := sha256.New()
 	for _, l := range lines {
@@ -225,7 +246,7 @@ func assemblyFingerprint(lines []string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// assemblyRecord 攒下一段装配记录，收尾时决定整段写出去还是只留一行。
+// assemblyRecord buffers an assembly record and at the end decides: write the block or nothing.
 type assemblyRecord struct {
 	mu    sync.Mutex
 	out   io.Writer
@@ -238,10 +259,11 @@ func newAssemblyRecord(out io.Writer, prev string) *assemblyRecord {
 	return &assemblyRecord{out: out, prev: prev}
 }
 
-// add 是 component.SetTrace 的回调，装配期每一条都从这儿过。
+// add is the component.SetTrace callback; every event during assembly passes through here.
 //
-// 时间戳在这里就打好（不是收尾时补）：那 24 行 `start n/24 … (took …)` 的**顺序与
-// 时延**正是这段记录的价值所在，攒完再统一盖一个时间会把它们全压成同一刻。
+// The timestamp is applied right here (not added at the end): the **order and latency**
+// of those 24 `start n/24 … (took …)` lines is exactly where the record's value lies, and
+// stamping them all with one time after buffering would flatten them into one instant.
 func (r *assemblyRecord) add(format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
 	r.mu.Lock()
@@ -250,30 +272,33 @@ func (r *assemblyRecord) add(format string, args ...any) {
 	r.plain = append(r.plain, normalizeTraceLine(msg))
 }
 
-// flush 写出去。整段只在指纹变了时写，否则只写一行。
+// flush writes it out. The block is only written when the fingerprint changed, else one line.
 func (r *assemblyRecord) flush() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if len(r.lines) == 0 {
 		return
 	}
-	// 比的是**写进日志的那 12 位**，不是完整的 64 位哈希：prev 是从日志里读回来的，
-	// 拿全长去比它永远不相等，于是整段每次都写——这个文件要修的东西原样还在，
-	// 而日志看起来完全正常（2026-09-20 被 TestFullRecordIsWrittenOnlyWhenItChanges 抓住）。
+	// The comparison is against the **12 chars written to the log**, not the full 64-bit hash:
+	// prev is read back from the log, so comparing full length never matches and the whole block
+	// is written every time -- the thing this file exists to fix is still there, and the log
+	// looks perfectly normal (caught by TestFullRecordIsWrittenOnlyWhenItChanges on 2026-09-20).
 	fp := assemblyFingerprint(r.plain)[:12]
 	if fp == r.prev {
-		// **一个字都不写**（2026-09-21 用户：日志里不要再出现这东西）。
+		// **Write not a single character** (2026-09-21, the
+		// user: do not let this show up in the log again).
 		//
-		// 原来这里留一行「与已有的记录相同」。它想解决的是日志被装配回音淹掉，
-		// 但留下的那一行**仍然是回音**：`status`、`doctor`、`tier` … 每敲一次就
-		// 往守护进程的日志里塞一行「什么都没变」。而这份日志是这个产品最主要的
-		// 排查面（`newgate logs`、alllogs 诊断包），它上面的每一行都该是**一次
-		// 跃迁**——这条政策本文件开头就写着（「只在状态跃迁时报」），那一行恰恰
-		// 不是跃迁，是自相矛盾。
+		// This used to leave one line: "same as the existing record". It was meant to fix
+		// the log drowning in assembly echo, but the line it left was **still echo**: every `status`,
+		// `doctor`, `tier` … stuffed a "nothing changed" line into the daemon log. And this log
+		// is the product's main debugging surface (`newgate logs`, the alllogs bundle); every line
+		// in it should be **a transition** -- the policy is stated at the top of this file ("report
+		// only on state transitions"), and that line was precisely not a transition, a contradiction.
 		//
-		// 什么都不写不会让人查不到东西：装配**变过**的那一段在日志里，它带着
-		// 指纹；要看此刻这一发现场有 `NEWGATE_TRACE=1`。而 `lastFingerprint`
-		// 靠的就是那条标记行——它还在，所以下一发照样认得出「没变」。
+		// Writing nothing does not make anything unfindable: the block for an assembly
+		// that **did change** is in the log, with its fingerprint; to see the current
+		// run live there is `NEWGATE_TRACE=1`. And `lastFingerprint` relies on that
+		// marker line -- it is still there, so the next run still recognizes "unchanged".
 		return
 	}
 	for _, l := range r.lines {
@@ -283,5 +308,5 @@ func (r *assemblyRecord) flush() {
 		"the full assembly record above is new; it is written again only when the graph changes", nil))
 }
 
-// stamp 是 log.LstdFlags 的格式，与 TraceTo 那条路径写出来的一模一样。
+// stamp is the log.LstdFlags format, exactly what the TraceTo path writes.
 func stamp() string { return time.Now().Format("2006/01/02 15:04:05 ") }

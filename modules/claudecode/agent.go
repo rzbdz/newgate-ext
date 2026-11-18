@@ -9,37 +9,38 @@ import (
 
 const ID = "claude"
 
-// NpmPackage 是官方发行渠道上那个包（2026-11-17 由
-// `https://registry.npmjs.org/@anthropic-ai/claude-code` 的 dist-tags 核过）。
+// NpmPackage is the package on the official distribution channel (verified 2026-11-17
+// from the dist-tags of `https://registry.npmjs.org/@anthropic-ai/claude-code`).
 //
-// 为什么用 npm 而不是 `https://claude.ai/install.sh`：那一行在 2026-11-17 实测
-// 返回的是**官网的 HTML**（303 KB 的 Next.js 页面），`curl | bash` 会把它当脚本
-// 执行。npm 那个包是官方发布的、`bin` 里就是 `claude`，而且 codex 已经走同一条
-// 渠道——两条安装路径而不是三条，读的人少记一件事。
+// Why npm rather than `https://claude.ai/install.sh`: as measured on 2026-11-17, that line returned
+// the **official site's HTML** (a 303 KB Next.js page), and `curl | bash` would execute it as
+// a script. The npm package is officially published, its `bin` is `claude`, and codex already uses
+// the same channel -- two install paths instead of three, one fewer thing for readers to remember.
 const NpmPackage = "@anthropic-ai/claude-code"
 
-// Agent 返回 Claude Code 的描述符。
+// Agent returns Claude Code's descriptor.
 //
-// # 窗口为什么不再用模型名后缀 [1m]
+// # Why the window no longer uses the model-name suffix [1m]
 //
-// 2026-09-28 到 2026-11-12 之间，这里给每个槽位拼了 `[1m]`，让 Claude Code
-// 按 100 万上下文对待。现场（2026-11-12，deepseek-flash）证明那个做法把会话
-// 顶到了真实窗口的最后一格：会话涨到 1.01M tokens，下一条请求 400
-// "Input tokens exceed the model context limit"，而 /compact 也发不出去——
-// 压缩请求本身带着整段会话，同样超限。客户端于是**没有自救路径**。
+// From 2026-09-28 to 2026-11-12, this appended `[1m]` to every slot, making Claude
+// Code treat it as a 1M-token context. The scene (2026-11-12, deepseek-flash) proved
+// that pushed the session to the last cell of the real window: the session grew to
+// 1.01M tokens, the next request got 400 "Input tokens exceed the model context limit",
+// and /compact could not be sent either -- the compaction request itself carries the
+// whole session, equally over the limit. The client then had **no self-rescue path**.
 //
-// 现在名字原样注入（档位名或真实模型名），窗口由
-// CLAUDE_CODE_MAX_CONTEXT_TOKENS 声明，并且封顶 512K（ContextWindowCap）。
-// 不认识的名字会走 Claude Code 的「未知模型」分支，它**强制**按声明的窗口
-// 自动 compact（2.1.322 实测），所以 512K 是一个真的天花板，不只是显示。
-// 也不再发 `context-1m` beta 头，上游不会被告知按 1M 处理。
+// Now the name is injected as is (tier name or real model name), the window is declared by
+// CLAUDE_CODE_MAX_CONTEXT_TOKENS and capped at 512K (ContextWindowCap). An unrecognized name
+// takes Claude Code's "unknown model" branch, which **forces** auto-compact at the declared
+// window (measured on 2.1.322), so 512K is a real ceiling, not just display. The `context-1m`
+// beta header is no longer sent either, so the upstream is not told to treat it as 1M.
 //
-// compact 点另外封到 400K（AutoCompactCap）：newgate 的推理回填会把请求
-// 再撑大（2026-11-12 实测 7.9MB → 9.0MB，约 14%），如果等到 500K 才压缩，
-// 回填后已经贴住 512K 了。
+// The compact point is separately capped at 400K (AutoCompactCap): newgate's reasoning
+// backfill grows the request again (measured 2026-11-12: 7.9MB -> 9.0MB, about 14%), and
+// if compression waited until 500K, after backfill it would already be flush against 512K.
 func Agent() *agentapi.Agent {
 	return &agentapi.Agent{
-		// 界面上的图标（见 icon.go：它为什么住在这个模块里）。
+		// The icon in the UI (see icon.go: why it lives in this module).
 		Icon:    iconPath,
 		ID:      ID,
 		Bin:     []string{"claude"},
@@ -53,25 +54,28 @@ func Agent() *agentapi.Agent {
 				Desc: i18n.T("the sonnet tier; the Bash classifier and /compact summaries run here", nil)},
 			{Name: "haiku", Tier: "light", EnvVar: "ANTHROPIC_DEFAULT_HAIKU_MODEL",
 				Desc: i18n.T("the haiku tier; background features", nil)},
-			// Also：`inherit` 是 **Claude Code 自己的**取值（跟父会话走），不是我们的
-			// 档位。声明在这里，槽位映射那条可配置的路才不会把它当成打错的档位名滤掉
-			// ——说明里写着可以这么设，界面与配置就必须真的收得下（见 agentapi.Slot.Also）。
+			// Also: `inherit` is **Claude Code's own** value (follow the parent session), not
+			// one of our tiers. Declaring it here is so the configurable slot-mapping path does
+			// not filter it out as a misspelled tier name -- the description says it can be set
+			// this way, so the UI and config must really accept it (see agentapi.Slot.Also).
 			//
-			// **没有能力标记**：它注入的可能是 `inherit` 这个取值，任何后缀都会
-			// 让 Claude Code 去找一个叫 `inherit…` 的模型。能力标记说明的是「这个
-			// 名字指向的模型有多大的上下文」，而 `inherit` 压根不指向一个模型。
+			// **No capability marker**: what it injects may be the value `inherit`, and any suffix would
+			// make Claude Code look for a model called `inherit...`. A capability marker states "how
+			// big a context the model this name points to has", and `inherit` points to no model at all.
 			{Name: "subagent", Tier: "mid", EnvVar: "CLAUDE_CODE_SUBAGENT_MODEL", Also: []string{"inherit"},
 				Desc: i18n.T("every subagent / agent team / workflow; set it to inherit to hand that back to per-slot resolution", nil)},
 		},
 		BaseURLEnv: "ANTHROPIC_BASE_URL",
 		AuthEnv:    "ANTHROPIC_AUTH_TOKEN",
-		// 窗口声明两个变量的**名字**（内核只负责「配置里声明了就按这个名字注入」，
-		// 名字是客户端的知识，见内核 modules/confighook 的 Agent 字段注释）。
-		// 不给的话，Claude Code 对不认识的模型名按 200k 假设提前 compact。
+		// The window declares **names** of two variables (the kernel only handles
+		// "if declared in the config, inject it under this name"; the names are the client's
+		// knowledge, see the Agent field comment in the kernel's modules/confighook). Without
+		// them, Claude Code assumes 200k for an unrecognized model name and compacts early.
 		ContextWindowEnv: "CLAUDE_CODE_MAX_CONTEXT_TOKENS",
 		AutoCompactEnv:   "CLAUDE_CODE_AUTO_COMPACT_WINDOW",
-		// 安全上限：512K 窗口 / 400K 压缩点。理由见 Agent 的注释——超过 1M 的
-		// 会话一旦被拒，连 /compact 都救不回来，留余量是唯一能自动恢复的做法。
+		// Safety caps: 512K window / 400K compaction point. See the comment on
+		// Agent for why -- once a session over 1M is rejected, not even /compact can
+		// rescue it, and leaving headroom is the only way to recover automatically.
 		ContextWindowCap: 512000,
 		AutoCompactCap:   400000,
 		UnsetEnv: []string{

@@ -9,22 +9,22 @@ import (
 	"github.com/rzbdz/newgate/lib/i18n"
 )
 
-// fallbackCommand 是 `newgate fallback on|off`。
+// fallbackCommand is `newgate fallback on|off`.
 //
-// **它住在这里而不是 modules/cli**：fallback 链是网关数据面的一条决策
-// （forward 的 steps 循环），「换不换人」是 gateway 的语义，命令也该由
-// gateway 提供。理由与 schemaRepairCommand 同一条。
+// **Why it lives here and not in modules/cli**: the fallback chain is a data plane
+// decision (forward's steps loop), and "switch or not" is gateway semantics, so the
+// command belongs to gateway. Same reason as schemaRepairCommand.
 //
-// 为什么值得有这个命令（2026-09-28）：链上换人会**掩盖上游的故障**——
-// 某个 provider 挂了，请求照常 200，只是走了别人，界面显示的模型名与实际
-// 跑的对不上。要判断「到底是 A 家的问题还是我们的问题」必须能一键把所有
-// fallback 关掉，让请求**直接撞在上游上**。这是排查手段，不是省 token 的
-// 开关（它也会同时关掉超时预算的等待，见 forward.handleProxy 那段短路）。
+// Why the command is worth having (2026-09-28): chain switching **hides upstream
+// faults** - a dead provider still answers 200 via someone else, and the model name
+// shown disagrees with the one that ran. To decide "is it A's fault or ours" you need
+// one-keystroke fallback-off so requests **hit the upstream directly**. That is a
+// debugging tool, not a token saver (it also drops the timeout budget wait).
 //
-// 与 `--profile=xx` 的关系：那条路天然只走一个 profile，**不需要**这个
-// 开关（URL 路径已经把 profile 钉死了，见 forward.Target.Profile）。这个
-// 开关管的是其余所有路径——所以默认是**开**（不关），出厂关掉等于把网关
-// 的主要能力阉了。
+// Relation to `--profile=xx`: that path pins the profile in the URL path and **does
+// not need** this switch (see forward.Target.Profile). This switch governs every other
+// path - so it defaults to **on** (not off), because off at the factory would cripple
+// the gateway's main ability.
 type fallbackCommand struct{}
 
 var (
@@ -44,10 +44,10 @@ func (fallbackCommand) Help() cliapi.HelpLine {
 
 func (fallbackCommand) Run(host cliapi.Host, args []string) int {
 	arg := cliapi.Positional(args, 0)
-	// 必须显式给 on|off，理由与 schema-repair 字字相同：`truthy("")` 是 false，
-	// 不带参数当成 off 的话，「敲一下看看」会把全机的 fallback 静默关掉——
-	// 而那是一个**只在出故障时才会被发现**的改动：平时一切正常，等某个
-	// provider 挂了才发现请求不再换人。
+	// on|off must be explicit, word for word the schema-repair reason: `truthy("")` is
+	// false, so defaulting a bare command to off would make "type it and see" silently
+	// disable fallback machine-wide - a change **only noticed when something breaks**:
+	// all normal until some provider dies and requests stop switching.
 	if arg == "" {
 		return host.Die(64, i18n.T("Usage: newgate fallback on|off (no argument changes anything)", nil))
 	}
@@ -62,8 +62,8 @@ func (fallbackCommand) Run(host cliapi.Host, args []string) int {
 		fmt.Println(style.Item(style.Skip, "fallback off") +
 			style.Dim(i18n.T("   Every request stops at the head of the chain, timeouts included", nil)))
 	}
-	// 改的是转发路径读的那份共享快照，得让 watcher 立刻重载——否则要等下一次
-	// 配置变更才生效，而用户以为已经生效了。
+	// It changes the shared snapshot the forwarding path reads, so the watcher must
+	// reload at once - otherwise the change waits for the next config edit to apply.
 	host.NotifyProxy()
 	return 0
 }

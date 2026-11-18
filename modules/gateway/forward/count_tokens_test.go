@@ -42,7 +42,7 @@ func mainLoopChainOnly(t *testing.T, up *httptest.Server) {
 // 「请求体顶层没有 model 字符串字段」的形态）。
 func ctPost(t *testing.T, front *httptest.Server, path string) (int, []byte) {
 	t.Helper()
-	body := `{"messages":[{"role":"user","content":"看下这个，顺便数数 token"}],"tools":[]}`
+	body := `{"messages":[{"role":"user","content":"take a look at this, and count the tokens while you are at it"}],"tools":[]}`
 	resp, err := http.Post(front.URL+path, "application/json", strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
@@ -77,22 +77,22 @@ func TestCountTokensLazyProbeThenLocal(t *testing.T) {
 	} {
 		code, b := ctPost(t, front, path)
 		if code != 200 {
-			t.Fatalf("第 %d 发 %s: 客户端必须拿到 200（本地粗估兜底），实际 %d: %s",
+			t.Fatalf("request %d %s: the client must get 200 (local rough estimate as fallback), got %d: %s",
 				i+1, path, code, b)
 		}
 		var got struct {
 			InputTokens int `json:"input_tokens"`
 		}
 		if err := json.Unmarshal(b, &got); err != nil || got.InputTokens <= 0 {
-			t.Fatalf("第 %d 发: 应答不是 {input_tokens:N>0}: %s", i+1, b)
+			t.Fatalf("request %d: the reply is not {input_tokens:N>0}: %s", i+1, b)
 		}
 	}
 	if hits != 1 {
-		t.Fatalf("上游应只被撞 1 次（lazy probe），实际 %d 次——学到的「不支持」没生效", hits)
+		t.Fatalf("the upstream should be hit only once (lazy probe), got %d - the learned 'unsupported' did not take effect", hits)
 	}
 	// 学到的状态本身也要对
 	if ok, known := dialect.Supports("test-prov", "real-model-1", dialect.CapCountTokens); !known || ok {
-		t.Fatalf("应已学到明确不支持，实际 (ok=%v known=%v)", ok, known)
+		t.Fatalf("should have learned an explicit unsupported, got (ok=%v known=%v)", ok, known)
 	}
 }
 
@@ -119,31 +119,31 @@ func TestCountTokensForwardedWhenSupported(t *testing.T) {
 
 	code, b := ctPost(t, front, "/v1/messages/count_tokens")
 	if code != 200 {
-		t.Fatalf("应转发上游 200，实际 %d: %s", code, b)
+		t.Fatalf("should forward to the upstream and get 200, got %d: %s", code, b)
 	}
 	var got struct {
 		InputTokens int `json:"input_tokens"`
 	}
 	if err := json.Unmarshal(b, &got); err != nil || got.InputTokens != 42 {
-		t.Fatalf("应拿上游真值 42，实际 %s", b)
+		t.Fatalf("should take the real upstream value 42, got %s", b)
 	}
 	if gotPath != "/v1/messages/count_tokens" {
-		t.Errorf("上游路径 = %s", gotPath)
+		t.Errorf("upstream path = %s", gotPath)
 	}
 	if gotModel != "real-model-1" {
-		t.Errorf("model 应按主循环档（heavy）链头补上，实际 %q", gotModel)
+		t.Errorf("model should be filled from the head of the main-loop tier (heavy), got %q", gotModel)
 	}
 	if gotAuth != "Bearer sk-real" {
-		t.Errorf("auth 跟 provider 声明的协议走，实际 %q", gotAuth)
+		t.Errorf("auth follows the protocol declared by the provider, got %q", gotAuth)
 	}
 
 	// 学到「支持」后再来一发，仍是真值
 	code, b = ctPost(t, front, "/v1/messages/count_tokens")
 	if code != 200 {
-		t.Fatalf("第二发应继续转发，实际 %d", code)
+		t.Fatalf("the second request should keep forwarding, got %d", code)
 	}
 	if !strings.Contains(string(b), "42") {
-		t.Fatalf("第二发仍是真值，实际 %s", b)
+		t.Fatalf("the second request is still the real value, got %s", b)
 	}
 }
 
@@ -166,14 +166,14 @@ func TestCountTokensTransientErrorNotLearned(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		code, b := ctPost(t, front, "/v1/messages/count_tokens")
 		if code != 200 {
-			t.Fatalf("第 %d 发: 429 应退回本地 200，实际 %d: %s", i+1, code, b)
+			t.Fatalf("request %d: a 429 should fall back to local 200, got %d: %s", i+1, code, b)
 		}
 	}
 	if hits != 2 {
-		t.Fatalf("429 不该被学成「不支持」，两发都应试过转发，实际命中 %d 次", hits)
+		t.Fatalf("429 must not be learned as 'unsupported'; both requests should have tried forwarding, got %d hits", hits)
 	}
 	if _, known := dialect.Supports("test-prov", "real-model-1", dialect.CapCountTokens); known {
-		t.Fatal("429 不该学任何状态")
+		t.Fatal("429 must not be learned as any state")
 	}
 }
 
@@ -186,7 +186,7 @@ func TestCountTokensAlreadyLearnedSkipsUpstream(t *testing.T) {
 
 	// 上游挂了（连接被拒也无所谓——根本不该连它）
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Error("已学到「不支持」，不该再碰上游")
+		t.Error("already learned 'unsupported', so the upstream must not be touched again")
 	}))
 	upURL := up.URL
 	up.Close() // 故意关掉：连不上也不影响本地粗估
@@ -209,13 +209,13 @@ func TestCountTokensAlreadyLearnedSkipsUpstream(t *testing.T) {
 
 	code, b := ctPost(t, front, "/v1/messages/count_tokens")
 	if code != 200 {
-		t.Fatalf("应本地 200，实际 %d: %s", code, b)
+		t.Fatalf("should be local 200, got %d: %s", code, b)
 	}
 	var got struct {
 		InputTokens int `json:"input_tokens"`
 	}
 	if err := json.Unmarshal(b, &got); err != nil || got.InputTokens <= 0 {
-		t.Fatalf("本地粗估应答不对: %s", b)
+		t.Fatalf("wrong local rough-estimate reply: %s", b)
 	}
 }
 
@@ -246,10 +246,10 @@ func TestCountTokensRespectsClientModel(t *testing.T) {
 	b, _ := ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
 	if resp.StatusCode != 200 || !strings.Contains(string(b), "7") {
-		t.Fatalf("应转发拿真值: %d %s", resp.StatusCode, b)
+		t.Fatalf("should forward to get the real value: %d %s", resp.StatusCode, b)
 	}
 	if gotModel != "glm-4.5-air" {
-		t.Fatalf("客户端的 model 不该被覆盖，上游收到 %q", gotModel)
+		t.Fatalf("the client's model must not be overwritten, upstream received %q", gotModel)
 	}
 }
 
@@ -268,7 +268,7 @@ func TestAPIHelloAnsweredLocally(t *testing.T) {
 		}
 		resp.Body.Close()
 		if resp.StatusCode != 200 {
-			t.Fatalf("%s /api/hello 应本地 200，实际 %d", method, resp.StatusCode)
+			t.Fatalf("%s /api/hello should be local 200, got %d", method, resp.StatusCode)
 		}
 	}
 }
@@ -291,12 +291,12 @@ func TestBodylessProbesAre404NotFailures(t *testing.T) {
 			}
 			resp.Body.Close()
 			if resp.StatusCode != 404 {
-				t.Fatalf("%s %s 应本地 404，实际 %d", method, p, resp.StatusCode)
+				t.Fatalf("%s %s should be local 404, got %d", method, p, resp.StatusCode)
 			}
 		}
 	}
 	if n := atomic.LoadUint64(&srv.failures); n != 0 {
-		t.Fatalf("探测不该计入失败，实际 %d", n)
+		t.Fatalf("the probe must not count as a failure, got %d", n)
 	}
 
 	resp, err := http.Post(front.URL+"/a/hermes/v1/chat/completions", "application/json",
@@ -306,6 +306,6 @@ func TestBodylessProbesAre404NotFailures(t *testing.T) {
 	}
 	resp.Body.Close()
 	if resp.StatusCode != 400 {
-		t.Fatalf("缺 model 的 POST 仍应 400，实际 %d", resp.StatusCode)
+		t.Fatalf("a POST without model should still be 400, got %d", resp.StatusCode)
 	}
 }

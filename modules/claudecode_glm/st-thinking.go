@@ -19,32 +19,37 @@ func Treatments(client claudeapi.Client, model glmapi.Model) []special.Plugin {
 	return []special.Plugin{thinking{client: client, model: model}}
 }
 
-// glm 修 GLM 系模型「没写 thinking 就默认思考」的语义坑。
+// glm fixes the semantic pit of GLM-family models
+// "thinking by default when thinking is not written".
 //
-// 现场同 st-claude-bg：glm-5.3 对不带 thinking 字段的请求照样思考（实抓：
-// 裸请求响应里 reasoning_content 非空）。Anthropic 协议里「没写」的语义是
-// 不思考，Claude 家族也是这么实现的；GLM 把缺省当成了开。于是「客户端
-// 没要求思考」的请求被拖进 15-30 秒的思考。
+// The scene is the same as st-claude-bg: glm-5.3 thinks anyway on requests
+// without a thinking field (captured: a bare request's response has non-empty
+// reasoning_content). In the Anthropic protocol, "unwritten" means do not think, and
+// the Claude family implements it that way; GLM treats the default as on. So requests
+// where "the client did not ask to think" get dragged into 15-30 seconds of thinking.
 //
-// 修法与 st-deepseek 第 1 手同款：只在 Claude Code **没写 thinking 时**补
-// 显式 disabled；写了（enabled/adaptive）就一个字节不动——那是客户端真要
-// 思考。与 claude-bg 的分工：那边按请求形态（claude 的后台非流式）认领、
-// 这边按上游（glm 系），互补不重复。
+// The fix is the same as move 1 of st-deepseek: only add an explicit disabled when
+// Claude Code **did not write thinking**; when written (enabled/adaptive), not one
+// byte is touched -- that is the client really wanting to think. The split from
+// claude-bg: that one claims by request shape (claude's background non-streaming),
+// this one by upstream (glm family), complementary and not duplicative.
 //
-// 为什么只给 Claude Code 补（claudeCode，见 special.go）：OpenAI 方言的
-// 客户端（opencode）压根没有 thinking 这个 Anthropic 字段可写，它不发
-// thinking 是表达能力问题、不是「不想思考」的意图。替它补 disabled 就是
-// 把用户给这个模型配的默认行为改掉——2026-09-15 的现场：opencode 走
-// DeepSeek 时条条请求被关思考，用户报「deepseek 不思考了」，同一天收窄。
-// GLM 把缺省当默认思考，对本来就要思考的客户端来说正是它想要的。
+// Why only fill it in for Claude Code (claudeCode, see special.go): OpenAI-dialect clients
+// (opencode) have no Anthropic thinking field to write at all, so not sending thinking is a
+// matter of expressiveness, not the intent "do not want to think". Filling in disabled for
+// it would change the default behavior the user configured for this model -- the scene on
+// 2026-09-15: when opencode went through DeepSeek, every single request had thinking turned
+// off, and the user reported "deepseek has stopped thinking"; narrowed the same day. GLM
+// treats the default as thinking, which is exactly what a client that wants to think wants.
 //
-// 摘除条件：GLM 把缺省改成不思考（或网关替它改了），
-// `newgate st off glm` 即可验证；确认不需要了整文件可删。
+// Removal condition: GLM changes the default to not thinking (or the gateway does it instead),
+// which `newgate st off glm` verifies; once confirmed unnecessary, the whole file can be deleted.
 func (thinking) Name() string { return "glm" }
 
-// Before/After 见发行版 modules/deepseek 里同一段注释：产品插件的排序边由产品
-// 自己声明（内核不认识 glm 这个名字）。分工是 claude-bg（内核，后台非流式先改道）
-// → 本插件（写 thinking）→ always-thinks（内核，兜底翻译）。
+// Before/After: see the same comment in the distribution's modules/deepseek: product
+// plugins declare their own ordering edges (the kernel does not know the name glm).
+// The division of labor is claude-bg (kernel, reroute background non-streaming first)
+// -> this plugin (write thinking) -> always-thinks (kernel, backstop translation).
 func (thinking) Before() []string { return []string{"always-thinks"} }
 func (thinking) After() []string  { return []string{"claude-bg"} }
 
@@ -55,9 +60,10 @@ func (thinking) Why() string {
 		"OpenAI-dialect clients (opencode) have no such field to write, so they are not touched", nil)
 }
 
-// Match 只认 GLM：模型名、provider 名、base URL 任一处出现 glm
-// （聚合网关可能改模型名，provider 名或 endpoint 里通常仍留着痕迹）。
-// Anthropic 官方端点一律不碰（同 st-deepseek 的反向兜底）。
+// Match only recognizes GLM: glm appears in any of the model name, provider
+// name, or base URL (an aggregating gateway may rename models, and the trace
+// usually remains in the provider name or endpoint). Anthropic's official
+// endpoint is never touched (the same reverse backstop as st-deepseek).
 func (t thinking) Match(r *special.Request) bool {
 	return r != nil && r.Agent == t.client.AgentID &&
 		t.model.MatchTarget != nil &&

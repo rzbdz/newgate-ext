@@ -1,25 +1,30 @@
-// Package porthub 是「一个端口上挂多个服务」的机制：一张 **前缀 → http.Handler**
-// 的表，谁想在这个端口上再开一个 service，就往表里挂一条。
+// Package porthub is the mechanism for "several services on one port": a table of **prefix ->
+// http.Handler**, and anyone who wants another service on this port mounts an entry into it.
 //
-// 为什么做成机制：一个 gateway 只监听一个端口，这是部署上的硬约束（防火墙、反代、
-// Tailscale ACL 都按端口配）。web 界面、将来别的服务都想住在这个端口上，而「往同一
-// 张表里挂东西」这件事跟卖什么产品无关。
+// Why it is a mechanism: a gateway listens on only one port, a hard constraint
+// of deployment (firewalls, reverse proxies, and Tailscale ACLs are all configured
+// per port). The web UI, and other services in the future, all want to live on this port,
+// and "mounting things into the same table" has nothing to do with what product you sell.
 //
-// 它做四件事：记住谁挂了什么、按**最长前缀**查、拒绝抢保留前缀、**交出这个端口的
-// 根 handler**（`Root`：挂载表优先，没人认领的落回兜底服务——兜底就是数据面）。
+// It does four things: remember who mounted what, look up by **longest prefix**, refuse to hand
+// over reserved prefixes, and **hand out this port's root handler** (`Root`: the mount table wins,
+// and anything unclaimed falls back to the fallback service -- the fallback is the data plane).
 //
-// **它不监听**：socket 属于守护进程（fd 优雅交接、排空、pidfile/lock 都是进程级
-// 的事，porthub 关掉时它们得照旧工作）。所以这里的挂载是进程内的注册：不产生
-// socket、不产生 goroutine，因此在每条 `newgate …` 命令里被调用也是安全的
-// （模块的 Start 每条命令都会跑，这条约束见 modules/i18n 的注释）。
+// **It does not listen**: the socket belongs to the daemon (graceful handover
+// of the fd, draining, and the pidfile/lock are all process-level matters, and they must keep
+// working when porthub is off). So mounting here is an in-process registration: it creates no
+// socket and no goroutine, which also makes it safe to call in every `newgate …` command (a
+// module's Start runs on every command; see the comment in modules/i18n for that constraint).
 //
-// 方向（2026-09-20 定）：**数据面不认识这张表**。守护进程入口把数据面的 handler
-// 交给 `Root`，再把拿到的根 handler 交给 http.Server——所以「谁应答」是这张表
-// 说了算，而 gateway/forward 里连 porthub 这个名字都不出现。
+// Direction (settled 2026-09-20): **the data plane does not know this table**.
+// The daemon entry point hands the data plane's handler to `Root`, then hands
+// the resulting root handler to http.Server -- so "who answers" is decided by
+// this table, and the name porthub does not even appear in gateway/forward.
 //
-// 与 pluginmanager 的开关点不同：那是「要不要这个功能」，这里是「这个 service 挂在
-// 哪个路径上」。关掉 porthub 模块的后果是**消费者拿不到这张表**（capability 不在），
-// 于是它们按 fallback 自己监听一个端口——语义干净，不需要在分派处写特判。
+// It differs from pluginmanager's switch: that one is "do we want this feature", this one is
+// "which path is this service mounted at". The consequence of turning off the porthub module
+// is that **consumers cannot get this table** (the capability is absent), so they fall back to
+// listening on their own port -- clean semantics, with no special case at the dispatch site.
 package porthub
 
 import (
@@ -31,19 +36,20 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// Mount 是一条已挂载的记录，给诊断与 status 用。
+// Mount is one mounted record, used for diagnostics and status.
 type Mount struct {
 	Prefix string
 	Owner  string // 谁挂的（模块名）；冲突时报错要点名
 }
 
-// Registry 是挂载表。零值不可用，用 NewRegistry 或 Default。
+// Registry is the mount table. The zero value is unusable; use NewRegistry or Default.
 type Registry struct {
 	mu     sync.RWMutex
 	mounts map[string]mount
-	// fallback 是「没人认领的请求」的归宿：在这个进程里就是数据面。它不是一条
-	// 挂在 "/" 上的记录——"/" 是所有前缀的公共前缀，写成记录会让「谁挂了 /」和
-	// 「谁是兜底」变成两个可以同时存在、且互相不知道对方的东西。
+	// fallback is where "unclaimed requests" go: in this process, the data plane.
+	// It is not an entry mounted at "/" -- "/" is the common prefix of every
+	// prefix, and making it an entry would turn "who mounted /" and "who is the
+	// fallback" into two things that can coexist and know nothing of each other.
 	fallback http.Handler
 	fbOwner  string
 }
@@ -53,15 +59,17 @@ type mount struct {
 	owner   string
 }
 
-// reserved 是不能被抢的前缀。
+// reserved is the set of prefixes that cannot be taken.
 //
-// 理由不是「不好看」：`/a` 与 `/v1` 是数据面（转发路径），`/__newgate` 是控制面
-// 命名空间。被抢的症状是**本该发给本机控制面的请求被当数据面转发给上游**——
-// forward.go 里那句「绝不盲发 /__newgate/upgrade（那会被 catch-all 转发到上游）」
-// 记的就是这个坑。所以这里当场报错，而不是让后来者悄悄覆盖。
+// The reason is not "it looks bad": `/a` and `/v1` are the data plane
+// (forwarding paths) and `/__newgate` is the control-plane namespace. The symptom
+// of a takeover is that **a request meant for the local control plane gets forwarded
+// upstream as data-plane traffic** -- the line in forward.go, "never blindly send
+// /__newgate/upgrade (it would be forwarded upstream by the catch-all)", records this
+// exact pit. So it errors out here rather than let a later caller quietly override.
 var reserved = []string{"/v1", "/a", "/__newgate"}
 
-// NewRegistry 造一张空表。
+// NewRegistry builds an empty table.
 func NewRegistry() *Registry {
 	return &Registry{mounts: map[string]mount{}}
 }
@@ -71,21 +79,22 @@ var (
 	defaultReg  *Registry
 )
 
-// Default 是进程级的那张表。
+// Default is the process-level table.
 //
-// 为什么这里允许一个全局：它和 metrics.Default 是同一类东西——除去「谁挂了什么」
-// 没有别的状态，而这件事在一个进程里天然只有一份（那个 http.Server 也只有一份）。
-// 有生命周期的东西仍然走 capability（modules/porthub），全局只解决「分派处怎么
-// 拿到表」这一个问题。
+// Why a global is allowed here: it is the same kind of thing as metrics.Default
+// -- apart from "who mounted what" it has no other state, and in a process there
+// is naturally only one of those (there is only one http.Server too). Things
+// with a lifecycle still go through a capability (modules/porthub); the global
+// only solves the single problem of "how the dispatch site gets the table".
 func Default() *Registry {
 	defaultOnce.Do(func() { defaultReg = NewRegistry() })
 	return defaultReg
 }
 
-// Mount 把 h 挂到 prefix 下。owner 是挂载者的名字，只用于报错与诊断。
+// Mount mounts h under prefix. owner is the mounter's name, used only for errors and diagnostics.
 //
-// 返回的 Release 撤销这次挂载，幂等；Stop 里必须调用（没有 Release 就没有生命
-// 周期，见 modules/gateway/module.go 里那段反例分析）。
+// The returned Release undoes this mount and is idempotent; it must be called in Stop (no
+// Release means no lifecycle; see the counter-example analysis in modules/gateway/module.go).
 func (r *Registry) Mount(prefix, owner string, h http.Handler) (func(), error) {
 	p, err := normalize(prefix)
 	if err != nil {
@@ -120,8 +129,8 @@ func (r *Registry) Mount(prefix, owner string, h http.Handler) (func(), error) {
 	}, nil
 }
 
-// Lookup 按最长前缀查。第二个返回值为 false 表示这张表不管这个路径，
-// 调用方该走自己的路（gateway 那边就是落回转发）。
+// Lookup looks up by longest prefix. A false second return means this table does not
+// handle the path; the caller goes its own way (gateway falls back to forwarding).
 func (r *Registry) Lookup(path string) (http.Handler, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -141,17 +150,18 @@ func (r *Registry) Lookup(path string) (http.Handler, bool) {
 	return found.handler, true
 }
 
-// Root 把 fallback 登记为这个端口的兜底服务，并交出**该端口的根 handler**。
+// Root registers fallback as this port's fallback
+// service and hands out **the port's root handler**.
 //
-// 这就是「端口归谁」这件事的落点：调用方（守护进程入口）不再自己决定谁应答，
-// 它把数据面交进来，拿到一个 handler 交给 http.Server——于是
-//   - 挂载表里的服务（web 界面这类）优先；
-//   - 没人认领的落回数据面；
-//   - 数据面**不认识这张表**（它只是被交进来的一个 handler），
-//     这张表也不认识数据面（它只知道自己有个兜底）。
+// This is where "who owns the port" lands: the caller (the daemon entry point) no
+// longer decides who answers itself; it passes in the data plane and gets back a
+// handler to give http.Server -- so - services in the mount table (the web UI and
+// the like) win; - anything unclaimed falls back to the data plane; - the data
+// plane **does not know this table** (it is just a handler passed in), and this
+// table does not know the data plane either (it only knows it has a fallback).
 //
-// 后一条是这次改动的全部理由：让数据面 import 一个「web 服务怎么共享端口」的
-// 机制，等于把部署形态写进热路径。
+// The last point is the whole reason for this change: making the data plane import a mechanism
+// for "how web services share a port" would write the deployment shape into the hot path.
 func (r *Registry) Root(owner string, fallback http.Handler) (http.Handler, error) {
 	if fallback == nil {
 		return nil, i18n.E("porthub: {owner} wants to serve the port with a nil fallback handler",
@@ -163,11 +173,13 @@ func (r *Registry) Root(owner string, fallback http.Handler) (http.Handler, erro
 	return http.HandlerFunc(r.serve), nil
 }
 
-// serve 是根 handler：先问挂载表，问不到交给兜底。
+// serve is the root handler: ask the mount table first, hand to the fallback if not found.
 //
-// **每请求现查**，不把表抄进 mux：模块的 Start 顺序由依赖图决定，不保证挂东西的
-// 模块排在服务端前面；抄一份还会让 Stop 之后的撤销失效（那时 handler 早就建好
-// 了）。读写由 RWMutex 保护——这就是「CLI 与 dashboard 同时跑」的 race 保护点。
+// **Look up on every request**, do not copy the table into a mux: module Start
+// order is decided by the dependency graph and does not guarantee that the mounting
+// module comes before the server side; a copy would also void the release after Stop
+// (by then the handler is long built). Reads and writes are guarded by an RWMutex
+// -- that is the race protection point for "the CLI and the dashboard run at once".
 func (r *Registry) serve(w http.ResponseWriter, req *http.Request) {
 	if h, ok := r.Lookup(req.URL.Path); ok {
 		h.ServeHTTP(w, req)
@@ -176,23 +188,24 @@ func (r *Registry) serve(w http.ResponseWriter, req *http.Request) {
 	r.mu.RLock()
 	fb := r.fallback
 	r.mu.RUnlock()
-	// 这里不判 nil：Root 拒绝 nil 兜底，所以这个 handler 一旦在外面，fb 就必然
-	// 非 nil。写成「以防万一的 404」是本仓库最不想要的那种代码——读的人会以为
-	// 那条路真的会发生，于是照着它推理。
+	// No nil check here: Root rejects a nil fallback, so once this handler is out there,
+	// fb is necessarily non-nil. A "just-in-case 404" is exactly the kind of code this
+	// repo wants least -- the reader would think that path can happen and reason from it.
 	fb.ServeHTTP(w, req)
 }
 
-// FallbackOwner 是谁在兜底（诊断用）。
+// FallbackOwner is who is doing the fallback (for diagnostics).
 func (r *Registry) FallbackOwner() string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.fbOwner
 }
 
-// Mounts 返回快照，按前缀排序（诊断、`newgate status` 用）。
+// Mounts returns a snapshot sorted by prefix (for diagnostics and `newgate status`).
 //
-// 兜底服务在这里表现为一条前缀 `/` 的记录——这是实话：它接住的就是「所有没被
-// 更长的前缀认领的路径」。诊断输出因此能完整回答「这个端口上都在跑什么」。
+// The fallback service shows up here as an entry with prefix `/` -- which
+// is the truth: what it catches is "all paths not claimed by a longer prefix".
+// Diagnostic output can therefore fully answer "what all is running on this port".
 func (r *Registry) Mounts() []Mount {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -207,13 +220,13 @@ func (r *Registry) Mounts() []Mount {
 	return out
 }
 
-// matches 是前缀匹配的判据：`/ui` 命中 `/ui` 与 `/ui/...`，但**不**命中 `/uix`
-// ——按字节前缀匹配会在这里悄悄多认一个 service。
+// matches is the prefix-match test: `/ui` matches `/ui` and `/ui/...` but **not**
+// `/uix` -- a byte-prefix match would quietly acknowledge one extra service here.
 func matches(prefix, path string) bool {
 	return path == prefix || strings.HasPrefix(path, prefix+"/")
 }
 
-// normalize 收敛写法：必须以 / 开头、不能是 /（那是 catch-all）、结尾的 / 去掉。
+// normalize tightens it: must start with /, cannot be / (the catch-all), trailing / stripped.
 func normalize(prefix string) (string, error) {
 	if prefix == "" || prefix[0] != '/' {
 		return "", i18n.E("porthub: a prefix must start with /, got {prefix}",

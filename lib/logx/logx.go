@@ -12,10 +12,11 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// Rotator 一个带大小上限的日志写入器。写满就轮转，只保留 keep 份历史。
+// Rotator is a log writer with a size cap. It rotates
+// when full and keeps only keep historical copies.
 //
-// 必须有：debug 模式下单条请求可能记 8KB+（opencode 的系统提示就有 97KB），
-// 没有上限的话磁盘很快就满。
+// It is a must: in debug mode a single request can log 8KB+ (opencode's
+// system prompt alone is 97KB), and without a cap the disk fills up quickly.
 type Rotator struct {
 	mu       sync.Mutex
 	path     string
@@ -61,8 +62,8 @@ func (r *Rotator) Write(p []byte) (int, error) {
 	}
 	if r.size+int64(len(p)) > r.maxBytes {
 		if err := r.rotate(); err != nil {
-			// 轮转失败也别丢日志，继续往当前文件写。
-			// `newgate: ` 那个前缀是程序名（机器标记），留在消息外面。
+			// Even if rotation fails, do not drop the log; keep writing to the current file. The
+			// `newgate: ` prefix is the program name (a machine marker), kept outside the message.
 			fmt.Fprintf(os.Stderr, "newgate: %s\n",
 				i18n.T("log rotation failed: {err}", i18n.A{"err": err}))
 		}
@@ -72,21 +73,23 @@ func (r *Rotator) Write(p []byte) (int, error) {
 	return n, err
 }
 
-// rotate 把 x.log → x.log.1 → x.log.2 …，超出 keep 的删掉。
+// rotate moves x.log -> x.log.1 -> x.log.2 …, dropping whatever exceeds keep.
 //
-// 失败必须报出来：轮转不发生时没有任何现象，只是日志文件一直长——而日志是
-// 这个项目排查问题的唯一手段（CLAUDE.md §5），一个悄悄涨到几 GB 的日志既
-// 拖慢 grep 也可能把盘写满。所以这里把每一步的错误收起来返回，由 Write 打
-// 到 stderr（原来每个 `_ =` 后面都是空的）。
+// Failures must be reported: when rotation does not happen there is no symptom,
+// the log file just keeps growing -- and the log is this project's only means of
+// troubleshooting (CLAUDE.md §5), and a log that quietly grows to a few GB both slows
+// grep down and can fill the disk. So every step's error is collected and returned
+// here, and Write prints it to stderr (previously every `_ =` was left empty).
 //
-// 「源文件不存在」不算错：还没轮到那么多代，或者上一轮已经删过——那是
-// 正常状态，报出来只会刷屏。
+// "Source file does not exist" is not an error: the generations have
+// not reached that far yet, or the previous round already deleted
+// it -- that is a normal state, and reporting it would only spam.
 func (r *Rotator) rotate() error {
 	if r.f != nil {
 		_ = r.f.Close()
 		r.f = nil
 	}
-	// 从旧到新挪，避免覆盖
+	// Move from oldest to newest to avoid overwriting
 	_ = os.Remove(fmt.Sprintf("%s.%d", r.path, r.keep))
 	for i := r.keep - 1; i >= 1; i-- {
 		from, to := fmt.Sprintf("%s.%d", r.path, i), fmt.Sprintf("%s.%d", r.path, i+1)
@@ -95,8 +98,8 @@ func (r *Rotator) rotate() error {
 				i18n.A{"from": from, "to": to})
 		}
 	}
-	// 这一条是真正要紧的：它失败 = 当前日志没被挪走 = 之后继续往同一个文件写，
-	// 于是 maxBytes 形同虚设。
+	// This one really matters: if it fails = the current log was not moved away =
+	// later writes keep going to the same file, and maxBytes becomes a dead letter.
 	if err := os.Rename(r.path, r.path+".1"); err != nil && !os.IsNotExist(err) {
 		return i18n.Ef(err, "rotating {from} → {to}.1: {err}",
 			i18n.A{"from": r.path, "to": r.path})
@@ -115,38 +118,41 @@ func (r *Rotator) Close() error {
 	return err
 }
 
-// PruneDir 只保留目录下最新的 keep 组文件（按前缀分组计数）。
-// 用于限制错误证据 dump 的数量。
+// PruneDir keeps only the newest keep groups of files in a directory
+// (grouped by prefix). It is used to cap the number of error-evidence dumps.
 func PruneDir(dir string, keep int) { PruneDirBy(dir, "", keep) }
 
-// PruneDirBy 只清理以 prefix 开头的文件组（空前缀 = 全部）。dump 的
-// req-* 和错误证据的 err-* 共用一个目录、各自设上限，互不删对方。
+// PruneDirBy prunes only the file groups starting with prefix (an empty
+// prefix = all). The dump's req-* and error evidence's err-* share one
+// directory, each with its own cap, and neither deletes the other's.
 //
-// 一组 = 同一个 base（"err-400-req001840" 这样，取到第一个 "." 为止）
-// 下的那几个文件；组的年龄取组内**最新**那个文件的 mtime——一组是刚落地
-// 的，只要还有一份文件在，这组就算「新」，所以用最新的那份代表它（用
-// os.Stat，不依赖文件系统给的目录顺序）。
+// A group = the several files under one base ("err-400-req001840", up to the first ".");
+// a group's age is the mtime of the **newest** file in it -- a group has just landed,
+// and as long as one file of it remains the group counts as "new", so the newest one
+// represents it (using os.Stat, not relying on the directory order the file system gives).
 //
-// 原来那版把 base 按名字字典序排、删 names[:len-keep]，留下的是「名字
-// 最大」的 keep 组，不是「最新」的 keep 组。名字里带状态码时
-// err-400 < err-402 < … < err-502，字典序最小的那组永远第一个被删。
-// 2026-09-22 的现场：日志里 15 次「上游 400，完整证据已存」，磁盘上
-// err-400-* 一个不剩——因为 saveErrEvidence 结尾就调本函数，刚写完的
-// err-400-* 当场被自己删掉，那正是字典序最小的一组。
+// The old version sorted bases lexicographically and deleted names[:len-keep], leaving
+// the keep groups with the "largest names", not the "newest" ones. With status codes in
+// the names, err-400 < err-402 < … < err-502, and the lexicographically smallest group
+// was always the first deleted. The scene on 2026-09-22: the log said 15 times "upstream
+// 400, full evidence saved", and on disk not a single err-400-* was left -- because
+// saveErrEvidence calls this function at the end, so the just-written err-400-* was
+// deleted by itself on the spot; it was exactly the lexicographically smallest group.
 //
-// 排序：mtime 降序；mtime 相同用名字升序做稳定 tiebreak。os.Stat 失败的
-// 那组算「年龄未知」，排在最新一侧（不会被优先删）：本函数存在的意义是
-// 给盘占住上限，而它保护的证据删掉就再也拿不回来（CLAUDE.md §5 说它是
-// 排查「是不是代理改坏了请求」唯一能拿出手的东西）。两害相权，宁可多留
-// 一组（下一次 prune 或人工清都能回收，总量也仍受 keep 约束），也不肯在
-// 没有任何年龄依据时先动手删掉可能正是刚落地的那组。
+// Ordering: mtime descending; equal mtime broken by name ascending as a stable tiebreak. A group
+// whose os.Stat fails counts as "age unknown" and sorts on the newest side (it will not be pruned
+// first): the point of this function is to cap disk usage, and the evidence it protects is gone
+// for good once deleted (CLAUDE.md §5 says it is the only thing you can offer when asking "did
+// the proxy mangle the request"). Two harms weighed, we would rather keep one extra group (the
+// next prune or a manual clean reclaims it, and the total is still bounded by keep) than start
+// deleting, with no age evidence at all, the group that may well be the one that just landed.
 func PruneDirBy(dir, prefix string, keep int) {
 	ents, err := os.ReadDir(dir)
 	if err != nil {
 		return
 	}
-	// 按 "err-400-req000003" 这样的前缀分组，一组是四个文件。组里只要
-	// 还有一份文件能 stat 到，这组就有年龄；全都 stat 不到才算未知。
+	// Group by a prefix like "err-400-req000003"; a group is four files. As long as one file
+	// in the group can be stat'ed, the group has an age; only if none can, it is unknown.
 	type group struct {
 		base     string
 		mtime    time.Time

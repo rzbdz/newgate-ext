@@ -1,12 +1,14 @@
-# 构建产物：build/build.sh 的输出口。
-# （core/ 是 submodule，由 git 自己管；manifest/modules_gen.go 是**要提交**的
-# 生成物——它是「这份提交装了什么」的凭据，见 tools/distgen。）
+# Build output: where build/build.sh writes.
+# (core/ is a submodule, managed by git itself; manifest/modules_gen.go is a generated
+# file that **is committed** -- it is the proof of "what this commit installs", see
+# tools/distgen.)
 /dist/
 
-# 公开站的产物：site/build.sh 的输出口（tools/sitegen 的页面 + 演示页）。
+# Output of the public site: where site/build.sh writes (tools/sitegen's pages plus the demo).
 #
-# 与 web/dist **不矛盾**：那一份要提交，是因为 `//go:embed all:web/dist` 得在
-# 离线编译时读它；这一份没有读者需要它在盘上——Pages 的流水线每次从源码重建。
-# 与 dist/architecture.html 是同一条理由：它是「这一刻」的产物，而过期的那张
-# 会让人以为站点就是那样。所以进 .gitignore。
+# Not a contradiction with web/dist: that one is committed because `//go:embed all:web/dist`
+# has to read it for an offline build; nobody needs this one on disk -- the Pages pipeline
+# rebuilds it from source every time. Same reasoning as dist/architecture.html: it is the
+# product of "this moment", and a stale copy makes people believe the site is like that.
+# So it goes into .gitignore.
 /site/dist/

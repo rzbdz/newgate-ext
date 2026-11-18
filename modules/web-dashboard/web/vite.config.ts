@@ -2,27 +2,31 @@ import { defineConfig } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { mockModelList } from "./vite.mock-modellist";
 
-// base 必须是 "/ui/"：产物被嵌进二进制、挂在 porthub 的 /ui 前缀下（见
-// module.go 的 Prefix 与 AssetDir）。这条对应关系只有一处真相——改这里就要同时
-// 改那个常量，而两边不一致的症状是「页面白屏、控制台一堆 404」，很难一眼看出
-// 是前缀写错了。
+// base must be "/ui/": the output is embedded into the binary and mounted under the
+// porthub's /ui prefix (see Prefix and AssetDir in module.go). This correspondence has one
+// source of truth only -- changing it here means changing that constant at the same time,
+// and the symptom of the two disagreeing is "blank page, a pile of 404s in the console",
+// which is hard to spot as a wrong prefix at a glance.
 //
-// outDir 是 web/dist（提交进版本控制）：Go 的 go:embed 读它，所以 `go build`
-// 与 CI 仍然完全离线，前端工具链只在开发机上出现。
+// outDir is web/dist (committed to version control): Go's go:embed reads it, so `go build`
+// and CI stay fully offline, and the front-end toolchain only appears on dev machines.
 export default defineConfig({
   base: "/ui/",
-  // 产品这一份**有**后端：模型下拉真的去问 /ui/api/ext/modellist。
+  // The product one **has** a backend: the model dropdown really asks
+  // /ui/api/ext/modellist.
   define: { __NEWGATE_DEMO__: "false" },
-  // mockModelList 只在 `vite dev` 里生效（插件自己声明 apply: "serve"）：它按真
-  // 后端的形状回答 /ui/api/ext/modellist，让模型下拉在前端阶段就能完整验一遍。
-  // 产物的路径一条都不会经过它。
+  // mockModelList only takes effect under `vite dev` (the plugin declares apply: "serve"
+  // itself): it answers /ui/api/ext/modellist in the real backend's shape, so the model
+  // dropdown can be verified end to end already at the front-end stage. No path of the
+  // output goes through it.
   plugins: [svelte(), mockModelList()],
   build: {
     outDir: "dist",
     emptyOutDir: true,
     target: "es2022",
-    // 不拆 chunk：产物是嵌进二进制的、内网离线用的，一个 bundle 比多几个请求
-    // 路径更好排查（打开 devtools 只有一个 js）。
+    // No chunk splitting: the output is embedded into the binary for offline intranet use,
+    // and one bundle is easier to trace than several request paths (devtools shows exactly
+    // one js).
     rollupOptions: { output: { manualChunks: undefined } },
   },
 });

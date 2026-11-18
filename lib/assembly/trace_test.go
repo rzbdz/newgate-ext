@@ -20,27 +20,31 @@ func (staticLoader) Load() ([]modules.Component, error) {
 	return []modules.Component{{Name: "only", Type: "test"}}, nil
 }
 
-// 这一族测的是 2026-09-20 那条改动：装配记录**只在它变了的时候**整段写出去。
+// This family tests the 2026-09-20 change: the assembly
+// record is written whole **only when it changed**.
 //
-// 为什么值得钉：判据是「去掉时间戳与耗时之后内容是否相同」，而这两样东西恰好是
-// 每一行都带的。判据写松一点（比如直接哈希原文）不会报错、不会崩，只是**永远
-// 都不同**——于是整段每次都写，改了个寂寞，而日志看起来一切正常。这类「棘轮
-// 自己松掉」的失败，只有真的拿两份只差时间戳的记录去比才看得见。
+// Why it is worth pinning: the test is "is the content the same with timestamps
+// and durations removed", and those two things are carried by every line. A looser
+// test (say, hashing the raw text) would not error or crash, it would just **never
+// match** -- so the block is written every time, the change accomplishes nothing, and
+// the log looks perfectly normal. This kind of "the ratchet loosened itself" failure
+// is only visible if you really compare two records that differ only in timestamps.
 
-// record 驱动一段装配记录，返回它写出来的东西。
+// record drives one assembly record and returns what it wrote out.
 func record(t *testing.T, prev string, lines ...string) (string, string) {
 	t.Helper()
 	var buf bytes.Buffer
 	r := newAssemblyRecord(&buf, prev)
 	for _, l := range lines {
-		// 传 %s 而不是把 line 当格式串：记录里本来就有 {name} 这类字面花括号。
+		// Pass %s, not line as format: records contain literal braces like {name}.
 		r.add("%s", l)
 	}
 	r.flush()
 	return buf.String(), assemblyFingerprint(r.plain)
 }
 
-// 一份典型的装配记录。三行分别覆盖三种会变的东西：逐组件耗时、收尾耗时、时间戳。
+// A typical assembly record. Three lines cover the three variable
+// pieces: per-component duration, final duration, timestamp.
 var (
 	assemblyA = []string{
 		"assembly: loader 1 handed over 2 components",
@@ -48,14 +52,14 @@ var (
 		"start 2/2 gateway done (took 1ms)",
 		"assembly complete: 2 components, took 12ms",
 	}
-	// 与 A 只差耗时：µs/ms 那几位变了，装的还是那两个组件。
+	// Differs from A only in durations: the µs/ms digits changed, still the same two components.
 	assemblyA2 = []string{
 		"assembly: loader 1 handed over 2 components",
 		"start 1/2 cli done (took 999µs)",
 		"start 2/2 gateway done (took 8ms)",
 		"assembly complete: 2 components, took 55ms",
 	}
-	// 与 A 差在**装了什么**：多了一个模块，顺序也变了。
+	// Differs from A in **what was installed**: one more module, and the order changed.
 	assemblyB = []string{
 		"assembly: loader 1 handed over 3 components",
 		"start 1/2 cli done (took 321µs)",
@@ -64,26 +68,28 @@ var (
 	}
 )
 
-// 同一段记录在**中文**下的样子——逐字抄自线上日志（2026-09-20 15:18），不是
-// 编出来的：全角括号、`用时`、以及中文的 `，` 分隔。
+// The same record **in Chinese** -- copied verbatim from the production log (2026-09-20 15:18),
+// not made up: full-width parentheses, the localized "took", and Chinese `，` separators.
 //
-// 为什么必须有：这套归一化当初只认英文的 `(took …)`，于是译文的每一行都把耗时
-// 带进了指纹，**每次运行都是新指纹**，整段每次都重写（线上实测，同一份二进制连
-// 写四条不同指纹）。而那时的测试全用英文——测试自己挑了一门语言，恰好是唯一能
-// 通过的那门。这与「测试自己用 O_RDWR 打开文件」是同一类错：喂给被测代码的
-// 输入不是真实的那一份。
+// Why it is a must: this normalization used to recognize only the English `(took
+// …)`, so every translated line carried its duration into the fingerprint, **every
+// run was a new fingerprint**, and the whole block was rewritten every time (measured in
+// production; the same binary wrote four different fingerprints in a row). And the tests
+// then were all in English -- the test picked a language itself, and it happened to be
+// the only one that passed. This is the same class of mistake as "the test opens the
+// file with O_RDWR itself": the input fed to the code under test was not the real one.
 var (
 	assemblyZH = []string{
-		"装配：第 1 个 loader 交出 2 个组件",
-		"启动 1/2 cli 完成（用时 321µs）",
-		"启动 2/2 gateway 完成（用时 1ms）",
-		"装配完成：2 个组件，用时 12ms",
+		"assembly: loader 1 handed over 2 components",
+		"start 1/2 cli done (took 321µs)",
+		"start 2/2 gateway done (took 1ms)",
+		"assembly done: 2 components, took 12ms",
 	}
 	assemblyZH2 = []string{
-		"装配：第 1 个 loader 交出 2 个组件",
-		"启动 1/2 cli 完成（用时 999µs）",
-		"启动 2/2 gateway 完成（用时 8ms）",
-		"装配完成：2 个组件，用时 55ms",
+		"assembly: loader 1 handed over 2 components",
+		"start 1/2 cli done (took 999µs)",
+		"start 2/2 gateway done (took 8ms)",
+		"assembly done: 2 components, took 55ms",
 	}
 )
 
@@ -91,60 +97,62 @@ func TestFingerprintIgnoresTimeAndDuration(t *testing.T) {
 	_, fp1 := record(t, "", assemblyA...)
 	_, fp2 := record(t, "", assemblyA2...)
 	if fp1 != fp2 {
-		t.Errorf("两份只差耗时的记录应当同指纹——否则整段每次都重写，这条改动等于没做\n  %s\n  %s", fp1, fp2)
+		t.Errorf("two records differing only in duration must have the same fingerprint -- otherwise the whole record is rewritten every time and this change accomplished nothing\n  %s\n  %s", fp1, fp2)
 	}
 	_, fp3 := record(t, "", assemblyB...)
 	if fp1 == fp3 {
-		t.Error("多起了一个模块，指纹却没变——那升级那一发的整段记录就不会写出来了")
+		t.Error("one extra module started but the fingerprint did not change -- then the whole record on the next upgrade will not be written")
 	}
 
-	// 译文的同一段：耗时变了，指纹必须不变（线上就是栽在这里）。
+	// The same block translated: durations changed, the
+	// fingerprint must not (this is what broke in production).
 	_, zh1 := record(t, "", assemblyZH...)
 	_, zh2 := record(t, "", assemblyZH2...)
 	if zh1 != zh2 {
-		t.Errorf("中文下两份只差耗时的记录应当同指纹——否则中文机器上整段每次都重写\n  %s\n  %s", zh1, zh2)
+		t.Errorf("in Chinese, two records differing only in duration must have the same fingerprint -- otherwise on a Chinese machine the whole record is rewritten every time\n  %s\n  %s", zh1, zh2)
 	}
-	// 而且归一化要真的把耗时剥掉了，不是碰巧相等。
+	// And normalization must really strip the durations, not happen to be equal.
 	if strings.Contains(normalizeTraceLine(assemblyZH[1]), "321") ||
 		strings.Contains(normalizeTraceLine(assemblyZH[3]), "12ms") {
-		t.Errorf("耗时没被剥掉：%q / %q",
+		t.Errorf("duration was not stripped: %q / %q",
 			normalizeTraceLine(assemblyZH[1]), normalizeTraceLine(assemblyZH[3]))
 	}
 }
 
 func TestFullRecordIsWrittenOnlyWhenItChanges(t *testing.T) {
-	// 第一发：日志里还没有记录（prev 为空）→ 整段 + 标记行。
+	// First run: no record in the log yet (prev is empty) -> whole block + marker line.
 	out, fp := record(t, "", assemblyA...)
 	for _, l := range assemblyA {
 		if !strings.Contains(out, l) {
-			t.Errorf("第一发应当写整段，缺了这一行: %s", l)
+			t.Errorf("the first run should write the whole record, this line is missing: %s", l)
 		}
 	}
 	if !strings.Contains(out, "assembly: fingerprint "+fp[:12]) {
-		t.Errorf("整段末尾应当留下指纹标记，实际:\n%s", out)
+		t.Errorf("the whole record must end with the fingerprint marker, got:\n%s", out)
 	}
 
-	// 第二发：与第一发同内容（耗时不同而已）→ **一个字都不写**。
+	// Second run: same content as the first (only durations differ) -> **nothing written**.
 	//
-	// 原来这里留一行「与已有的记录相同」。那不是跃迁，是回音：敲一条
-	// `newgate status` 就往守护进程日志里加一行「什么都没变」（2026-09-21
-	// 用户的原话是「我不想要看到日志里出现这东西」）。
+	// This used to leave one line, "same as the existing record". That is not a transition,
+	// it is echo: one `newgate status` adds a "nothing changed" line to the daemon log
+	// (on 2026-09-21 the user's words were "I do not want to see this in the log").
 	again, _ := record(t, fp[:12], assemblyA2...)
 	if strings.TrimSpace(again) != "" {
-		t.Errorf("同一份装配第二次不应该写任何东西，实际:\n%s", again)
+		t.Errorf("the second assembly of the same thing should write nothing, got:\n%s", again)
 	}
-	// 而且「没写」不能把下一发坑了：指纹标记还在日志里（第一发留下的那一条），
-	// 所以第三发照样认得出「没变」。这一条是上面那条的前提——少了它，不写就
-	// 变成了「每发都重写整段」，正是这个机制要修的东西。
-	// （下面那一发验的就是这件事：prev 仍然是 fp，装配没变 → 还是不写。）
+	// And "not writing" must not sabotage the next run: the fingerprint marker is still in
+	// the log (the one the first run left), so the third run still recognizes "unchanged".
+	// This is the premise of the rule above -- without it, not writing would turn into
+	// "rewrite the whole block every run", exactly what this mechanism fixes. (The run below
+	// verifies just that: prev is still fp, assembly unchanged -> still nothing written.)
 	if third, _ := record(t, fp[:12], assemblyA2...); strings.TrimSpace(third) != "" {
-		t.Errorf("「没变就不写」之后，下一发应当同样不写（标记行还在日志里），实际:\n%s", third)
+		t.Errorf("after \"unchanged means no write\", the next run should also write nothing (the marker line is still in the log), got:\n%s", third)
 	}
 
-	// 第三发：装配变了 → 又整段写。
+	// Third run: assembly changed -> the whole block again.
 	changed, _ := record(t, fp[:12], assemblyB...)
 	if !strings.Contains(changed, "assembly complete: 3 components, took 12ms") {
-		t.Errorf("装配变了就要整段重写，实际:\n%s", changed)
+		t.Errorf("when the assembly changes the whole record is rewritten, got:\n%s", changed)
 	}
 }
 
@@ -157,11 +165,11 @@ func TestLastFingerprintReadsTheTailOfTheLog(t *testing.T) {
 	defer f.Close()
 
 	if got := lastFingerprint(f); got != "" {
-		t.Errorf("空日志里不该找出指纹，得到 %q", got)
+		t.Errorf("must not find a fingerprint in an empty log, got %q", got)
 	}
 
-	// 上一次的记录，然后隔开 >8KB 的普通日志，再一条新的。
-	// 窗口只盖得住尾部：找回来的必须是**最近**那一条。
+	// The previous record, then more than 8KB of ordinary log, then a new one. The
+	// window only covers the tail: what is found must be the **most recent** one.
 	if _, err := f.WriteString("assembly: fingerprint aaaaaaaaaaaa — old\n"); err != nil {
 		t.Fatal(err)
 	}
@@ -172,12 +180,13 @@ func TestLastFingerprintReadsTheTailOfTheLog(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := lastFingerprint(f); got != "bbbbbbbbbbbb" {
-		t.Errorf("应当找回最近那条指纹 bbbbbbbbbbbb，得到 %q", got)
+		t.Errorf("should recover the latest fingerprint bbbbbbbbbbbb, got %q", got)
 	}
 }
 
-// 窗口是从文件中间切的，第一段必然是半行——那半行里没有标记，但不能因此
-// 整段作废（真实日志的每一行都长，切在半行上是常态，不是边角情况）。
+// The window is cut in the middle of the file, so the first segment is
+// necessarily half a line -- it holds no marker, but that must not void the whole
+// block (real log lines are long; cutting mid-line is the norm, not an edge case).
 func TestFingerprintSurvivesAWindowCutMidLine(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "newgate.log")
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o660)
@@ -193,27 +202,29 @@ func TestFingerprintSurvivesAWindowCutMidLine(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := lastFingerprint(f); got != "cccccccccccc" {
-		t.Errorf("被切断的半行不该让整次回看作废，得到 %q", got)
+		t.Errorf("a truncated half-line must not invalidate the whole lookback, got %q", got)
 	}
 }
 
-// TestARepeatedInvocationWritesOneLine 是这条改动的**真路径**测试：不重建装配
-// 记录，而是像二进制那样**真的调用两次 TraceToLogFile，各自装配一遍整图**。
+// TestARepeatedInvocationWritesOneLine is the **real path** test for this
+// change: it does not rebuild a record, it **really calls TraceToLogFile
+// twice, each assembling the whole graph**, just like the binary does.
 //
-// 为什么非要有它：上面那几条都是拿着 assemblyRecord 直接驱动，文件由测试自己
-// 打开——于是「生产路径用什么模式打开日志」这件事没有任何断言盖着。2026-09-20
-// 就是这么漏的：TraceToLogFile 用 O_WRONLY 开文件，回看必然 EBADF，每一发都被
-// 当成第一次，整段照写（实测每次 105 行，与改动之前一模一样），而上面四条全绿。
+// Why it is essential: the tests above drive assemblyRecord directly and the test opens the
+// file itself -- so nothing asserts which mode the production path opens the log with. That
+// is how it slipped through on 2026-09-20: TraceToLogFile opened the file with O_WRONLY, the
+// look-back always hit EBADF, every run counted as the first and wrote the whole block (105
+// lines each time, exactly as before the change), while all four tests above were green.
 func TestARepeatedInvocationWritesNothing(t *testing.T) {
 	env := testkit.Sandbox(t)
 
-	// 一次「调用」= 这个进程真的装配一遍整图并收尾，与 cmd/newgate 那条路同形。
+	// One "invocation" = really assembling the whole graph and finishing, as cmd/newgate does.
 	logPath := filepath.Join(env.Home, "newgate.log")
 	invoke := func() {
 		stop := TraceToLogFile(logPath)
 		built, err := modules.New(staticLoader{})
 		if err != nil {
-			t.Fatalf("装配失败: %v", err)
+			t.Fatalf("assembly failed: %v", err)
 		}
 		_ = built.Stop(context.Background())
 		stop()
@@ -221,7 +232,7 @@ func TestARepeatedInvocationWritesNothing(t *testing.T) {
 	lines := func() int {
 		raw, err := os.ReadFile(logPath)
 		if err != nil {
-			t.Fatalf("读日志: %v", err)
+			t.Fatalf("reading the log: %v", err)
 		}
 		return strings.Count(string(raw), "\n")
 	}
@@ -231,16 +242,16 @@ func TestARepeatedInvocationWritesNothing(t *testing.T) {
 	if first < 3 {
 		t.Fatalf("the first invocation must write the whole assembly record, got %d lines", first)
 	}
-	// 第二发：**一行都不该多**。
+	// Second run: **not one extra line**.
 	//
-	// 原来是「只留 1 行」（一行「与已有的记录相同」）。那一行仍然是回音：敲一条
-	// `newgate status` 就往守护进程的日志里加一行「什么都没变」，而这份日志上
-	// 每一行都该是**一次跃迁**。用户 2026-09-21 的原话是「我不想要看到日志里出现
-	// 这东西」。（这里是 0 行而不是 1 行——第一版改完这个测试还在断言 1 行，
-	// 于是它红了，红的正是它该红的地方。）
+	// It used to be "keep just 1 line" (a line saying "same as the existing record"). That line was
+	// still echo: one `newgate status` adds a "nothing changed" line to the daemon log, while every
+	// line in this log should be **a transition**. On 2026-09-21 the user's words were "I do not want
+	// to see this thing show up in the log". (Here it is 0 lines, not 1 -- the first version of the
+	// change still asserted 1 line, so the test went red, and it went red exactly where it should.)
 	invoke()
 	if grew := lines() - first; grew != 0 {
-		t.Errorf("同一份装配的第二次调用不该写任何东西，实际多了 %d 行——"+
-			"回看没找到上一次的记录（日志文件的打开模式？指纹的写法？）", grew)
+		t.Errorf("the second call for the same assembly must write nothing, but %d extra lines appeared"+
+			"lookback did not find the previous record (the log file open mode? how the fingerprint is written?)", grew)
 	}
 }

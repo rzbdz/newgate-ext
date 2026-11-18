@@ -1,11 +1,11 @@
-// Package themedark 是「黑」这套皮肤：真黑底 + 中性灰 + 蓝强调。
+// Package themedark is the "black" skin: true black ground + neutral grey + blue accent.
 //
-// # 它与出厂那套的关系
+// # How it relates to the factory set
 //
-// 出厂令牌（web/src/app.css 的 `:root`）是**暖色**的——底色偏棕、强调是暖橙。这一套
-// 刻意走另一个方向：底色是真黑（`hsl(0 0% 0%)`，OLED 上不发光），中间层是中性灰，
-// 强调换成蓝。两者不是「同一套的两个亮度」，而是两种语气：出厂那套像纸，这一套像
-// 终端。用户选它是因为他在夜里看，而不是因为系统的深浅设置变了。
+// The factory tokens (web/src/app.css's `:root`) are **warm** - brownish ground, warm orange
+// accent. This one goes the other way on purpose: true black (`hsl(0 0% 0%)`, no light on
+// OLED), neutral grey mid layers, blue accent. Not "one set at two brightnesses" but two
+// registers: factory is paper, this is a terminal. Picked for night use, not system light/dark.
 package themedark
 
 import (
@@ -16,32 +16,32 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// Name 是这个模块在装配表与 `newgate plugin` 里的名字（= 目录名）。
+// Name is this module's name in the assembly table and in `newgate plugin` (= the dir name).
 const Name = "theme-dark"
 
-// ID 是这套皮肤的机器标记（存进 state.json 的就是它）。
+// ID is this skin's machine tag (it is what gets stored in state.json).
 //
-// 与目录名差一个 `theme-` 前缀：目录名要让「这是一套皮肤」一眼看得出来（见
-// webapi.Theme.ID 那条约定），而 ID 是给人和报文看的，多一个前缀反而啰嗦。
+// It differs from the directory name by a `theme-` prefix: the directory name should make
+// "this is a skin" obvious (see webapi.Theme.ID), while the ID is for people and payloads.
 const ID = "dark"
 
-// New 声明这个组件：界面在时把自己这套皮肤登记进去，不在时什么都不做。
+// New declares this component: register this skin when the UI is there, do nothing when not.
 //
-// # 为什么是 Optional（而**不是** Requires）
+// # Why Optional (and **not** Requires)
 //
-// 与 modules/i18n 依赖语言层是同一条：没装任何界面时（骨架发行版、或者
-// `dist-dashboard.json` 之外的装配）这个模块**照常装着、功能一个不少**——它做的
-// 全部事情就是往界面的表里放一份 CSS，没有人来取就等于没做。装不上的话，一个纯
-// 皮肤模块会把整张图拖下来。
+// Same as modules/i18n depending on the language layer: with no UI installed (the skeleton
+// distribution, or any assembly but `dist-dashboard.json`) this module **installs and loses
+// nothing** - all it does is put a CSS block into the UI's table; nobody taking it means
+// nothing happened. If it could not install, a pure skin module would drag the graph down.
 //
-// 依赖声明成 Optional 还买到了**启动顺序**：界面在时它一定排在界面之后（那条边
-// 就是顺序边），于是登记发生在登记处建好之后。
+// Declaring the dependency Optional also buys **start order**: with the UI present it always
+// comes after the UI (that edge is an ordering edge), so registration follows the registry.
 func New() modules.Component {
 	return modules.Component{
 		Name: Name,
 		Desc: func() string { return i18n.T("a true-black theme for the web interface", nil) },
-		// Type 取 "cli"：与 web-dashboard / tui / simple-cli 同一类（「界面壳」那
-		// 一类的既有取值）。皮肤是界面的一部分，它不是业务模块。
+		// Type is "cli": same class as web-dashboard / tui / simple-cli (the existing value
+		// for "UI shell"). A skin is part of the UI, not a business module.
 		Type:     "cli",
 		Requires: []modules.Requirement{modules.Optional(webapi.ThemeCapability)},
 		Start:    start,
@@ -49,8 +49,8 @@ func New() modules.Component {
 	}
 }
 
-// release 是登记时拿回的放销。**模块实例只有一份**（New 一次装配跑一次），所以
-// 一个包级变量就够——不需要锁，Start 与 Stop 由框架按顺序调用。
+// release is the undo handle returned at registration. **There is only one module instance**
+// (New runs once per assembly), so one package-level variable suffices - no lock needed.
 var release modules.Release
 
 func start(_ context.Context, ctx modules.Context) error {
@@ -62,8 +62,8 @@ func start(_ context.Context, ctx modules.Context) error {
 		ID:   ID,
 		Name: func() string { return i18n.T("Black", nil) },
 		Dark: true,
-		// 只有令牌，没有选择器（见 webapi.Theme.CSS）。少给一个不会报错——它会
-		// 落回出厂的值，而半套皮肤的难看是作者一眼看得见的。
+		// Tokens only, no selectors (see webapi.Theme.CSS). Missing one does not error - it falls
+		// back to the factory value, and a half-finished skin is ugly in a way its author can see.
 		CSS: `
   --bg: hsl(0 0% 2%);
   --panel: hsl(0 0% 6%);
@@ -84,11 +84,11 @@ func start(_ context.Context, ctx modules.Context) error {
 	return nil
 }
 
-// stop 把登记撤回去（框架只要求「拿到了什么就还回去」）。
+// stop takes the registration back (the framework only asks that you return what you took).
 //
-// 它看着像摆设——进程都要退了，一张表撤不撤有什么区别？区别在**测试与嵌入**：
-// testing/testkit 会在同一个进程里反复装图、停图，不还回去的话第二次装配会撞上
-// 「theme dark is already registered」，而那个错误看起来像皮肤写坏了。
+// It looks like a formality - the process is exiting, so who cares? The difference is
+// **tests and embedding**: testing/testkit assembles and stops graphs over and over in one
+// process; skipping it hits "theme dark is already registered", which reads as a broken skin.
 func stop(context.Context) error {
 	if release != nil {
 		_ = release()

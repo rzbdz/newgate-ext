@@ -2,12 +2,12 @@ package domain
 
 import "testing"
 
-// TestProviderURL 双 base 的选择规则：Anthropic 方言（/messages*）走
-// anthropic_url，其余走 base_url；没配 anthropic_url 就是老样子——
-// 两种方言同一个 base。
+// TestProviderURL: the rule for choosing between the two bases: the Anthropic
+// dialect (/messages*) goes to anthropic_url, everything else to base_url;
+// without anthropic_url it is the old way -- both dialects on the same base.
 //
-// 现场（火山方舟，2026-09-15）：openai 在 /api/coding/v3，anthropic 在
-// /api/coding，打错了是 istio-envoy 的空 body 404。
+// The scene (Volcengine Ark, 2026-09-15): openai is at /api/coding/v3, anthropic
+// at /api/coding, and hitting the wrong one gives an istio-envoy empty-body 404.
 func TestProviderURL(t *testing.T) {
 	agg := Provider{BaseURL: "https://agg.example.com/v1"} // 两方言同 base
 	dual := Provider{
@@ -29,25 +29,25 @@ func TestProviderURL(t *testing.T) {
 		suffix string
 		want   string
 	}{
-		{"同 base：openai", agg, "/chat/completions", "https://agg.example.com/v1/chat/completions"},
-		{"同 base：anthropic", agg, "/messages", "https://agg.example.com/v1/messages"},
-		{"同 base：count_tokens", agg, "/messages/count_tokens", "https://agg.example.com/v1/messages/count_tokens"},
-		{"分家：openai 走 v3", dual, "/chat/completions", "https://ark.example.com/api/coding/v3/chat/completions"},
-		{"分家：anthropic 走 /api/coding + /v1", dual, "/messages", "https://ark.example.com/api/coding/v1/messages"},
-		{"分家：count_tokens 同路", dual, "/messages/count_tokens",
+		{"same base: openai", agg, "/chat/completions", "https://agg.example.com/v1/chat/completions"},
+		{"same base: anthropic", agg, "/messages", "https://agg.example.com/v1/messages"},
+		{"same base: count_tokens", agg, "/messages/count_tokens", "https://agg.example.com/v1/messages/count_tokens"},
+		{"split: openai goes to v3", dual, "/chat/completions", "https://ark.example.com/api/coding/v3/chat/completions"},
+		{"split: anthropic goes to /api/coding + /v1", dual, "/messages", "https://ark.example.com/api/coding/v1/messages"},
+		{"split: count_tokens takes the same path", dual, "/messages/count_tokens",
 			"https://ark.example.com/api/coding/v1/messages/count_tokens"},
-		{"写了 /v1 不重复补", dualV1, "/messages", "https://ark.example.com/api/coding/v1/messages"},
-		{"尾部斜杠不双写", dualSlash, "/messages", "https://ark.example.com/api/coding/v1/messages"},
+		{"a written /v1 is not added twice", dualV1, "/messages", "https://ark.example.com/api/coding/v1/messages"},
+		{"a trailing slash is not doubled", dualSlash, "/messages", "https://ark.example.com/api/coding/v1/messages"},
 	}
 	for _, c := range cases {
 		if got := c.p.URL(c.suffix); got != c.want {
-			t.Errorf("%s: URL(%q) = %q，想要 %q", c.name, c.suffix, got, c.want)
+			t.Errorf("%s: URL(%q) = %q, want %q", c.name, c.suffix, got, c.want)
 		}
 	}
 
-	// Base 是「这次发给哪个上游」——插件靠它判断自己认不认这家（如
-	// deepseek 插件看 base 里有没有 "deepseek"），所以它必须是真那个 base，
-	// 不带路径。
+	// Base is "which upstream this is sent to" -- plugins rely on it to decide
+	// whether they recognize this provider (e.g. the deepseek plugin looks
+	// for "deepseek" in base), so it must be that real base, without a path.
 	if got := dual.Base("/messages"); got != "https://ark.example.com/api/coding" {
 		t.Errorf("Base(/messages) = %q", got)
 	}
@@ -56,8 +56,8 @@ func TestProviderURL(t *testing.T) {
 	}
 }
 
-// TestIsAnthropicPath 判据是客户端发来的路径，不是 provider 的 protocol：
-// 聚合网关实测 provider 标 openai 也照样收 /v1/messages。
+// TestIsAnthropicPath: the criterion is the path the client sent, not the provider's protocol:
+// measured on an aggregate gateway, a provider marked openai still receives /v1/messages.
 func TestIsAnthropicPath(t *testing.T) {
 	for _, c := range []struct {
 		suffix string
@@ -71,7 +71,7 @@ func TestIsAnthropicPath(t *testing.T) {
 		{"", false},
 	} {
 		if got := IsAnthropicPath(c.suffix); got != c.want {
-			t.Errorf("IsAnthropicPath(%q) = %v，想要 %v", c.suffix, got, c.want)
+			t.Errorf("IsAnthropicPath(%q) = %v, want %v", c.suffix, got, c.want)
 		}
 	}
 }

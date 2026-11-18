@@ -7,14 +7,15 @@ import (
 	"github.com/rzbdz/newgate/lib/i18n"
 )
 
-// Candidates 一个键的候选列表。接受四种 JSON 写法，内部统一成 list：
+// Candidates is a key's candidate list. Accepts four
+// JSON spellings, unified internally into a list:
 //
-//	"heavy": {"provider":"p","model":"m"}      对象（现状，继续支持）
-//	"heavy": "p/m"                             字符串简写
-//	"heavy": "@normal"                         引用另一个键（就地展开那条链）
-//	"heavy": ["@normal", {"provider":"p2",…}]   列表（引用与绑定可混写）
+//	"heavy": {"provider":"p","model":"m"}      object (the status quo, still supported)
+//	"heavy": "p/m"                             string shorthand
+//	"heavy": "@normal"                         reference to another key (expands that chain in place)
+//	"heavy": ["@normal", {"provider":"p2",...}] list (references and bindings can be mixed)
 //
-// 统一之后代码里只有一条路径。
+// After unification there is only one path through the code.
 type Candidates []Binding
 
 func (c *Candidates) UnmarshalJSON(b []byte) error {
@@ -50,7 +51,7 @@ func (c *Candidates) UnmarshalJSON(b []byte) error {
 }
 
 func (c Candidates) MarshalJSON() ([]byte, error) {
-	// 单个就写成对象，保持文件可读；多个写成数组
+	// Write a single one as an object, keeping the file readable; several as an array
 	if len(c) == 1 {
 		return json.Marshal(c[0])
 	}
@@ -86,8 +87,8 @@ func parseBinding(raw json.RawMessage) (Binding, error) {
 	return b, nil
 }
 
-// ParseBindingString 解析 "provider/model" 或 "@另一个键"。
-// model 里可以再含 /（有些模型名带斜杠）。
+// ParseBindingString parses "provider/model" or "@another key".
+// model may itself contain / (some model names have slashes).
 func ParseBindingString(s string) (Binding, error) {
 	s = strings.TrimSpace(s)
 	if strings.HasPrefix(s, "@") {

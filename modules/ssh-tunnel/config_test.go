@@ -10,9 +10,9 @@ import (
 	"github.com/rzbdz/newgate-ext/testing/testkit"
 )
 
-// 这一族验的是**读配置**这件事的判据。它是这套东西里最容易被写松的一层：读坏了
-// 不报，看起来只是「那条 target 不存在」——而用户会去查 SSH、查防火墙、查远端，
-// 唯独不会想到是自己那行配置被静默跳过了。
+// This family checks the **read config** criteria. It is the layer most easily written
+// loose: a bad read is unreported and only looks like "that target does not exist" -
+// the user checks SSH, firewall, the remote, never thinking a config line was skipped.
 
 func sandbox(t *testing.T) {
 	t.Helper()
@@ -33,47 +33,47 @@ func TestSaveAndLoadRoundTrip(t *testing.T) {
 	}
 	got := Load()
 	if len(got.Rejected) != 0 {
-		t.Fatalf("刚写下去的配置被拒了：%+v", got.Rejected)
+		t.Fatalf("the config just written was refused: %+v", got.Rejected)
 	}
 	if len(got.Targets) != 1 {
-		t.Fatalf("读回 %d 条，想要 1", len(got.Targets))
+		t.Fatalf("read back %d entries, want 1", len(got.Targets))
 	}
 	if got.Targets[0] != want.normalize() {
-		t.Errorf("读回的是 %+v，写下去的是 %+v", got.Targets[0], want.normalize())
+		t.Errorf("read back %+v, wrote %+v", got.Targets[0], want.normalize())
 	}
 }
 
 func TestDefaultsAreFilledInOnce(t *testing.T) {
-	// 归一化只发生一次（读的那一刻），于是「界面上显示的值」与「实际用的值」不会
-	// 有两份真相——两者不一致的症状是「我看着是 8899，它连的却是别的」。
+	// Normalize happens once (at read), so "shown" and "used" never have two truths -
+	// the symptom of a mismatch is "I see 8899 but it connects elsewhere".
 	sandbox(t)
 	if err := Save([]Target{{ID: "a", Host: "h"}}); err != nil {
 		t.Fatal(err)
 	}
 	got := Load().Targets[0]
 	if got.Port != DefaultSSHPort {
-		t.Errorf("ssh 端口 = %d，想要 %d", got.Port, DefaultSSHPort)
+		t.Errorf("ssh port = %d, want %d", got.Port, DefaultSSHPort)
 	}
 	if got.RemoteHost != DefaultRemoteHost || got.RemotePort != DefaultRemotePort {
-		t.Errorf("远端 = %s:%d，想要 %s:%d", got.RemoteHost, got.RemotePort, DefaultRemoteHost, DefaultRemotePort)
+		t.Errorf("remote = %s:%d, want %s:%d", got.RemoteHost, got.RemotePort, DefaultRemoteHost, DefaultRemotePort)
 	}
 	if got.IdleSeconds != DefaultIdleSecs {
-		t.Errorf("空闲 = %d，想要 %d", got.IdleSeconds, DefaultIdleSecs)
+		t.Errorf("idle = %d, want %d", got.IdleSeconds, DefaultIdleSecs)
 	}
 	if got.HostKey != HostKeyStrict {
-		t.Errorf("host_key = %q，默认必须是 strict", got.HostKey)
+		t.Errorf("host_key = %q, the default must be strict", got.HostKey)
 	}
 	if got.Label != "a" {
-		t.Errorf("label = %q，缺省该用 id", got.Label)
+		t.Errorf("label = %q, the default should use id", got.Label)
 	}
 	if got.Persistent {
-		t.Errorf("默认必须是懒连接（常驻是显式选择）")
+		t.Errorf("the default must be lazy connect (persistent is an explicit choice)")
 	}
 }
 
 func TestABrokenEntryIsSkippedButReported(t *testing.T) {
-	// 坏掉的那一条**跳过，但不咽下去**：它唯一的出口就是界面上那张卡与
-	// `newgate tunnel ls`。只写日志等于只对会翻日志的人可见。
+	// The broken one is **skipped but not swallowed**: its only exit is the UI card and
+	// `newgate tunnel ls`. Log-only makes it visible only to log readers.
 	sandbox(t)
 	raw := `{"targets":[
 		{"id":"good","host":"h"},
@@ -86,15 +86,15 @@ func TestABrokenEntryIsSkippedButReported(t *testing.T) {
 
 	got := Load()
 	if len(got.Targets) != 1 || got.Targets[0].ID != "good" {
-		t.Fatalf("该只剩一条 good，实际 %+v", got.Targets)
+		t.Fatalf("only one good entry should remain, got %+v", got.Targets)
 	}
 	if len(got.Rejected) != 4 {
-		t.Fatalf("该报出 4 条坏配置，实际 %d：%+v", len(got.Rejected), got.Rejected)
+		t.Fatalf("it should report 4 bad configs, got %d: %+v", len(got.Rejected), got.Rejected)
 	}
-	// 每条都要说得出**为什么**：一句「无效配置」等于没说。
+	// Each must say **why**: one "invalid config" says nothing.
 	for _, bad := range got.Rejected {
 		if bad.Why == "" || bad.Line == "" {
-			t.Errorf("被拒的那条没有原因：%+v", bad)
+			t.Errorf("the refused one has no reason: %+v", bad)
 		}
 	}
 	joined := ""
@@ -103,14 +103,14 @@ func TestABrokenEntryIsSkippedButReported(t *testing.T) {
 	}
 	for _, want := range []string{"id is required", "host is required", "path segment", "share this id"} {
 		if !strings.Contains(joined, want) {
-			t.Errorf("没有报出 %q，实际：\n%s", want, joined)
+			t.Errorf("did not report %q, got:\n%s", want, joined)
 		}
 	}
 }
 
 func TestTwoTargetsCannotShareALocalPort(t *testing.T) {
-	// 两个 target 抢同一个本地端口：后起的那个 `net.Listen` 会失败，而失败的样子
-	// 是「这条 tunnel 没起来」——用户不会想到是**另一条**占了端口。
+	// Two targets claiming the same local port: the later `net.Listen` fails, and the symptom
+	// is "this tunnel did not start" - the user never suspects **another one** took the port.
 	sandbox(t)
 	writeRaw(t, `{"targets":[
 		{"id":"a","host":"h","local_port":9401},
@@ -118,102 +118,102 @@ func TestTwoTargetsCannotShareALocalPort(t *testing.T) {
 	]}`)
 	got := Load()
 	if len(got.Targets) != 1 || got.Targets[0].ID != "a" {
-		t.Fatalf("该留下先声明的 a，实际 %+v", got.Targets)
+		t.Fatalf("the first declared a should be kept, got %+v", got.Targets)
 	}
 	if len(got.Rejected) != 1 || !strings.Contains(got.Rejected[0].Why, "9401") {
-		t.Fatalf("该报出端口冲突并说出是哪个端口：%+v", got.Rejected)
+		t.Fatalf("it should report the port conflict and say which port: %+v", got.Rejected)
 	}
 }
 
 func TestGarbageInTheSectionIsNotFatal(t *testing.T) {
-	// fail-open：读不出来得到的是空表而不是错误。一个偏好读不出来不该让整个界面
-	// 打不开（与 web-dashboard 读皮肤选择同一条）。
+	// fail-open: unreadable gives an empty table, not an error. One unreadable preference
+	// must not block the whole UI (same as web-dashboard reading skin choice).
 	sandbox(t)
-	// 我们那一格是合法 JSON、但**不是我们认的形状**（一个对象而不是一个数组）。
-	// 真的把整个文件写坏是另一回事——那时 store.LoadState 自己 fail-open 成空
-	// 状态，我们连这一格都读不到（也就无从报起）。
+	// Our cell is valid JSON but **not the shape we know** (an object, not an array).
+	// Really breaking the whole file is different - store.LoadState fails open to an empty
+	// state itself, and we cannot even read this cell (so nothing to report).
 	writeRaw(t, `{"targets":{"nope":1}}`)
 	got := Load()
 	if len(got.Targets) != 0 {
-		t.Errorf("坏 JSON 该得到空表，实际 %+v", got.Targets)
+		t.Errorf("bad JSON should give an empty table, got %+v", got.Targets)
 	}
 	if len(got.Rejected) != 1 {
-		t.Errorf("坏 JSON 该被报出来（不然它是静默的），实际 %+v", got.Rejected)
+		t.Errorf("bad JSON should be reported (otherwise it is silent), got %+v", got.Rejected)
 	}
 }
 
 func TestTargetsComeBackInAStableOrder(t *testing.T) {
-	// 顺序稳定，界面上的行才不会在两次刷新之间跳来跳去（用户刚想点的那一行
-	// 换了个位置——那是「点击后重排序」那一类让人不敢用的行为）。
+	// With stable order, UI rows do not jump between refreshes (the row about to be clicked
+	// moves - the "reorder on click" class of behavior nobody dares use).
 	sandbox(t)
 	if err := Save([]Target{{ID: "zeta", Host: "h"}, {ID: "alpha", Host: "h"}, {ID: "mid", Host: "h"}}); err != nil {
 		t.Fatal(err)
 	}
 	got := Load().Targets
 	if len(got) != 3 || got[0].ID != "alpha" || got[1].ID != "mid" || got[2].ID != "zeta" {
-		t.Errorf("顺序不对：%+v", got)
+		t.Errorf("wrong order: %+v", got)
 	}
 }
 
 func TestMissingConfigIsSimplyEmpty(t *testing.T) {
-	// 全新安装：连那一格都没有。这不是错误，是一条也没有。
+	// Fresh install: not even the cell exists. Not an error, just zero entries.
 	sandbox(t)
 	got := Load()
 	if len(got.Targets) != 0 || len(got.Rejected) != 0 {
-		t.Errorf("全新安装该是干干净净的空表，实际 %+v / %+v", got.Targets, got.Rejected)
+		t.Errorf("a fresh install should be a clean empty table, got %+v / %+v", got.Targets, got.Rejected)
 	}
 }
 
 func TestSaveRefusesToClobberSomeoneElsesWrite(t *testing.T) {
-	// 命令行与 web 界面可能同时改这份文件（一个人在终端敲 `tunnel add`，另一个人
-	// 在浏览器里拖字段）。不判断基线的话后写的那次会**静默**盖掉前一次——而两次
-	// 改动可能毫不相干。
+	// The CLI and web UI may edit at once (one typing `tunnel add`, one dragging fields).
+	// Without a baseline check the later write **silently** clobbers the earlier - and the
+	// two changes may be unrelated.
 	sandbox(t)
 	if err := Save([]Target{{ID: "a", Host: "h"}}); err != nil {
 		t.Fatal(err)
 	}
 	stale := Load().Base
 
-	// 别人改了一次。
+	// Someone else changed it once.
 	if err := Save([]Target{{ID: "a", Host: "h"}, {ID: "b", Host: "h"}}); err != nil {
 		t.Fatal(err)
 	}
 
-	// 我拿着旧基线写。
+	// I write with the old baseline.
 	_, err := save([]Target{{ID: "c", Host: "h"}}, stale)
 	if err == nil {
-		t.Fatal("拿着过期基线写该失败")
+		t.Fatal("writing with a stale baseline should fail")
 	}
 	var se *store.StaleError
 	if !errorAs(err, &se) {
-		t.Fatalf("该是 StaleError，实际 %T: %v", err, err)
+		t.Fatalf("it should be a StaleError, got %T: %v", err, err)
 	}
-	// 关键：盘上那份没被覆盖。
+	// Key: the disk copy was not overwritten.
 	if got := Load(); len(got.Targets) != 2 {
-		t.Errorf("冲突时盘上那份被覆盖了：%+v", got.Targets)
+		t.Errorf("on conflict the copy on disk was overwritten: %+v", got.Targets)
 	}
 }
 
 func TestTheIDIsAURLSegment(t *testing.T) {
-	// id 直接进 URL。带 `/` 的话 `/ui/remote/a/b/` 指向谁就不确定了；带 `?#`
-	// 的话会被浏览器的 URL 解析吃掉。
+	// id goes straight into the URL. With `/`, /ui/remote/a/b/ points who-knows-where; with
+	// `?#` the browser's URL parsing eats it.
 	for _, id := range []string{"a/b", "a?b", "a#b", "a b", "a\tb", ""} {
 		if why := validate(Target{ID: id, Host: "h"}.normalize()); why == "" {
-			t.Errorf("id %q 该被拒", id)
+			t.Errorf("id %q should be rejected", id)
 		}
 	}
 	for _, id := range []string{"snode1", "a-b", "a_b", "a.b", "work-2"} {
 		if why := validate(Target{ID: id, Host: "h"}.normalize()); why != "" {
-			t.Errorf("id %q 该被接受，实际：%s", id, why)
+			t.Errorf("id %q should be accepted, got: %s", id, why)
 		}
 	}
 }
 
-// ---------- 界面写回来的那份 ----------
+// ---------- what the UI writes back ----------
 
 func TestApplyFromTheInterfaceReplacesTheWholeSet(t *testing.T) {
-	// 契约与 config 的 applyProviders 同一份：界面交回来的是**全部记录**，没交的
-	// 就是删了。所以「删一条」不需要第二个接口。
+	// Same contract as config's applyProviders: the UI hands back **all records**; what
+	// is missing was deleted. So "delete one" needs no second interface.
 	sandbox(t)
 	if err := Save([]Target{{ID: "old", Host: "h"}}); err != nil {
 		t.Fatal(err)
@@ -232,7 +232,7 @@ func TestApplyFromTheInterfaceReplacesTheWholeSet(t *testing.T) {
 	}
 	got := Load()
 	if len(got.Targets) != 2 {
-		t.Fatalf("该有两条，实际 %+v（被拒：%+v）", got.Targets, got.Rejected)
+		t.Fatalf("there should be two, got %+v (rejected: %+v)", got.Targets, got.Rejected)
 	}
 	byID := map[string]Target{}
 	for _, t := range got.Targets {
@@ -240,30 +240,30 @@ func TestApplyFromTheInterfaceReplacesTheWholeSet(t *testing.T) {
 	}
 	old := byID["old"]
 	if old.Label != "renamed" || old.Port != 2222 || !old.Persistent || old.HostKey != HostKeyAcceptNew {
-		t.Errorf("改过的那条没落对：%+v", old)
+		t.Errorf("the modified one did not land correctly: %+v", old)
 	}
 	if old.User != "u" || old.LocalPort != 9401 || old.IdleSeconds != 60 {
-		t.Errorf("改过的那条有几个字段丢了：%+v", old)
+		t.Errorf("the modified one lost a few fields: %+v", old)
 	}
 	fresh := byID["new"]
 	if fresh.Host != "10.0.0.2" || fresh.IdleSeconds != DefaultIdleSecs {
-		t.Errorf("新加的那条没落对：%+v", fresh)
+		t.Errorf("the newly added one did not land correctly: %+v", fresh)
 	}
 }
 
 func TestApplyRefusesABadRowWhileTheUserIsLookingAtIt(t *testing.T) {
-	// 在**这一刻**就拒，不要存下去等到下次读的时候再跳过：用户刚敲完的那一格就是
-	// 他正看着的东西，此刻说「id 里不能有斜杠」他立刻知道改哪儿。
+	// Refuse **at this moment**, do not store it and skip on the next read: the cell the
+	// user just typed is what they are looking at; saying "no slash in id" now tells them where.
 	sandbox(t)
 	base := Load().Base
 	edit := `{"items":[{"id":"","values":{"id":"a/b","host":"h"}}]}`
 	if _, err := applyTargets(json.RawMessage(edit), base); err == nil {
-		t.Fatal("坏 id 该被拒")
+		t.Fatal("a bad id should be rejected")
 	} else if !strings.Contains(err.Error(), "path segment") {
-		t.Errorf("错误该说清是 id 的问题：%v", err)
+		t.Errorf("the error should say it is an id problem: %v", err)
 	}
 	if got := Load(); len(got.Targets) != 0 {
-		t.Errorf("被拒之后不该落盘：%+v", got.Targets)
+		t.Errorf("after refusal nothing should be written: %+v", got.Targets)
 	}
 }
 
@@ -275,11 +275,11 @@ func TestApplyRefusesDuplicateIDsUpFront(t *testing.T) {
 		{"id":"","values":{"id":"dup","host":"h2"}}
 	]}`
 	if _, err := applyTargets(json.RawMessage(edit), base); err == nil {
-		t.Fatal("重名该被拒")
+		t.Fatal("a duplicate name should be rejected")
 	}
 }
 
-// ---------- 工具 ----------
+// ---------- tools ----------
 
 func writeRaw(t *testing.T, body string) {
 	t.Helper()
@@ -293,7 +293,7 @@ func writeRaw(t *testing.T, body string) {
 	}
 }
 
-// errorAs 是 errors.As 的一层薄包装，只为让上面那几处读起来短一点。
+// errorAs is a thin wrap over errors.As, only to make the sites above read shorter.
 func errorAs(err error, target **store.StaleError) bool {
 	for err != nil {
 		if se, ok := err.(*store.StaleError); ok {

@@ -10,8 +10,9 @@ import (
 	"testing"
 )
 
-// TestControlUpgradeAuth 优雅交接端点的鉴权底线：错令牌绝不能触发交接。
-// 交接会换掉整个 daemon 进程，这里错一点就是把运行时拱手让人。
+// TestControlUpgradeAuth is the authentication floor of the graceful handoff
+// endpoint: a wrong token must never trigger a handoff. Handoff replaces
+// the whole daemon process, so a slip here hands the runtime to anyone.
 func TestControlUpgradeAuth(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("NEWGATE_HOME", dir)
@@ -28,17 +29,18 @@ func TestControlUpgradeAuth(t *testing.T) {
 	}))
 	defer front.Close()
 
-	// GET 一律 405
+	// GET is always 405
 	resp, err := http.Get(front.URL + "/__newgate/upgrade")
 	if err != nil {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
 	if resp.StatusCode != 405 {
-		t.Fatalf("GET 应 405，实际 %d", resp.StatusCode)
+		t.Fatalf("GET should be 405, got %d", resp.StatusCode)
 	}
 
-	// 错令牌：403，而不是 503（503=鉴权已过、只差监听器——顺序不能反）
+	// wrong token: 403, not 503 (503 = authenticated, only the
+	// listener is missing - the order must not be reversed)
 	for _, auth := range []string{"", "Bearer wrong", "Bearer " + tok + "x"} {
 		req, _ := http.NewRequest(http.MethodPost, front.URL+"/__newgate/upgrade", nil)
 		if auth != "" {
@@ -51,11 +53,12 @@ func TestControlUpgradeAuth(t *testing.T) {
 		b, _ := ioutil.ReadAll(resp.Body)
 		resp.Body.Close()
 		if resp.StatusCode != 403 {
-			t.Fatalf("Authorization %q 应 403，实际 %d: %s", auth, resp.StatusCode, b)
+			t.Fatalf("Authorization %q should be 403, got %d: %s", auth, resp.StatusCode, b)
 		}
 	}
 
-	// 对令牌 + 没有监听器：503 说明「是谁」已经验过、卡在「没东西可交」
+	// right token + no listener: 503 says "who you are" has
+	// been verified, and it is stuck at "nothing to hand over"
 	req, _ := http.NewRequest(http.MethodPost, front.URL+"/__newgate/upgrade", nil)
 	req.Header.Set("Authorization", "Bearer "+tok)
 	resp, err = http.DefaultClient.Do(req)
@@ -64,12 +67,12 @@ func TestControlUpgradeAuth(t *testing.T) {
 	}
 	resp.Body.Close()
 	if resp.StatusCode != 503 {
-		t.Fatalf("鉴权通过但监听器未就绪应 503，实际 %d", resp.StatusCode)
+		t.Fatalf("authenticated but the listener is not ready should be 503, got %d", resp.StatusCode)
 	}
 }
 
-// TestControlUpgradeNoToken 没有令牌的 daemon（老配置升级窗口期）：
-// 交接端点必须一律 403，不能裸奔。
+// TestControlUpgradeNoToken: a daemon with no token (the upgrade window of an old
+// config): the handoff endpoint must always answer 403, never let requests through.
 func TestControlUpgradeNoToken(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("NEWGATE_HOME", dir)
@@ -94,6 +97,6 @@ func TestControlUpgradeNoToken(t *testing.T) {
 	b, _ := ioutil.ReadAll(resp.Body)
 	resp.Body.Close()
 	if resp.StatusCode != 403 || !strings.Contains(string(b), "token") {
-		t.Fatalf("无令牌应 403 且说明原因，实际 %d: %s", resp.StatusCode, b)
+		t.Fatalf("no token should be 403 with a reason, got %d: %s", resp.StatusCode, b)
 	}
 }

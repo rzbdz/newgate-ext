@@ -1,15 +1,17 @@
 package gateway
 
-// 本文件是 `newgate probe`：对候选真打一发最小请求，拿到连通性 + 方言能力 +
-// 上游毛病，并把结果回传给守护进程更新熔断表。
+// This file is `newgate probe`: send one minimal real request to
+// candidates, get connectivity + dialect capabilities + upstream quirks,
+// and report the result back to the daemon to update the breaker table.
 //
-// **为什么它住在这里**（2026-09-18）：探活打的就是网关自己的转发路径，探明的
-// 方言能力写进 gateway/dialect，健康结果回填给熔断表——三件事都是数据面的语义。
-// 它留在界面时，界面得 import gateway/{probe,dialect}，于是「界面认识探针」这件
-// 事被焊死在依赖里。搬过来之后界面既不认识 probe 也不认识 dialect。
+// **Why it lives here** (2026-09-18): a probe hits the gateway's own forwarding path,
+// the dialect capabilities it learns go into gateway/dialect, and health results feed
+// the breaker table - all three are data plane semantics. While it lived in the UI,
+// the UI had to import gateway/{probe,dialect}, welding "the UI knows about probes"
+// into the dependency graph. After the move the UI knows neither probe nor dialect.
 //
-// 与 metrics 同一条理由、同一个方向：gateway → cli/extension（契约叶子），注入
-// 自己的命令，没有回边。
+// Same reason and same direction as metrics: gateway → cli/extension
+// (a contract leaf), injecting its own command, with no back edge.
 
 import (
 	"encoding/json"
@@ -40,7 +42,7 @@ var (
 
 func (probeCommand) Names() []string { return []string{"probe"} }
 
-// Unstyled：`probe --json` 给的是机器可读的原文，不是给人看的版式。
+// Unstyled: `probe --json` gives machine-readable raw text, not a human layout.
 func (probeCommand) Unstyled(args []string) bool {
 	return cliapi.FlagValue(args, "--json") != "" || cliapi.Flag(args, "--json")
 }
@@ -54,11 +56,12 @@ func (probeCommand) Run(host cliapi.Host, args []string) int {
 	return runProbe(host, cliapi.Positional(args, 0), cliapi.Flag(args, "--json"))
 }
 
-// cmdProbe 主动探活：对每个候选真打一发最小请求。
+// cmdProbe probes actively: send one minimal real request to every candidate.
 //
-// 版式：进度走 stderr（stdout 留给结果表，`probe > f` 拿到的是干净的表），
-// 结果一段三块——明细表 / 方言能力 / 汇总。以前进度和结果都往 stdout 里
-// 混着写，重定向之后是一堆进度行夹着表格。
+// Layout: progress goes to stderr (stdout is left for the result table, so `probe >
+// f` gets a clean table), and the result has three blocks - detail table / dialect
+// capabilities / summary. Progress and results used to be mixed into stdout,
+// so a redirect produced a pile of progress lines interleaved with the table.
 func runProbe(host cliapi.Host, only string, asJSON bool) int {
 	quiet := asJSON // JSON 模式不打进度，免得污染输出
 	started := time.Now()
@@ -71,9 +74,9 @@ func runProbe(host cliapi.Host, only string, asJSON bool) int {
 		Concurrency: 8,
 		WaitTick:    5 * time.Second,
 	}
-	// OnNote 不受 quiet 影响：它报的不是进度（那才是 quiet 要压掉的），而是
-	// 「这次探活了什么」与「缓存没能读/写」——都是只看一次就该看见的东西，
-	// 而且在 --json 模式下 stderr 也不会污染 stdout 的结果表。
+	// OnNote is not affected by quiet: it does not report progress (that is what quiet suppresses)
+	// but "what this probe learned" and "the cache could not be read/written" - things you should
+	// see after a single look. And in --json mode stderr does not pollute the result table on stdout.
 	opts.OnNote = func(msg string) {
 		fmt.Fprintln(os.Stderr, style.Item(style.Warn, msg))
 	}
@@ -144,7 +147,8 @@ func runProbe(host cliapi.Host, only string, asJSON bool) int {
 		i18n.A{"head": head, "elapsed": time.Since(started).Round(time.Millisecond)})))
 	fmt.Println(style.Rule(72))
 
-	// 明细：同一 profile 的后续行不再重复 profile 名（视觉分组，省一列宽度）。
+	// Detail: later rows of the same profile repeat no
+	// profile name (visual grouping, one column narrower).
 	t := style.NewTable(i18n.T("profile", nil), i18n.T("tier", nil),
 		i18n.T("upstream/model", nil), i18n.T("grade", nil),
 		i18n.T("main latency", nil), i18n.T("total time", nil))
@@ -179,8 +183,8 @@ func runProbe(host cliapi.Host, only string, asJSON bool) int {
 	}
 	fmt.Println(style.Hint(i18n.T("the health score uses the main probe latency only; total time also includes dialect and quirk checks", nil)))
 
-	// 方言能力：probe 顺带探明的。count_tokens ✗ 的上游，Claude Code 的
-	// 水位条走本地粗估（forward 层 lazy probe 也会自己学到这一点）。
+	// Dialect capability: what the probe also found out. For an upstream with count_tokens ✗,
+	// Claude Code's context meter uses a local rough estimate (forward's lazy probe learns this too).
 	if entries := dialect.Snapshot(); len(entries) > 0 {
 		fmt.Print(style.Section(i18n.T("dialect capabilities", nil)) +
 			style.Dim(i18n.T("   ✓ supported  ✗ probed and unsupported  ? not probed", nil)) + "\n")
@@ -234,7 +238,7 @@ func runProbe(host cliapi.Host, only string, asJSON bool) int {
 		}
 	}
 
-	// 当前 profile 有挂的就给出建议
+	// give a hint when the current profile has something broken
 	for _, sm := range sums {
 		if sm.Profile == st.DefaultProfile && sm.Bad > 0 {
 			fmt.Println()
@@ -298,8 +302,8 @@ func publishProbeHealth(results []probe.Result) (int, error) {
 	return response.Opened, err
 }
 
-// probeMark 探活结果的标记。跟 probe.Light() 的灯同义，但用本 CLI 统一的
-// 符号集——表格里塞 emoji 会撑坏对齐，也不 geek。
+// probeMark is the probe result mark. Same meaning as probe.Light()'s lamp, but with
+// this CLI's own symbol set - emoji in a table break alignment, and are not geeky.
 func probeMark(ok bool) string {
 	if ok {
 		return style.OK
@@ -320,7 +324,7 @@ func probeGrade(r probe.Result, slowAfter time.Duration) string {
 	}
 }
 
-// dialectMark 一格能力灯：✓ 支持 / ✗ 探过明确不支持 / ? 没探到。
+// dialectMark is one capability lamp: ✓ supported / ✗ probed and unsupported / ? not probed.
 func dialectMark(e dialect.Entry, c dialect.Cap) string {
 	if e.Known&c == 0 {
 		return "?"

@@ -1,9 +1,10 @@
 import { mount } from "svelte";
 import DemoShell from "./DemoShell.svelte";
-// **产品那一份 CSS，一行没改。** 卡片那一族样式（.card / .row / .pill …）住在
-// 这里，而它们是全局的——真组件在别处渲染时也得带着它们。想要一份「只装卡片那半」
-// 的裁剪版是多余的：用不到的规则（.shell / .content / .secbar）在这个页面上要么
-// 正好复用，要么因为类名根本没出现而完全无副作用。
+// **The product's CSS, not one line changed.** The card family of styles (.card / .row /
+// .pill …) lives here, and they are global — the real components need them along when
+// they render elsewhere. A trimmed "card half only" copy would be pointless: the rules
+// that go unused (.shell / .content / .secbar) are either reused as is on this page or
+// have no side effect at all because those class names never appear.
 import "../src/app.css";
 import "./demo.css";
 

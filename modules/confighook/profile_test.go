@@ -8,16 +8,16 @@ import (
 	"github.com/rzbdz/newgate-ext/modules/config/store"
 )
 
-// 「我就是要它」与「我什么都没选、而缺省正好是它」是**两个状态**，在配置上就不是
-// 一回事：前者在 state.json 里有一条记录，以后改全局缺省它**不会**跟着走。
+// "I want exactly this" and "I picked nothing and it happens to be the default" are
+// two **states**, different in config: only the first has a record in state.json.
 //
-// 这一条实测踩出来的（2026-09-29）：网页首屏上给某一家点「就用 ds」，而自动恰好
-// 也是 ds——那一下明明写进了一条记录，界面却把这一家报成「跟随自动」，高亮于是从
-// 这张卡跳到「自动」那张上。用户的原话是「我点 ds，怎么跳到选中自动了」。
+// Seen for real (2026-09-29) on the web first screen: clicking "use ds" while auto was
+// ds wrote a record, yet the UI said "follow auto" and the highlight left that card; the
+// user asked why clicking ds selected auto.
 func TestStoredChoiceCountsEvenWhenItMatchesTheDefault(t *testing.T) {
 	sandbox(t)
-	// 两份档位文件：SetDefaultProfile 会校验这一份存在（指到一个不存在的名字是
-	// 用户笔误，该报出来，所以这里先把它们建出来）。
+	// Two tier files: SetDefaultProfile validates that this one exists (pointing at a
+	// non-existent name is a user typo and should be reported, so create them here).
 	dir := filepath.Join(os.Getenv("NEWGATE_HOME"), "mappings")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
@@ -33,33 +33,33 @@ func TestStoredChoiceCountsEvenWhenItMatchesTheDefault(t *testing.T) {
 	p := AgentProfile{AgentID: "claude"}
 
 	if p.IsOverride() {
-		t.Error("什么都没设过时不该报「单独设过」——它就该是跟着缺省的那一家")
+		t.Error("with nothing ever set it must not report 'set separately' - it should be the one following the default")
 	}
 	if err := p.Write("ds"); err != nil {
 		t.Fatal(err)
 	}
 	if !p.IsOverride() {
-		t.Error("明确选了 ds（而缺省也是 ds）之后**必须**报「单独设过」：" +
-			"否则界面会把它说成「跟随缺省」，而用户想固定住的东西看起来像没固定")
+		t.Error("after explicitly choosing ds (and the default is also ds) it **must** report 'set separately':" +
+			"otherwise the UI would describe it as 'following the default', and what the user meant to pin looks unpinned")
 	}
 	if got := p.Stored(); got != "ds" {
-		t.Errorf("存下来的那个该是 ds，实际 %q", got)
+		t.Errorf("the stored one should be ds, got %q", got)
 	}
-	// 反方向也要对：把缺省改掉，固定住的那一家**不该**跟着走。
+	// The reverse must hold too: change the default, and the pinned client **must not** follow.
 	if err := store.SetDefaultProfile("ark", false); err != nil {
 		t.Fatal(err)
 	}
 	if got := p.Active(); got != "ds" {
-		t.Errorf("固定过之后改缺省，这一家该还走 ds，实际 %q", got)
+		t.Errorf("after pinning, changing the default should leave this one on ds, got %q", got)
 	}
-	// 空串 = 松手、回到跟随。那时才不该再报「单独设过」。
+	// Empty string = let go, back to following; only then should "set apart" stop.
 	if err := p.Write(""); err != nil {
 		t.Fatal(err)
 	}
 	if p.IsOverride() {
-		t.Error("松开之后不该再报「单独设过」")
+		t.Error("after releasing it must no longer report 'set separately'")
 	}
 	if got := p.Active(); got != "ark" {
-		t.Errorf("松开之后该跟着缺省走 ark，实际 %q", got)
+		t.Errorf("after releasing it should follow the default ark, got %q", got)
 	}
 }

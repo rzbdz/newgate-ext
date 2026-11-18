@@ -1,22 +1,22 @@
-// Command orderprobe 跑一遍**真的**装配解析，把每份规格书的启动顺序打出来。
+// Command orderprobe runs the **real** assembly resolution and prints each spec's start order.
 //
-// 它是 tools/distgen 的第二趟：第一趟把规格书编成 manifest/modules_gen.go，然后
-// 跑这个程序（一个**新的进程**，所以读到的是刚写下去的那份清单），拿回顺序，
-// 再写成 manifest/order_gen.go。
+// It is distgen's second pass: the first compiles specs into manifest/modules_gen.go,
+// then this program runs (a **new process**, so it reads the just-written manifest),
+// returns the order, and writes manifest/order_gen.go.
 //
-// # 为什么要新起一个进程，而不是 distgen 自己算
+// # Why a new process instead of distgen computing it
 //
-// distgen 进程里那份 manifest 是**编译进去的**——也就是上一次生成的结果。规格书
-// 刚改过的时候（加了模块、换了 disable），拿旧清单算出来的顺序会悄悄地错，而
-// 「顺序错了」的症状离「清单过期」非常远。新起一个进程就没有这个问题：它读到
-// 的必然是磁盘上那份。
+// The manifest in the distgen process is **compiled in** - the previous run's result.
+// With a just-edited spec (module added, disable changed), order from the old manifest
+// is silently wrong, and "wrong order" is miles from "stale manifest". A new process
+// has no such problem: it necessarily reads the one on disk.
 //
-// # 它算的是「从头」那一份
+// # It computes the "from scratch" one
 //
-// `Specs()` 交出来的是**朴素**的选择（没有顺序），所以这里 `Load()` 出来的就是
-// 声明顺序，`Resolve` 会老老实实建边、排序——正是我们要冻下来的那个结果。
-// 顺带这也是一条自检：每份规格书都真的能装起来，装不起来就生成失败（而不是等
-// 运行期第一次敲命令）。
+// `Specs()` hands out **plain** choices (no order), so `Load()` here gives declaration
+// order and `Resolve` honestly builds edges and sorts - exactly what we freeze. It also
+// self-checks: every spec really assembles, or generation fails (not at the first runtime
+// command).
 package main
 
 import (
@@ -63,7 +63,7 @@ func fail(name string, err error) {
 	os.Exit(1)
 }
 
-// staticLoader 交出一批已经造好的组件（同 app 包测试里那个同名助手）。
+// staticLoader hands out a batch of pre-built components (same-named helper in app's tests).
 type staticLoader []modules.Component
 
 func (s staticLoader) Load() ([]modules.Component, error) { return s, nil }

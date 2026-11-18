@@ -9,28 +9,28 @@ import (
 	"github.com/rzbdz/newgate-ext/tools/archmap"
 )
 
-// 环这一轴：**聚合出来的环里，哪些是真的「两个模块互相绑到对方的根包」**。
+// The cycle axis: **among aggregation-made cycles, which really mean "two modules
+// bound to each other's root package"**.
 //
-// CLAUDE.md 说聚合会造出环，那是共享叶子（谁都能直接 import 的契约包）造成的、
-// 不是设计毛病，而且「review 的人该看见它们」。但那是**一句断言**，得验。
+// CLAUDE.md says aggregation makes cycles, caused by shared leaves (importable
+// contract packages), not a design flaw - reviewers should see them, but verify.
 //
-// 包级的 import 环 Go 根本不让编译，所以真环不存在——要查的是另一种：两个模块
-// **都** import 了对方的**根包**（也就是双方都绑到了对方的契约上）。那种环在聚合
-// 图上和叶子造成的假象长得一模一样，但它的含义完全不同：拆任何一边都会真的疼。
+// Go refuses to compile package-level import cycles, so real cycles do not exist -
+// the target is another kind: two modules **both** importing the other's **root
+// package** (bound to each other's contract); looks like a leaf illusion but hurts.
 //
-// 判据于是很干净：对每一对聚合环里的模块 (A, B)，分别问「A 里有包 import 了 B 的
-// **根包**吗」「B 里有包 import 了 A 的根包吗」。两个都是 → 真环，报出来。
-// 它断言的是**零个真环**：这个集合今天（2026-09-21）是空的。
+// So the criterion is clean: for every pair (A, B) in an aggregated cycle ask
+// "does a package in A import B's **root package**" and the reverse. Both yes ->
+// a real cycle, reported. Asserts **zero real cycles**: empty today (2026-09-21).
 //
-// # 这条断言有多硬（说清楚，别让它冒充比实际更强的保证）
+// # How hard this assertion is (say it plainly; do not let it pose as more)
 //
-// 比它看起来的要软。两个模块**互相**绑到对方根包，在能编译的 Go 程序里基本不可能
-// 出现——那往往就意味着包级的 import 环，而 Go 直接拒绝编译。所以这条实际抓不到
-// 什么，它**真正的产出是那份分类**：13 对聚合环里每一对，是「共享叶子造成的假象」
-// 还是「一边真的绑到了对方的契约上」。review 的人要的是那个答案，不是那个布尔。
+// Softer than it looks. Two modules **mutually** bound to root packages is nearly
+// impossible in compiling Go - that is an import cycle, which Go rejects. So it
+// catches little; its **real product is the classification**: of the 13 aggregated
+// cycles: leaf illusion or really bound? Reviewers want that answer, not the boolean.
 //
-// 留着它是因为：它是唯一一处把「环是假象」这句话从**断言**变成**查过**的地方。
-// CLAUDE.md 写着「聚合会造出环…那是叶子造成的」，而在此之前没人验过。
+// Kept: the one place turning "cycles are an illusion" from **assertion** to **checked**.
 func TestReportCycles(t *testing.T) {
 	root := repoRoot(t)
 	report, err := archmap.Build(manifest.Specs(), root)
@@ -38,7 +38,7 @@ func TestReportCycles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 每个包 import 了哪些模块的**根包**（与 undeclared 那条同一把尺子）。
+	// which modules' **root packages** each package imports (same ruler as the undeclared probe).
 	rootImports := map[string]map[string]bool{} // 模块 → 被它 import 根包的模块集合
 	for _, dir := range []string{root, root + "/core"} {
 		for _, p := range listPackages(t, dir) {
@@ -57,7 +57,7 @@ func TestReportCycles(t *testing.T) {
 		}
 	}
 
-	// 聚合环：import 图里被标了 Cycle 的边。
+	// Aggregated cycles: edges marked Cycle in the import map.
 	pairs := map[[2]string]bool{}
 	for _, e := range report.Imports.Edges {
 		if !e.Cycle {
@@ -81,24 +81,24 @@ func TestReportCycles(t *testing.T) {
 	})
 
 	var real [][2]string
-	t.Logf("聚合出来的环：%d 对", len(keys))
+	t.Logf("cycles from aggregation: %d pairs", len(keys))
 	for _, p := range keys {
 		ab := rootImports[p[0]][p[1]]
 		ba := rootImports[p[1]][p[0]]
-		verdict := "假象（至少一边只是叶子）"
+		verdict := "artifact (at least one side is only a leaf)"
 		if ab && ba {
-			verdict = "**双向绑到对方的根包**"
+			verdict = "**both sides bound to each other's root package**"
 			real = append(real, p)
 		}
-		t.Logf("  %s ↔ %s   %s（A→B根包=%v B→A根包=%v）", p[0], p[1], verdict, ab, ba)
+		t.Logf("  %s <-> %s   %s (A->B root=%v B->A root=%v)", p[0], p[1], verdict, ab, ba)
 	}
 	if len(real) > 0 {
-		t.Errorf("这些模块**互相**绑到了对方的根包上：%v\n"+
-			"聚合出来的环不都是叶子造成的假象——这几对是真的双向契约绑定。", real)
+		t.Errorf("these modules **both** bind to each other's root package: %v\n"+
+			"not every cycle from aggregation is a leaf artifact -- these few pairs are real bidirectional contract bindings.", real)
 	}
 }
 
-// labelKey 把 import 图的点 id（带仓库前缀）还原成模块名那套写法。
+// labelKey turns an import-map node id (with repo prefix) back into the module-name form.
 func labelKey(id string) string {
 	s := strings.TrimPrefix(strings.TrimPrefix(id, "core:"), "ext:")
 	return strings.TrimPrefix(s, "modules/")

@@ -1,39 +1,39 @@
-// Package upstream 是「假上游」：一个进程内冒充 OpenAI/Anthropic 兼容网关的
-// httptest 服务，供 Go 集成测试使用。
+// Package upstream is the "fake upstream": an in-process httptest server that
+// impersonates an OpenAI/Anthropic-compatible gateway, for Go integration tests.
 //
-// 为什么有它
+// # Why it exists
 //
-// 在这之前只有一个 python 写的假上游 mock/fake_upstream.py：要单独起进程、
-// 占一个固定端口（mock/e2e_claude.sh 用 18081）、依赖机器上有 python3、只能
-// 从 bash 脚本里用，取记录还得走 /__mock/requests 的 HTTP 接口再解析一遍。
-// Go 测试想要「一个像真上游那样回话的对象」时只能各自手写 httptest 桩——
-// 每个包一份，方言细节（SSE 分块序列、DeepSeek 思考模式的最严口径）谁都不全，
-// 于是最该被集成测试锁住的那几条行为反而没人锁。
+// Before this the only fake upstream was python's mock/fake_upstream.py: its own
+// process, a fixed port (mock/e2e_claude.sh uses 18081), python3 needed, bash
+// only, records via /__mock/requests plus a re-parse. A Go test wanting an object
+// that answers like a real upstream hand-wrote httptest stubs, one per package;
+// no one had every dialect detail (SSE chunk order, DeepSeek thinking mode's
+// strictest rules), so the behaviors most worth pinning in integration were not.
 //
-// 本包是那个 python 版的逐条移植：路由、响应体、SSE 块序列、严格口径、控制面
-// 全部照搬，只把「起进程 + 固定端口 + HTTP 取记录」换成 httptest + 进程内
-// 记录（Requests/Reset）。python 版**继续存在**——bash e2e 还要用它
-// （mock/e2e_claude.sh、mock/e2e_reasoning_affinity.sh），本包不动 mock/ 下
-// 任何文件；两边行为的唯一真相是 python 版，改动这里之前先读它的同一段。
+// A line-by-line port of the python version: routes, bodies, SSE chunk order,
+// strict rules, control plane all copied; only "process + fixed port + HTTP for
+// records" became httptest + in-process records (Requests/Reset). The python
+// version **stays** - the bash e2e still uses it (mock/e2e_claude.sh and
+// mock/e2e_reasoning_affinity.sh), and nothing here touches mock/; python is
+// the only truth of both sides - read its passage before changing this.
+// Usage
 //
-// 用法
-//
-//	s := upstream.New(t)                       // 测试结束自动关闭
+//	s := upstream.New(t)                       // auto-closed at test end
 //	resp, _ := s.Client().Post(s.URL()+"/v1/messages", "application/json", body)
-//	// …断言响应…
-//	rec := s.Requests()[0]                     // 代理到底发出去的是什么
+//	// ...assert on resp...
+//	rec := s.Requests()[0]                     // what the proxy actually sent
 //
-// 三处有意的分歧（都写在对应代码旁边，别当成 bug 改回来）
+// Three divergences (noted next to the code; do not call them bugs):
 //
-//   - 记录用 Go 的 http.Header（规范大小写）和原始字节，python 存的是小写化
-//     的头 + 解析后的 dict。控制面 GET /__mock/requests 仍按 python 的形状
-//     输出（小写头 + 解析后的 body + epoch 秒），老脚本照旧能读。
-//   - 流式响应没有 Content-Length 也不分块（Transfer-Encoding: identity +
-//     Connection: close），与 python 的裸字节流逐字节同形；Go 默认会给
-//     HTTP/1.1 的无长度响应加 chunked，那会让网关看到 bash e2e 里不存在的
-//     一种分帧。见 (*Server).stream 里的注释。
-//   - python 遇到解析不了的请求体（非 dict 的 JSON）会直接抛异常断连，这里
-//     退化成 {"__unparsed__": 原文}，测试不会因为一个畸形请求挂死在读响应上。
+//   - Records use Go's http.Header (canonical case) and raw bytes; python stores
+//     lowercased headers + a parsed dict. GET /__mock/requests still emits
+//     python's shape (lowercase headers, parsed body, epoch seconds) for old scripts.
+//   - Streaming responses have no Content-Length and no chunking
+//     (Transfer-Encoding: identity + Connection: close), byte-for-byte the same
+//     shape as python's raw stream; Go's default adds chunked to HTTP/1.1 responses
+//     of unknown length, a framing the bash e2e never sees (see (*Server).stream).
+//   - python throws and drops the connection on an unparsable request body (JSON
+//     that is not a dict); here it degrades to {"__unparsed__": original}, no hang.
 package upstream
 
 import (
@@ -50,41 +50,41 @@ import (
 	"time"
 )
 
-// 常量：与 mock/fake_upstream.py 里的字面量逐字一致。集成测试断言时引这里，
-// 别再抄一遍——抄一遍就多一处会漂的真相。
+// Constants: byte-for-byte identical to the literals in mock/fake_upstream.py.
+// Cite these when asserting, do not copy them again - a copy is one more truth to drift.
 const (
-	// StrictReasoningMessage 是 python 版 STRICT_REASONING_ERR 里那句 message
-	// 原文：2026-09 在 new-api 直连 DeepSeek 官方的部署上实抓的行为。
-	// 断言「严格口径真的拦下了」时拿它做子串匹配——状态码也可能是别的 400，
-	// 这句话才是身份。
+	// StrictReasoningMessage is the message text in python's STRICT_REASONING_ERR:
+	// the behavior captured live in 2026-09 on new-api talking to official
+	// DeepSeek. To assert "the strict rule really blocked it" match it as a
+	// substring - the status code may be another 400, this sentence is the identity.
 	StrictReasoningMessage = "The `reasoning_content` in the thinking mode must be passed back to the API. (request id: mock-e2e-strict)"
 
-	// ThinkingText / ThinkingSignature 是非流式 anthropic 响应里那个固定的
-	// thinking 块。thinkcache 的回填断言认的就是这两个值。
+	// ThinkingText / ThinkingSignature are the fixed thinking block in the
+	// non-streaming anthropic response. thinkcache's backfill assertions use them.
 	ThinkingText      = "MOCK-THINKING-ORIGINAL"
 	ThinkingSignature = "mock-sig"
 
-	// ToolUseID / ToolName 是请求带 tools 时追加的那个 tool_use 块。
-	// id 固定，是为了让 e2e 能断言「thinkcache 把这段推理原文回填到了哪一发」。
+	// ToolUseID / ToolName are the tool_use block appended when the request
+	// carries tools. The id is fixed so e2e can assert which turn thinkcache backfilled.
 	ToolUseID = "toolu_mock_1"
 	ToolName  = "Read"
 
-	// MessageID / ChatCompletionID 是两个方言各自的响应 id。
+	// MessageID / ChatCompletionID are the response ids of the two dialects.
 	MessageID        = "msg_mock"
 	ChatCompletionID = "chatcmpl-mock"
 
-	// DefaultChunkDelay 是流式块间隔的默认值（python 的 0.05s）。
+	// DefaultChunkDelay is the default streaming chunk gap (python's 0.05s).
 	DefaultChunkDelay = 50 * time.Millisecond
-	// SlowChunkDelay 是请求体带 mock_slow 时的块间隔（python 的 0.5s）。
-	// mock_slow 是给「一条流要跨过 restart 窗口」那种用例准备的：默认的
-	// 4 块 × 0.5s ≈ 2s，够优雅交接在流中途发生。
+	// SlowChunkDelay is the chunk gap when the body carries mock_slow (python's
+	// 0.5s). mock_slow is for cases where "one stream must cross a restart
+	// window": the default 4 chunks x 0.5s ~ 2s lets the handover land mid-stream.
 	SlowChunkDelay = 500 * time.Millisecond
 )
 
-// Server 是一个进程内的假上游。
+// Server is an in-process fake upstream.
 //
-// 一个 Server 一张记录表：New 给每个测试起一个（随机端口），测试之间不共享
-// 状态——控制面 /__mock/reset 也就只在同一个测试里有意义。
+// One Server, one record table: New starts one per test (random port), and
+// tests share no state - so /__mock/reset only means something within one test.
 type Server struct {
 	http *httptest.Server
 
@@ -95,11 +95,11 @@ type Server struct {
 	slowDelay time.Duration // mock_slow 时的块间隔
 }
 
-// New 起一个假上游，并在测试结束时关闭它。
+// New starts a fake upstream and closes it when the test ends.
 //
-// 地址由 httptest 给（127.0.0.1 上的随机端口），所以并行测试互不干扰，也不
-// 需要 python 版那种「curl 探活等端口起来」的轮询（见 mock/e2e_claude.sh
-// 第 1 章）——New 返回时服务已经在听了。
+// The address comes from httptest (random port on 127.0.0.1), so parallel
+// tests cannot interfere, and there is no need for python's "curl-probe until
+// the port is up" polling (see mock/e2e_claude.sh ch. 1) - it is already listening.
 func New(t testing.TB) *Server {
 	t.Helper()
 	s := &Server{delay: DefaultChunkDelay, slowDelay: SlowChunkDelay}
@@ -108,40 +108,40 @@ func New(t testing.TB) *Server {
 	return s
 }
 
-// URL 是它的根地址（httptest 给的，形如 http://127.0.0.1:PORT）。
-// 没有结尾斜杠，路径自己拼：s.URL() + "/v1/messages"。
+// URL is its root address (from httptest, like http://127.0.0.1:PORT). No
+// trailing slash; join paths yourself: s.URL() + "/v1/messages".
 func (s *Server) URL() string { return s.http.URL }
 
-// Client 是一个**不走代理**的 http.Client。
+// Client is an http.Client that **does not go through a proxy**.
 //
-// 为什么不直接用 http.DefaultClient：它认 HTTP_PROXY/HTTPS_PROXY 环境变量，
-// 而跑这个仓库测试的会话本身往往就穿行在 newgate 的代理里（root 的 claude
-// 被 PATH shim 接管）——环境里挂着代理时，你发给假上游的请求会先被真网关
-// 转一手，断言就全乱了。httptest 自带的这个 client 的 Transport 的 Proxy 是
-// nil，天然免疫。（mock/e2e_claude.sh 里的假 claude 也干同样的事：
-// build_opener(ProxyHandler({}))。）
+// Why not http.DefaultClient: it honors HTTP_PROXY/HTTPS_PROXY, and the session
+// running this repo's tests often travels through newgate's proxy itself (root's
+// claude is taken over by a PATH shim) - with a proxy in the environment, your
+// requests to the fake upstream go through the real gateway first and all the
+// assertions go haywire. httptest's own client has a nil Transport.Proxy, immune
+// by construction. (mock/e2e_claude.sh's fake claude does the same thing.)
 func (s *Server) Client() *http.Client { return s.http.Client() }
 
-// Close 立刻关掉假上游。Cleanup 里也会调，重复调用无害。
+// Close shuts the fake upstream down at once. Cleanup calls it too; repeats are harmless.
 //
-// 显式调它的场景：模拟「上游挂了」——Close 之后这个地址上的连接直接失败，
-// 用来验证网关的 fallback 会不会换到下一站，比 FailNext（那是一发干净的错误
-// 响应）更狠一层。
+// Explicit use: simulating "the upstream is down" - after Close, connections to
+// that address fail outright, which tests whether the gateway's fallback moves
+// to the next station; harsher than FailNext (which is a clean error response).
 func (s *Server) Close() { s.http.Close() }
 
-// Record 是一条收到过的请求。
+// Record is one request received.
 //
-// 与 python 版记录的对应关系（python 存的是一个 dict）：
+// Correspondence with python's record (python stores a dict):
 //
-//	Path    python 的 rec["path"]，即请求行里的原始 URI，**含 query**
-//	        （Claude Code 会发 /v1/messages?beta=true 这种）。断言请用
-//	        strings.HasSuffix(r.Path, "/v1/messages")，别拿它跟纯路径比全等。
-//	Header  Go 的 http.Header，规范大小写、Get 不区分大小写；python 存的是
-//	        小写化的头。读用 rec.Header.Get("Authorization")。
-//	Body    原始字节。python 存的是解析后的 dict；这里保留字节，是因为这个
-//	        仓库在意「代理到底把什么发出去了」的字节级证据（字段顺序、未知
-//	        键、大整数都在字节里）。要字段就 rec.JSON()。
-//	At      python 存的是 epoch 秒（float）；Go 侧给 time.Time。
+//	Path    python's rec["path"], the raw URI from the request line, **query included**
+//	        (Claude Code sends things like /v1/messages?beta=true). Assert with
+//	        strings.HasSuffix(r.Path, "/v1/messages"), not equality against a bare path.
+//	Header  Go's http.Header, canonical case, Get case-insensitive; python stores
+//	        lowercased headers. Read with rec.Header.Get("Authorization").
+//	Body    raw bytes. python stores the parsed dict; bytes are kept here because
+//	        this repo cares about byte-level evidence of "what the proxy actually
+//	        sent" (field order, unknown keys, big ints live in the bytes). Fields: rec.JSON().
+//	At      python stores epoch seconds (float); the Go side gives time.Time.
 type Record struct {
 	Method string
 	Path   string
@@ -150,11 +150,11 @@ type Record struct {
 	At     time.Time
 }
 
-// JSON 把 Body 解成字段表，给「断言代理改写了哪个字段」用。
+// JSON decodes Body into a field map, for asserting "which field did the proxy rewrite".
 //
-// 解析走 json.Number：默认的 float64 会把大整数改写成科学计数法（CLAUDE.md
-// 里那条「大整数会变 …92」的坑，在记录里同样成立）。body 不是对象、或压根
-// 不是 JSON 时返回 error。
+// Parsing goes through json.Number: the default float64 rewrites big integers
+// into scientific notation (the "big int becomes ...92" trap in CLAUDE.md holds
+// in records too). Returns an error when body is not an object or not JSON at all.
 func (r Record) JSON() (map[string]any, error) {
 	var fields map[string]any
 	dec := json.NewDecoder(bytes.NewReader(r.Body))
@@ -165,9 +165,9 @@ func (r Record) JSON() (map[string]any, error) {
 	return fields, nil
 }
 
-// Requests 返回至今收到的全部请求（按时间顺序）。
+// Requests returns all requests received so far, in time order.
 //
-// 返回的是切片副本，但 Record 里的 Header / Body 是共享引用——读没事，别改。
+// The slice is a copy, but Record's Header / Body are shared refs - read, do not modify.
 func (s *Server) Requests() []Record {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -176,14 +176,14 @@ func (s *Server) Requests() []Record {
 	return out
 }
 
-// Count 是收到过的请求数。断言「上游一共被打了几发」时比 len(Requests()) 顺手。
+// Count is the number of requests received. Handier than len(Requests()) when counting shots.
 func (s *Server) Count() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return len(s.records)
 }
 
-// Last 是最后一条记录；一个请求都还没收到时 ok=false。
+// Last is the last record; ok=false when no request has arrived yet.
 func (s *Server) Last() (Record, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -193,10 +193,10 @@ func (s *Server) Last() (Record, bool) {
 	return s.records[len(s.records)-1], true
 }
 
-// Reset 清空请求记录，并解除 FailNext 的武装。
+// Reset clears the request records and disarms FailNext.
 //
-// 一并清失败注入是 python 的行为（/__mock/reset 同时清 RECORDED 和
-// NEXT_FAIL），照搬——所以「Reset 之后下一发仍然失败」不是本包的 bug。
+// Clearing the failure injection too is python's behavior (/__mock/reset clears
+// both RECORDED and NEXT_FAIL), copied - "fails after Reset" is not a bug here.
 func (s *Server) Reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -204,26 +204,26 @@ func (s *Server) Reset() {
 	s.failCode = 0
 }
 
-// FailNext 让紧接着的一发请求返回状态码 code，用完即消。
+// FailNext makes the next single request return status code, then disarms.
 //
-// 「用完即消」是刻意的：只有失败注入只影响一发，测试才能精确地说
-// 「第一发挂、第二发成了」——链上的换人/fallback 断言全靠这个。
-// code 为 0 等于解除武装（python 的 `if NEXT_FAIL["code"]` 里 0 也是 falsy）。
+// "Disarms after use" is deliberate: only if the injection hits one shot can a
+// test say "first failed, second worked" - every failover/fallback assert on
+// the chain rests on it. code 0 = disarmed (0 is falsy: if NEXT_FAIL["code"]).
 //
-// 两个容易踩的点（都是 python 的老行为，照搬）：
-//   - 失败的那一发**照样进记录表**（先记后判），所以可以断言「网关确实重试了」；
-//   - count_tokens 也吃这一发失败——判失败的顺序在它之前。
+// Two easy traps (both old python behavior, copied over):
+//   - failed shots **still enter the record table** (record then judge): retry is assertable;
+//   - count_tokens takes the failure too - the failure check runs before it.
 func (s *Server) FailNext(code int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.failCode = code
 }
 
-// SetChunkDelay 调整流式每块之间的延迟（0 = 尽快）。
+// SetChunkDelay adjusts the delay between streaming chunks (0 = as fast as possible).
 //
-// 默认 DefaultChunkDelay（50ms，python 的值）。0 是给「只验协议、不想白等」的
-// 用例准备的；反过来，要验证「代理没有把整个响应缓冲下来」的用例得把延迟
-// **调大**——缓冲的实现会把首块也压到整条流吐完才给。
+// Default is DefaultChunkDelay (50ms, python's value). 0 is for protocol-only
+// cases that do not want to wait; a "proxy does not buffer the response" case
+// must **raise** it - a buffering impl holds chunk one until the stream is out.
 func (s *Server) SetChunkDelay(d time.Duration) {
 	if d < 0 {
 		d = 0
@@ -233,10 +233,10 @@ func (s *Server) SetChunkDelay(d time.Duration) {
 	s.delay = d
 }
 
-// SetSlowChunkDelay 调整请求体带 mock_slow 时的块间隔（默认 SlowChunkDelay）。
+// SetSlowChunkDelay adjusts the mock_slow chunk gap (default SlowChunkDelay).
 //
-// 单独一档而不是让 SetChunkDelay 一起改，是因为「优雅交接不掐在途流」那类用例
-// 需要：普通流要快（其它用例别浪费时间），而跨 restart 的那一条要足够慢。
+// It is on its own dial, not changed by SetChunkDelay, because "handover does not
+// cut in-flight streams" cases need normal streams fast, the restart-crossing one slow.
 func (s *Server) SetSlowChunkDelay(d time.Duration) {
 	if d < 0 {
 		d = 0
@@ -246,7 +246,7 @@ func (s *Server) SetSlowChunkDelay(d time.Duration) {
 	s.slowDelay = d
 }
 
-// ---- 路由 ----
+// ---- routing ----
 
 func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
@@ -255,8 +255,8 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		s.servePost(w, r)
 	default:
-		// python 的 BaseHTTPRequestHandler 对没实现的方法回 501（HTML 错误页）。
-		// 状态码照搬，体换成 JSON——本包的调用方是 Go/curl，没人解 HTML。
+		// python's BaseHTTPRequestHandler answers 501 (HTML error page) to
+		// unimplemented methods. Status copied, body switched to JSON - callers are Go/curl.
 		writeJSON(w, http.StatusNotImplemented, map[string]any{"error": "unsupported method"})
 	}
 }
@@ -267,13 +267,13 @@ func (s *Server) serveGet(w http.ResponseWriter, r *http.Request) {
 	case path == "/__mock/requests":
 		writeJSON(w, http.StatusOK, s.wireRecords())
 	case path == "/__mock/fail":
-		// python: int(q.get("code", ["500"])[0])，缺省 500。给的不是整数时
-		// python 直接抛异常断连，这里回 400 把话说清楚（有意的分歧）。
+		// python: int(q.get("code", ["500"])[0]), default 500. For a non-integer
+		// python throws and drops the connection; here it is a clear 400 (deliberate).
 		code := 500
 		if raw := r.URL.Query().Get("code"); raw != "" {
 			n, err := strconv.Atoi(raw)
 			if err != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "code 要是整数"})
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "code must be an integer"})
 				return
 			}
 			code = n
@@ -281,8 +281,8 @@ func (s *Server) serveGet(w http.ResponseWriter, r *http.Request) {
 		s.FailNext(code)
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "next_fail": code})
 	case strings.HasSuffix(path, "/v1/models"):
-		// python 这里是全等（== "/v1/models"）；用后缀是为了带前缀的变体
-		// （/a/claude/p/ds/v1/models）也能直接打到假上游上，是超集。
+		// python compares for equality here (== "/v1/models"); the suffix match lets
+		// prefixed variants (like /a/claude/p/ds/v1/models) hit the fake too - a superset.
 		writeJSON(w, http.StatusOK, map[string]any{"object": "list", "data": []any{}})
 	default:
 		writeJSON(w, http.StatusNotFound, map[string]any{"error": "no such path"})
@@ -292,7 +292,7 @@ func (s *Server) serveGet(w http.ResponseWriter, r *http.Request) {
 func (s *Server) servePost(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
 	if path == "/__mock/reset" {
-		// python 也在读 body 之前处理 reset：这一发不进记录表。
+		// python handles reset before reading the body too: this shot is not recorded.
 		s.Reset()
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 		return
@@ -300,14 +300,14 @@ func (s *Server) servePost(w http.ResponseWriter, r *http.Request) {
 
 	raw, err := io.ReadAll(r.Body)
 	if err != nil {
-		// 客户端半路断了。python 会按 Content-Length 死等，这里直接回 400，
-		// 测试不会挂死在读响应上。
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "读请求体失败: " + err.Error()})
+		// The client hung up halfway. python would wait forever per Content-Length;
+		// here it is a plain 400, so a test never hangs reading the response.
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "failed to read the request body: " + err.Error()})
 		return
 	}
 	body := decodeBody(raw)
 
-	// 先记录、后判失败（python 同序）：失败的那一发也要留证据。
+	// Record first, judge failure after (same order as python): the failed shot keeps evidence too.
 	s.appendRecord(Record{
 		Method: r.Method,
 		Path:   r.URL.RequestURI(),
@@ -323,10 +323,10 @@ func (s *Server) servePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// anthropic 的私有端点：原生 anthropic 上游有、聚合器往往没有
-	// （api.rvcompute.com 实测 404）。newgate 按上游能力决定是转发拿真值还是
-	// 本地粗估——假上游实现它，转发路径才有得测。判在严格校验**之前**，
-	// 因为 count_tokens 请求不带 model、也不该被思考模式的规则拦下。
+	// anthropic's private endpoint: native anthropic upstreams have it, aggregators
+	// often do not (api.rvcompute.com: 404). newgate forwards for the real value or
+	// estimates locally by capability - the fake has it so forwarding is testable.
+	// Judged **before** strict checks: count_tokens has no model, no thinking rules.
 	if strings.HasSuffix(path, "/count_tokens") {
 		writeJSON(w, http.StatusOK, map[string]any{"input_tokens": 42})
 		return
@@ -350,7 +350,7 @@ func (s *Server) servePost(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, chatCompletion(model))
 }
 
-// ---- 记录表 ----
+// ---- record table ----
 
 func (s *Server) appendRecord(rec Record) {
 	s.mu.Lock()
@@ -358,7 +358,7 @@ func (s *Server) appendRecord(rec Record) {
 	s.records = append(s.records, rec)
 }
 
-// takeFail 读走武装中的失败码（用完即消）。
+// takeFail consumes the armed failure code (disarms after use).
 func (s *Server) takeFail() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -367,9 +367,9 @@ func (s *Server) takeFail() int {
 	return code
 }
 
-// delays 快照当前的两档块间隔。python 是在 _stream 入口读模块级常量的，
-// 中途改不影响已经开吐的这条流——照抄这个时机，并发调 SetChunkDelay 时
-// 不会出现半条流中途变速。
+// delays snapshots the two chunk gaps. python reads module-level constants at
+// _stream entry, so a change mid-stream does not affect a stream already
+// emitting - same timing copied, so concurrent SetChunkDelay never speeds up a stream midway.
 func (s *Server) delays(slow bool) time.Duration {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -379,10 +379,10 @@ func (s *Server) delays(slow bool) time.Duration {
 	return s.delay
 }
 
-// wireRecord 是 /__mock/requests 的线上形状——**照 python 版的 dict 抄的**
-// （path/method/headers/body/at），好让 bash 脚本和 curl 看到的东西一字不变。
-// 与 Go 侧 Record 的差别：头是小写化的单值 map，body 是解析后的 JSON
-// （解析不了就是 {"__unparsed__": 原文}，python 的兜底），时间是 epoch 秒。
+// wireRecord is the wire shape of /__mock/requests - **copied from python's dict**
+// (path/method/headers/body/at) so bash scripts and curl see exactly the same.
+// Differences from Go's Record: headers are a lowercased single-value map, body is
+// parsed JSON (else {"__unparsed__": original}, python's fallback), time is epoch seconds.
 type wireRecord struct {
 	Path    string            `json:"path"`
 	Method  string            `json:"method"`
@@ -397,8 +397,8 @@ func (s *Server) wireRecords() []wireRecord {
 	copy(records, s.records)
 	s.mu.Unlock()
 
-	// 空记录要 marshal 成 []，不是 null：python 给的是 []，而 e2e_claude.sh 里
-	// 那些 one-liner 是直接 for x in r 的，null 会让它们当场 TypeError。
+	// Empty records must marshal as [], not null: python gives [], and the one-liners
+	// in e2e_claude.sh do for x in r directly - null makes them TypeError on the spot.
 	out := make([]wireRecord, 0, len(records))
 	for _, rec := range records {
 		headers := make(map[string]string, len(rec.Header))
@@ -406,7 +406,7 @@ func (s *Server) wireRecords() []wireRecord {
 			if len(values) == 0 {
 				continue
 			}
-			// python 的 dict 推导式遇到重复的键是「后写的赢」，保持一致。
+			// python's dict comprehension lets the later duplicate key win; keep it consistent.
 			headers[strings.ToLower(key)] = values[len(values)-1]
 		}
 		out = append(out, wireRecord{
@@ -420,7 +420,7 @@ func (s *Server) wireRecords() []wireRecord {
 	return out
 }
 
-// ---- 小工具 ----
+// ---- small helpers ----
 
 func writeJSON(w http.ResponseWriter, code int, body any) {
 	raw, err := json.Marshal(body)
@@ -429,17 +429,17 @@ func writeJSON(w http.ResponseWriter, code int, body any) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	// 显式给长度（python 的 _json 也给了），非流式响应就不必靠连接关闭分帧。
+	// Give the length explicitly (python's _json does too): no close-framing for non-streams.
 	w.Header().Set("Content-Length", strconv.Itoa(len(raw)))
 	w.WriteHeader(code)
 	_, _ = w.Write(raw)
 }
 
-// decodeBody 解析请求体，解析不了返回 {"__unparsed__": 原文}（python 的兜底）。
+// decodeBody parses the request body; unparsable returns {"__unparsed__": original}
+// (python's fallback).
 //
-// 用 json.Decoder + UseNumber，别退回 json.Unmarshal 的 float64：那会把大整数
-// 改写成科学计数法（这个仓库被这个坑咬过，见 CLAUDE.md）。python 版把解析后的
-// int 原样再 dump 出去，这里也得原样。
+// Use json.Decoder + UseNumber, never json.Unmarshal's float64: it rewrites big
+// ints into scientific notation (see CLAUDE.md); dump them as is, like python.
 func decodeBody(raw []byte) map[string]any {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return map[string]any{} // python: json.loads(raw or b"{}")
@@ -453,8 +453,8 @@ func decodeBody(raw []byte) map[string]any {
 	return parsed
 }
 
-// truthy 是 python 的真值语义：None/False/0/""/[]/{} 为假。
-// 请求体是 JSON，落到 any 上的类型就那么几种。
+// truthy is python's truthiness: None/False/0/""/[]/{} are false. Request bodies
+// are JSON, so only so many types land in any.
 func truthy(value any) bool {
 	switch typed := value.(type) {
 	case nil:
@@ -477,9 +477,9 @@ func truthy(value any) bool {
 	}
 }
 
-// modelOf 读请求里的 model（python: body.get("model", "unknown")）。
-// 只有「键不在」或值是 null 才回落 "unknown"——空串也原样回显，与 python 一致
-// （响应里的 model 会原样回显，断言「代理把档位反解成了哪个真实模型」就看它）。
+// modelOf reads the request's model (python: body.get("model", "unknown")). Only
+// "key absent" or a null value falls back to "unknown" - an empty string echoes
+// as is, same as python (the response echoes it, so assertions read the real model).
 func modelOf(body map[string]any) string {
 	if model, ok := body["model"].(string); ok {
 		return model

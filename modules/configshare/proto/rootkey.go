@@ -9,17 +9,17 @@ import (
 	"github.com/rzbdz/newgate/lib/i18n"
 )
 
-// ErrNoRootKey 本机还没有根密钥（还没 config trust 过）。
+// ErrNoRootKey means this machine has no root key yet (never config trusted).
 //
-// i18n.E 只存源语言原文（消息身份），渲染在 Error() 那一刻才发生——所以它可以
-// 安全地待在包级变量里（i18n.T 不行，那会冻在源语言上）。
+// i18n.E stores only the source text (message identity); rendering happens when Error()
+// is called - so it is safe in a package-level variable (i18n.T is not; it would freeze).
 var ErrNoRootKey = i18n.E("this machine has no root key yet", nil)
 
-// GenerateRootKey 生成一把新的根密钥。
+// GenerateRootKey creates a new root key.
 //
-// 只有宿主会调它（`newgate config secrets init`），一生一次。之后这台机器
-// 上的一切都从它派生：加密密钥、鉴权令牌。**它不进任何共享通道**——副本是
-// 靠人把 blob 拷过去的（这是个刻意的、唯一的手工步骤，见 docs/13）。
+// Only the host calls it (`newgate config secrets init`), once in a lifetime. Everything
+// on this machine derives from it: encryption key, bearer token. **It never travels on
+// any channel** - replicas get it by a person copying the blob (deliberate, see docs/13).
 func GenerateRootKey() ([]byte, error) {
 	root := make([]byte, RootKeyLen)
 	if _, err := rand.Read(root); err != nil {
@@ -28,27 +28,27 @@ func GenerateRootKey() ([]byte, error) {
 	return root, nil
 }
 
-// RootKeyBlob 是给人拷来拷去的那串文本（hex）。
+// RootKeyBlob is the text a person copies around (hex).
 //
-// 为什么单独给一个"blob"概念而不是让用户 cat 文件：这条手工分发路径是这个
-// 设计里唯一"每台机器各动一次"的操作，它必须一步都不能错。给出一串可复制的
-// 文本、且**落盘的就正是这串文本**，意味着 `cat root.key` 打出来的东西
-// 直接就能贴到另一台机器上——中间不需要任何转码，也就没有转录错误的空间。
+// Why a separate "blob" concept instead of letting users cat the file: this manual path
+// is the only "once per machine" step in the design, and it must not go wrong. A
+// copyable string that **is exactly what lands on disk** means `cat root.key` prints
+// something pasteable on another machine - no transcoding, no transcription errors.
 func RootKeyBlob(root []byte) string { return hex.EncodeToString(root) }
 
-// SaveRootKey 把根密钥落盘（0600，hex 文本，见 RootKeyBlob）。
+// SaveRootKey writes the root key to disk (0600, hex text, see RootKeyBlob).
 func SaveRootKey(root []byte) error {
 	return writeFileAtomic(ConfigShareRootKeyFile(), []byte(RootKeyBlob(root)+"\n"), 0o600)
 }
 
-// LoadRootKey 读回根密钥。
+// LoadRootKey reads the root key back.
 //
-// 两种输入都认：**hex 文本**（正常路径，SaveRootKey 写的就是它、用户拷的也是
-// 它），或者**32 字节原文**（有人用别的方式塞进来的）。为什么容这一手：这条
-// 路径的错误代价极高且症状极差——如果只认 hex，一个用 `head -c 32 /dev/urandom
-// > root.key` 造密钥的人会得到"根密钥太短"，然后开始怀疑协议、怀疑网络、
-// 怀疑 tailscale，而真正的问题是他的文件格式。宽容地接受两种，把这类故障
-// 消灭在源头。
+// Both inputs are accepted: **hex text** (the normal path; SaveRootKey writes it and
+// users copy it), or **32 raw bytes** (someone inserted it another way). Why tolerate
+// that: this path's errors are expensive and read badly - hex-only would leave someone
+// who made a key with `head -c 32 /dev/urandom > root.key` with "root key too short",
+// then suspecting the protocol, the network, tailscale - when the problem is format.
+// Accepting both kills that class of failure at the source.
 func LoadRootKey() ([]byte, error) {
 	raw, err := readFileIfExists(ConfigShareRootKeyFile())
 	if err != nil {
@@ -60,10 +60,10 @@ func LoadRootKey() ([]byte, error) {
 	return ParseRootKey(string(raw))
 }
 
-// ParseRootKey 解析用户给的 blob（`config trust <blob>`）。
+// ParseRootKey parses the blob the user supplies (`config trust <blob>`).
 func ParseRootKey(text string) ([]byte, error) {
-	// hex 路径：两侧空白要容忍——文件末尾的换行（SaveRootKey 就写了一个）、
-	// 粘贴时带上的空格，都是正常的。
+	// Hex path: whitespace on both sides is tolerated - a trailing newline (SaveRootKey
+	// writes one) and spaces picked up when pasting are both normal.
 	trimmed := strings.TrimSpace(text)
 	if trimmed == "" {
 		return nil, ErrNoRootKey
@@ -76,22 +76,22 @@ func ParseRootKey(text string) ([]byte, error) {
 		return b, nil
 	}
 
-	// 原文路径：**一个字节都不许 trim**。
+	// Raw path: **not a single byte may be trimmed**.
 	//
-	// 2026-09-18 实测踩到，而且症状很阴：这里原来是把 TrimSpace 的结果拿去判
-	// 「是不是 32 字节原文」，可密钥是**随机字节**——首尾任何一个字节落在空白
-	// 集合里（ASCII 那 6 个，外加恰好构成合法 UTF-8 空白的多字节序列），长度就
-	// 从 32 掉到 31/30，于是这条路时灵时不灵。它在 CI 上真的红了、本地却复现
-	// 不了（`modules/configshare/proto` 的 TestRootKeyParsing，报「30 个字符」），
-	// 因为它是概率性的，每跑一次掷一次骰子。
+	// Hit for real on 2026-09-18, with a nasty symptom: this used to feed the TrimSpace
+	// result into the "is it 32 raw bytes" test, but the key is **random bytes** - if
+	// either end lands in the whitespace set, the length drops to 31/30 and the path
+	// works only sometimes. It went red in CI and would not reproduce locally
+	// (TestRootKeyParsing in `modules/configshare/proto`, reporting "30 characters") -
+	// it rolls dice on every run.
 	//
-	// 更要紧的是它**不只是报错**：trim 掉的那个字节真的属于密钥时，返回的是一把
-	// **不同的密钥**——两台机器派生出的密钥不一致，症状是「解密失败」，而那句话
-	// 会把人引向怀疑网络和 tailscale。这类"静默换掉密钥"正是这条路径最该避免的。
+	// Worse, it does not just error: when the trimmed byte really is part of the key,
+	// you get a **different key** - the two machines derive different keys, the symptom
+	// is "decryption failed", and that sends people at the network and tailscale.
 	//
-	// 只认一种修饰：末尾多一个换行（echo / 编辑器常见）。这不产生歧义——
-	// 33 字节只可能是「32 字节密钥 + 换行」；密钥自己以 0x0A 结尾而没有换行时
-	// 长度是 32，走的是下面那条正确的分支。
+	// Only one decoration is accepted: a trailing newline (echo / editors). No ambiguity
+	// - 33 bytes can only be "32-byte key + newline"; a key ending in 0x0A is 32 bytes
+	// and takes the correct branch below.
 	raw := text
 	if n := len(raw); n == RootKeyLen+1 && raw[n-1] == '\n' {
 		raw = raw[:RootKeyLen]
@@ -103,12 +103,12 @@ func ParseRootKey(text string) ([]byte, error) {
 		i18n.A{"n": len(trimmed), "min": RootKeyLen})
 }
 
-// RootKeyFingerprint 是根密钥的短指纹，用来**核对两台机器拷的是不是同一把**。
+// RootKeyFingerprint is a short fingerprint of the root key (**is it the same one**).
 //
-// 为什么需要它：两个最常见的部署事故（blob 拷错、只拷了一半）在这一层只能表现
-// 为"解密失败"，而那句话会把用户引向怀疑网络。把指纹打印在 `config status`
-// 里，用户只要在两台机器上各看一眼就知道是不是同一把。它是派生值的前 8 位，
-// 泄露它推不出根密钥。
+// Why: the two most common deploy accidents (wrong blob, half a blob) can only show as
+// "decryption failed", which points users at the network. Print the fingerprint in
+// `config status` and one glance on each machine settles it. First 8 chars of a derived
+// value - leaking it reveals nothing about the root key.
 func RootKeyFingerprint(root []byte) string {
 	encKey, _, err := DeriveKeys(root)
 	if err != nil {
@@ -117,7 +117,7 @@ func RootKeyFingerprint(root []byte) string {
 	return hex.EncodeToString(encKey)[:8]
 }
 
-// RootKeyFromEnv 允许用环境变量给根密钥（自动化/测试用，不占正式路径）。
+// RootKeyFromEnv allows an env var to supply the root key (automation/testing only).
 func RootKeyFromEnv() ([]byte, bool, error) {
 	v := os.Getenv("NEWGATE_CONFIGSHARE_ROOT_KEY")
 	if v == "" {

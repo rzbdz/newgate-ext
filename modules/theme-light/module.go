@@ -1,14 +1,14 @@
-// Package themelight 是「白」这套皮肤：纯白底 + 中性灰 + 深蓝强调。
+// Package themelight is the "white" skin: pure white ground + neutral grey + deep blue accent.
 //
-// # 它为什么不是「出厂那套的浅色版」
+// # Why it is not "the factory set's light version"
 //
-// 出厂令牌里那套浅色（web/src/app.css 的 `prefers-color-scheme: light`）是**暖米色**
-// 的，与它那套深色是同一个色相的两次曝光。这一套刻意走纯白 + 中性灰：它是给
-// 「投影仪上要看得清」「窗户开着、屏幕反光」那种场合用的，那里要的是对比度，
-// 不是氛围。
+// The light half of the factory tokens (web/src/app.css's `prefers-color-scheme: light`) is
+// **warm beige**, two exposures of the same hue as its dark half. This one goes pure white +
+// neutral grey on purpose: it is for "readable on a projector" and "window open, screen
+// glare" - places that want contrast, not atmosphere.
 //
-// 与 theme-dark 是同一副牌的两面（同样是中性灰阶、同一个蓝强调），这样从黑切到白
-// 时，**只有亮度变了**——界面上每一样东西的位置、每一处颜色的意思都不动。
+// It is the other side of the same deck as theme-dark (same neutral scale, same blue):
+// switching black to white changes **only brightness** - nothing moves, no meaning changes.
 package themelight
 
 import (
@@ -19,14 +19,14 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// Name 是这个模块在装配表与 `newgate plugin` 里的名字（= 目录名）。
+// Name is this module's name in the assembly table and in `newgate plugin` (= the dir name).
 const Name = "theme-light"
 
-// ID 是这套皮肤的机器标记（存进 state.json 的就是它）。
+// ID is this skin's machine tag (it is what gets stored in state.json).
 const ID = "light"
 
-// New 声明这个组件：界面在时把自己这套皮肤登记进去，不在时什么都不做。
-// Optional 而不是 Requires 的理由见 modules/theme-dark 的同一段。
+// New declares this component: register this skin when the UI is there, do nothing when not.
+// Why Optional rather than Requires: see the same passage in modules/theme-dark.
 func New() modules.Component {
 	return modules.Component{
 		Name:     Name,
@@ -49,8 +49,8 @@ func start(_ context.Context, ctx modules.Context) error {
 		ID:   ID,
 		Name: func() string { return i18n.T("White", nil) },
 		Dark: false,
-		// 语义色比深色那套**更深**（同一个绿压在白底上要暗一档才读得清）——这一点
-		// 抄不得，照抄一个值会让白底上的成功/警告色浅到看不出来。
+		// Semantic colors are **deeper** than the dark set's (the same green must be a notch
+		// darker on white to read) - not copyable: a copied value makes ok/warn invisible on white.
 		CSS: `
   --bg: hsl(0 0% 100%);
   --panel: hsl(0 0% 98%);

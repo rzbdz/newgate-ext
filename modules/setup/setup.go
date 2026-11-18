@@ -1,28 +1,28 @@
 package setup
 
-// 本文件是 `newgate config` 的**主线**：铺好的那几屏按顺序串起来，以及每一步
-// 「要不要做」的判断。
+// This file is `newgate config`'s **mainline**: the screens in order, plus each step's
+// "do we do it" decision.
 //
-// 顺序是有理由的：
+// The order has reasons:
 //
-//	1 选客户端 —— 先问「把谁接过来」。它不需要任何配置，所以即使这台机器上
-//	   什么都没有，这一屏也成立（它同时是安装清单）。
-//	2 填第一个上游 —— 一个 base、一个 key、一个模型名。这是**唯一的门槛**：
-//	   没有它，代理转发每一发都是 401。
-//	3 落盘 —— providers.json + mappings/default.kv + state.json。
-//	4 装 + 接管 —— 对第 1 步选中的每一个：没装就装、装上了就接管。
-//	5 起代理 —— 让上面那些立刻能用。
-//	6 一屏收尾 —— 改了什么、下一步敲什么。
+//	1 pick clients - ask "whose traffic do we take" first. Needs no config, so it
+//	   holds even on a bare machine (it doubles as the install checklist).
+//	2 fill the first upstream - one base, one key, one model name. The **only gate**:
+//	   without it every proxied request is a 401.
+//	3 write disk - providers.json + mappings/default.kv + state.json.
+//	4 install + takeover - each chosen in step 1: install if absent, take over if present.
+//	5 start the proxy - so all of the above works at once.
+//	6 one closing screen - what changed, what to type next.
 //
-// 第 4 步在**第 3 步之后**，因为接管时写的值（模型名、窗口声明）全来自这一刻的
-// 配置：先接管再写配置，接管里那些「此刻该走哪一档」会算在一份还不存在的链上。
+// Step 4 comes **after step 3** because takeover writes values (model name, window
+// declaration) from config now: takeover first computes tiers on a chain not yet written.
 //
-// # 已经配置好的人重跑它
+// # Already-configured people rerunning it
 //
-// 他们多半只是想装/接管一个新的客户端。所以第 2、3 步默认**跳过**（已经有一份
-// 能用的全局 profile 时），用 `--reconfigure` 才重来。这不是「少问一句」的省事：
-// 一个能跑的人被问到「base URL」时，最可能的结果是他直接 Ctrl-C，而那时他想要的
-// 那件事（装个 codex）一件都没做。
+// They mostly just want to install/take over a new client. So steps 2 and 3 are
+// **skipped** by default (with a usable global profile present); `--reconfigure` redoes
+// them. Not lazy: asked for a "base URL", a working user most likely Ctrl-Cs, and then
+// what they wanted (install a codex) went undone.
 
 import (
 	"fmt"
@@ -39,27 +39,27 @@ import (
 	"github.com/rzbdz/newgate/lib/i18n"
 )
 
-// Deps 是向导用得上的全部端口。缺一个都做不完这件事，所以它们是必填的。
+// Deps is every port the wizard uses. Missing one makes the job impossible, so required.
 //
-// 全是**内核的公开端口**（confighook 的目录、runtime 的接管与生命周期），没有
-// 一个来自内核的内部实现包——发行版的模块对外依赖只走这条缝（见 CLAUDE.md §2）。
+// All are **kernel public ports** (confighook's catalog, runtime's takeover and
+// lifecycle), none a kernel internal package - deps cross only that seam (CLAUDE.md §2).
 type Deps struct {
 	Agents  agentapi.AgentCatalog
 	Control runtimeapi.Control
 	Out     io.Writer
 }
 
-// Options 是这次调用的开关。
+// Options are this invocation's switches.
 type Options struct {
-	// Reconfigure 重问第一份上游（默认只在「还没有可用配置」时才问）。
+	// Reconfigure re-asks the first upstream (default: only when "no usable config").
 	Reconfigure bool
-	// Yes 不问「要不要写」，直接按默认走（给脚本与 e2e 用）。
+	// Yes does not ask "shall I write", follows defaults (for scripts and e2e).
 	Yes bool
-	// NoStart 不代起代理（`newgate config --no-start`）。
+	// NoStart does not start the proxy (`newgate config --no-start`).
 	NoStart bool
 }
 
-// Run 是一次完整的一把梭。
+// Run is one complete go.
 func Run(d Deps, opt Options) int {
 	if d.Out == nil {
 		d.Out = os.Stdout
@@ -76,16 +76,16 @@ func Run(d Deps, opt Options) int {
 	return runWithScreen(d.Out, d, opt, &screen{T: t})
 }
 
-// runWithScreen 是不带终端的那一半：所有分支都在这里，屏幕由调用方给。
+// runWithScreen is the half without a terminal: all branches here, screen from caller.
 //
-// 分开是为了让测试能脚本化按键（见 setup_test.go）。它同时是一道纪律：**向导
-// 里没有任何一处直接读按键**——全部经 Screen，所以「用户按了什么」这件事只有
-// 一个入口，测试与真终端走同一条路。
+// Split so tests can script keys (see setup_test.go). It is also a discipline: **no
+// place in the wizard reads keys directly** - all via Screen, so "what the user pressed"
+// has one entry, and tests and the real terminal take the same path.
 func runWithScreen(w io.Writer, d Deps, opt Options, sc Screen) int {
 	fmt.Println() // 与 shell 提示符隔开一行
 	existing := Inspect()
 
-	// ---- 1. 选客户端 ----
+	// ---- 1. pick clients ----
 	controlled := map[string]bool{}
 	for _, st := range d.Control.TakeoverStatus() {
 		if st.Active {
@@ -104,7 +104,7 @@ func runWithScreen(w io.Writer, d Deps, opt Options, sc Screen) int {
 		return 0
 	}
 
-	// ---- 2. 第一份上游 ----
+	// ---- 2. first upstream ----
 	var prof ApplyResult
 	wantProfile := opt.Reconfigure || !existing.HasUsable
 	if wantProfile {
@@ -126,18 +126,18 @@ func runWithScreen(w io.Writer, d Deps, opt Options, sc Screen) int {
 
 	fmt.Print(showC + reset + "\n")
 
-	// ---- 4. 装 + 接管 ----
+	// ---- 4. install + takeover ----
 	fmt.Println(style.Bold(" " + i18n.T("Clients", nil)))
 	port := storePort()
 	steps := EnsureAgents(d.Agents, d.Control, pick.Chosen, port, d.Out)
 	Report(d.Out, steps)
 
-	// ---- 5. 起代理 ----
+	// ---- 5. start the proxy ----
 	report := StartReporter{}
 	if !opt.NoStart {
-		// SkipTakeover：接管**已经在上面按用户选的**做完（EnsureAgents）。这里
-		// 再全面接管一次会把多选那一屏没勾的那些也接过来——与那一屏写着的话
-		// 正相反。
+		// SkipTakeover: takeover **already** happened above as the user chose (EnsureAgents).
+		// A full takeover here would take over unchecked clients too - the opposite of what
+		// that screen says.
 		rep, err := d.Control.Start(runtimeapi.StartOptions{Quiet: true, SkipTakeover: true})
 		if err != nil {
 			report.Warnings = append(report.Warnings, i18n.T("the proxy did not start: {err}",
@@ -151,7 +151,7 @@ func runWithScreen(w io.Writer, d Deps, opt Options, sc Screen) int {
 		}
 	}
 
-	// ---- 6. 收尾 ----
+	// ---- 6. closing ----
 	report.Next = nextSteps(steps)
 	var b strings.Builder
 	printOutcome(&b, prof, steps, report)
@@ -159,7 +159,7 @@ func runWithScreen(w io.Writer, d Deps, opt Options, sc Screen) int {
 	return 0
 }
 
-// askUpstream 是「一个 base、一个 key、一个模型」那一页，以及随后的模型清单。
+// askUpstream is the "one base, one key, one model" page, plus the model list after it.
 func askUpstream(s Screen, opt Options) (Bootstrap, bool) {
 	var fields []field
 	fields = []field{
@@ -183,7 +183,7 @@ func askUpstream(s Screen, opt Options) (Bootstrap, bool) {
 			Label:       i18n.T("Name for this provider", nil),
 			Placeholder: i18n.T("derived from the host, editable", nil),
 			Note:        i18n.T("how it shows up in newgate; letters, digits, - and .", nil),
-			// 建议值在拿到 base 之后的那一格里算（按 Tab / 直接回车采用）。
+			// The suggestion is computed in the cell after base (Tab / Enter accepts it).
 			Suggest: func(cur string) (string, string) {
 				if strings.TrimSpace(cur) != "" {
 					return "", ""
@@ -193,9 +193,9 @@ func askUpstream(s Screen, opt Options) (Bootstrap, bool) {
 		},
 	}
 	if opt.Yes {
-		// --yes：能从 base 推出来的那一格不问（provider 名只是界面上的标签）。
-		// 它给脚本/e2e 用，少敲一次回车；其余两格仍然是问的——base 与 key
-		// 没有合理的默认值，替用户猜一个只会让他以为配好了。
+		// --yes: the cell derived from base is not asked (provider name is just a UI label).
+		// It is for scripts/e2e, one Enter less; the other two still ask - base and key have
+		// no sensible default, and guessing one only makes the user think it is set up.
 		fields = fields[:2]
 	}
 	r := form(s, i18n.T("first setup", nil),
@@ -211,7 +211,7 @@ func askUpstream(s Screen, opt Options) (Bootstrap, bool) {
 		name = SuggestedProvider(base, nil)
 	}
 
-	// 问一次模型清单：用户只要再挑一个，而不是把模型名背下来。
+	// Ask for the model list once: one more pick instead of memorizing a model name.
 	models, why := probeModels(normalizeBase(base), key, "openai")
 	model, cancel := pickModel(s, models, why)
 	if cancel {
@@ -226,7 +226,7 @@ func askUpstream(s Screen, opt Options) (Bootstrap, bool) {
 	}, false
 }
 
-// nextSteps 是收尾时「接下来做什么」的那几条，按这次实际做了什么算。
+// nextSteps is the closing "what now" lines, computed from what this run actually did.
 func nextSteps(steps []Step) []string {
 	var out []string
 	var ready []string
@@ -240,9 +240,9 @@ func nextSteps(steps []Step) []string {
 		out = append(out, i18n.T("start an agent: {cmd}", i18n.A{"cmd": "newgate " + ready[0]}))
 		out = append(out, i18n.T("or just `{bin}` — the PATH shim sends it through newgate", i18n.A{"bin": ready[0]}))
 	}
-	// 装在这一次、但配置文件还没出现的客户端：先把它们跑一次，再接管一次。
-	// 这句话是收尾里最要紧的一条——不然用户在 codex 里发请求是直连，而他以为
-	// 自己刚刚配好了。
+	// Clients installed this run whose config file has not appeared yet: run once, take
+	// over again. This is the most important closing line - else requests in codex go
+	// direct while the user thinks they just configured it.
 	var pending []string
 	for _, s := range steps {
 		if s.Err == nil && s.Takeover.Err == nil && s.Installed && !s.TakenOver {
@@ -260,10 +260,10 @@ func nextSteps(steps []Step) []string {
 	return out
 }
 
-// noTTY 是没有终端时的那条路：不装作能交互，而是逐条告诉人要敲什么。
+// noTTY is the path without a terminal: no pretending to interact, list what to type.
 //
-// 它必须**真的不写任何东西**：一个非交互环境里的 `newgate config` 大概率是
-// 某个脚本/CI 敲的，那时静默改配置是最糟的结果。
+// It must **really write nothing**: a non-interactive `newgate config` is likely from a
+// script/CI, and silently changing config is the worst outcome there.
 func noTTY(d Deps, opt Options, err error) int {
 	fmt.Fprintln(os.Stderr, style.Mark(style.Bad)+" "+i18n.T(
 		"newgate config needs an interactive terminal ({err})", i18n.A{"err": err.Error()}))
@@ -276,7 +276,7 @@ func noTTY(d Deps, opt Options, err error) int {
 	return 64
 }
 
-// screen 把 *term.Terminal 包成向导用的那两件事。
+// screen wraps *term.Terminal into the two things the wizard uses.
 type screen struct{ T *term.Terminal }
 
 func (s *screen) ReadEvent() term.Event { return s.T.ReadEvent() }
@@ -284,7 +284,7 @@ func (s *screen) ReadLine(m term.LineMode, r func(string, string, int)) term.Lin
 	return s.T.ReadLine(m, r)
 }
 
-// storePort 读此刻配置里的端口（`newgate init` 写的是 8899；有人改过就跟着走）。
+// storePort reads the port from config right now (`newgate init` writes 8899; follow edits).
 func storePort() int {
 	return portOf(store.LoadState().Port)
 }

@@ -15,10 +15,10 @@ import (
 	"github.com/rzbdz/newgate/lib/i18n"
 )
 
-// ---------- 渲染 ----------
+// ---------- rendering ----------
 
-// 光标/清屏/反显是**终端控制**，留在本地；语义色一律走 ui/style——那边
-// 还要处理 NO_COLOR 与「输出不是终端」，两套定义迟早分叉。
+// Cursor/screen-clear/reverse are **terminal control**, kept local; semantic colors always
+// go through ui/style - it also handles NO_COLOR and "not a terminal", or two copies diverge.
 const (
 	clear = "\033[2J\033[H"
 	rev   = "\033[7m"
@@ -26,18 +26,18 @@ const (
 	hideC = "\033[?25l"
 	showC = "\033[?25h"
 
-	// 左栏宽度：agent 名（最长 opencode，8）加两格边距，再留一点给「Global
-	// default」这种标签。右栏从固定列开始，两栏才像一张菜单。
+	// Left column width: agent names (longest opencode, 8) plus two cells of margin, and a
+	// little more for "Global default" labels; the right column starts at a fixed column.
 	leftW = 26
 )
 
-// ---------- 状态 ----------
+// ---------- state ----------
 
-// scope 是左边那一栏的一行：全局缺省，或一个具体的客户端。
+// scope is one row of the left column: the global default, or one concrete client.
 //
-// `stored` 是 state.Active 里**存下来的**那个值，空 = 没单独设过、跟随全局
-// 缺省。`profile` 是解析之后实际走的那一个。两者的差别是这一屏存在的全部理由
-// ——它同时解释「现在走谁」与「改全局缺省时它跟不跟着走」。
+// `stored` is the value **stored** in state.Active; empty = never set separately, follows
+// the global default. `profile` is the one actually used after resolution. That difference
+// is the whole reason for this screen: "who runs now" and "does it follow the default".
 type scope struct {
 	id      string // "" = 全局
 	label   string
@@ -57,10 +57,10 @@ type model struct {
 	msg        string
 }
 
-// Run 是 `newgate tui` 的主体。
+// Run is the body of `newgate tui`.
 //
-// catalog 可以为 nil（骨架装配里关掉了 confighook）：那时只显示全局缺省，
-// 功能不残缺——「改全局 profile」本来就不需要知道有哪些客户端。
+// catalog may be nil (the skeleton assembly has confighook off): then only the global
+// default shows, nothing is missing - "change the global profile" never needed client knowledge.
 func Run(catalog agentapi.AgentCatalog) error {
 	names, err := store.ListProfiles()
 	if err != nil || len(names) == 0 {
@@ -68,8 +68,8 @@ func Run(catalog agentapi.AgentCatalog) error {
 	}
 	t, err := term.Open()
 	if err != nil {
-		// 底层错误由 Ef 放进 {err}（消息里必须写它，见 lib/i18n 的注释）；
-		// `newgate --set-profile` 是命令+flag，原样留在译文里。
+		// The underlying error goes into {err} via Ef (the message must name it, see lib/i18n);
+		// `newgate --set-profile` is a command+flag, kept verbatim in the translation.
 		return i18n.Ef(err, "this terminal does not support the TUI ({err}); use `newgate --set-profile <name>` instead", nil)
 	}
 	defer t.Close()
@@ -108,7 +108,7 @@ func Run(catalog agentapi.AgentCatalog) error {
 		case term.KeyInterrupt, term.KeyEsc, term.KeyEOF:
 			return nil
 		case term.KeyRune:
-			// 与原来那套字母快捷键一致：q 退出、d 取消覆盖、r 重读。
+			// Same as the old letter keys: q quits, d clears the override, r re-reads.
 			switch ev.Rune {
 			case 'q', 'Q':
 				return nil
@@ -177,10 +177,10 @@ func (m *model) currentScope() scope {
 	return m.scopes[m.scopeCur]
 }
 
-// options 是右栏这一份 scope 能选的值。
+// options are the values selectable for one scope in the right column.
 //
-// 客户端的第一个选项是空串（跟随全局缺省）——它必须是一个**可以选中的值**，
-// 而不是「没得选」；用户的常见诉求就是「这家跟别人一样」。
+// A client's first option is the empty string (follow the global default) - it must be a
+// **selectable value**, not "nothing to choose"; the common request is "this one follows the rest".
 func (m *model) options() []string {
 	if m.currentScope().id == "" {
 		return m.names
@@ -259,8 +259,8 @@ func (m *model) isCurrent(opt string) bool {
 
 func (m *model) apply() {
 	if m.focus == 0 {
-		// 左栏按 Enter = 进右栏，不写盘。menuconfig 的手感：先选「改谁」，
-		// 再选「改成什么」；把两步压成一步会让人在还没看清选项时就改了配置。
+		// Enter on the left column = go to the right column, no write. The menuconfig feel:
+		// pick "which one" first, then "to what"; one step makes people change config too early.
 		m.focus = 1
 		m.syncProfileCur()
 		m.msg = ""
@@ -289,8 +289,8 @@ func (m *model) apply() {
 		m.msg = style.Mark(style.Bad) + " " + err.Error()
 		return
 	}
-	// 立刻通知守护进程重读。不是正确性必需（watcher 最迟 1 秒也会读到），
-	// 但这是用户刚敲下的一下，1 秒的延迟会被当成「没生效」。
+	// Tell the daemon to re-read now. Not required for correctness (the watcher gets it
+	// within a second), but this is a key the user just pressed, and 1s reads as "no effect".
 	controlplane.Notify()
 	m.reload(style.Mark(style.OK) + " " + done +
 		style.Dim("   "+i18n.T("takes effect on the next request", nil)))
@@ -362,7 +362,7 @@ func (m *model) scopeRow(i int) string {
 	if selected {
 		return rev + plain + reset
 	}
-	// 颜色只加在 profile 上；列宽用的是不含转义序列的 plain（见 padRight）。
+	// Color only on the profile; column width uses plain without escape sequences (see padRight).
 	colored := " " + mark + " " + style.Pad(sc.label, 16) + " " + style.Cyan(profile)
 	return padRightColored(plain, colored, leftW)
 }
@@ -398,8 +398,8 @@ func profileDescription(name string) string {
 	return pr.Description
 }
 
-// detail 是下半屏：当前（或光标所在）profile 落到哪些上游，以及这个客户端的
-// 槽位和它自己的配置文件。它跟着光标走，所以在按 Enter 之前就能预览改动。
+// detail is the lower half: which upstreams the current (or cursor) profile lands on, plus
+// this client's slots and its own config file. It follows the cursor, so you preview first.
 func (m *model) detail() string {
 	sc := m.currentScope()
 	prof := m.previewProfile()
@@ -428,8 +428,8 @@ func (m *model) detail() string {
 
 	switch {
 	case sc.id == "":
-		// 全局：整条档位表都值得看。客户端的详情只列它自己的槽位——那是它
-		// 真正在意的那几格（claude 的 opus/sonnet…、codex 的 model/review_model）。
+		// Global: the whole tier table is worth seeing. A client's detail lists only its own
+		// slots - the cells it really cares about (claude's opus/sonnet..., codex's model/review_model).
 		for _, role := range domain.Roles {
 			bind, ok := pr.Resolve(role)
 			value := style.Dim(i18n.T("unbound", nil))
@@ -442,8 +442,8 @@ func (m *model) detail() string {
 		}
 	case len(sc.agent.Slots) == 0:
 		b.WriteString("   " + style.Hint(i18n.T("slots are discovered from the config file at takeover", nil)) + "\n")
-		// 没有槽位的客户端（opencode）仍然能看主档落到谁：normal 是「主力」
-		// 那一档，也是这些客户端最常写进配置的模型。
+		// A client with no slots (opencode) can still see where the primary tier lands: normal
+		// is the "primary" tier, and the one these clients most often put into their config.
 		if bind, ok := pr.Resolve("normal"); ok {
 			b.WriteString("   " + style.Pad("normal", 9) + " " + style.Cyan(bind.String()) +
 				bindingNote(provs, bind) + "\n")
@@ -494,9 +494,9 @@ func bindingNote(provs *domain.Providers, b domain.Binding) string {
 	return ""
 }
 
-// padRight 把纯文本补到 width；padRightColored 在**不含转义序列**的 plain 上量
-// 宽度，再把补的空格加到 colored 后面。ANSI 转义序列不占列，不能直接对 colored
-// 调 Pad——那会把颜色码算进宽度，右栏就跳来跳去。
+// padRight pads plain text to width; padRightColored measures width on plain **without
+// escape sequences**, then appends the padding to colored. ANSI escapes take no columns, so
+// calling Pad on colored directly counts color codes as width and the right column jumps.
 func padRight(plain string, width int) string {
 	if n := style.VisibleWidth(plain); n < width {
 		return plain + strings.Repeat(" ", width-n)

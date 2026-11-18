@@ -24,7 +24,7 @@ func isolate(t *testing.T) {
 	t.Setenv("NEWGATE_TARGET_DIR", dir)
 	t.Setenv("HOME", dir)
 	if _, err := store.Init(false); err != nil {
-		t.Fatalf("初始化临时配置失败: %v", err)
+		t.Fatalf("initializing the temp config failed: %v", err)
 	}
 	thinkcache.Default = thinkcache.New(32<<20, 0) // 每个测试从空缓存开始
 }
@@ -104,7 +104,7 @@ func newScriptedFilter() *scriptedFilter { return &scriptedFilter{} }
 
 func (f *scriptedFilter) Name() string { return "scripted" }
 func (f *scriptedFilter) Why() string {
-	return "forward 的单测策略：记录事实 + 按脚本回答"
+	return "forward unit-test policy: record facts + answer by script"
 }
 
 func (f *scriptedFilter) Judge(o policy.Outcome) policy.Verdict {
@@ -160,7 +160,7 @@ type probeFilter struct {
 }
 
 func (f *probeFilter) Name() string { return "probe-recorder" }
-func (f *probeFilter) Why() string  { return "forward 的单测策略：记录探活观察值" }
+func (f *probeFilter) Why() string  { return "forward unit-test policy: record probe observations" }
 
 func (f *probeFilter) Doc() map[string]json.RawMessage { return nil }
 

@@ -14,68 +14,77 @@ import (
 	"github.com/rzbdz/newgate/lib/i18n"
 )
 
-// chainsConceptID 是这一族结论**如果由内核自己画成一张卡**会用的身份。
+// chainsConceptID is the identity this family of conclusions
+// would use **if the kernel drew them as a card**.
 //
-// 它今天只出现在一个地方：CAS 冲突对象里的 Concept 字段（见 applyProfileRoles →
-// writeThrough）。行上的动作那条路上，冲突到了调用方那里只剩一句人话（见
-// switchHead），所以这个字符串不会漂到界面上——它只是「这件事说的是哪张卡」的
-// 一个稳定说法，不能空着（空串会让 `errors.As` 之外的人以为那是「没有概念」）。
+// Today it appears in exactly one place: the Concept field of the CAS conflict object
+// (see applyProfileRoles -> writeThrough). On the row-action path the conflict reaches the
+// caller as only one plain sentence (see switchHead), so this string never drifts into the
+// UI -- it is just a stable statement of "which card this is about", and it cannot be empty
+// (an empty string would make everyone outside `errors.As` think it means "no concept").
 const chainsConceptID = "config.chains"
 
-// Chains 是 Config 端口上的读（见 api.go 里 Config 的注释）。
+// Chains is the read on the Config port (see the Config comment in api.go).
 //
-// # 它为什么是机制而不是某个界面的私事
+// # Why it is a mechanism rather than some UI's private business
 //
-// 「这一档此刻解析成什么、谁被跳过、为什么」是 resolve 的结论，而 resolve 住在
-// 本模块内部。任何想摊开这件事的人（`/ui` 的聚合主页、将来的 tui、任何想解释
-// 「为什么这一发走了那家」的地方）自己 import store + resolve 都能算出来——发行版
-// 里今天就有两处在这么干——但那是**抄一份内核的内部形状**：内核一重构就断在另一个
-// 仓库里，而那里没有测试会红。所以端口的形状是「给我结论」，不是「给我原料」。
+// "What this tier resolves to right now, who was skipped, why" is resolve's conclusion,
+// and resolve lives inside this module. Anyone who wants to lay that out (the `/ui` aggregate
+// home page, a future tui, anywhere that wants to explain "why this exchange went to that
+// provider") can compute it by importing store + resolve themselves -- there are two places in
+// the distribution doing exactly that today -- but that is **copying an internal shape of the
+// kernel**: when the kernel is refactored it breaks in another repository, and no test there
+// goes red. So the port's shape is "give me the conclusion", not "give me the raw material".
 //
-// # 它为什么不问健康表
+// # Why it does not ask the health table
 //
-// 熔断摘牌与 probe 延迟（`controlplane.Doc` 的 Available/Rank）会随时间变，而且是
-// **跑着的那个进程**的状态；本方法读的是**盘上此刻的样子**。两者混在一起的话，
-// 同一份配置在「CLI 里看」与「浏览器里看」会给出不同答案，而差异来自「谁恰好连上了
-// daemon」——那种不一致比少一点信息糟得多。链上的 Tone 因此只表达「有没有链头」，
-// 不表达健康（见 lib/view 的 ChainRow.Tone）。
+// Breaker removal and probe latency (`controlplane.Doc`'s Available/Rank) change over
+// time, and are the state of **the running process**; this method reads **what is on disk right
+// now**. Mix the two and the same config gives different answers "seen in the CLI" and "seen
+// in the browser", with the difference coming from "who happened to be connected to the daemon"
+// -- that kind of inconsistency is far worse than a little less information. So the chain's
+// Tone only expresses "is there a chain head", not health (see ChainRow.Tone in lib/view).
 func (p *port) Chains(profile string, keys ...string) (*Chains, error) {
 	snap, err := store.Load()
 	if err != nil {
 		return nil, i18n.Ef(err, "cannot read the configuration: {err}", nil)
 	}
 
-	// 空 = 此刻全局生效的那一份。**不做 per-agent 的推演**：`Active[agent]` 说的是
-	// 「某个客户端从哪条链起步」，而这里问的是「这一份文件解析成什么」，两者是不同的
-	// 问题（前者是 `newgate tier` 的多链头视图，它自己那套在 commands.go 里）。
+	// Empty = the one globally in effect right now. **No per-agent projection**:
+	// `Active[agent]` says "which chain some client starts from", while this asks
+	// "what this file resolves to"; the two are different questions (the former is
+	// the multi-chain-head view of `newgate tier`, which has its own in commands.go).
 	name := profile
 	if name == "" {
 		name = snap.State.DefaultProfile
 	}
 	pr := profileNamed(snap, name)
 	if pr == nil {
-		// 报错而不是给一份空链：空链的形状是「这份档位什么都没配」，而事实是
-		// **没有这份档位**。静默的话调用方会把它画成一张空卡，读的人以为配置丢了。
-		// （`store.Load` 会跳过坏掉的 profile 文件，所以这里也覆盖「文件坏了」那一档
-		// ——`newgate doctor` 会报出具体哪个文件。）
+		// An error rather than an empty chain: the shape of an empty chain is "this tier
+		// has nothing configured", while the fact is **there is no such tier**. Quietly
+		// and the caller draws it as an empty card, and the reader thinks the config
+		// was lost. (`store.Load` skips broken profile files, so this also covers the
+		// "file is broken" case -- `newgate doctor` reports which file specifically.)
 		return nil, i18n.E("no such profile: {name}", i18n.A{"name": name})
 	}
 	return buildChains(snap, pr, keys...), nil
 }
 
-// AllChains 报**每一份** profile 此刻解析出来的链，生效的那一份排在最前。
+// AllChains reports the chains every profile resolves to at this moment, the effective one first.
 //
-// # 为什么它和 Chains 是两个方法，而不是让调用方循环
+// # Why it and Chains are two methods, rather than letting the caller loop
 //
-// 循环是**十次 store.Load**，也就是十个时刻的配置拼在**一屏**上：前几份卡还认旧
-// 文件、后几份已经认新文件，而界面上看不出任何异样（每一张卡单看都对）。这条与
-// 「一次给全部键」是同一条规矩，只是这一层再往外一格——一次快照，一屏一个时刻。
+// A loop is **ten store.Loads**, i.e. ten moments of config pieced together on **one screen**:
+// the first few cards still see the old file, the later ones already see the new one, with
+// nothing visibly odd in the UI (each card right on its own). This is the same rule as "give
+// all keys at once", just one level more outward -- one snapshot, one moment per screen.
 //
-// # 为什么不需要单独的「有哪些 profile」
+// # Why there is no separate "which profiles exist"
 //
-// 名单就是这里的下标：调用方拿到的每一份都带着 Profile，顺序也定死了（生效的那
-// 一份最前，其余按名字）。多一个只报名字的方法，等于让调用方有机会拼出「用名单
-// 去逐个问」那条更慢也更不一致的路——而那正是这个方法要取代的那条。
+// The list is the index here: every entry the caller gets carries Profile, and the order is
+// fixed too (the effective one first, the rest by name). One more method that reports only
+// names would give the caller a chance to piece together the slower and less consistent
+// "use the list to ask one by one" path -- exactly the path this method replaces.
 func (p *port) AllChains(keys ...string) ([]*Chains, error) {
 	snap, err := store.Load()
 	if err != nil {
@@ -88,11 +97,12 @@ func (p *port) AllChains(keys ...string) ([]*Chains, error) {
 	return out, nil
 }
 
-// orderedProfiles 把快照里的档位按「生效的那一份最前，其余按名字」排好。
+// orderedProfiles sorts the tiers in the snapshot as "the effective one first, the rest by name".
 //
-// 排序判据只能是**名字**，不能是「profile 的 priority」：那个数字是链里的次序
-// （谁先当备选），与「用户现在站在哪一份上」是两件事。用 priority 排的话，生效的
-// 那一份会夹在中间，而这一屏上第一眼要找的恰恰是它。
+// The sort criterion can only be the **name**, never "the profile's priority": that
+// number is the order inside a chain (who is the alternative first), a different thing
+// from "which one the user stands on now". Sorted by priority, the effective one would
+// sit in the middle, while it is exactly what the eye looks for first on this screen.
 func orderedProfiles(snap *store.Snapshot) []*domain.Profile {
 	out := make([]*domain.Profile, len(snap.Profiles))
 	copy(out, snap.Profiles)
@@ -115,12 +125,13 @@ func profileNamed(snap *store.Snapshot, name string) *domain.Profile {
 	return nil
 }
 
-// buildChains 把一份 profile 的每一档算成一条链。
+// buildChains turns every tier of one profile into a chain.
 //
-// 空 keys = 跟着 domain.Roles（heavy → normal → mid → light，外加 vision）。顺序
-// 由**调用方**决定（传进来就要原样还回去）：谁在前谁在后是产品取舍——`newgate
-// status` 与 doctor 都按能力从高到低排，界面照同一条；而传进来的次序是它唯一能
-// 表达这件事的地方。默认那一套只是「没想法时的合理答案」。
+// Empty keys = follow domain.Roles (heavy -> normal -> mid -> light, plus vision). The
+// order is decided by **the caller** (pass it in and it is returned as is): who comes
+// first is a product trade-off -- `newgate status` and doctor both sort most capable
+// first, and the UI follows the same; the incoming order is the only place it can
+// express that. The default set is only "a reasonable answer when there is no opinion".
 func buildChains(snap *store.Snapshot, pr *domain.Profile, keys ...string) *Chains {
 	want := keys
 	if len(want) == 0 {
@@ -128,19 +139,20 @@ func buildChains(snap *store.Snapshot, pr *domain.Profile, keys ...string) *Chai
 	}
 	out := &Chains{Profile: pr.Name, Default: pr.Name == snap.State.DefaultProfile}
 
-	// 原文（extends 未合并）只为了**动作**而读：能重排的候选是这一份文件里写着
-	// 的那几个，而合并后的视图里混着父档位的候选与别的键展开出来的引用——对着它
-	// 排出来的次序写回去就是错的。
+	// The source text (extends not merged) is read only for **actions**: the reorderable candidates
+	// are the ones written in this file, while the merged view mixes in the parent tier's candidates
+	// and references expanded from other keys -- writing an order derived from it back is wrong.
 	//
-	// 读不到就不给动作（这次读本身照常返回）：fail-open，一份同时被删掉的文件
-	// 不该让整屏链消失。
+	// Unreadable means no actions (this read itself still returns as usual): fail-open, a
+	// file deleted at the same time should not make the whole screen of chains disappear.
 	raw, file, _ := rawFor(pr.Name)
 
 	for _, key := range want {
-		// MaxSteps: 0——**不截断**。maxAttempts 是单次请求的执行上限，不是链的
-		// membership（2026-09-17 实查：ark 是第 4 站，传 Attempts() 会把它静默裁掉，
-		// 于是屏幕上看起来像「normal 档里根本没有 ark」）。截断的事实在命令行那边由
-		// 一行提示说出来，不是把链本身剪短。
+		// MaxSteps: 0 -- **no truncation**. maxAttempts is the execution limit of one
+		// request, not the chain's membership (measured 2026-09-17: ark is the 4th stop,
+		// and passing Attempts() silently trimmed it, so the screen looked like "there
+		// is no ark in the normal tier at all"). The fact of truncation is stated by
+		// a hint line on the command-line side, not by cutting the chain itself short.
 		steps, skips := resolve.BuildChain(key, snap.Profiles, snap.Providers, resolve.Opts{
 			Active:   pr.Name,
 			MaxSteps: 0,
@@ -154,7 +166,8 @@ func buildChains(snap *store.Snapshot, pr *domain.Profile, keys ...string) *Chai
 	return out
 }
 
-// rawFor 取一份 profile 的原文与它落在哪份文件（相对配置根）。
+// rawFor gets the source text of one profile and which
+// file it lands in (relative to the config root).
 func rawFor(name string) (*domain.Profile, string, error) {
 	raw, err := store.LoadProfileRaw(name)
 	if err != nil {
@@ -167,19 +180,21 @@ func rawFor(name string) (*domain.Profile, string, error) {
 	return raw, file, nil
 }
 
-// chainActions 报「把这一档的链头换成 X」这一组按钮。
+// chainActions reports the set of buttons "swap this tier's chain head to X".
 //
-// 候选**只取这一份 profile 自己写在这一档下的那几个**（own 就是原文里那一行）：
-// 链上别的站要么是别的 profile 顶上来的 fallback，要么是引用展开出来的（那些
-// 字面写在**另一个键**下面）。改这一档重排不到它们，给一个按了不生效的按钮比
-// 不给按钮糟。
+// The candidates are **only the ones this profile itself writes under this tier** (own is that line
+// in the source text): other stops on the chain are either fallbacks supplied by another profile,
+// or references expanded out (written literally under **a different key**). Reordering this
+// tier does not reach them, and a button that does nothing when pressed is worse than no button.
 //
-// **第一个候选不给按钮**：它就是此刻的链头，点了不改变任何事——与 codex 那对模式
-// 按钮、档位卡那对 apply 是同一条取舍（把已经在生效的那个也画成按钮，站在旁边只会
-// 把真会做事的那个淹掉）。
+// **The first candidate gets no button**: it is the chain head right now,
+// and clicking it changes nothing -- the same trade-off as codex's pair of mode
+// buttons and the tier card's pair of applies (drawing the one already in effect as
+// a button only stands next to and drowns out the one that really does something).
 //
-// 标签就是那个绑定本身（`ark/deepseek-v3`），不写「切换到…」：这一行上下文的全部
-// 意义就是「换成谁」，而 binding 读起来比一句动作描述短，也不用翻译。
+// The label is the binding itself (`ark/deepseek-v3`), not "switch to..."
+// -- the whole context of this row is "switch to whom", and a binding
+// reads shorter than an action description, and needs no translation.
 func chainActions(profile, key, file string, own domain.Candidates) []view.Action {
 	if len(own) < 2 {
 		return nil
@@ -196,22 +211,25 @@ func chainActions(profile, key, file string, own domain.Candidates) []view.Actio
 	return out
 }
 
-// switchHead 把这一档的候选重排成「target 在最前、其余保持原序」，落盘。
+// switchHead reorders this tier's candidates to "target
+// first, the rest in their original order" and writes to disk.
 //
-// # 它为什么不接参数、基线从哪来
+// # Why it takes no parameters, and where the baseline comes from
 //
-// 行上的动作按设计**不接任何参数**（见 lib/view 的 Action.Run）：界面能提供的只有
-// 「用户点了这个按钮」，而「点的是哪一份 profile 的哪一档、要换成谁」在构造这个
-// 闭包的时候就已经定下来了。所以基线也拿不到界面手里那份——只能在这里**读一次、
-// 立刻 CAS 一次**：中间那个窗口由 CAS 兜住（别人在这中间写过 → StaleError，我们
-// 一个字节都不写，报一句让人重来）。
+// By design, row actions **take no parameters** (see Action.Run in lib/view): all the UI can offer
+// is "the user clicked this button", while "which profile's which tier, and switch to whom" was
+// settled when the closure was built. So the baseline cannot come from the UI's copy either -- it
+// can only **read once, CAS once** here: the window in between is covered by the CAS (someone wrote
+// in between -> StaleError, we write not one byte, and report a sentence asking them to retry).
 //
-// # 它为什么不自己拼序列化
+// # Why it does not assemble the serialization itself
 //
-// 它与档位卡走的是**同一条写入路径**（applyProfileRoles）：那份文件是 kv 还是
-// json、哪些字段不许碰、未知键怎么保住，答案只有一处。代价照抄那条路已有的一个
-// 性质：交上去的是**整份 roles**（那条路要的是完整的表），于是 .json 里写成对象的
-// 单候选会被规范成数组——这不是这里新引入的，档位卡上改一档也是同样结果。
+// It takes **the same write path** as the tier card (applyProfileRoles): whether that
+// file is kv or json, which fields must not be touched, how unknown keys are preserved,
+// has only one answer. The cost is one property that path already has, copied along:
+// what is submitted is **the whole roles** (that path wants the complete table), so a
+// single candidate written as an object in .json gets normalized into an array -- not
+// newly introduced here; changing one tier on the tier card gives the same result.
 func switchHead(profile, key, file, target string) (string, error) {
 	raw, err := store.LoadProfileRaw(profile)
 	if err != nil {
@@ -255,9 +273,10 @@ func switchHead(profile, key, file, target string) (string, error) {
 		return "", err
 	}
 	if _, err := applyProfileRoles(chainsConceptID, file, edit, store.RevisionOf(disk)); err != nil {
-		// 冲突在这里是**一句话**而不是那个两栏对话框：apply 那条路能弹对话框，是
-		// 因为请求里带着界面手里那份草稿与基线（两边原文都在）。行上的动作两者都
-		// 没有——用户点的是一个按钮，不是一个草稿，所以能给的只有「重来一遍」。
+		// Here a conflict is **one sentence** rather than that two-column dialog: the
+		// apply path can pop a dialog because the request carries the draft the UI holds
+		// and the baseline (both source texts are there). A row action has neither -- the
+		// user clicked a button, not a draft, so all that can be offered is "try again".
 		var cf *view.Conflict
 		if errors.As(err, &cf) {
 			return "", i18n.E("{file} changed on disk after this page read it — reload and try again",

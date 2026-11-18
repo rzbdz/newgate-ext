@@ -5,15 +5,15 @@ import (
 	"unicode/utf8"
 )
 
-// 分层布局（Sugiyama 那一套的简化版）：分层 → 层内排序 → 落坐标。
+// Layered layout (a simplified Sugiyama): layer -> order within layer -> coordinates.
 //
-// 为什么自己在 Go 里算，而不是丢给前端某个 dagre/elk：
+// Why compute it in Go rather than hand it to a front-end dagre/elk:
 //
-//   - 产物要能**离线打开**（双击就是一个文件），所以不能依赖 CDN 上的 JS 库；
-//   - 两张图的规模（几十个点）不需要工业级布局，而**布局稳定**比漂亮重要——
-//     review 时点开两次，同一个模块该在同一个地方，不然没法对比着看；
-//   - 算完再画，前端只管渲染：图本身（点、边、层）是**数据**，谁想拿去做别的
-//     视图（比如导出 mermaid）都不用再解析一遍 SVG。
+//   - the artifact must **open offline** (double-click one file), so no CDN JS lib;
+//   - the maps' size (dozens of points) needs no industrial layout, and **stable
+//     layout** matters more than pretty - open it twice, a module must stay put;
+//   - compute then paint: the map (points, edges, layers) is **data**, so other views
+//     (say mermaid) need no SVG re-parsing.
 const (
 	nodeH   = 32.0
 	rowGap  = 72.0
@@ -23,10 +23,10 @@ const (
 	charW   = 7.4 // 12px 等宽的大致字宽，用来估节点宽度
 )
 
-// Layout 就地算好每个点的层、层内次序与坐标。
+// Layout computes each point's layer, order within the layer and coordinates in place.
 //
-// 方向定死：**边从下往上指**——被依赖的在下面（叶子机制），依赖者在上面。
-// 所以 layer 0 画在画布最底下，层号越大越靠上。
+// Direction is fixed: **edges point upward** - the depended-on below (leaf mechanisms),
+// dependents above. So layer 0 is at the bottom of the canvas, higher numbers higher up.
 func Layout(g *Graph) {
 	if len(g.Nodes) == 0 {
 		return
@@ -50,10 +50,10 @@ func Layout(g *Graph) {
 		users[to] = append(users[to], from)
 	}
 
-	// 分层前先收缩强连通分量：**聚合到目录层会造出环**（两个目录因为共享叶子
-	// 互相可达，见 Edge.Cycle 的说明）。收缩之后剩下的一定是 DAG，环里的点落在
-	// 同一条带上、带内的边标出来——review 的人该看见它们，而不是让分层算法在
-	// 一个有环的图上给出一个看起来正常、其实随机的答案。
+	// Condense strongly connected components before layering: **aggregating to directories
+	// makes cycles** (two directories reachable through shared leaves, see Edge.Cycle).
+	// What remains after condensing is a DAG; points in a cycle land on one band with
+	// in-band edges marked - reviewers should see them, not get a plausible random answer.
 	comp := sccOf(deps)
 	edges := g.Edges
 	g.Edges = nil
@@ -69,11 +69,11 @@ func Layout(g *Graph) {
 	compUsers := invert(compDeps)
 	compLayer := assignLayers(compDeps)
 	if g.Compact {
-		// 收紧：把点往邻居那边挪，缩短边的总跨度。**层号在这里没有物理意义**
-		// （它只是个分组），所以按图论的目标函数优化它——与最长路径分层不同，
-		// 这一步会牺牲「每一层都尽量靠上」去换「线更短、图更紧凑」。
+		// Tighten: move points toward their neighbors, shortening total edge span. **Layer
+		// numbers have no physical meaning here** (just grouping), so optimize by the graph-
+		// theoretic objective - trading "each layer as high as possible" for "shorter, denser".
 		refineLayers(compDeps, compUsers, compLayer)
-		// 收紧可能腾空一些层号，重新压紧，免得画出几条空带。
+		// Tightening may vacate layer numbers; repack so no empty bands are drawn.
 		compLayer = repack(compLayer)
 	}
 	layers := make([]int, len(deps))
@@ -88,8 +88,8 @@ func Layout(g *Graph) {
 		}
 	}
 
-	// 层内先按标签排一遍：这是**稳定的起点**，让交叉消减的两轮迭代从同一个
-	// 地方出发——同样的输入必须得到同样的图。
+	// Order within the layer by label first: this is **the stable starting point**, so
+	// the two crossing-reduction rounds start from the same place - same input, same map.
 	order := make([]int, len(g.Nodes))
 	for i := range order {
 		order[i] = i
@@ -112,7 +112,7 @@ func Layout(g *Graph) {
 	reduceCrossings(byLayer, deps, users)
 	transpose(byLayer, deps, users)
 
-	// 尺寸与坐标。
+	// Sizes and coordinates.
 	width := 0.0
 	for i := range g.Nodes {
 		g.Nodes[i].H = nodeH
@@ -138,7 +138,7 @@ func Layout(g *Graph) {
 
 	for l, ids := range byLayer {
 		x := (canvasW - layerWidth[l]) / 2
-		// layer 0 在最下面：层号越大，y 越小。
+		// layer 0 is at the bottom: the higher the layer number, the smaller y.
 		y := marginY + float64(maxLayer-l)*(nodeH+rowGap)
 		for pos, i := range ids {
 			g.Nodes[i].Layer = l
@@ -153,11 +153,11 @@ func Layout(g *Graph) {
 	g.Layers = maxLayer + 1
 }
 
-// assignLayers 是最长路径分层：layer(n) = 1 + max(layer(它依赖的))。
+// assignLayers is longest-path layering: layer(n) = 1 + max(layer(what it depends on)).
 //
-// 用 Kahn 的拓扑序一次算完（先算依赖、再算依赖者）。它跑在**收缩之后**的图上
-// （见 Layout），所以输入一定是 DAG——组件框架拒绝成环的依赖，Go 不允许 import
-// 环，而聚合出来的环已经被强连通分量收掉了。
+// Computed in one Kahn topological pass (dependencies first, dependents after). It runs
+// on the **condensed** graph (see Layout), so the input is a DAG - the framework refuses
+// cyclic dependencies, Go forbids import cycles, and aggregation cycles were condensed.
 func assignLayers(deps [][]int) []int {
 	layers := make([]int, len(deps))
 	pending := make([]int, len(deps))
@@ -186,8 +186,8 @@ func assignLayers(deps [][]int) []int {
 	return layers
 }
 
-// usersOf 是「谁依赖 n」（入边）。分层只需要方向，不用建两遍邻接表：
-// 扫一遍出边表就够（点几十个，这点代价换一段更好读的代码）。
+// usersOf is "who depends on n" (in-edges). Layering needs direction only, no second
+// adjacency table: one pass over the out-edge table does it (dozens of points).
 func usersOf(deps [][]int, n int) []int {
 	var out []int
 	for i, d := range deps {
@@ -201,10 +201,10 @@ func usersOf(deps [][]int, n int) []int {
 	return out
 }
 
-// reduceCrossings 反复用中位数法重排每一层，少一点交叉线。
+// reduceCrossings repeatedly reorders each layer by the median, cutting crossing lines.
 //
-// 只做几轮就停：这是个启发式，几轮之后收益就没了，而**跑得久不等于画得好**。
-// 交替从下往上、从上往下扫，是为了不让某一头的局部最优锁死整张图。
+// Only a few rounds: this is a heuristic, gains vanish after a few, and **running long
+// is not drawing well**. Alternating bottom-up and top-down keeps one end from locking in.
 func reduceCrossings(byLayer [][]int, deps, users [][]int) {
 	const passes = 6
 	for p := 0; p < passes; p++ {
@@ -261,7 +261,7 @@ func nodeWidth(label string, missing bool) float64 {
 	return w
 }
 
-// invert 把邻接表翻个方向：out[v] 是谁依赖 v。
+// invert flips an adjacency table: out[v] is who depends on v.
 func invert(deps [][]int) [][]int {
 	out := make([][]int, len(deps))
 	for v, ds := range deps {
@@ -272,16 +272,16 @@ func invert(deps [][]int) [][]int {
 	return out
 }
 
-// refineLayers 是 Sugiyama 分层之后的**坐标收紧**：在不违反任意一条边
-// `from > to` 的前提下，把每个节点移到它的前驱/后继允许的区间里、尽量靠近
-// 邻居层号的中位数。
+// refineLayers is the **coordinate tightening** after Sugiyama layering: without breaking
+// any edge's `from > to`, move each node into the interval its predecessors/successors
+// allow, as close as possible to the neighbor layers' median.
 //
-// 为什么 import 图要做而装配图不做：前者的层号只是「方便看」的分组；最长路径
-// 初值会把很多点拉到很高的层，图变成又长又稀。后者的深度本身就是架构叙事
-// （叶子 → 机制 → 组合根），不能为了少几根长线把那个阶梯压扁。
-//
-// 每轮按「向下 → 向上」各扫一次：前一半把节点往依赖靠，后一半把节点往使用者
-// 靠。中位数而不是均值，避免一个远邻把整个节点群拖歪。固定轮数保证稳定。
+// Why the import map does it and the assembly map does not: the former's layer numbers
+// are only a grouping; longest-path initial values push many points very high and the map
+// becomes long and sparse. The latter's depth is the architecture story (leaf -> mechanism
+// -> composition root), which must not be flattened to save a few lines.
+// Each round sweeps down then up. Median, not mean, so a distant neighbor cannot skew;
+// fixed rounds keep it stable.
 func refineLayers(deps, users [][]int, layer []int) {
 	const passes = 12
 	for pass := 0; pass < passes; pass++ {
@@ -298,14 +298,14 @@ func moveLayer(v int, deps, users [][]int, layer []int) {
 	lo, hi := 0, maxInt
 	var wanted []int
 	for _, d := range deps[v] {
-		// v 依赖 d：v 必须在 d 的**上一层**或更高。
+		// v depends on d: v must be **one layer above** d or higher.
 		if layer[d]+1 > lo {
 			lo = layer[d] + 1
 		}
 		wanted = append(wanted, layer[d]+1)
 	}
 	for _, u := range users[v] {
-		// u 依赖 v：v 必须在 u 的**下一层**或更低。
+		// u depends on v: v must be **one layer below** u or lower.
 		if layer[u]-1 < hi {
 			hi = layer[u] - 1
 		}
@@ -327,8 +327,8 @@ func moveLayer(v int, deps, users [][]int, layer []int) {
 
 const maxInt = int(^uint(0) >> 1)
 
-// repack 去掉空层号，保留顺序。收紧后图会天然出现空层（比如所有叶子都被拉近了
-// 一层），继续画空带只会把图重新拉长。
+// repack removes empty layer numbers, preserving order. After tightening the map has
+// empty layers naturally (say all leaves pulled one layer closer); more empty bands stretch it.
 func repack(layer []int) []int {
 	seen := map[int]bool{}
 	for _, l := range layer {
@@ -350,9 +350,9 @@ func repack(layer []int) []int {
 	return out
 }
 
-// transpose 是 Sugiyama 的第二个经典步骤：中位数排序之后，逐对尝试交换层内
-// 相邻节点；只有**严格减少交叉数**才留下。它比「再扫几轮」更慢一点，但图就几十
-// 个点，换来的是线少绕、视觉上更能顺着读。
+// transpose is Sugiyama's second classic step: after median ordering, try swapping
+// adjacent nodes within a layer; keep only if it **strictly reduces crossings**. A bit
+// slower than "a few more rounds", but the maps are dozens of points; lines wiggle less.
 func transpose(byLayer [][]int, deps, users [][]int) {
 	const passes = 8
 	for pass := 0; pass < passes; pass++ {
@@ -375,8 +375,8 @@ func transpose(byLayer [][]int, deps, users [][]int) {
 	}
 }
 
-// localCrossings 数相邻两层之间的交叉；交换某一层相邻的两点只可能影响它上下
-// 两条带，所以不必每次把整张图都数一遍。
+// localCrossings counts crossings between adjacent layers; swapping two adjacent points
+// in one layer can only affect the two bands above and below it, so no full recount.
 func localCrossings(byLayer [][]int, deps, users [][]int, layer, pos int) int {
 	total := 0
 	if layer > 0 {
@@ -390,8 +390,8 @@ func localCrossings(byLayer [][]int, deps, users [][]int, layer, pos int) int {
 	return total
 }
 
-// crossingsBetween 只数**确实连接这两层**的边对。边从 upper 指向 lower（deps
-// 的方向），两条边端点顺序相反就是一次交叉。
+// crossingsBetween counts only pairs of edges **really connecting these two layers**.
+// Edges point from upper to lower (deps direction); opposite endpoint order = one crossing.
 func crossingsBetween(upper, lower []int, users [][]int) int {
 	upperPos := map[int]int{}
 	lowerPos := map[int]int{}
@@ -425,9 +425,9 @@ func crossingsBetween(upper, lower []int, users [][]int) int {
 	return count
 }
 
-// sccOf 是 Tarjan 强连通分量：返回每个点所属的分量号（0..k-1）。
+// sccOf is Tarjan's strongly connected components: returns each point's component id (0..k-1).
 //
-// 迭代深度等于图的规模（几十个点），递归写法够用；换成显式栈只会让这段更难读。
+// Depth equals the map's size (dozens), so recursion is fine; an explicit stack only hurts.
 func sccOf(deps [][]int) []int {
 	n := len(deps)
 	index := make([]int, n)
@@ -477,8 +477,8 @@ func sccOf(deps [][]int) []int {
 	return comp
 }
 
-// condense 把分量之间的边收成一张 DAG（分量内部的边不进这张表——它们就是要被
-// 标出来的那些环）。
+// condense folds inter-component edges into a DAG (in-component edges are left out -
+// they are exactly the cycles to mark).
 func condense(deps [][]int, comp []int) [][]int {
 	n := 0
 	for _, c := range comp {

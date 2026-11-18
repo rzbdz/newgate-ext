@@ -1,14 +1,14 @@
 package runtime
 
-// 本文件把**接管自己的**两条体检交出去：哪些目标文件真被改写了（接管），以及
-// 逃生舱准备好了没有（备份，`newgate stop` 靠它还原）。
+// This file hands over **takeover's own** two checks: which target files were really
+// rewritten (takeover), and whether the escape hatch is ready (backups, restored by `stop`).
 //
-// **为什么它们住在这里**（2026-09-18）：接管状态与备份目录都是本模块写出来的
-// 东西；它们以前写在 modules/cli/diag.go，界面于是替接管层读 original/ 目录、
-// 逐个目标文件判断有没有被改写。谁写的东西谁自己说——界面只排版
-// （见 cli/extension.Diagnostic）。
+// **Why they live here** (2026-09-18): takeover state and the backup dir are this module's
+// output; they used to be in modules/cli/diag.go, so the UI read original/ on takeover's
+// behalf and judged each target file. Whoever writes it reports it - the UI only lays out
+// (see cli/extension.Diagnostic).
 //
-// 依赖方向：runtime → cli/extension（叶子契约），不是 → modules/cli。
+// Dependency direction: runtime -> cli/extension (a leaf contract), not -> modules/cli.
 
 import (
 	"fmt"
@@ -27,15 +27,15 @@ import (
 	"github.com/rzbdz/newgate/lib/i18n"
 )
 
-// 体检与 status 行的位置（Rank 小的在前）。接管排在代理之后、配置之前：它回答
-// 「谁在走 newgate」。
+// Position of the check and the status line (smaller Rank first). Takeover sits after proxy
+// and before config: it answers "who is going through newgate".
 const (
 	rankStatusTakeover = 20
 	rankCheckDaemon    = 35
 	rankCheckTakeover  = 40
 	rankCheckBackups   = 50
 
-	// 诊断包里的位置（见 cliapi.DumpSection）。
+	// Position in the diagnostics bundle (see cliapi.DumpSection).
 	rankDumpTargets = 40
 )
 
@@ -51,20 +51,20 @@ func (r runtimeReporter) Diagnostics() []cliapi.Diagnostic {
 	return []cliapi.Diagnostic{checkDaemon(), r.checkTakeover(), checkBackups()}
 }
 
-// checkDaemon 「谁在服务」的三种说法必须对得上：pidfile、锁文件、真身。
+// checkDaemon: the three statements of "who is serving" must agree: pidfile, lock, body.
 //
-// **为什么单独一项**（2026-09-18 现场）：pidfile 被写坏成「一个撞锁失败、当场
-// 退出的子进程」之后，代理那一项会说「未运行」，而 daemon 一直在服务——两项各自
-// 都没说谎，但没有一处把「你的 pidfile 和锁对不上」这句话讲出来，人只能靠 ps 猜。
-// 这一项就是那句话，而且顺手把 pidfile 修回去（见 daemon.Reconcile）。
+// **Why a separate item** (2026-09-18 live): after the pidfile went bad ("a child that lost
+// the lock race and exited"), the proxy item said "not running" while the daemon served -
+// neither item lied, but nobody said "your pidfile and lock disagree", so one guessed via ps.
+// This item is that sentence, and it repairs the pidfile along the way (daemon.Reconcile).
 //
-// 「没在跑」是 skip 不是 bad：那是正常状态，不是故障。
+// "Not running" is skip, not bad: a normal state, not a fault.
 func checkDaemon() cliapi.Diagnostic {
 	d := cliapi.Diagnostic{Rank: rankCheckDaemon, Label: i18n.T("Daemon", nil)}
 	info, notes := daemon.Reconcile()
 	if len(notes) == 0 {
-		// 排在前面的检查（链路、代理）都会读 Running()，它们可能已经先把
-		// pidfile 修好了——那处不一致就此看不见。本进程修过就照样说出来。
+		// Earlier checks (chain, proxy) read Running() and may already have repaired the
+		// pidfile - the mismatch is invisible by now. If this process healed it, still say so.
 		if h := daemon.LastHeal(); h != "" {
 			notes = []string{h}
 		}
@@ -88,9 +88,9 @@ func checkDaemon() cliapi.Diagnostic {
 		d.State = "ok"
 		d.Line = i18n.T("pid {pid} · 127.0.0.1:{port} · pidfile and lock agree",
 			i18n.A{"pid": info.PID, "port": info.Port})
-		// 优雅交接的那一瞬间 pidfile 已是新进程、锁还是旧进程（AdoptRuntime
-		// 先写 pidfile 再改锁）。两个都活着却不同号时，只有这一种解释，说出来
-		// 免得看到的人以为又坏了。
+		// At a graceful handoff's instant the pidfile is the new process and the lock the old
+		// one (AdoptRuntime writes the pidfile first). Both alive but different pids has only
+		// this one explanation; say it, so the reader does not think it broke again.
 		if pid := daemon.LockHolder(); pid > 0 && pid != info.PID && daemon.Alive(pid) {
 			d.Details = append(d.Details, i18n.T(
 				"The lock file currently says pid {pid} (normal within the graceful handoff window, it lines up by itself within milliseconds)",
@@ -100,16 +100,16 @@ func checkDaemon() cliapi.Diagnostic {
 	return d
 }
 
-// Status 一行说清谁在走 newgate，有异常才展开。
+// Status says in one line who goes through newgate, expanding only on anomaly.
 //
-// 期望态（on/off 过什么）和现实态（磁盘上真装了什么）不一致，正是那两个对称故障
-// 的现场：接管过但没生效（工具静默直连），或者放开过但文件还指着代理。
+// Desired state (what was on/off'd) vs reality (what is on disk) disagreeing is exactly
+// the two symmetric faults' scene: taken over but not in effect (the tool connects direct).
 func (r runtimeReporter) Status() []cliapi.StatusLine {
 	var on, off, missing []string
 	wanted, active, stale := 0, 0, 0
 	for _, s := range takeover.List() {
-		// 四态判据走 phaseOf（view.go），与 web 那张表同源：两个界面对同一份磁盘
-		// 状态给出不同答案，比其中一个不显示更糟。这里只决定**怎么排版**。
+		// The four-state criterion comes from phaseOf (view.go), same source as the web table:
+		// two UIs answering differently is worse than one not showing it; this only lays it out.
 		switch phaseOf(s) {
 		case phaseActive:
 			active++
@@ -117,15 +117,15 @@ func (r runtimeReporter) Status() []cliapi.StatusLine {
 		case phasePending:
 			on = append(on, s.Agent+style.Dim(" ")+style.Mark(style.Bad))
 		case phaseStale:
-			// 用户关过它、磁盘却没放开（释放失败）。排在 `on` 一侧——它**确实**
-			// 还在走 newgate，那是事实；⚠ 说的是「你要的不是这个」。
+			// The user turned it off, but disk was not released (release failed). Shown on the
+			// `on` side - it **really** still goes through newgate; ⚠ says "not what you asked".
 			active++
 			stale++
 			on = append(on, s.Agent+style.Dim(" ")+style.Mark(style.Warn))
 		case phaseAbsent:
-			// **不并进 off**：off 的意思是「这个工具在，只是走直连」，而这里
-			// 这台机器上根本没有它。混在一起说，用户会以为自己需要 `newgate on`
-			// 一下（2026-09-21 之前正是这样：没装 opencode 的机器上报 ✓）。
+			// **Not folded into off**: off means "the tool is here, just direct", while here
+			// the machine does not have it at all. Mixed in, users think they need `newgate
+			// on` once (before 2026-09-21 machines without opencode showed ✓).
 			missing = append(missing, s.Agent)
 			continue // 没装的东西不计入 wanted：它接不上管，也不该触发下面那句提醒
 		default:
@@ -136,14 +136,14 @@ func (r runtimeReporter) Status() []cliapi.StatusLine {
 		}
 	}
 	line := takeoverLine(on, off, missing)
-	// 代理在跑却有 agent 想接管没接管上：start/build 之后漏了一步，不补的话
-	// 那个工具会静默直连。
+	// The proxy runs but some agent wanted takeover got none: a missed step after
+	// start/build; without it that tool silently connects directly.
 	if _, doc := controlplane.State(); doc != nil && active < wanted {
 		line += "\n" + style.Hint(style.Yellow(i18n.T("An agent declares takeover but it is not in effect; rerun newgate start", nil)))
 	}
-	// 反过来的那一半（⚠ 那一类）：用户关过它，磁盘上却还装着——释放失败
-	// （权限坑，见 CLAUDE.md §3.1）。**必须配一句解释**：一个没有说明的 ⚠
-	// 只会让人猜，而它说的正是「你以为直连了，其实还在走网关」。
+	// The other half (⚠ class): the user turned it off, yet disk still has it - release
+	// failed (the permission trap, see CLAUDE.md §3.1). **Must come with an explanation**: a
+	// bare ⚠ makes one guess, and it says "you think it is direct, it still goes via the proxy".
 	if stale > 0 {
 		line += "\n" + style.Hint(style.Yellow(i18n.T("An agent was released but the takeover is still in effect (the release did not take); rerun: newgate off <agent>", nil)))
 	}
@@ -155,9 +155,9 @@ func takeoverLine(on, off, missing []string) string {
 	if len(off) > 0 {
 		tail += "   " + style.Dim(strings.Join(off, " ")+" off")
 	}
-	// 没装的单独一段：它既不是「接上了」也不是「走直连」，而是一句事实
-	// （见 phaseAbsent）。不显示它的话，用户会去找一个这台机器上不存在的东西
-	// 为什么没被接管。
+	// Not-installed is its own section: neither "connected" nor "direct", just a fact
+	// (see phaseAbsent). Hidden, users hunt for why a thing not on this machine was not
+	// taken over - a hunt for something that does not exist here.
 	if len(missing) > 0 {
 		tail += "   " + style.Dim(strings.Join(missing, " ")+" "+i18n.T("not installed", nil))
 	}
@@ -171,7 +171,7 @@ func takeoverLine(on, off, missing []string) string {
 	return "   " + strings.Join(on, "   ") + tail
 }
 
-// checkTakeover 被改写的目标文件。
+// checkTakeover: the target files that were rewritten.
 func (r runtimeReporter) checkTakeover() cliapi.Diagnostic {
 	d := cliapi.Diagnostic{Rank: rankCheckTakeover, Label: i18n.T("Takeover", nil)}
 	var on, off []string
@@ -204,7 +204,7 @@ func (r runtimeReporter) checkTakeover() cliapi.Diagnostic {
 	return d
 }
 
-// checkBackups 逃生舱有没有准备好：original/ 里有东西，`newgate stop` 才还原得回去。
+// checkBackups: is the escape hatch ready - with something in original/, `newgate stop` restores.
 func checkBackups() cliapi.Diagnostic {
 	d := cliapi.Diagnostic{Rank: rankCheckBackups, Label: i18n.T("Backups", nil)}
 	orig := filepath.Join(paths.BackupDir(), "original")
@@ -226,12 +226,12 @@ func checkBackups() cliapi.Diagnostic {
 	return d
 }
 
-// ---------- 诊断包的原始素材 ----------
+// ---------- raw material for the diagnostics bundle ----------
 
-// Dump 交出**接管改过的那几个文件**里与 newgate 有关的片段。
+// Dump hands over the newgate-related excerpts of **the files takeover rewrote**.
 //
-// 只挑含 "newgate" 的行：目标是「用户原本的配置」，全文可能几百行且与问题无关，
-// 而诊断包要能贴进 issue。原文（不做 JSON 解析）——坏掉的 JSON 恰恰是要看的东西。
+// Only lines containing "newgate": the target is "the user's original config", which may
+// run to hundreds of unrelated lines, and the bundle must fit in an issue. Raw text.
 func (r runtimeReporter) Dump() []cliapi.DumpSection {
 	s := cliapi.DumpSection{Rank: rankDumpTargets, Title: i18n.T("Target files after takeover (newgate-related fragments)", nil)}
 	runtimeDump := s

@@ -17,13 +17,13 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// 本文件是「换上去」那半：落一份候选、试跑、留旧版、rename、交接 daemon、回滚。
-// 两条来源（Release、源码）走到这里时手上都只是一个文件，从这里起完全一样。
+// This file is the "swap it in" half: stage, smoke-test, keep the old, rename, hand off
+// the daemon, roll back. Both sources arrive here with a file, identical from here on.
 
-// installTarget 是要换掉的那个文件：正在跑的这个二进制（解开软链接）。
+// installTarget is the file to replace: the running binary (symlinks resolved).
 //
-// 换「自己」而不是某个约定路径：用户从哪儿装的就换哪儿（~/.local/bin、
-// /data/home2/…/WorkSpace/bin），PATH shim 指向的也是它。
+// Replace "itself", not some conventional path: wherever the user installed it (~/.local/bin,
+// /data/home2/.../WorkSpace/bin), and the PATH shim points there too.
 func installTarget() (string, error) {
 	exe, err := os.Executable()
 	if err != nil {
@@ -32,19 +32,19 @@ func installTarget() (string, error) {
 	if real, err := filepath.EvalSymlinks(exe); err == nil {
 		exe = real
 	}
-	// `go run` 编出来的临时二进制换了也白换：下次 go run 又是一份新的。
+	// Replacing a temporary binary built by `go run` is pointless: the next go run is a fresh one.
 	if strings.Contains(exe, string(filepath.Separator)+"go-build") {
 		return "", i18n.E("this binary was started by `go run` ({exe}); build one with build/build.sh first", i18n.A{"exe": exe})
 	}
 	return exe, nil
 }
 
-// stage 在目标的**同一个目录**里建候选文件：rename 只在同一个文件系统里是原子的。
-// 权限沿用旧文件（daemon 可能以另一个用户跑，它要能执行这份新的）。
+// stage creates the candidate in the target's **same directory**: rename is atomic only
+// within one filesystem. Permissions come from the old file (the daemon may run as
+// another user and must be able to execute the new one).
 //
-// 调用方持有升级锁，所以同目录里残留的候选（上一次升级被 Ctrl-C / kill 在下载或
-// 构建中途打断留下的）一定没人在用，顺手清掉——否则每断一次就在 bin 目录里多一个
-// 十几 MB 的隐藏文件。
+// The caller holds the upgrade lock, so leftover candidates here (a previous upgrade
+// killed mid-download or mid-build) are unused; clean them, or each break leaves a file.
 func stage(target string) (*os.File, error) {
 	pattern := "." + filepath.Base(target) + ".new-"
 	if stale, _ := filepath.Glob(filepath.Join(filepath.Dir(target), pattern+"*")); len(stale) > 0 {
@@ -68,7 +68,7 @@ func stage(target string) (*os.File, error) {
 	return f, nil
 }
 
-// stageFrom 把一个已经在别处的产物（源码构建的输出）拷成候选。
+// stageFrom copies an artifact already elsewhere (source build output) into a candidate.
 func stageFrom(src, target string) (string, error) {
 	in, err := os.Open(src)
 	if err != nil {
@@ -91,13 +91,13 @@ func stageFrom(src, target string) (string, error) {
 	return f.Name(), nil
 }
 
-// smoke 以 newgate 的名字跑一次候选的 `version`，返回它报的版本号。
+// smoke runs the candidate's `version` under the name newgate, returning the version.
 //
-// 这是换上去之前**唯一**能拦住坏产物的地方：架构不对（exec format error）、
-// 下载被截断、编成了别的发行版——换上去之后才发现，坏的就是每一条命令，包括
-// 用来换回去的那条（rollback 还在，但那时用户得知道去找 .prev）。
+// The **only** place to stop a bad artifact before swapping: wrong architecture (exec
+// format error), truncated download, another distribution - after the swap everything
+// breaks, including the command to swap back (rollback exists, but one must find .prev).
 //
-// argv0 必须是 newgate：多调用型二进制按它分派，别的名字会被当成 profile。
+// argv0 must be newgate: the multi-call binary dispatches on it, another name = a profile.
 func smoke(ctx context.Context, path string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -116,14 +116,14 @@ func smoke(ctx context.Context, path string) (string, error) {
 	return f[1], nil
 }
 
-// install 把候选换上去，旧的那份留成 <target>.prev。**留不下旧版就不换**：
-// 换上去之后的每一种失败（daemon 交接不上、新进程起不来）都靠 .prev 回退，没有它
-// 等于没有退路。
+// install swaps the candidate in, keeping the old one as <target>.prev. **No old version,
+// no swap**: every failure after the swap (daemon handoff, new process will not start)
+// falls back to .prev, and without it there is no way back.
 //
-// 旧版用**硬链接**留：先 link 再 rename，任何一刻 target 这个路径上都有一个完整
-// 的二进制（先把 target 挪成 .prev 的话，中间那一下 PATH shim 会找不到命令）。
-// 跑着的进程不受影响：它们握着旧 inode，rename 只换目录项（Text file busy 的那个
-// 道理，见内核 CLAUDE.md §3.1）。
+// The old version is kept via a **hard link**: link, then rename, so the target path
+// always holds a complete binary (moving target to .prev first leaves the PATH shim
+// briefly with no command). Running processes are unaffected: they hold the old inode,
+// and rename only swaps the directory entry (Text file busy, kernel CLAUDE.md §3.1).
 func install(candidate, target string) (string, error) {
 	prev := target + ".prev"
 	_ = os.Remove(prev)
@@ -141,8 +141,8 @@ func install(candidate, target string) (string, error) {
 	return prev, nil
 }
 
-// rollback 把 <target>.prev 换回来，换下来的那份成为新的 .prev（再 rollback 一次
-// 就又换回去——它是一个开关，不是一条单行道）。
+// rollback swaps <target>.prev back in, and the replaced one becomes the new .prev (rollback
+// again swaps it back - it is a switch, not a one-way street).
 func rollback(ctx context.Context, target string) (string, error) {
 	prev := target + ".prev"
 	if _, err := os.Stat(prev); err != nil {
@@ -191,15 +191,15 @@ func copyFile(src, dst string) error {
 	return out.Close()
 }
 
-// restartDaemon 让跑着的 daemon 换到新二进制上：用**新的那份**执行 `restart`
-// （优雅交接：旧进程把监听 socket 交给新进程，在途请求在旧进程里流完）。
+// restartDaemon moves the running daemon onto the new binary: run `restart` **with the
+// new copy** (graceful handoff: old process hands the socket over, draining).
 //
-// 为什么不自己发 /__newgate/upgrade：那条协议（探能力、带令牌、等 ready、退回
-// stop+start）在内核 runtime 的 restart 里有一份完整实现，这里再写一份就是两份。
-// 而用新二进制跑它，交接逻辑本身也是新版本的。
+// Why not send /__newgate/upgrade ourselves: that protocol (probe, token, ready, then
+// stop+start) is fully implemented in the kernel runtime's restart; a second copy here
+// would be two. Running it with the new binary makes the handoff logic the new version.
 //
-// daemon 不是从 target 起来的（另一份安装）时不动它——换的是这一份，重启那一份
-// 只会让它继续跑旧的，还以为升级过了。
+// A daemon not started from target (another install) is left alone - this swaps this
+// one; restarting that one keeps it on the old build, thinking it upgraded.
 func restartDaemon(target string, log io.Writer) (string, error) {
 	info, _ := controlplane.State()
 	if info == nil {
@@ -217,9 +217,9 @@ func restartDaemon(target string, log io.Writer) (string, error) {
 	if err := cmd.Run(); err != nil {
 		return "", i18n.Ef(err, "`newgate restart` failed: {err}", nil)
 	}
-	// 不只看「有个进程」：要它**在答话**（控制面的 status 回得上来）。一个起得来、
-	// 却在服务循环里出毛病的新版本，`version` 那一下是试不出来的。restart 自己最多
-	// 等 5 秒，这里再给几秒余量。
+	// Not just "a process exists": it must **answer** (the control plane's status responds).
+	// A new version that starts but faults in its serving loop cannot be caught by `version`.
+	// restart itself waits up to 5s; a few more seconds of margin here.
 	var after *controlplane.Info
 	var doc *controlplane.Doc
 	for i := 0; i < 20; i++ {
@@ -255,8 +255,8 @@ func sameFile(a, b string) bool {
 	return os.SameFile(fa, fb)
 }
 
-// lockUpgrade 保证同一时刻只有一个升级在换文件。flock：进程死了锁就没了，
-// 不会留下要人手动清理的陈旧锁。
+// lockUpgrade ensures only one upgrade swaps files at a time. flock: the lock dies with
+// the process, leaving no stale lock for a human to clean up.
 func lockUpgrade() (func(), error) {
 	if err := os.MkdirAll(paths.Root(), 0o2770); err != nil {
 		return nil, err

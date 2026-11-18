@@ -1,33 +1,39 @@
 /**
- * 演示页**自己的**那几句话。
+ * The few sentences the demo page **owns**.
  *
- * # 为什么不放进 `src/i18n.ts`
+ * # Why not put them in `src/i18n.ts`
  *
- * 那份字典是**产品的**，而它有一条棘轮守着：`TestShippedBundleHasEverySentence`
- * 要求字典里的每一句都出现在**发出去的那个 bundle**（`web/dist`）里。演示页的产物
- * 落在 `site/dist/demo`、永不进 `web/dist`，所以往产品字典里加一句演示文案，红的是
- * 那条测试——而且报的错（「这句话在源字典里，却不在发出去的 bundle 里」）会把下一个
- * 人指向「是不是忘了 pnpm build」，与真实原因（那是演示页的话）毫无关系。
+ * That dictionary is the **product's**, and a ratchet guards it:
+ * `TestShippedBundleHasEverySentence` requires every sentence in the dictionary to appear
+ * in the **shipped bundle** (`web/dist`). The demo page's output lands in `site/dist/demo`
+ * and never enters `web/dist`, so adding a demo sentence to the product dictionary turns
+ * that test red — and the error it reports ("this sentence is in the source dictionary
+ * but not in the shipped bundle") would point the next person at "did you forget pnpm
+ * build", which has nothing to do with the real cause (that is a demo-page sentence).
  *
- * 所以这边自立一份，键仍然是**那句英文**（与产品同一条 msgid 传统），
- * 加语言 = 加一列。
+ * So this side keeps its own, and the key is still **that English sentence** (the same msgid
+ * tradition as the product); adding a language = adding a column.
  *
- * # 为什么现在只有中文
+ * # Why only Chinese right now
  *
- * 站点今天是中文优先（见 `site/src/site.json`：English 还是未写状态）。演示页在
- * 站点里，所以它的这几句话也跟着站点的语言走。英文那列**留在这里**——不是忘了
- * 写，而是写了也没人会看见（站点上没有英文页可以跳过来）。
+ * The site is Chinese-first today (see `site/src/site.json`: English is still unwritten).
+ * The demo page lives inside the site, so its few sentences follow the site's language too.
+ * The English column **stays here** — not forgotten, but writing it would be seen by nobody
+ * (the site has no English page to jump over from).
  *
- * 其余那些界面骨架上的字（保存、撤销、删除、目录、还没改过…）**不在这里**：它们是
- * 产品的词汇，`t()` 已经有了。两处重复写一遍的结果是它们会漂成两种说法。
+ * The rest of the words on the UI skeleton (save, undo, delete, catalog, not changed yet…)
+ * **are not here**: they are product vocabulary and `t()` already has them. Writing them
+ * twice only lets them drift into two different phrasings.
  */
 
-// 这里只有**点下去之后**才出现的那几句话（toast）。
+// Only the sentences that appear **after something is clicked** (toasts) live here.
 //
-// 曾经还有一条「这一页是真界面配假数据 —— 你点的每一下都不会离开浏览器」，画在报头
-// 上常驻。删掉了：它把这一页说成「演示」，而这一页值得存在的地方是**它就是那个
-// 界面**。一句话一直杵在那儿，读的人先看到的是「这是假的」而不是产品本身；而真要
-// 知道的人，点一下任何东西就知道了——这个文件里剩下的四句正是那时说的。
+// There used to be one more: "this page is the real UI with fake data — none of your clicks
+// leave the browser", a permanent line drawn in the page header. Removed: it framed this
+// page as a "demo", whereas the point of this page is that **it is that UI**. A line that
+// just sits there makes the reader see "this is fake" before they see the product itself;
+// and anyone who really needs to know finds out by clicking anything — the four sentences
+// left in this file are exactly what it said back then.
 const zhHans: Record<string, string> = {
   "this is a demo — “{action}” would go to the real daemon; nothing is written here":
     "这是演示 —— “{action}”真的会去问守护进程，这里什么都没写",
@@ -38,7 +44,8 @@ const zhHans: Record<string, string> = {
   "this is a demo — no file would be deleted": "这是演示 —— 不会真的删掉任何文件",
 };
 
-/** d 查一句演示页自己的话。与产品的 `t()` 同一条语义：查不到时原样返回英文那句。 */
+/** d looks up one sentence the demo page owns. Same semantics as the product's `t()`:
+ * returns the English sentence as is on a miss. */
 export function d(msg: string, args?: Record<string, string | number>): string {
   const s = zhHans[msg] ?? msg;
   if (!args) return s;

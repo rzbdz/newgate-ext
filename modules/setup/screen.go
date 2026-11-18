@@ -1,15 +1,15 @@
 package setup
 
-// 本文件是向导的**那几屏**：多选客户端、填表单、看结局。
+// This file is the wizard's **screens**: pick clients, fill the form, see the outcome.
 //
-// 它只在终端上画东西，所有「改这台机器」的动作都在 agents.go / profile.go 里，
-// 而按键与 raw mode 在 lib/term。所以这一屏可以被一个假的 Terminal + buffer
-// 驱动，e2e 里就不需要一台真终端来验行为。
+// It only draws on the terminal; every "change this machine" action lives in agents.go /
+// profile.go, and keys and raw mode in lib/term. So a fake Terminal + buffer can drive
+// this screen, and the e2e does not need a real terminal to verify behavior.
 //
-// # 一条贯穿整屏的规矩：Esc = 退回上一步，Ctrl-C = 放弃
+// # One rule across every screen: Esc = back a step, Ctrl-C = abandon
 //
-// 向导会写磁盘（provider、profile、接管），所以每一条退回的路都要么什么都没写、
-// 要么写完之后明确告诉人「已经写了什么」。中途放弃的结局在 main 里说清楚。
+// The wizard writes disk (provider, profile, takeover), so every way back must either
+// write nothing or clearly say what was written. Abandoning mid-way is spelled out in main.
 
 import (
 	"fmt"
@@ -30,23 +30,23 @@ const (
 	showC = "\033[?25h"
 )
 
-// Screen 是向导要画的那一屏的接口（真身是 *term.Terminal，测试里是假的）。
+// Screen is the wizard screen's interface (real one *term.Terminal, fake in tests).
 type Screen interface {
 	ReadEvent() term.Event
 	ReadLine(term.LineMode, func(text, errMsg string, cursor int)) term.LineResult
 }
 
-// pickResult 是多选那一屏的结局。
+// pickResult is the multi-pick screen's outcome.
 type pickResult struct {
 	Chosen  []string
 	Cancel  bool
 	Nothing bool // 用户一个都没选就按了回车
 }
 
-// pickAgents 画「选装哪些客户端」那一屏。
+// pickAgents draws the "which clients to install" screen.
 //
-// 默认勾选**已经装上、但还没被接管**的那些：用户敲 `newgate config` 时最想做的
-// 那件事就是这个（装好的工具让它走 newgate），而重新勾一个已经接管的没有代价。
+// Default-checked are those **installed but never taken over**: what users want when
+// typing `newgate config` (the installed tool, through newgate); re-checking costs nothing.
 func pickAgents(s Screen, agents agentapi.AgentCatalog, controlled func(string) bool) pickResult {
 	ids := agents.Names()
 	sort.Strings(ids)
@@ -152,7 +152,7 @@ func drawPick(ids []string, sel, installed, takenOver []bool, cur int) {
 	fmt.Print(b.String())
 }
 
-// field 是表单里的一格。
+// field is one cell in the form.
 type field struct {
 	Label       string
 	Placeholder string
@@ -160,23 +160,23 @@ type field struct {
 	Secret      bool
 	Note        string // 灰字说明（放在标签下面）
 	Validate    func(string) string
-	// Suggest 在用户按 Tab 时给一个建议值（provider 名那种可以由 base 推出来的）。
+	// Suggest offers a value when Tab is pressed (a provider name derived from base, say).
 	Suggest func(current string) (string, string)
 }
 
-// formResult 是表单那一屏的结局。
+// formResult is the form screen's outcome.
 type formResult struct {
 	Values []string
 	Cancel bool
 }
 
-// form 画一页多字段表单。Esc 回到上一格（第一格时取消），Tab 跳到下一格。
+// form draws a multi-field form page. Esc goes back a cell (cancels on the first), Tab moves on.
 func form(s Screen, title, intro string, fields []field) formResult {
 	cur := 0
 	for {
 		drawForm(title, intro, fields, cur)
-		// 光标不显示：本实现不做格内光标移动（一行的输入很短），画出「当前值」
-		// 就够了。这样 render 与 ReadLine 的状态只有一份。
+		// No cursor shown: this implementation has no in-cell cursor movement (inputs are
+		// short), drawing "the current value" suffices. That keeps one source for render and ReadLine.
 		res := s.ReadLine(term.LineMode{
 			Secret:      fields[cur].Secret,
 			Placeholder: fields[cur].Placeholder,
@@ -283,7 +283,7 @@ func padRight(s string, w int) string {
 	return s
 }
 
-// printOutcome 画最后一屏：这次动了什么、下一步是什么。
+// printOutcome draws the last screen: what this run changed, what comes next.
 func printOutcome(b *strings.Builder, prof ApplyResult, steps []Step, report StartReporter) {
 	b.WriteString("\n")
 	b.WriteString(style.Bold(" "+i18n.T("Done", nil)) + "\n\n")
@@ -340,7 +340,7 @@ func printOutcome(b *strings.Builder, prof ApplyResult, steps []Step, report Sta
 		b.WriteString("\n")
 	}
 
-	// 收尾那句话是这整个向导的**目的**：让用户知道现在可以起 AI，然后交给 AI。
+	// The closing line is the wizard's **purpose**: tell the user AI can start now, hand over.
 	b.WriteString(" " + style.Bold(i18n.T("Next", nil)) + "\n")
 	for _, c := range report.Next {
 		b.WriteString("   " + c + "\n")
@@ -351,7 +351,7 @@ func printOutcome(b *strings.Builder, prof ApplyResult, steps []Step, report Sta
 		nil)) + "\n")
 }
 
-// StartReporter 是 main 收来的一份「起代理那一步」的结局（给最后一屏用）。
+// StartReporter is the outcome of "start the proxy" collected by main (for the last screen).
 type StartReporter struct {
 	ProxyLine string
 	Warnings  []string

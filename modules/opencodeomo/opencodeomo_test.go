@@ -71,7 +71,7 @@ func node(t *testing.T, root map[string]interface{}, section, name string) map[s
 	s, _ := root[section].(map[string]interface{})
 	n, _ := s[name].(map[string]interface{})
 	if n == nil {
-		t.Fatalf("%s.%s 不在文件里", section, name)
+		t.Fatalf("%s.%s is not in the file", section, name)
 	}
 	return n
 }
@@ -89,18 +89,18 @@ func TestTakeoverKeepsSlotIdentity(t *testing.T) {
 
 	root := readJSONFile(t, omo)
 	if got := node(t, root, "agents", "sisyphus")["model"]; got != "newgate/omo-sisyphus" {
-		t.Errorf("sisyphus 的槽位身份丢了: %v", got)
+		t.Errorf("the slot identity of sisyphus was lost: %v", got)
 	}
 	if got := node(t, root, "agents", "librarian")["model"]; got != "newgate/omo-librarian" {
-		t.Errorf("librarian 的槽位身份丢了: %v", got)
+		t.Errorf("the slot identity of librarian was lost: %v", got)
 	}
 	if got := node(t, root, "categories", "deep")["model"]; got != "newgate/cat-deep" {
-		t.Errorf("categories 的键前缀不对: %v", got)
+		t.Errorf("the categories key prefix is wrong: %v", got)
 	}
 	// fallback_models 收敛成同一个键：链由 newgate 在服务端兜底（原列表记在注册表）
 	fb, _ := node(t, root, "agents", "sisyphus")["fallback_models"].([]interface{})
 	if len(fb) != 1 || fb[0] != "newgate/omo-sisyphus" {
-		t.Errorf("fallback_models 该收敛成同键一条，得到 %v", fb)
+		t.Errorf("fallback_models should collapse into one entry per key, got %v", fb)
 	}
 
 	// opencode.json 的 provider 里要把这些 id 登记出来，否则 opencode 认不出
@@ -108,7 +108,7 @@ func TestTakeoverKeepsSlotIdentity(t *testing.T) {
 	models, _ := provs["newgate"].(map[string]interface{})["models"].(map[string]interface{})
 	for _, id := range []string{"omo-sisyphus", "omo-librarian", "cat-deep", "cat-quick"} {
 		if _, ok := models[id]; !ok {
-			t.Errorf("opencode 的 newgate provider 里缺模型 id %s", id)
+			t.Errorf("the newgate provider of opencode is missing model id %s", id)
 		}
 	}
 }
@@ -125,7 +125,7 @@ func TestRegistryRecordsCurrentAndSuggested(t *testing.T) {
 	}
 	reg := ReadOmoSlots()
 	if reg == nil {
-		t.Fatal("注册表没写出来")
+		t.Fatal("the registry was not written")
 	}
 
 	cases := []struct{ key, was, variant, current, suggested string }{
@@ -139,24 +139,24 @@ func TestRegistryRecordsCurrentAndSuggested(t *testing.T) {
 	for _, c := range cases {
 		sl, ok := reg.SlotOf(c.key)
 		if !ok {
-			t.Fatalf("注册表里没有 %s", c.key)
+			t.Fatalf("there is no %s in the registry", c.key)
 		}
 		if sl.Was != c.was || sl.Variant != c.variant {
-			t.Errorf("%s 的原貌记错了: was=%q variant=%q", c.key, sl.Was, sl.Variant)
+			t.Errorf("%s recorded the wrong original form: was=%q variant=%q", c.key, sl.Was, sl.Variant)
 		}
 		if sl.Current != c.current {
-			t.Errorf("%s 现状档位 = %q，想要 %q", c.key, sl.Current, c.current)
+			t.Errorf("%s current tier = %q, want %q", c.key, sl.Current, c.current)
 		}
 		if sl.Suggested != c.suggested {
-			t.Errorf("%s 建议档位 = %q，想要 %q", c.key, sl.Suggested, c.suggested)
+			t.Errorf("%s suggested tier = %q, want %q", c.key, sl.Suggested, c.suggested)
 		}
 		if sl.Default != c.current {
-			t.Errorf("%s 默认必须等于现状（不改行为），得到 %q", c.key, sl.Default)
+			t.Errorf("%s default must equal the current setting (no behavior change), got %q", c.key, sl.Default)
 		}
 	}
 	// 原 fallback 列表要留档（用户想恢复成显式链时用得上）
 	if sl, _ := reg.SlotOf("omo-sisyphus"); len(sl.WasFallbacks) != 2 {
-		t.Errorf("fallback 原列表没记下来: %v", sl.WasFallbacks)
+		t.Errorf("the original fallback list was not recorded: %v", sl.WasFallbacks)
 	}
 }
 
@@ -170,19 +170,19 @@ func TestRetakeoverIsIdempotent(t *testing.T) {
 
 	for i := 0; i < 3; i++ {
 		if _, err := ApplyAll(8899); err != nil {
-			t.Fatalf("第 %d 次接管: %v", i+1, err)
+			t.Fatalf("takeover #%d: %v", i+1, err)
 		}
 	}
 	root := readJSONFile(t, omo)
 	if got := node(t, root, "agents", "sisyphus")["model"]; got != "newgate/omo-sisyphus" {
-		t.Errorf("接管重复执行后模型名被改写坏了: %v", got)
+		t.Errorf("a repeated takeover corrupted the model name: %v", got)
 	}
 	sl, _ := ReadOmoSlots().SlotOf("omo-sisyphus")
 	if sl.Was != "smt/gpt-5.6-sol" || sl.Variant != "max" {
-		t.Errorf("重新接管把原貌弄丢了: was=%q variant=%q", sl.Was, sl.Variant)
+		t.Errorf("re-takeover lost the original form: was=%q variant=%q", sl.Was, sl.Variant)
 	}
 	if sl.Current != "normal" || sl.Suggested != "heavy" {
-		t.Errorf("重新接管后档位漂了: current=%q suggested=%q", sl.Current, sl.Suggested)
+		t.Errorf("tier drifted after re-takeover: current=%q suggested=%q", sl.Current, sl.Suggested)
 	}
 }
 
@@ -212,14 +212,14 @@ func TestOldTakeoverKeepsBehaviour(t *testing.T) {
 	}
 	sl, _ := ReadOmoSlots().SlotOf("omo-sisyphus")
 	if sl.Current != "heavy" || sl.Default != "heavy" {
-		t.Errorf("老接管写下的档位该原样沿用，得到 current=%q default=%q", sl.Current, sl.Default)
+		t.Errorf("the tier written by the old takeover should carry over unchanged, got current=%q default=%q", sl.Current, sl.Default)
 	}
 	if sl.Was != "smt/gpt-5.6-sol" {
-		t.Errorf("原模型名该从备份里找回来，得到 %q", sl.Was)
+		t.Errorf("the original model name should be recovered from the backup, got %q", sl.Was)
 	}
 	// 但现在是 omo-sisyphus 这个键在承担 heavy，用户以后可以单独改它
 	if got := node(t, readJSONFile(t, omo), "agents", "sisyphus")["model"]; got != "newgate/omo-sisyphus" {
-		t.Errorf("老文件也该升级成槽位键: %v", got)
+		t.Errorf("the old file should be upgraded to slot keys too: %v", got)
 	}
 }
 
@@ -234,17 +234,17 @@ func TestModeSuggestedSwitches(t *testing.T) {
 
 	reg := ReadOmoSlots()
 	if got := reg.SlotBinding("omo-sisyphus"); got != "normal" {
-		t.Fatalf("默认（current）该是 normal，得到 %q", got)
+		t.Fatalf("the default (current) should be normal, got %q", got)
 	}
 	// 覆盖优先于模式
 	reg.Overrides = map[string]string{"omo-sisyphus": "@mid"}
 	if got := reg.SlotBinding("omo-sisyphus"); got != "@mid" {
-		t.Fatalf("覆盖该赢，得到 %q", got)
+		t.Fatalf("the override should win, got %q", got)
 	}
 	delete(reg.Overrides, "omo-sisyphus")
 	reg.Mode = "suggested"
 	if got := reg.SlotBinding("omo-sisyphus"); got != "heavy" {
-		t.Fatalf("suggested 模式该给 heavy，得到 %q", got)
+		t.Fatalf("suggested mode should give heavy, got %q", got)
 	}
 }
 
@@ -265,10 +265,10 @@ func TestRolesReachTheResolver(t *testing.T) {
 	defer domain.SetExtraRoles(nil)
 
 	if !domain.IsKnownRole("omo-sisyphus") || !domain.IsKnownRole("cat-deep") {
-		t.Fatal("槽位键没被注册成角色键——客户端发来的 model 会被当成具体模型名去反查")
+		t.Fatal("the slot key was not registered as a role key - a model sent by the client would be looked up as a concrete model name")
 	}
 	if !domain.IsKnownRole("heavy") || !domain.IsKnownRole("normal") {
-		t.Fatal("内置档位也该认（同一张角色表）")
+		t.Fatal("built-in tiers should be recognized too (same role table)")
 	}
 
 	// 一个只写了 normal 的 profile：omo-sisyphus 的缺省是 normal，应当整条跟上
@@ -283,7 +283,7 @@ func TestRolesReachTheResolver(t *testing.T) {
 	steps, _ := resolve.BuildChain("omo-sisyphus", profiles, provs,
 		resolve.Opts{Active: "head"})
 	if len(steps) != 1 || steps[0].Binding.Model != "opus" {
-		t.Fatalf("omo-sisyphus 该跟到 normal 的候选上，得到 %+v", steps)
+		t.Fatalf("omo-sisyphus should follow the candidates of normal, got %+v", steps)
 	}
 }
 
@@ -304,7 +304,7 @@ func TestRegistryIsReadableByOtherUsers(t *testing.T) {
 		t.Fatal(err)
 	}
 	if perm := fi.Mode().Perm(); perm&0o060 == 0 {
-		t.Fatalf("注册表权限 %o：组读不了，跑 daemon 的另一个用户会看不到任何槽位键", perm)
+		t.Fatalf("registry permissions %o: the group cannot read it, so another user running the daemon sees no slot keys at all", perm)
 	}
 }
 
@@ -326,10 +326,10 @@ func TestSuggest(t *testing.T) {
 	for _, c := range cases {
 		got, why := Suggest(c.model, c.variant)
 		if got != c.want {
-			t.Errorf("Suggest(%q, %q) = %q（%s），想要 %q", c.model, c.variant, got, why, c.want)
+			t.Errorf("Suggest(%q, %q) = %q (%s), want %q", c.model, c.variant, got, why, c.want)
 		}
 		if c.want == "" && why == "" {
-			t.Errorf("不建议也要说明为什么: %q", c.model)
+			t.Errorf("even a negative recommendation must say why: %q", c.model)
 		}
 	}
 }

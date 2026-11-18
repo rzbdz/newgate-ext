@@ -17,10 +17,10 @@ import (
 	upgradeapi "github.com/rzbdz/newgate-ext/modules/upgrade"
 )
 
-// 本文件是编排：按 mode 与 `@版本` 选一条路，走到「手上有一个文件」，交给 install.go。
+// Orchestration: mode and `@version` pick a route to "a file in hand", then install.go.
 
-// updater 把所有「外面的东西」做成字段，测试换掉它们（假 GitHub、临时目录里的
-// 「当前二进制」、不真的去重启 daemon）。
+// updater turns every "outside thing" into a field the tests swap (fake GitHub, a
+// temp-dir "current binary", never really restarting the daemon).
 type updater struct {
 	st       settings
 	info     distinfo.Info
@@ -32,7 +32,7 @@ type updater struct {
 	client   func(repo string) *releaseClient
 	target   func() (string, error)
 	restart  func(target string, log io.Writer) (string, error)
-	// cloneBase 是源码构建 clone 的前缀（`https://github.com/` + owner/repo + `.git`）。
+	// cloneBase is the source-build clone prefix (`https://github.com/` + owner/repo + `.git`).
 	cloneBase string
 }
 
@@ -54,7 +54,7 @@ func newUpdater() *updater {
 	}
 }
 
-// github 是这次用的发布仓库：自己那段的覆盖值，否则这份规格书声明的。
+// github is the release repo for this run: the self-section override, else the spec's.
 func (u *updater) github() string {
 	if u.st.GitHub != "" {
 		return u.st.GitHub
@@ -80,7 +80,7 @@ func describeAction() string {
 		i18n.A{"repo": repo})
 }
 
-// assetName 是 build.sh 给这个发行版 × 平台起的产物名。
+// assetName is the artifact name build.sh gives this distribution x platform.
 func (u *updater) assetName() string {
 	return "newgate-" + u.info.Distribution + "-" + u.goos + "-" + u.goarch
 }
@@ -103,7 +103,7 @@ func (u *updater) run(ctx context.Context, req upgradeapi.Request) (upgradeapi.R
 	return u.latestRelease(ctx, req)
 }
 
-// latestRelease 是 release 模式的「最新」。
+// latestRelease is "latest" in release mode.
 func (u *updater) latestRelease(ctx context.Context, req upgradeapi.Request) (upgradeapi.Result, error) {
 	repo := u.github()
 	if repo == "" {
@@ -123,7 +123,7 @@ func (u *updater) latestRelease(ctx context.Context, req upgradeapi.Request) (up
 	}
 	a, ok := rel.asset(u.assetName())
 	if !ok {
-		// riscv64 这类 Release 矩阵里没有的平台：照样能升，只是得自己编。
+		// A platform missing from the Release matrix (riscv64 etc.): still upgradable, just build it.
 		u.note(i18n.T("release {tag} has no {asset}; building {tag} from source instead",
 			i18n.A{"tag": rel.Tag, "asset": u.assetName()}))
 		return u.fromSource(ctx, req, rel.Tag)
@@ -135,12 +135,12 @@ func (u *updater) latestRelease(ctx context.Context, req upgradeapi.Request) (up
 	return u.installRelease(ctx, gh, rel, a, req)
 }
 
-// notNewer 回答「最新 Release 不比手上的新，该跳过」并给出那句话。
+// notNewer answers "the latest Release is no newer, skip" and gives that sentence.
 //
-// 手上的版本号认不出来（只有提交号：从一个没打 tag 的提交编的，多半是
-// `upgrade@<分支>` 钉上去的）时**也跳过**：没法比新旧，而把一个特意钉上去的版本
-// 悄悄换成 Release 正是「替人做决定」。--force 照换。Release 的 tag 认不出来时
-// 照常换——那是发布方的命名，不是这台机器的选择。
+// If the version in hand is unrecognizable (only a commit id: built from an untagged
+// commit, usually pinned by `upgrade@<branch>`) it **also skips**: no comparison is
+// possible, and silently replacing a deliberately pinned version with a Release is
+// "deciding for them". --force still swaps; an unknown Release tag swaps - not our choice.
 func (u *updater) notNewer(tag string, req upgradeapi.Request) (string, bool) {
 	if req.Force {
 		return "", false
@@ -164,7 +164,7 @@ func (u *updater) notNewer(tag string, req upgradeapi.Request) (string, bool) {
 	return "", false
 }
 
-// pinned 是 `upgrade@<ref>`：先找同名 Release，没有（或者本平台没有产物）就从源码编。
+// pinned is `upgrade@<ref>`: look for a same-named Release first, else build from source.
 func (u *updater) pinned(ctx context.Context, req upgradeapi.Request) (upgradeapi.Result, error) {
 	ref := req.Version
 	if !req.Force && u.current == u.info.Distribution+"-"+ref {
@@ -217,7 +217,7 @@ func (u *updater) installRelease(ctx context.Context, gh *releaseClient, rel *gh
 		u.note(i18n.T("downloading {asset} from {tag} ({mb} MB)",
 			i18n.A{"asset": a.Name, "tag": rel.Tag, "mb": fmt.Sprintf("%.1f", float64(a.Size)/(1<<20))}))
 	} else {
-		// 网页那条退路拿不到大小（见 release.go 的文件头）。
+		// The web fallback cannot get the size (see release.go's file header).
 		u.note(i18n.T("downloading {asset} from {tag}", i18n.A{"asset": a.Name, "tag": rel.Tag}))
 	}
 	f, err := stage(target)
@@ -241,7 +241,7 @@ func (u *updater) installRelease(ctx context.Context, gh *releaseClient, rel *gh
 	return u.finish(ctx, f.Name(), target, req)
 }
 
-// fromRepo 是 git 模式的「最新」：同步本地 checkout，编，换。
+// fromRepo is git mode's "latest": sync the local checkout, build, swap.
 func (u *updater) fromRepo(ctx context.Context, req upgradeapi.Request) (upgradeapi.Result, error) {
 	repo := u.st.Repo
 	if err := checkRepo(repo, u.info.Spec); err != nil {
@@ -265,8 +265,8 @@ func (u *updater) fromRepo(ctx context.Context, req upgradeapi.Request) (upgrade
 	return u.buildAndInstall(ctx, repo, req)
 }
 
-// fromSource 是「临时 clone 一份 ref 再编」：没有可用 Release 的 `@ref`、以及本平台
-// 不在 Release 矩阵里的时候。开发者的本地 checkout 不被切换（那是他正在改的树）。
+// fromSource is "clone ref into a temp dir and build": `@ref` with no usable Release,
+// and when this platform is not in the Release matrix. The dev checkout is left alone (their tree).
 func (u *updater) fromSource(ctx context.Context, req upgradeapi.Request, ref string) (upgradeapi.Result, error) {
 	url, err := u.cloneURL(ctx)
 	if err != nil {
@@ -292,8 +292,8 @@ func (u *updater) fromSource(ctx context.Context, req upgradeapi.Request, ref st
 	return u.buildAndInstall(ctx, src, req)
 }
 
-// cloneURL 是源码构建去哪儿 clone：声明了 GitHub 仓库就用它的 https 地址（公开、
-// 不要凭据）；没有就退回 git 模式那份 checkout 的 origin。
+// cloneURL is where source builds clone from: a declared GitHub repo gives its https
+// address (public, no credentials); otherwise fall back to the git-mode checkout's origin.
 func (u *updater) cloneURL(ctx context.Context) (string, error) {
 	if repo := u.github(); repo != "" {
 		return u.cloneBase + repo + ".git", nil
@@ -330,7 +330,7 @@ func (u *updater) buildAndInstall(ctx context.Context, repo string, req upgradea
 	return u.finish(ctx, candidate, target, req)
 }
 
-// finish：试跑候选 → 换上 → 交接 daemon。
+// finish: dry-run the candidate -> swap it in -> hand the daemon over.
 func (u *updater) finish(ctx context.Context, candidate, target string, req upgradeapi.Request) (upgradeapi.Result, error) {
 	got, err := smoke(ctx, candidate)
 	if err != nil {
@@ -355,12 +355,12 @@ func (u *updater) finish(ctx context.Context, candidate, target string, req upgr
 	return upgradeapi.Done(i18n.T("{old} → {new}; {daemon}", i18n.A{"old": u.current, "new": got, "daemon": msg})), nil
 }
 
-// rollBack 是「换上去之后才失败」的退路：daemon 交接不上、新进程起不来或者不答话。
-// 把 .prev 换回来，再用**旧的那份**把 daemon 拉回来（它没在跑时 restart 等于
-// start）。新版本留成 .prev，想再试可以 `newgate self-update rollback`。
+// rollBack is the way back when failure comes **after** the swap: daemon handover
+// fails, the new process will not start or answer. Put .prev back, pull the daemon up
+// with the **old** one (restart = start if stopped); new stays .prev for `rollback`.
 //
-// 退路本身也会失败（旧版也起不来——那多半不是二进制的问题，是端口/配置），那时
-// 两个错都报出来，并且说清楚手上现在是哪一份。
+// The way back can itself fail (the old one will not start either - usually not the
+// binary, but the port/config); then report both errors and say which one is in hand.
 func (u *updater) rollBack(ctx context.Context, target, bad string, cause error) error {
 	u.note(i18n.T("{version} did not take over the daemon ({err}); rolling back", i18n.A{"version": bad, "err": cause.Error()}))
 	old, err := rollback(ctx, target)

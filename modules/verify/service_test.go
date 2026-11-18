@@ -83,7 +83,7 @@ func TestRunBuildsEntryAndCachesIt(t *testing.T) {
 	if e.Probability == nil || *e.Probability != 0.93 {
 		t.Fatalf("probability = %v", e.Probability)
 	}
-	// 落盘之后另一个实例读得到（界面与 CLI 是两个进程）。
+	// After saving, another instance reads it (the UI and the CLI are two processes).
 	got, ok, err := newCacheStore().get("relay", "model-x")
 	if err != nil || !ok {
 		t.Fatalf("cache get: ok=%v err=%v", ok, err)
@@ -192,8 +192,8 @@ func TestEndpointFor(t *testing.T) {
 		t.Fatalf("responses = %q %q %q %v", got, api, name, err)
 	}
 
-	// Anthropic 方言分 base：newgate 的惯例是 anthropic_url 不含 /v1，URL()
-	// 补上 /v1 再拼 /messages；交给 SDK 时要把它已经补好的那一段留下。
+	// Anthropic dialect splits base: newgate's convention is anthropic_url without /v1; URL()
+	// adds /v1 then appends /messages; when handing to the SDK, keep the part it already has.
 	anth := domain.Provider{
 		BaseURL: "https://relay.example/api/coding/v3", APIKey: "k",
 		Protocol: "anthropic", AnthropicURL: "https://relay.example/api/coding",

@@ -7,13 +7,13 @@ import (
 	"unsafe"
 )
 
-// 本文件是 raw mode 的**唯一实物**（Linux / Darwin 共用 termios；字段布局两边
-// 一致，只是常量名字不同——见下面那组别名）。
+// This file is the **only concrete implementation** of raw mode (Linux / Darwin share termios; the
+// field layout is the same on both, only the constant names differ -- see the alias group below).
 //
-// 不用第三方库（golang.org/x/term）的原因：整个仓库对第三方依赖的态度是「每个
-// 都得有个理由」，而这个功能就是两个 ioctl 加一个结构体。发行版已经有
-// golang.org/x/crypto（ssh-tunnel）与 golang.org/x/sys，但没有为「读一个按键」
-// 加一份依赖的必要。
+// Why no third-party library (golang.org/x/term): the whole repo's attitude to
+// third-party dependencies is "each one must have a reason", and this feature is two
+// ioctls and a struct. The distribution already has golang.org/x/crypto (ssh-tunnel)
+// and golang.org/x/sys, but there is no need to add a dependency for "read one key".
 
 type termios struct {
 	Iflag, Oflag, Cflag, Lflag uint32
@@ -35,7 +35,7 @@ func ioctlTermios(fd uintptr, req uintptr, t *termios) error {
 	return nil
 }
 
-// enterRaw 把终端切成「一次一个字节、不回显、Ctrl-C 不产生 SIGINT」。
+// enterRaw switches the terminal to "one byte at a time, no echo, Ctrl-C produces no SIGINT".
 func enterRaw(fd uintptr) (func(), error) {
 	var old termios
 	if err := ioctlTermios(fd, tcgets, &old); err != nil {

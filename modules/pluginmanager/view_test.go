@@ -12,8 +12,8 @@ import (
 	"github.com/rzbdz/newgate-ext/modules/config/store"
 )
 
-// 界面那一份开关点（view.go）的断言分两半：**画出来的东西对不对**，以及
-// **写下去的东西对不对**。后者最要紧——那是用户按一下就把运行期行为改掉的路径。
+// The UI's copy of switch points (view.go) is asserted in two halves: **what is drawn
+// right**, and **what is written** - the latter matters most: one press changes runtime behavior.
 
 func register(t *testing.T, m Manager, module string, sws ...Switch) {
 	t.Helper()
@@ -31,10 +31,10 @@ func sw(path, danger string, def bool) Switch {
 	return s
 }
 
-// TestViewSeparatesFootgunsFromTheRest：footgun 不能出现在那张**可写**卡片里。
+// TestViewSeparatesFootgunsFromTheRest: a footgun must not appear in the **writable** card.
 //
-// 它的写语义要求带时限，而这一版没有让用户选时限的界面；混进去的结果是界面上多了
-// 一个按下去必定失败的开关——比不给更糟。所以它单列一张只读卡片。
+// Its write semantics require a time limit, and this version has no UI to pick one;
+// mixed in, it adds a switch that fails whenever pressed - worse than none. So: its own card.
 func TestViewSeparatesFootgunsFromTheRest(t *testing.T) {
 	m := start(t)
 	register(t, m, "demo",
@@ -53,35 +53,35 @@ func TestViewSeparatesFootgunsFromTheRest(t *testing.T) {
 	}
 	writable, ok := byID["plugin-manager.switches"]
 	if !ok {
-		t.Fatalf("可写的那张卡片不见了: %+v", concepts)
+		t.Fatalf("the writable card is gone: %+v", concepts)
 	}
 	if writable.Apply == nil {
-		t.Error("开关点卡片该是可写的")
+		t.Error("the switch-point card should be writable")
 	}
 	gun, ok := byID["plugin-manager.footguns"]
 	if !ok {
-		t.Fatal("footgun 该单列一张卡片")
+		t.Fatal("the footgun should have its own card")
 	}
 	if gun.Apply != nil {
-		t.Error("footgun 卡片不该可写（这里的写要么失败、要么绕过时限）")
+		t.Error("the footgun card must not be writable (a write here either fails or bypasses the time limit)")
 	}
 	for _, item := range gun.Data.(switchesData).Items {
 		if item.ID != "demo.gun" {
-			t.Errorf("footgun 卡片里混进了别的东西: %s", item.ID)
+			t.Errorf("something else got into the footgun card: %s", item.ID)
 		}
-		// 只读就得说清楚**去哪儿改**，不然用户只知道这里点不动。
+		// Read-only must say **where to change it**, or the user only learns it will not budge here.
 		if !strings.Contains(item.Why, "newgate plugin") {
-			t.Errorf("只读的 footgun 该写明用哪条命令改: %q", item.Why)
+			t.Errorf("the read-only footgun should say which command changes it: %q", item.Why)
 		}
 	}
 	if n := len(writable.Data.(switchesData).Items); n != 2 {
-		t.Errorf("可写那张该有两个开关点，实际 %d", n)
+		t.Errorf("the writable one should have two switch points, got %d", n)
 	}
 }
 
-// TestViewReportsTheEffectiveState：画出来的 `value` 是**当前生效**的状态，而
-// 它由出厂态与用户的设定共同决定（kill switch 看 Off 表、mode 看 On 表）。
-// 这里画错，用户就会看到一个与 `newgate plugin` 相反的开关。
+// TestViewReportsTheEffectiveState: the drawn `value` is the **currently effective** state,
+// decided jointly by the factory state and the user's setting (kill switch -> Off table,
+// mode -> On table). Drawn wrong, the user sees a switch opposite to `newgate plugin`.
 func TestViewReportsTheEffectiveState(t *testing.T) {
 	m := start(t)
 	register(t, m, "demo", sw("demo.kill", "safe", true), sw("demo.mode", "quirk", false))
@@ -100,13 +100,13 @@ func TestViewReportsTheEffectiveState(t *testing.T) {
 		return out
 	}
 
-	// 出厂态：kill switch 开着、mode 关着。
+	// Factory state: kill switch on, mode off.
 	got := values()
 	if !got["demo.kill"] || got["demo.mode"] {
-		t.Fatalf("出厂态画错了: %v", got)
+		t.Fatalf("the factory state is drawn wrong: %v", got)
 	}
 
-	// 用户关掉 kill switch：state 里写一条，界面就该跟着变。
+	// The user turns the kill switch off: one entry in state, and the UI must follow.
 	st := store.LoadState()
 	if err := SetSwitch(st, sw("demo.kill", "safe", true), false, 0, false); err != nil {
 		t.Fatal(err)
@@ -115,13 +115,13 @@ func TestViewReportsTheEffectiveState(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := values(); got["demo.kill"] {
-		t.Errorf("关掉之后界面还说它开着: %v", got)
+		t.Errorf("after turning it off the UI still says it is on: %v", got)
 	}
 }
 
-// TestViewApplyWritesWithABaseline：保存走的是「比对基线 → 原子写」那条路。
-// 基线过期要能报出**冲突**（而不是把人家的改动盖掉），这正是 web 与 CLI 同时改
-// 同一份 state.json 时的现场。
+// TestViewApplyWritesWithABaseline: saving goes the "compare baseline -> atomic write" way.
+// A stale baseline must report a **conflict** (not overwrite the other change) - exactly
+// the scene when web and CLI edit the same state.json at once.
 func TestViewApplyWritesWithABaseline(t *testing.T) {
 	m := start(t)
 	register(t, m, "demo", sw("demo.kill", "safe", true))
@@ -134,32 +134,32 @@ func TestViewApplyWritesWithABaseline(t *testing.T) {
 
 	rev, err := c.Apply(json.RawMessage(`{"demo.kill":false}`), base)
 	if err != nil {
-		t.Fatalf("保存失败: %v", err)
+		t.Fatalf("save failed: %v", err)
 	}
 	if rev == base {
-		t.Error("写完该给出新基线（前端续着改不用刷新页面）")
+		t.Error("after writing it should return a fresh baseline (the front end can keep editing without a page reload)")
 	}
 	if !Off(store.LoadState(), "demo.kill") {
-		t.Error("state 里没有写进「关掉」这条设定")
+		t.Error("state does not contain the 'off' setting")
 	}
 
-	// 拿**旧的**基线再写一次：这就是「命令行在你看页面的时候改了同一个文件」。
-	// 必须报冲突并把两边原文都带上，绝不覆盖。
+	// Write again with the **old** baseline: "the CLI edited the same file while you watched".
+	// It must report a conflict carrying both originals, and never overwrite.
 	_, err = c.Apply(json.RawMessage(`{"demo.kill":true}`), base)
 	var conflict *view.Conflict
 	if !errors.As(err, &conflict) {
-		t.Fatalf("基线过期该报冲突，实际 %v", err)
+		t.Fatalf("a stale baseline should report a conflict, got %v", err)
 	}
 	if conflict.Yours == "" || conflict.Theirs == "" {
-		t.Error("冲突要把两边原文都带上（用户才知道自己丢的是什么）")
+		t.Error("a conflict must carry both sides as is (so the user knows what they lost)")
 	}
 	if conflict.Path == "" || !strings.HasSuffix(conflict.Path, "state.json") {
-		t.Errorf("冲突要点名是哪份文件: %q", conflict.Path)
+		t.Errorf("a conflict should name the file: %q", conflict.Path)
 	}
 }
 
-// TestViewApplyRejectsAnUnknownSwitch：界面手里的开关点已经不在了（换了产物、
-// 模块被关掉）。**报错**而不是跳过：静默跳过的那天，用户以为按下的开关生效了。
+// TestViewApplyRejectsAnUnknownSwitch: the UI's switch point is gone (new artifact,
+// module removed). **Error** instead of skipping: a silent skip and the user thinks it took.
 func TestViewApplyRejectsAnUnknownSwitch(t *testing.T) {
 	m := start(t)
 	register(t, m, "demo", sw("demo.kill", "safe", true))
@@ -167,19 +167,19 @@ func TestViewApplyRejectsAnUnknownSwitch(t *testing.T) {
 	_, err := switchConcept(t, concepts).Apply(
 		json.RawMessage(`{"demo.gone":true}`), store.Revision(paths.StateFile()))
 	if err == nil {
-		t.Fatal("不认识的开关点该报错")
+		t.Fatal("an unknown switch point should error")
 	}
 	if !strings.Contains(err.Error(), "demo.gone") {
-		t.Errorf("报错要点名是哪一个: %v", err)
+		t.Errorf("the error should name which one: %v", err)
 	}
 }
 
-// TestViewReportsModulesWithNoSwitchesAtAll 是**骨架发行版**那条：一个开关点
-// 都没上报时，开关那两张卡片刻意不报（空卡片看起来像「没加载出来」），但模块
-// 清单必须照报——它回答的是另一个问题（这个构建由哪些模块组成），而那种构建
-// 恰恰最需要它：升级完先确认的就是「装的模块对不对」（见 docs/08-operations.md）。
+// TestViewReportsModulesWithNoSwitchesAtAll is the **skeleton distribution** case: with
+// no switch point reported, the two switch cards are deliberately omitted (an empty card
+// reads as "not loaded"), but the module list must be reported - it answers another
+// question (which modules make up this build), and that build needs it most after an upgrade
 //
-// 这条也是那个早退分支的棘轮：清单是后来插进去的，很容易被放在 `return` 之后。
+// (docs/08). Ratchet on that early return: the list came later, easy to leave after it.
 func TestViewReportsModulesWithNoSwitchesAtAll(t *testing.T) {
 	m := start(t)
 
@@ -193,53 +193,53 @@ func TestViewReportsModulesWithNoSwitchesAtAll(t *testing.T) {
 			table = c
 		}
 		if c.ID == "plugin-manager.switches" || c.ID == "plugin-manager.footguns" {
-			t.Errorf("一个开关点都没有，不该报 %s（空卡片像「没加载出来」）", c.ID)
+			t.Errorf("with not a single switch point it must not report %s (an empty card looks like 'failed to load')", c.ID)
 		}
 	}
 	if table.ID == "" {
-		t.Fatal("没有开关点时，模块清单也不报了——骨架发行版就什么都看不见了")
+		t.Fatal("with no switch points the module list is not reported either - a skeleton distro would show nothing at all")
 	}
 	if table.Kind != view.KindTable {
-		t.Errorf("模块清单该是 table，实际 %q", table.Kind)
+		t.Errorf("the module list should be a table, got %q", table.Kind)
 	}
 	if table.Apply != nil {
-		t.Error("模块清单是可写的？装什么模块由产物决定，改不了")
+		t.Error("is the module list writable? which modules are installed is decided by the artifact, it cannot be changed")
 	}
 
 	data := table.Data.(view.Table)
 	if len(data.Columns) == 0 {
-		t.Fatal("模块清单没有列")
+		t.Fatal("the module list has no columns")
 	}
 	columns := map[string]bool{}
 	for _, col := range data.Columns {
 		columns[col.ID] = true
 	}
 	if len(data.Rows) != len(m.Modules()) {
-		t.Errorf("清单该有 %d 行（每个模块一行），实际 %d", len(m.Modules()), len(data.Rows))
+		t.Errorf("the list should have %d rows (one per module), got %d", len(m.Modules()), len(data.Rows))
 	}
 	for _, row := range data.Rows {
 		if row.Cells["module"].Text == "" || row.Cells["type"].Text == "" {
-			t.Errorf("每一行都该有模块名与分类: %+v", row.Cells)
+			t.Errorf("every row should have a module name and a category: %+v", row.Cells)
 		}
-		// 没有开关点的模块显示横杠，不是 0：「一个都没有」与「0 个」不是一回事，
-		// 后者不是可能的状态（登记了就是至少一个）。
+		// A module with no switch points shows a dash, not 0: "none at all" is not "0", and
+		// the latter is not a possible state (registering means at least one).
 		if row.Cells["switches"].Text == "" {
-			t.Errorf("开关点那格是空的: %+v", row.Cells)
+			t.Errorf("the switch-point cell is empty: %+v", row.Cells)
 		}
 		for id := range row.Cells {
 			if !columns[id] {
-				t.Errorf("格子 %q 没有对应的列——前端取不到，这一格是空白", id)
+				t.Errorf("cell %q has no matching column - the front end cannot fetch it, so this cell is blank", id)
 			}
 		}
 	}
 }
 
-// switchConcept 按 **ID** 取可写的那张开关卡片，**不按下标**。
+// switchConcept fetches the writable switch card **by ID**, **not by index**.
 //
-// 下标曾经能用，因为那张卡片恰好是第一个产出的。加了模块清单之后它就不是了，
-// 于是按下标的写法取到一张 table，以一个看不懂的类型断言失败告终。ID 才是概念
-// 的稳定身份（见 lib/view 的 Concept.ID）——产出顺序是账本的实现细节，测试不该
-// 依赖它。
+// The index used to work because that card happened to be produced first. The module list
+// broke that: the index-based version grabbed a table and died on an inscrutable type
+// assertion. The ID is the concept's stable identity (see lib/view's Concept.ID) - the
+// production order is a ledger implementation detail tests should not depend on.
 func switchConcept(t *testing.T, concepts []view.Concept) view.Concept {
 	t.Helper()
 	for _, c := range concepts {
@@ -247,18 +247,18 @@ func switchConcept(t *testing.T, concepts []view.Concept) view.Concept {
 			return c
 		}
 	}
-	t.Fatal("可写的那张开关卡片不见了")
+	t.Fatal("the writable switch card is gone")
 	return view.Concept{}
 }
 
-// TestViewDeclaresWhichCardsChangeOnTheirOwn 是这几张卡 `Live` 的清单棘轮。
+// TestViewDeclaresWhichCardsChangeOnTheirOwn is the ledger ratchet for these cards' `Live`.
 //
-// 两张开关卡声明：它们的值**会被终端改**（`newgate plugin … on/off`），而带时限的
-// 那些**自己会变回去**（TTL 在读取时判定，见 query.go 的 Remaining——没有任何人
-// 去写 state.json）。页面停在打开那一刻，界面就在说一个已经不对的当前值。
-// 模块清单不声明：那是**这个构建**的事实，编译期就定了。
+// The two switch cards declare it: their values **are changed from the terminal**
+// (`newgate plugin ... on/off`) and those with a limit **revert by themselves** - TTL is
+// judged on read (Remaining, query.go; no one writes state.json), so a frozen page is stale.
+// The module list does not: that is a fact of **this build**, fixed at compile time.
 //
-// 为什么值得一条断言：`Live` 掉了不会报错，只是那几张卡不再刷新——静默。
+// Why an assertion: a lost `Live` raises nothing, those cards just stop refreshing - silently.
 func TestViewDeclaresWhichCardsChangeOnTheirOwn(t *testing.T) {
 	m := start(t)
 	register(t, m, "demo",
@@ -278,16 +278,16 @@ func TestViewDeclaresWhichCardsChangeOnTheirOwn(t *testing.T) {
 	for _, c := range concepts {
 		w, expected := want[c.ID]
 		if !expected {
-			t.Fatalf("多了一张没预期的卡 %s", c.ID)
+			t.Fatalf("an unexpected card showed up: %s", c.ID)
 		}
 		seen[c.ID] = true
 		if c.Live != w {
-			t.Errorf("%s 的 Live 该是 %v，实际 %v", c.ID, w, c.Live)
+			t.Errorf("the Live of %s should be %v, got %v", c.ID, w, c.Live)
 		}
 	}
 	for id := range want {
 		if !seen[id] {
-			t.Errorf("少了 %s——它本该被产出", id)
+			t.Errorf("missing %s - it should have been produced", id)
 		}
 	}
 }

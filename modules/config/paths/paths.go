@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 )
 
-// Home 目录下的 pid / lock（按需求：一旦 start 就在 ~ 创建）
+// pid / lock under the home directory (as required: created in ~ as soon as it starts)
 func Home() string {
 	h, err := os.UserHomeDir()
 	if err != nil || h == "" {
@@ -14,13 +14,14 @@ func Home() string {
 	return h
 }
 
-// Root 是整套运行时文件的根目录：`$NEWGATE_HOME` > `$XDG_CONFIG_HOME/newgate`
-// > `~/.config/newgate`。pid / lock / 日志 / 配置全在它下面。
+// Root is the root directory of all runtime files: `$NEWGATE_HOME` > `$XDG_CONFIG_HOME/newgate`
+// > `~/.config/newgate`. pid / lock / logs / config all live under it.
 //
-// 它对外公开（2026-09-20 起）是给**发行版**用的：产品要在这里放自己的东西时，
-// 该由它自己拼子路径（`filepath.Join(paths.Root(), "configshare")`），而不是让
-// 内核替它把每个文件名都写一遍——那些名字是产品的知识，写在内核里就是内核在
-// 认识产品。内核自己用到的名字仍然在下面这一串函数里。
+// It is exported (since 2026-09-20) for **distributions**: when a product wants to
+// put its own things here, it should join sub-paths itself (`filepath.Join(paths.Root(),
+// "configshare")`), rather than have the kernel write out every file name for it -- those
+// names are the product's knowledge, and writing them in the kernel means the kernel
+// knows the product. The names the kernel itself uses are still in the functions below.
 func Root() string {
 	if v := os.Getenv("NEWGATE_HOME"); v != "" {
 		return v
@@ -39,24 +40,28 @@ func HealthFile() string     { return filepath.Join(Root(), "health.json") }
 func ProbeCacheFile() string { return filepath.Join(Root(), "probe-capabilities.json") }
 func BackupDir() string      { return filepath.Join(Root(), "backups") }
 
-// ShimDir 是 PATH shim 的目录：`newgate on <agent>` 往这里放一个与客户端同名的
-// 链接，接管就是「让 PATH 前面的这个名字指向我们」。
+// ShimDir is the PATH shim directory: `newgate on <agent>` puts a link here named
+// after the client, and takeover means "make this name earlier on PATH point at us".
 //
-// 它住在这里而不是 modules/runtime/injection：**路径布局归本包**，而这份布局有两个
-// 消费者——放链接的那一位（injection）与**判断「这个工具到底装没装」的那一位**
-// （confighook 的 OnPath：查 PATH 时必须跳过这个目录，否则那条判据永远为真，因为
-// 目录里那个同名文件正是我们自己放的）。两个消费者各拼一遍路径，就是两份会漂移的
-// 知识，而漂移的症状是「接管状态又开始撒谎」。
+// It lives here rather than in modules/runtime/injection: **path layout belongs to this package**,
+// and this layout has two consumers -- the one that places the link (injection) and **the one
+// that decides "is this tool installed at all"** (confighook's OnPath: when searching PATH this
+// directory must be skipped, otherwise that criterion is always true, because the same-named file
+// in it is one we put there ourselves). Two consumers each spelling the path out is two pieces
+// of knowledge that drift, and the symptom of drift is "takeover status starts lying again".
 func ShimDir() string { return filepath.Join(Config(), "bin") }
 
-// RelToRoot 把一个绝对路径写成**相对配置根**的样子（写不出来就退回文件名）。
+// RelToRoot writes an absolute path as **relative to the
+// config root** (falling back to the file name when it cannot).
 //
-// 它服务的是界面契约里那个 `File`/`Path` 字段：概念按「说的是哪份文件」两半配对
-// （控件半与原文半，见 lib/view 的 Toggles.File），所以**同一份文件在两处必须给出
-// 同一种写法**——一处绝对、一处相对，配不上对，而界面上看起来只像「右栏没出来」。
+// It serves the `File`/`Path` field in the UI contract: a concept is paired by "which file it is
+// about" in two halves (the controls half and the source-text half, see lib/view's Toggles.File),
+// so **the same file must be spelled the same way in both places** -- one absolute and one
+// relative do not pair up, and in the UI it only looks like "the right column did not appear".
 //
-// 与 ShimDir 同一条：路径布局归本包。这段逻辑 2026-09-21 之前在 config 与 locale
-// 里各有一份（第二份是抄的），而它就是上面那句话说的「会漂移的知识」。
+// Same as ShimDir: path layout belongs to this package. This logic
+// existed in both config and locale before 2026-09-21 (the second was a
+// copy), and it is exactly the "knowledge that drifts" mentioned above.
 func RelToRoot(path string) string {
 	rel, err := filepath.Rel(Root(), path)
 	if err != nil {
@@ -66,13 +71,13 @@ func RelToRoot(path string) string {
 }
 func LogFile() string { return filepath.Join(Root(), "newgate.log") }
 
-// ThinkCacheFile thinkcache 的落盘冷层文件：滚动 100MB，撑过 daemon 重启。
-// 内容是推理原文（= 对话内容），和 dump 一样是明文，权限 0660 随目录的
-// 组共享模型走（developer 组内可见）。
+// ThinkCacheFile is thinkcache's on-disk cold layer: rolls at 100MB, surviving daemon restarts.
+// The content is the reasoning source (= conversation content), plaintext like dump, permission
+// 0660 following the directory's group-sharing model (visible within the developer group).
 func ThinkCacheFile() string { return filepath.Join(Root(), "thinkcache.bin") }
 
-// pid / lock 放共享配置目录，便于同一组的多用户管理同一个 daemon。
-// NEWGATE_HOME 仍可用于测试时隔离整套运行时文件。
+// pid / lock go in the shared config directory, so several users in the same group
+// can manage one daemon. NEWGATE_HOME can still isolate all runtime files in tests.
 func runtimeDir() string {
 	return Root()
 }
@@ -80,11 +85,11 @@ func runtimeDir() string {
 func PidFile() string  { return filepath.Join(runtimeDir(), ".newgate.pid") }
 func LockFile() string { return filepath.Join(runtimeDir(), ".newgate.lock") }
 
-// LegacyPidFile / LegacyLockFile 老版本的 pid / lock 位置（$HOME 根下）。
-// 只在真实部署（没设 NEWGATE_HOME）时兜底**读**它：升级到共享目录后，
-// 正在跑的老 daemon 还把 pid 写在那儿——不兜底的话它就「失踪」了，
-// stop 不到、start 又撞端口。
-// 沙箱里必须返回空：绝不能让测试里的 stop 顺藤摸瓜摸到真实 daemon。
+// LegacyPidFile / LegacyLockFile the old pid / lock locations (under $HOME). Only in
+// a real deployment (NEWGATE_HOME not set) is it **read** as a fallback: after the upgrade
+// to the shared directory, the old daemon still running writes its pid there -- without
+// the fallback it "goes missing", can't be stopped, and start collides on the port. In a
+// sandbox it must return empty: never let a test's stop follow the trail to the real daemon.
 func LegacyPidFile() string {
 	if os.Getenv("NEWGATE_HOME") != "" {
 		return ""
@@ -99,10 +104,11 @@ func LegacyLockFile() string {
 	return filepath.Join(Home(), ".newgate.lock")
 }
 
-// EnsureDirs 2770（组可读写 + setgid）：共享部署模型下，同组的其他用户
-// （developer 组里的 claude 用户）也要能读配置、写 pid/lock 管理同一个
-// daemon。新文件继承组的 setgid 靠目录位，umask 剥掉的组写用 chmod 补回。
-// 已存在的目录不碰——权限是装它的人的事。
+// EnsureDirs 2770 (group read/write + setgid): under the shared deployment model, other users
+// in the group (the claude user in the developer group) must also be able to read config and
+// write pid/lock to manage the same daemon. New files inheriting the group's setgid relies
+// on the directory bit, and group write stripped by umask is restored with chmod. Existing
+// directories are left alone -- permissions are the business of whoever installed it.
 func EnsureDirs() error {
 	for _, d := range []string{Config(), Mappings(), BackupDir()} {
 		if _, err := os.Stat(d); err == nil {

@@ -7,14 +7,14 @@ import (
 	"testing"
 )
 
-// TestEveryConcreteModuleHasStandardEntryFile 锁住两条目录规则：
+// TestEveryConcreteModuleHasStandardEntryFile pins two directory rules:
 //
-//  1. modules/ 下每个目录都是一个具体组件，必须暴露根 module.go——组合根
-//     （曾经的 modules/builtin，现在的 app）搬出 modules/ 之后，这条规则
-//     没有例外了。
-//  2. 公开 capability 和接口直接写在模块根目录的 api.go 里，不建
-//     <module>/api 子包（2026-09-17 起）。子包一旦出现，说明有人把契约
-//     和实现重新拆开了——这正是本条规则要拦住的回退。
+//  1. Every directory under modules/ is a concrete component and must expose a root
+//     module.go - after the composition root (once modules/builtin, now app) moved out
+//     of modules/, this rule has no exceptions.
+//  2. Public capabilities and interfaces live directly in the module root's api.go, no
+//     <module>/api subpackage (since 2026-09-17). Such a subpackage means someone
+//     split contract from implementation again - the regression this rule stops.
 func TestEveryConcreteModuleHasStandardEntryFile(t *testing.T) {
 	_, current, _, ok := runtime.Caller(0)
 	if !ok {

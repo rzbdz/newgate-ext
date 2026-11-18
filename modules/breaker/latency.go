@@ -5,26 +5,30 @@ import (
 	"github.com/rzbdz/newgate-ext/modules/breaker/status"
 )
 
-// LatencySample 给出一条 binding 此刻该显示的那个延迟数字，以及它该上的颜色。
+// LatencySample gives the latency number a binding
+// should display right now, and the color it should get.
 //
-// ok=false 表示**没有样本**（从没探过、也没有真实流量经过这一条）：那种情况下界面
-// 什么都不该画。画一个 `0ms` 是在说「它快得没有延迟」，而真相是「不知道」——这两句
-// 话在一个用来**挑快的那条**的页面上差别很大。
+// ok=false means **no sample** (never probed, and no real traffic went
+// through this one): in that case the UI should draw nothing. Drawing a `0ms`
+// says "it is so fast it has no latency", while the truth is "unknown" --
+// on a page used to **pick the fast one** those two sentences differ a lot.
 //
-// # 为什么这个映射要导出来、而不是留在 view.go 里
+// # Why this mapping is exported rather than left in view.go
 //
-// 同一件事今天有两处界面在说：`breaker.health` 那张表（本包自己的 view.go），
-// 以及首屏的路由总览（发行版的 modules/home——它同时看得见链与健康）。两份各写
-// 一遍的结果是迟早分家，而分家的症状是**同一条 binding 在两个页面上颜色不一样**，
-// 看的人只会去怀疑数据本身。
+// Two UIs talk about this today: the `breaker.health` table (this package's
+// own view.go), and the routing overview on the first screen (the distribution's
+// modules/home -- it sees chains and health at once). Written twice, the two will
+// drift sooner or later, and the symptom of drift is **the same binding colored
+// differently on two pages**, which only makes readers suspect the data itself.
 //
-// 阈值不在这个函数里，也不在任何一个界面里：快 / 可用 / 慢是 `status.Grade` 的
-// 判据，只有一处实现（3000 / 12000 写在 modules/breaker/status，那里同时也是 CLI
-// 用的那一份）。颜色与 CLI 对齐（见 modules/config/commands.go 的
-// bindingHealthLabel：绿 / 黄 / 红）——同一个进程的同一份数据，两个界面说同一件事。
+// The thresholds are not in this function, nor in any UI: fast / usable / slow is
+// the test of `status.Grade`, implemented in one place (3000 / 12000 are written in
+// modules/breaker/status, which is also the copy the CLI uses). Colors align with
+// the CLI (see bindingHealthLabel in modules/config/commands.go: green / yellow /
+// red) -- the same data in the same process, with two UIs saying the same thing.
 //
-// 三档**都**上色是刻意的：延迟是这张页面上唯一一个「扫一眼比大小」的数，
-// 只给最慢的着色等于让用户去读每一格。
+// Coloring **all three** tiers is deliberate: latency is the only number on this page that
+// is "compared by eye", and coloring only the slowest would make the user read every cell.
 func LatencySample(b Status) (ms int64, tone string, ok bool) {
 	if b.Checked.IsZero() {
 		return 0, "", false
@@ -37,15 +41,16 @@ func LatencySample(b Status) (ms int64, tone string, ok bool) {
 	case status.LatencySlow:
 		return b.Latency, view.ToneBad, true
 	}
-	// Grade 在 sampled=true 时到不了 LatencyUnknown。真到了这里说明它改了判据，
-	// 那就**别上色**——宁可这一格没有颜色，也不要一个我们自己编出来的结论。
+	// With sampled=true Grade cannot reach LatencyUnknown. If it does get here, it changed its
+	// test, so **do not color** -- better a cell with no color than a conclusion we made up.
 	return b.Latency, "", true
 }
 
-// BindingKey 是健康表的行 ID：`provider/model`。
+// BindingKey is the health table's row ID: `provider/model`.
 //
-// 为什么它要有一个名字：这个键是**跨模块的机器标记**——它既是表里的行 ID
-// （view.go 的 healthTable），也是首屏把「链上的这一站」对到「健康表里的那条」
-// 用的判据（发行版的 modules/home）。两边各拼一次就必须拼成同一个串，而拼错
-// 的症状是「延迟那一格一直是空的」——不报错，只是永远没有数据。
+// Why it needs a name: this key is a **cross-module machine marker** -- it is both the
+// row ID in the table (healthTable in view.go) and the test the first screen uses to match
+// "this hop on a chain" to "that row in the health table" (the distribution's modules/home).
+// Assembling it on both sides means assembling the same string, and the symptom of
+// getting it wrong is "the latency cell stays empty" -- no error, just never any data.
 func BindingKey(provider, model string) string { return provider + "/" + model }

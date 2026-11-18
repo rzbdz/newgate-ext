@@ -38,10 +38,10 @@ func TestApply_SkipsNonMatching(t *testing.T) {
 	body := []byte(`{"model":"claude-sonnet-4","messages":[{"role":"assistant","content":"a"}]}`)
 	res := Apply(body, req("claude-sonnet-4", "anth", "https://api.anthropic.com/v1"), nil)
 	if res.Changed {
-		t.Fatalf("不该改 Anthropic 的请求: %s", res.Body)
+		t.Fatalf("must not touch an Anthropic request: %s", res.Body)
 	}
 	if string(res.Body) != string(body) {
-		t.Fatal("body 被动了")
+		t.Fatal("the body was touched")
 	}
 }
 
@@ -50,12 +50,12 @@ func TestApply_HonorsOffSwitch(t *testing.T) {
 	r := req("test", "off-test", "https://x/v1")
 
 	if res := Apply(body, r, nil); !res.Changed {
-		t.Fatal("默认应该生效")
+		t.Fatal("it should take effect by default")
 	}
 	off := func(name string) bool { return name == "switch-test" }
 	res := Apply(body, r, off)
 	if res.Changed || string(res.Body) != string(body) {
-		t.Fatalf("关掉了还在改: %s", res.Body)
+		t.Fatalf("it is still modifying with the plugin off: %s", res.Body)
 	}
 }
 
@@ -70,20 +70,20 @@ func TestApply_FailOpen(t *testing.T) {
 	body := []byte(`{"model":"x"}`)
 	res := Apply(body, req("x", "y", "z"), nil)
 	if res.Changed || string(res.Body) != string(body) {
-		t.Fatal("插件报错后 body 不该变")
+		t.Fatal("the body must not change after a plugin error")
 	}
 	if len(res.Notes) != 1 || !strings.Contains(res.Notes[0], "boom") {
-		t.Fatalf("报错没被记录: %v", res.Notes)
+		t.Fatalf("the error was not recorded: %v", res.Notes)
 	}
 }
 
 type boom struct{}
 
 func (boom) Name() string        { return "boom" }
-func (boom) Why() string         { return "测试用" }
+func (boom) Why() string         { return "for testing" }
 func (boom) Match(*Request) bool { return true }
 func (boom) Apply(b []byte, r *Request) ([]byte, []string, error) {
-	return []byte(`{"毁了":true}`), []string{"改了"}, errFake
+	return []byte(`{"ruined":true}`), []string{"changed"}, errFake
 }
 
 // fakePlugin 测试里临时拼注册表用的小插件。
@@ -94,7 +94,7 @@ type fakePlugin struct {
 }
 
 func (f fakePlugin) Name() string          { return f.name }
-func (f fakePlugin) Why() string           { return "测试用" }
+func (f fakePlugin) Why() string           { return "for testing" }
 func (f fakePlugin) Match(r *Request) bool { return f.match(r) }
 func (f fakePlugin) Apply(b []byte, r *Request) ([]byte, []string, error) {
 	return f.apply(b, r)
@@ -104,7 +104,7 @@ var errFake = &fakeErr{}
 
 type fakeErr struct{}
 
-func (*fakeErr) Error() string { return "故意失败" }
+func (*fakeErr) Error() string { return "fail on purpose" }
 
 // TestApply_SyncsContextModel 锁死装饰器链的上下文语义：插件改了 body 的
 // model，框架负责让 r.Model 跟上——下一个插件（Match 和 Apply 都拿 r）
@@ -134,7 +134,7 @@ func TestApply_SyncsContextModel(t *testing.T) {
 			if err != nil {
 				return b, nil, err
 			}
-			return nb, []string{"切了"}, nil
+			return nb, []string{"switched"}, nil
 		},
 	}
 	temporary.Register(switcher)
@@ -144,13 +144,13 @@ func TestApply_SyncsContextModel(t *testing.T) {
 	res := Apply([]byte(`{"model":"orig-model","messages":[]}`), r, nil)
 
 	if seen != "switched-model" {
-		t.Fatalf("后面的插件看到的还是旧模型 %q，想要 switched-model", seen)
+		t.Fatalf("the following plugins still see the old model %q, want switched-model", seen)
 	}
 	if r.Model != "switched-model" {
-		t.Fatalf("Apply 之后 r.Model 应为 switched-model，实际 %s", r.Model)
+		t.Fatalf("after Apply r.Model should be switched-model, got %s", r.Model)
 	}
 	if !res.Changed || !strings.Contains(string(res.Body), "switched-model") {
-		t.Fatalf("body 没被切过去: %s", res.Body)
+		t.Fatalf("the body was not switched: %s", res.Body)
 	}
 }
 
@@ -159,15 +159,15 @@ func TestApply_SyncsContextModel(t *testing.T) {
 func TestPluginsHaveWhy(t *testing.T) {
 	ps := Plugins()
 	if len(ps) == 0 {
-		t.Fatal("一个插件都没注册")
+		t.Fatal("no plugin was registered")
 	}
 	seen := map[string]bool{}
 	for _, p := range ps {
 		if p.Name() == "" || len(p.Why()) < 10 {
-			t.Errorf("插件 %q 的 Name/Why 不合格", p.Name())
+			t.Errorf("plugin %q has an invalid Name/Why", p.Name())
 		}
 		if seen[p.Name()] {
-			t.Errorf("插件名重复: %s", p.Name())
+			t.Errorf("duplicate plugin name: %s", p.Name())
 		}
 		seen[p.Name()] = true
 	}

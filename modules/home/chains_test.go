@@ -60,7 +60,7 @@ func newFixture(t *testing.T) *fixture {
 	// Optional）——首屏照常出卡，只是没有延迟那一格、没有探活按钮、上面只有一档
 	// 「全部客户端」。真装齐的那几条路由 overview_test.go 起一张大一点的图去验。
 	if _, err := registerView(f.reg, cfg, overviewDeps{}); err != nil {
-		t.Fatalf("把这一节挂进账本失败: %v", err)
+		t.Fatalf("registering this section into the ledger failed: %v", err)
 	}
 	f.concept = f.snapshot()
 	return f
@@ -82,7 +82,7 @@ func (f *fixture) snapshot() view.Concept {
 			return c
 		}
 	}
-	f.t.Fatalf("这一节里没有 %s", overviewID)
+	f.t.Fatalf("there is no %s in this section", overviewID)
 	return view.Concept{}
 }
 
@@ -91,7 +91,7 @@ func (f *fixture) seedFile(rel, body string) { f.t.Helper(); seedFile(f.t, rel, 
 func (f *fixture) setDefault(name string) {
 	f.t.Helper()
 	if err := store.SetDefaultProfile(name, false); err != nil {
-		f.t.Fatalf("设默认档位失败: %v", err)
+		f.t.Fatalf("setting the default tier failed: %v", err)
 	}
 }
 
@@ -132,7 +132,7 @@ func cardOf(t *testing.T, ch view.Chains, profile string) view.ChainCard {
 			return c
 		}
 	}
-	t.Fatalf("没有 %q 这张卡（现在有 %d 张）", profile, len(ch.Cards))
+	t.Fatalf("there is no %q card (there are %d now)", profile, len(ch.Cards))
 	return view.ChainCard{}
 }
 
@@ -143,7 +143,7 @@ func rowIn(t *testing.T, card view.ChainCard, tier string) view.ChainRow {
 			return r
 		}
 	}
-	t.Fatalf("%s 这张卡上没有 %q 这一档（现在有 %d 档）", card.Profile, tier, len(card.Roles))
+	t.Fatalf("the %s card has no %q tier (it has %d tiers now)", card.Profile, tier, len(card.Roles))
 	return view.ChainRow{}
 }
 
@@ -162,23 +162,23 @@ func TestTheSectionIsTheLanding(t *testing.T) {
 	f := newFixture(t)
 	sections := f.reg.Sections()
 	if len(sections) != 1 {
-		t.Fatalf("这一节只该登记一栏，实际 %d 栏", len(sections))
+		t.Fatalf("this section should register only one column, actual %d", len(sections))
 	}
 	s := sections[0]
 	if s.Source != Name {
-		t.Errorf("Source 该是机器标记 %q，实际 %q", Name, s.Source)
+		t.Errorf("Source should be the machine marker %q, actual %q", Name, s.Source)
 	}
 	if !s.Default {
-		t.Error("这一节声明了 Landing()，Sections 里必须带上 default")
+		t.Error("this section declared Landing(), so Sections must include default")
 	}
 	if s.Title == "" {
-		t.Error("栏名不能空（界面上会是一栏没有标题的按钮）")
+		t.Error("the column name must not be empty (the UI would show a column of buttons with no title)")
 	}
 	// **不归组**：侧栏把声明了落点的那一栏排在目录第一位、且不给它画分组标题
 	// （见 Sidebar.svelte 的 rows）。归了组就会连标题一起被卷到中间去，而
 	// 「凭什么它最上面」这个问题就答不上来了——它自己在第一位时位置本身就是那句话。
 	if s.Group != "" {
-		t.Errorf("落点那一栏不该归组（会被卷到中间去），实际归到了 %q", s.Group)
+		t.Errorf("the landing column should not be grouped (it would get rolled into the middle), actual grouped into %q", s.Group)
 	}
 }
 
@@ -243,7 +243,7 @@ func TestSkipCategoriesAreAllNamed(t *testing.T) {
 		}
 	}
 	if len(seen) < 3 {
-		t.Fatalf("这份配置该凑出好几类跳过，实际只有 %v——下面的断言会空转成绿的", seen)
+		t.Fatalf("this config should produce several kinds of skips, actual only %v -- the assertions below would spin green", seen)
 	}
 	for kind := range seen {
 		known := false
@@ -253,8 +253,8 @@ func TestSkipCategoriesAreAllNamed(t *testing.T) {
 			}
 		}
 		if !known {
-			t.Errorf("跳过类目 %q 不在这张表里：它会被静默归进 %q，数量对不上。"+
-				"resolve 改了标记名？", kind, skipOther)
+			t.Errorf("skip category %q is not in this table: it gets silently folded into %q and the counts do not match."+
+				"did resolve change the marker names?", kind, skipOther)
 		}
 	}
 	// 换一个方向：表里认得出的类目，措辞不能把它写成兜底那句。
@@ -263,7 +263,7 @@ func TestSkipCategoriesAreAllNamed(t *testing.T) {
 			continue
 		}
 		if seen[kind] && skipLabel(kind) == skipLabel(skipOther) {
-			t.Errorf("类目 %q 被标成了「其他」的说法", kind)
+			t.Errorf("category %q was labeled as \"other\"", kind)
 		}
 	}
 }

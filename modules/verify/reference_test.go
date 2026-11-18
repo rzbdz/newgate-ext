@@ -16,9 +16,9 @@ import (
 	"github.com/klauspost/compress/zstd"
 )
 
-// 一个最小的参考数据服务：bundle.json 指向一个 zstd chunk。测试只关心下载器
-// 的形状（同版短路、校验和、解压），不关心 detector 本身——那份数 MB 的文件
-// 不该进测试仓库。
+// A minimal reference data server: bundle.json points at a zstd chunk. The test cares about
+// the downloader's shape (same-version short circuit, checksum, decompression), not the
+// detector - that multi-MB file does not belong in the test repo.
 func referenceServer(t *testing.T, detector []byte) (*httptest.Server, string, *atomic.Int32) {
 	t.Helper()
 	var compressed bytes.Buffer
@@ -69,7 +69,7 @@ func TestFetchFromDownloadsAndVerifies(t *testing.T) {
 		t.Fatalf("chunk downloads=%d, want 1", got)
 	}
 
-	// 同一个版本再问一次：只读 bundle，不重复下 chunk。
+	// Ask for the same version again: read the bundle only, no chunk re-download.
 	_, detectorBytes, gotVersion, changed, err = fetchFrom(context.Background(), srv.Client(), srv.URL+"/", version)
 	if err != nil {
 		t.Fatalf("fetchFrom same version: %v", err)

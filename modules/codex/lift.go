@@ -1,24 +1,26 @@
 package codex
 
-// codex 客户端的**工具方言**提到上游看得懂的位置。
+// Lifting the codex client's **tool dialect** to where the upstream can understand it.
 //
-// 这层是「codex 发的形状」与「任意上游读的形状」之间的归一化。它**不**做模型侧
-// 的修整（custom → function 之类）——那是 crossings 的事（见 modules/codex_deepseek）。
-// 它的全部职责是：把 Codex 0.155 那种把工具树挂在 `input[0].additional_tools`
-// 里的旧版形状**逐字节**拍平、写到顶层 `tools`，让上游看见工具。
+// This layer is the normalization between "the shape codex sends" and "the shape any
+// upstream reads". It does **not** do model-side fixes (custom -> function and the like)
+// -- that is crossings' business (see modules/codex_deepseek). Its whole job is: flatten
+// the old shape where Codex 0.155 hangs a tool tree in `input[0].additional_tools`
+// **byte for byte** onto the top-level `tools`, so the upstream sees the tools.
 //
-// 实测（2026-09-23，打真实 smt-ark / smt-deepseek / smt-claude / smt-gemini /
-// smt-codex / kimi / minimax，每格 3/3）：
+// Measured (2026-09-23, hitting real smt-ark / smt-deepseek /
+// smt-claude / smt-gemini / smt-codex / kimi / minimax, 3/3 per cell):
 //
-//	顶层 tools 已存在（非空数组）  → 上游拿到 function_call
-//	input[0].additional_tools         → 上游或 400（gemini/gpt/minimax），
-//	                                   或 200 但零 tool_call（ark/deepseek/kimi/claude）
+//	top-level tools already present (non-empty array) -> upstream gets function_call
+//	input[0].additional_tools                         -> upstream 400s (gemini/gpt/minimax),
+//	                                                     or 200 with zero tool_call (ark/deepseek/kimi/claude)
 //
-// ark/claude/kimi 200 但不出 tool_call 是最坑的那一族——它**不是错**，客户端只能
-// 拿到一段正常文本，于是「从来没成功获取 tool_result」。这一手要修的就是这个。
-// gemini/gpt/minimax 直接 400 的那条更直观，但本质原因一致：上游**根本**没去读
-// input[0] 这个位置，只读顶层 `tools`。这条规矩的来源是上游的文档与行为实测，
-// 不是 Codex 的预期——但既然上游就这样，本层就照做。
+// ark/claude/kimi returning 200 with no tool_call is the nastiest family -- it is **not
+// an error**, and the client only gets a normal paragraph of text, so it "never successfully
+// got tool_result". That is what this move fixes. The gemini/gpt/minimax 400 is more obvious,
+// but the root cause is the same: the upstream **never** reads the `input[0]` position, only
+// the top-level `tools`. This rule comes from the upstream's docs and measured behavior, not
+// from Codex's expectations -- but since the upstream is like that, this layer follows it.
 
 import (
 	"bytes"
@@ -27,22 +29,23 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// 本包内 takeover.go 把 `rewrite` 用作了**局部函数名**（负责 TOML 字节手术的那
-// 一手，见那里）。Go 的包级名字空间里不能同时出现「rewrite 包」与「rewrite 函
-// 数」，所以这里用 `rw` 别名——功能上是同一份原语，名字上绕开冲突。
+// Inside this package, takeover.go uses `rewrite` as a **local function name**
+// (the move that does TOML byte surgery; see there). Go's package namespace cannot
+// hold both "the rewrite package" and "the rewrite function", so the alias `rw`
+// is used here -- the same primitive functionally, a name that avoids the clash.
 
-// ToolsItem 是 Codex 把工具树放进 input[] 时那一项的 `type` 值。
+// ToolsItem is the `type` value of the item Codex puts when it places the tool tree in input[].
 //
-// 它是**客户端方言**——属于 codex，**不**属于任何上游，也不是 Responses 方言的一部分。
-// 所以它住 modules/codex 的常量里，内核里一个字都不该出现（转发热路径连
-// "responses" 都不认识）。
+// It is **client dialect** -- codex's, **not** any upstream's, and not part of the
+// Responses dialect. So it lives in modules/codex's constants, and not one word of it
+// should appear in the kernel (the forwarding hot path does not even know "responses").
 const ToolsItem = "additional_tools"
 
-// ToolsInInput 从请求体里取出 Codex 的工具树（嵌套形状）。
+// ToolsInInput pulls Codex's tool tree (the nested shape) out of the request body.
 //
-// 「找不到」不是错误——Codex 0.155 也用顶层 `tools` 的新版形状（见
-// HasUsableTopLevelTools），那种就不是这一手管的对象。返回 nil, false 表示
-// 「归别人管」。
+// "Not found" is not an error -- Codex 0.155 also uses the new shape
+// with a top-level `tools` (see HasUsableTopLevelTools), which is not what
+// this move handles. Returning nil, false means "someone else's business".
 func ToolsInInput(body []byte) ([]byte, bool) {
 	input, ok := rw.TopLevelRaw(body, "input")
 	if !ok {
@@ -61,18 +64,19 @@ func ToolsInInput(body []byte) ([]byte, bool) {
 	return nil, false
 }
 
-// HasUsableTopLevelTools 报告顶层 `tools` 是不是已经是一个**非空**数组。
+// HasUsableTopLevelTools reports whether the top-level `tools` is already a **non-empty** array.
 //
-// 真值表（实测）：
+// Truth table (measured):
 //
-//	`"tools": [...]`（非空） → 用上游那份（不去动）
-//	`"tools": []`           → 当作缺席，抬上去
-//	`"tools": null`         → 同上
-//	缺席                    → 同上
+//	`"tools": [...]` (non-empty) -> use the upstream's (do not touch)
+//	`"tools": []`               -> treat as absent, lift it up
+//	`"tools": null`             -> same as above
+//	absent                      -> same as above
 //
-// 为什么空数组/null 视为「缺席」：实测 Codex 0.155 在带 `additional_tools` 项的请求
-// 里把顶层 `tools` 写成 `null` 或 `[]`（这是它的旧版形状），那种情况应当按"我要用
-// 嵌套那份"处理；新版形状里 `tools` 一定是**非空**数组，这是判断的界线。
+// Why an empty array/null is treated as "absent": measured, Codex 0.155 writes the
+// top-level `tools` as `null` or `[]` on requests that carry an `additional_tools` item
+// (its old shape), and that case should be handled as "I want to use the nested one";
+// in the new shape `tools` is always a **non-empty** array, which is the dividing line.
 func HasUsableTopLevelTools(body []byte) bool {
 	raw, has := rw.TopLevelRaw(body, "tools")
 	if !has || len(raw) == 0 {
@@ -86,20 +90,22 @@ func HasUsableTopLevelTools(body []byte) bool {
 	return ok && len(items) > 0
 }
 
-// FlattenToolTree 把嵌套的工具树（`additional_tools` 数组里可能出现的
-// `namespace` 容器）拍平成单个顶层 `tools` 数组。
+// FlattenToolTree flattens the nested tool tree (`namespace` containers that may
+// appear in the `additional_tools` array) into a single top-level `tools` array.
 //
-// `namespace` 在 Codex 那边是给客户端分组看的（functions / collaboration），上游
-// 没有对应概念（实测：smt-deepseek / smt-ark 直接读 `tools` 数组，对 namespace
-// 既不报错也不展开——「看不见」等价于「嵌套形状失败」）。拍平之后每个叶子
-// 字节不动：未知 `type` 的项也原样保留（让 Codex 新加的工具类型发出去，
-// 而不让我们猜）。
+// `namespace` on Codex's side is for client-side grouping (functions / collaboration);
+// the upstream has no corresponding concept (measured: smt-deepseek / smt-ark read the `tools`
+// array directly and neither error on nor expand a namespace -- "cannot see it" equals "the nested
+// shape failed"). After flattening, every leaf is untouched byte for byte: items with an unknown
+// `type` are kept as is too (let the tool types Codex newly adds go out, rather than us guessing).
 //
-// 跨仓库的旧版判断（kernel 注释里那一条）：Codex 的 `custom` 类工具在上游是否
-// 被接受，**按上游**——不是这一层管的事。这一层只做"抬上来"，不做"降级"。
+// The cross-repo old-version question (the note in the kernel): whether
+// Codex's `custom` tool kind is accepted upstream is **per upstream** --
+// not this layer's business. This layer only "lifts up", never "downgrades".
 //
-// 返回值是 (新数组, 叶子数)。叶子数用于：(1) 决定"有没有动过"——0 = 原样转发，
-// 与 reasoning 那条规矩同；(2) 报 notes 时给读者真话。
+// The return is (new array, leaf count). The leaf count is used for:
+// (1) deciding "did anything change" -- 0 = forward as is, the same rule
+// as reasoning; (2) telling the reader the truth when reporting notes.
 func FlattenToolTree(arr []byte) ([]byte, int) {
 	items, ok := rw.ArrayItems(arr)
 	if !ok {
@@ -121,7 +127,8 @@ func FlattenToolTree(arr []byte) ([]byte, int) {
 	return buf.Bytes(), len(leaves)
 }
 
-// collectLeaves 递归收叶子。namespace 容器进去，别的 type 原样收。
+// collectLeaves collects leaves recursively. namespace
+// containers are descended into, other types are collected as is.
 func collectLeaves(items [][]byte) [][]byte {
 	out := make([][]byte, 0, len(items))
 	for _, item := range items {
@@ -145,20 +152,20 @@ func collectLeaves(items [][]byte) [][]byte {
 	return out
 }
 
-// SetTopLevelTools 把 `tools` 字段写成本次抬出来的数组。
+// SetTopLevelTools writes the `tools` field as this run's lifted array.
 //
-// 真值表（实测 Codex 0.155.1）：
+// Truth table (measured Codex 0.155.1):
 //
-//	缺席            → Insert（这是真正的「我要给它补上」）
-//	`"tools":null`  → Replace（已是同一个键，只是值是 null，不是缺席）
-//	`"tools":[]`    → Replace
-//	`"tools":[...]` → Replace
+//	absent            -> Insert (this is really "I want to fill it in")
+//	`"tools":null`    -> Replace (the key is already there, only the value is null; not absent)
+//	`"tools":[]`      -> Replace
+//	`"tools":[...]`   -> Replace
 //
-// 之所以「null / [] 走 Replace」而不是「按缺席走 Insert」：InsertTopLevelRaw 在键
-// 已存在时报「the top level already has this key」——所以「视为缺席」只能是在
-// Apply 那一层做决定，写到这里必须忠实地 Replace。
+// Why "null / [] go Replace" rather than "Insert as absent": InsertTopLevelRaw reports
+// "the top level already has this key" when the key exists -- so "treat as absent"
+// can only be decided at the Apply layer; writing here must faithfully Replace.
 //
-// 错误一律原样上抛：调用方按 fail-open 决定要不要原样转发。
+// Errors are always propagated as is: the caller decides fail-open whether to forward as is.
 func SetTopLevelTools(body, tools []byte) ([]byte, error) {
 	if _, has := rw.TopLevelRaw(body, "tools"); has {
 		return rw.ReplaceTopLevelRaw(body, "tools", tools)
@@ -166,13 +173,15 @@ func SetTopLevelTools(body, tools []byte) ([]byte, error) {
 	return rw.InsertTopLevelRaw(body, "tools", tools)
 }
 
-// noteLifted 报「抬了 N 条工具」。N 是叶子数——`namespace` 容器不计数里。
+// noteLifted reports "lifted N tools". N is the leaf
+// count -- `namespace` containers are not counted.
 //
-// 「有没有抬」看叶子数而不是「有没有降级过」：哪怕一个 custom 都没有（全是原生
-// function），只要它们挂在 input[0] 里，模型就一个工具都看不见。修的是这一步
-// 本身；降级是别的层（crossings）的另一件事——把这两件事混在同一句 note 里会
-// 让「一个 custom 都没有」时那句变成「抬了 N 条，0 条降级」，多出来的「0 条」不是
-// 噪音而是「这次没动过任何工具的字段」这条信息，独立成句更稳。
+// "Did anything get lifted" looks at the leaf count, not "was anything downgraded":
+// even with not one custom tool (all native function), as long as they hang in input[0] the
+// model sees not one tool. What is fixed is this step itself; downgrading is another layer's
+// (crossings') other matter -- mixing the two in one note would, when "not one custom exists",
+// turn that sentence into "lifted N, 0 downgraded", where the extra "0" is not noise but
+// the information "no tool field was touched this time"; a separate sentence is more robust.
 func noteLifted(n int) string {
 	return i18n.N(
 		"lifted {n} tool declaration from input[0] to the top level (most upstreams read tools only there)",

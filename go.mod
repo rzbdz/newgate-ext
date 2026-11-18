@@ -10,16 +10,19 @@ require (
 	golang.org/x/sys v0.48.0
 )
 
-// 内核是**这个仓库里的一份普通依赖**，钉在 core/ 这个 submodule 的提交上。
+// The kernel is **an ordinary dependency of this repository**, pinned to the commit the
+// core/ submodule points at.
 //
-// 为什么是 replace 而不是让 Go 去下载一个版本号：submodule 的 gitlink 已经是
-// 「用哪个内核」的唯一真相，再写一个版本号就是同一件事记两遍——两处迟早对不上，
-// 而对不上的症状是「本地编出来的和 CI 编出来的不是一个东西」。
+// Why replace instead of letting Go download a version number: the submodule's gitlink is
+// already the single truth of "which kernel", and writing a version number too would record
+// the same fact twice -- the two eventually disagree, and the symptom is "what I build
+// locally is not what CI builds".
 //
-// 另外两个好处正好是这一版要的东西：
-//   - 内核的测试可以在树内直接跑（发行版流水线里的 core-test 那一步就是这么来的）；
-//   - 构建读的是**工作区**，所以「改完先 commit 才能编」这条摩擦没有了。
+// Two more benefits happen to be what this pass wants:
+//   - the kernel's tests run inside the tree (that is where the distribution pipeline's
+//     core-test step comes from);
+//   - the build reads the **working tree**, so the "commit before you can build" friction is gone.
 //
-// 代价写在文档里（docs/09-extension-guide.md §8）：本地构建与 CI 构建的差别只剩
-// 「submodule 在不在那一发上」，而那是 git 自己保证的事。
+// The cost is written down in docs/09-extension-guide.md §8: the only difference between a
+// local and a CI build is "is the submodule at that commit", and git guarantees that itself.
 replace github.com/rzbdz/newgate => ./core

@@ -13,29 +13,34 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// classifierConcept 是这个模块给 web 界面的一面：Bash 分类器此刻被怎么对待。
+// classifierConcept is the face this module gives the
+// web UI: how the Bash classifier is treated right now.
 //
-// # 为什么这张卡比别的卡片更硬
+// # Why this card is harder than other cards
 //
-// `naked forever` 是**永久短路**安全分类器的开关：开着的时候，分类器请求一律
-// 直接批准、不再问上游。它在今天的产品里只出现在 `newgate status` 的一行里——
-// 而那一行是网关**代转**的插件状态（special.StatusProvider）。关掉 cli 的那份
-// 发行版（dist-dashboard）里 status 与 `newgate naked off` 都不存在，于是那个
-// 状态在那份构建里**既看不见、也没有命令能关**，唯一的路是手工去 state.json
-// 里改那个键。一张卡片就是「编辑器」与「一个 JSON 文件」的差别。
+// `naked forever` is the switch that **permanently short-circuits** the safety classifier:
+// while on, classifier requests are all approved directly, never asking the upstream.
+// In today's product it shows up only in one line of `newgate status` -- and that line is the
+// plugin status the gateway **relays** (special.StatusProvider). In the distribution with cli
+// removed (dist-dashboard), status and `newgate naked off` both do not exist, so that state is
+// **invisible and has no command to turn it off** in that build; the only way is to go edit that
+// key in state.json by hand. A card is the difference between "an editor" and "a JSON file".
 //
-// # 为什么自己解析，而不是问插件
+// # Why it parses itself rather than asking the plugin
 //
-// 插件那条路（special.Statuses）在**整层关掉**时返回空——而「层关着、键还留着
-// forever」恰恰是最该被看见的局面：把层一开回来，那扇门就又开了。所以这里读的是
-// **磁盘上的配置**（ParseNakedConfig 一处判据，含懒过期），再单独说明它此刻是否
-// 真的在生效。这也与 CLI 的 status 行同源：同一句话、同一个判据。
+// The plugin path (special.Statuses) returns empty when **the whole layer is off**
+// -- and "the layer is off while the key still says forever" is exactly the situation
+// that most needs to be seen: turn the layer back on and that door opens again. So
+// what is read here is **the config on disk** (one test in ParseNakedConfig, including
+// lazy expiry), and then whether it is really in effect is stated separately. This
+// is also the same source as the CLI's status line: the same sentence, the same test.
 //
-// # 为什么只读
+// # Why read-only
 //
-// `newgate naked` 的写入带时限语义（`on` 与 `forever` 是两件事，见 classifier-
-// naked.go），而这一版界面没有选时限的控件。给它一个 bool 开关，等于把「永久」
-// 悄悄降级成「一段时间」——比不给更糟（同 pluginmanager 把 footgun 留成只读）。
+// `newgate naked`'s write carries time semantics (`on` and `forever` are two things,
+// see classifier-naked.go), and this version of the UI has no control for picking a
+// duration. Giving it a bool switch would quietly downgrade "permanent" to "for a while"
+// -- worse than not giving one (same as pluginmanager leaving the footgun read-only).
 func classifierConcept() view.Concept {
 	st := store.LoadState()
 	cfg, active := ParseNakedConfig(st.ModuleConfig[NakedConfigKey])
@@ -68,24 +73,25 @@ func classifierConcept() view.Concept {
 		ID: "claudecode.classifier", Kind: view.KindToggles,
 		Title: i18n.T("Claude Code Bash classifier", nil),
 		Data:  clData{File: "state.json", Items: items},
-		// Live：限时窗口那句话写的是「还有多久自动关闭」——页面开着不动，那个数字
-		// 就是错的（而它说的是安全门什么时候关上）。整张卡读的是内存里的
-		// state.json，常问不亏。
+		// Live: the limited-window sentence is "how long until it turns itself off" --
+		// with the page left open, that number is wrong (and it is about when the safety gate
+		// closes). The whole card reads state.json from memory, so asking often costs nothing.
 		Live:  true,
 		Apply: applyClassifier,
-		// 没装 claude 的机器上，这张卡调的是一个不存在的命令的行为。
+		// On a machine without claude, this card describes the behavior of a command that does not exist.
 		Locked: lockReason(),
 	}
 }
 
-// clToggle / clData 的形状住在契约包里（`lib/view` 的 ToggleItem / Toggles）：
-// 形状是 **Kind 的事**，而 Kind 定义在那里。本模块曾经自己写了一份（第三份），
-// 2026-09-21 收掉——留着的话加一个字段就要改三处，而「少改了一处」的症状是那一格
-// 在前端不显示值，看起来只像「刚加的功能还没做」。
+// The shapes of clToggle / clData live in the contract package (`lib/view`'s ToggleItem /
+// Toggles): the shape is **Kind's business**, and Kind is defined there. This module once had
+// its own copy (a third one), removed 2026-09-21 -- keeping it means adding a field requires
+// changing three places, and the symptom of "changing one fewer" is that cell showing
+// no value in the frontend, which looks like "the feature just added is not done yet".
 type clToggle = view.ToggleItem
 type clData = view.Toggles
 
-// nakedWhy 把「现在是什么状态」与「这一刻算不算数」写在一句话里。
+// nakedWhy puts "what state it is in" and "does it count right now" into one sentence.
 func nakedWhy(st *domain.State, cfg NakedConfig, active bool) string {
 	state := i18n.T("off — the Bash classifier is asked as usual", nil)
 	switch {
@@ -95,9 +101,10 @@ func nakedWhy(st *domain.State, cfg NakedConfig, active bool) string {
 		state = i18n.T("on — it turns itself off in {left}",
 			i18n.A{"left": time.Until(cfg.ExpiresAt).Round(time.Second)})
 	}
-	// 「配置里写着什么」与「它此刻算不算数」是两件事：这一层（或这枚插件）被关掉
-	// 时，配置留着、门是关的，把层一开回来门就又开了——不说出来，用户会照着上面
-	// 那句去关一个此刻根本没生效的东西。
+	// "What the config says" and "does it count right now" are two things: when this
+	// layer (or this plugin) is off, the config stays and the door is closed, and turning
+	// the layer back on opens it again -- without saying so, the user would follow
+	// the sentence above to turn off something that is not in effect at all right now.
 	if note := layerNote(st); note != "" {
 		state += " · " + note
 	}
@@ -111,7 +118,8 @@ func overrideWhy(st *domain.State) string {
 	return i18n.T("provider/model, or @key to follow another tier. Empty = the Bash classifier rides the light tier.", nil)
 }
 
-// layerNote 说「这一层此刻算不算数」；算数时返回空串（没什么可说的）。
+// layerNote says "does this layer count right now"; when
+// it does, returns the empty string (nothing to say).
 func layerNote(st *domain.State) string {
 	off := []string{}
 	if gatewaystate.PluginOff(st, nakedPluginName) {
@@ -131,9 +139,10 @@ func layerNote(st *domain.State) string {
 	return ""
 }
 
-// applyClassifier 写这两格。裸奔的三种状态与 CLI 一一对应（off / 60s 窗口 /
-// forever），**不把 forever 降级成窗口**——那正是这张卡以前只读的理由，现在把三态
-// 都摆出来，理由就不成立了。
+// applyClassifier writes these two cells. Naked mode's three states correspond
+// one to one with the CLI (off / 60s window / forever), and it **does not
+// downgrade forever into a window** -- that was exactly why this card used to be
+// read-only; now that all three states are laid out, the reason no longer holds.
 func applyClassifier(edit json.RawMessage, _ string) (string, error) {
 	var patch map[string]string
 	if err := json.Unmarshal(edit, &patch); err != nil {
@@ -146,8 +155,8 @@ func applyClassifier(edit json.RawMessage, _ string) (string, error) {
 			if err := saveNakedConfig(NakedConfig{}); err != nil {
 				return "", err
 			}
-			// Mode 为空串时 ParseNakedConfig 判为「没开」，但那会把一个空对象写进
-			// state.json；直接删掉这个键更干净（与 `newgate naked off` 同一条）。
+			// When Mode is the empty string ParseNakedConfig judges it "off", but that would write an empty
+			// object into state.json; deleting the key outright is cleaner (same as `newgate naked off`).
 			if err := deleteNakedConfig(); err != nil {
 				return "", err
 			}
@@ -191,43 +200,46 @@ func applyClassifier(edit json.RawMessage, _ string) (string, error) {
 	return "", nil
 }
 
-// deleteNakedConfig 清掉裸奔那个键（关掉它）。
+// deleteNakedConfig removes the naked-mode key (turns it off).
 func deleteNakedConfig() error {
 	s := store.LoadState()
 	delete(s.ModuleConfig, NakedConfigKey)
 	return store.SaveState(s)
 }
 
-// 插件名取自插件自己（`classifierNaked{}.Name()`），不是抄一份字面量：抄的那份
-// 会漂移，而漂移的后果是 PluginOff 问了一个不存在的插件——**失败方向是 fail-open**，
-// 那句提醒会静默地永远不出现。
+// The plugin name comes from the plugin itself (`classifierNaked{}.Name()`), not copied as a
+// literal: a copy drifts, and the drift means PluginOff asks about a plugin that does not exist
+// -- **the failure direction is fail-open**, and that reminder would silently never appear.
 var (
 	nakedPluginName      = classifierNaked{}.Name()
 	backgroundPluginName = background{}.Name()
 )
 
-// slotsConcept 是这张卡：**Claude Code 的哪个槽位归哪个档位**。
+// slotsConcept is this card: **which Claude Code slot takes which tier**.
 //
-// # 为什么它该有一张卡
+// # Why it deserves a card
 //
-// 映射的缺省值住在 agent.go 里（那是出厂设置），而 2026-09-21 之前它**只**住在
-// 那里——想「让 Bash 分类器走 normal，免得 Sonnet 一挂整场断」或者「subagent 全
-// 降一档省点钱」，只有改代码重编一条路。用户的原话是「目前看 go 代码就是他妈的
-// 写死的吧」。
+// The mapping's defaults live in agent.go (factory settings), and before 2026-09-21
+// it lived **only** there -- to "make the Bash classifier go through normal
+// so a Sonnet outage does not break the whole session" or "drop every subagent
+// one tier to save money", the only way was to edit code and rebuild. The user's
+// words were "looking at it now, this is just hardcoded in the go code, isn't it".
 //
-// 它是配置，不是代码：改完之后**下一次接管**就生效（env 是启动时注入的，跑着的
-// 会话要 `newgate on claude` 重来一次——这句写在 why 里，不写的话用户会以为点了
-// 没生效）。
+// It is config, not code: a change takes effect at **the next takeover** (env
+// is injected at launch, so a running session needs `newgate on claude` again
+// -- this is written in the why, or the user would think the click did nothing).
 //
-// # 为什么不做成「每个档位一张卡」
+// # Why not one card per tier
 //
-// 一档一行就是这张卡：五行，一眼看完，改哪一行都只有一个下拉。做成五张卡的话，
-// 「我想让 sonnet 走重档」这件事要在五个地方里找出对的那一个。
+// One row per tier is this card: five rows, read in one glance, and
+// changing any row is one dropdown. As five cards, "I want sonnet to
+// take the heavy tier" means finding the right one among five places.
 func slotsConcept() view.Concept {
 	a := Agent()
 	_, bad := ReadSlotTiers()
-	// 第一格是**链头**（这个客户端从哪条 profile 起步），后面的才是各槽位走哪一档。
-	// 顺序有意义：档位最终落到哪家模型上要先有链，先有链才有档。
+	// The first cell is the **chain head** (which profile this client starts from);
+	// the rest are which tier each slot takes. The order matters: before a tier
+	// can resolve to any model there must be a chain; chain first, tier second.
 	items := make([]clToggle, 0, len(a.Slots)+1)
 	items = append(items, profileOf().ProfileItem())
 	for _, s := range a.Slots {
@@ -237,17 +249,19 @@ func slotsConcept() view.Concept {
 		}
 		items = append(items, clToggle{
 			ID: s.Name, Label: s.Name, Kind: "select",
-			// 此刻走哪儿：本模块交给内核的那份事实（见 slots.go 的 facts），
-			// 与注入路径问的是同一个实现——界面显示的和真正注入的不会分家。
+			// Where it goes right now: the facts this module hands the kernel (see
+			// facts in slots.go), asking the same implementation as the injection
+			// path -- what the UI shows and what is really injected cannot diverge.
 			Value: agentapi.TierOf(facts{}, s),
-			// 档位 + 这个槽位自己认的例外（`inherit` 那类，见 agentapi.Slot.Also）：
-			// 下拉里没有的取值，用户就没法设——而说明里写着可以。
+			// The tiers plus this slot's own exception (the `inherit` kind, see agentapi.Slot.Also):
+			// without it in the dropdown the user cannot set it -- and the description says they can.
 			Options: allowedFor(s.Name),
 			Why:     why,
 		})
 	}
-	// 解析不了的那一份要单独说：那是一个**改坏了的文件**，而它此刻静静地不起作用
-	// （缺省值仍然是对的）。不报的话，用户会以为自己的改动生效了。
+	// The unparseable one must be stated separately: it is a **broken file**,
+	// and right now it silently does nothing (the defaults are still right).
+	// Without reporting it, the user would think their change took effect.
 	file := "state.json"
 	if len(bad) > 0 {
 		file = i18n.T("state.json — {key} could not be read, the defaults are in use",
@@ -257,29 +271,32 @@ func slotsConcept() view.Concept {
 		ID: "claudecode.slots", Kind: view.KindToggles,
 		Title: i18n.T("Claude Code slots", nil),
 		Data:  clData{File: file, Items: items},
-		// Order 20：排在分类器那张卡后面。分类器是「此刻安全门关没关」（会变、要
-		// 看），这里是「装完调一次的归属」（很少动）——把会变的放前面。
+		// Order 20: after the classifier card. The classifier is "is the safety
+		// gate off right now" (changes, needs watching); here it is "an assignment
+		// configured once after install" (rarely touched) -- put the changing one first.
 		Order:  20,
 		Apply:  applySlots,
 		Locked: lockReason(),
 	}
 }
 
-// applySlots 写槽位映射。
+// applySlots writes the slot mapping.
 //
-// 载荷是**全部槽位**（见 kinds/Toggles.svelte：一次交全部，不是增量）。所以这里
-// 拿到的是一份完整的表，直接交给 WriteSlotTiers——它会把「与缺省相同」的那些丢掉，
-// 于是把某一行改回缺省 = 那一行从配置里消失，而不是留下一条多余的同值记录。
+// The payload is **all slots** (see kinds/Toggles.svelte: everything at once, not
+// incremental). So what arrives here is a complete table, handed straight to WriteSlotTiers
+// -- it drops the ones "equal to the default", so setting a row back to the default =
+// that row disappears from config, rather than leaving a redundant equal-valued record.
 func applySlots(edit json.RawMessage, _ string) (string, error) {
 	var patch map[string]string
 	if err := json.Unmarshal(edit, &patch); err != nil {
 		return "", i18n.Ef(err, "the slot map in this request is not readable: {err}",
 			i18n.A{"err": err})
 	}
-	// 同一张卡上有两件事：链头（一格）与槽位映射（若干格）。拆包这一步在内核
-	// （见 confighook.SplitProfile），理由是「链头必须从槽位那份里摘掉」这条规矩
-	// 三家都要且都不能抄错——留着的话它会被当成一个槽位名丢掉，症状是「链头改了
-	// 但没保存」，而槽位那边一切正常。
+	// There are two things on one card: the chain head (one cell) and the slot mapping
+	// (several cells). Unpacking that is in the kernel (see confighook.SplitProfile), because
+	// the rule "the chain head must be pulled out of the slot set" is needed by three parties
+	// and none may copy it wrong -- kept in, it would be dropped as an unknown slot name, with
+	// the symptom "the chain head was changed but not saved", while the slot side looks fine.
 	profile, patch := agentapi.SplitProfile(patch)
 
 	known := map[string]bool{}
@@ -288,14 +305,16 @@ func applySlots(edit json.RawMessage, _ string) (string, error) {
 	}
 	next := map[string]string{}
 	for slot, tier := range patch {
-		// 不认识的槽位名丢掉：那多半是**界面手里那份快照旧了**（模块升级后槽位变了），
-		// 把它写进去只会在 state.json 里留一条谁也不认识的记录。
+		// Unknown slot names are dropped: that is most likely **the UI's
+		// snapshot being stale** (slots changed after a module upgrade), and
+		// writing it would only leave an entry in state.json nobody recognizes.
 		if known[slot] {
 			next[slot] = tier
 		}
 	}
-	// 先写链头再写槽位：链头写不进去（profile 不存在）时整个保存失败，而槽位那边
-	// 一个字节都不该动——两份配置要么一起改，要么一起不改。
+	// Write the chain head first, then the slots: when the chain head cannot be
+	// written (the profile does not exist) the whole save fails, and not one byte on
+	// the slot side should move -- two pieces of config change together or not at all.
 	if err := profileOf().Write(profile); err != nil {
 		return "", err
 	}

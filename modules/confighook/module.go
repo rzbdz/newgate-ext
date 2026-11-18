@@ -1,12 +1,14 @@
-// Package confighook 管理“newgate 能接管哪些客户端”这份运行时目录。
+// Package confighook manages the runtime catalog of "which clients newgate can take over".
 //
-// 客户端模块注册 Agent 描述符，配置插件再为该 Agent 绑定可逆的 takeover。
-// runtime 只需要查询并启动客户端，不能修改目录；因此同一注册表拆成
-// ConfigHooks 写端口和 AgentCatalog 读端口。这个拆分不是形式上的接口隔离，
-// 而是防止启动路径获得注册权限。
+// Client modules register Agent descriptors, and config plugins then bind a reversible
+// takeover for that Agent. runtime only needs to query and start clients, and
+// cannot modify the catalog; therefore the one registry is split into the ConfigHooks
+// write port and the AgentCatalog read port. This split is not formal interface
+// segregation, but preventing the start-up path from gaining registration permission.
 //
-// 每次写入都返回带 token 的 Release。旧组件停止时只能撤销自己那次注册，
-// 不会误删热重载或新应用实例后来写入的值。
+// Every write returns a token-bearing Release. An old component
+// stopping can only revoke its own registration, and will not mistakenly
+// delete what hot reload or a new application instance wrote later.
 package confighook
 
 import (
@@ -24,11 +26,12 @@ import (
 type registry struct {
 	mu     sync.RWMutex
 	agents map[string]*Agent
-	// facts 是客户端模块交上来的**运行时事实**（见 AgentFacts）。它与 agents 分开
-	// 存是有意的：描述符是「这个客户端是什么」，事实是「它此刻怎么样」，后者可以不交。
+	// facts are the **runtime facts** client modules submit (see AgentFacts). Storing
+	// them separately from agents is deliberate: the descriptor is "what this client
+	// is", the facts are "how it is right now", and the latter may not be submitted.
 	facts map[string]AgentFacts
-	// installers 是「怎么把这家工具装上」（见 AgentInstaller）。与 facts 分开：
-	// 一个客户端可以只交其中一份，两份的用途也不一样（一份用来回答、一份用来动手）。
+	// installers are "how to install this tool" (see AgentInstaller). Separate from facts: a
+	// client may submit only one of the two, and their uses differ too (one answers, one acts).
 	installers map[string]AgentInstaller
 	fields     map[string]string
 	tokens     map[string]uint64
@@ -40,8 +43,9 @@ var (
 	_ AgentCatalog = (*registry)(nil)
 )
 
-// New 创建同时实现写入端口和只读目录端口的注册表。
-// 两个 capability 共享同一事实源，但通过不同接口限制消费者权限。
+// New creates a registry implementing both the write port and
+// the read-only catalog port. The two capabilities share one source of
+// facts, but restrict consumer permissions through different interfaces.
 func New() modules.Component {
 	registry := &registry{
 		agents:     make(map[string]*Agent),
@@ -58,8 +62,9 @@ func New() modules.Component {
 		},
 		Type: "infra",
 		Requires: []modules.Requirement{
-			// ui 是**弱依赖**（见 component.Optional）：装着界面就有 `newgate
-			// agents` 这个入口和术语表那一行；没装就跳过，客户端描述符照常工作。
+			// ui is a **weak dependency** (see component.Optional): with
+			// the UI installed there is the `newgate agents` entry point and the
+			// glossary line; without it, skip -- client descriptors work as usual.
 			modules.Optional(cliapi.Capability),
 		},
 		Provides: []modules.Provision{
@@ -76,7 +81,7 @@ func New() modules.Component {
 				return err
 			}
 			releases = append(releases, release)
-			// status 里的「每个客户端」一块：谁的状态谁自己报（见 status.go）。
+			// The "each client" block in status: whoever owns the state reports it (see status.go).
 			statusRelease, err := ui.RegisterStatusBlocks(agentStatus{AgentCatalog(registry)})
 			if err != nil {
 				return err
@@ -93,7 +98,8 @@ func New() modules.Component {
 	}
 }
 
-// RegisterAgent 原子加入客户端描述符，并用 token 防止过期 Release 删除后来的注册。
+// RegisterAgent atomically adds a client descriptor, and uses a
+// token to keep a stale Release from deleting a later registration.
 func (r *registry) RegisterAgent(agent *Agent) (modules.Release, error) {
 	if agent == nil || agent.ID == "" {
 		return nil, fmt.Errorf("agent ID is required")
@@ -110,9 +116,10 @@ func (r *registry) RegisterAgent(agent *Agent) (modules.Release, error) {
 	}), nil
 }
 
-// RegisterAgentInstaller 记下客户端模块交上来的安装方式。
+// RegisterAgentInstaller records the install method a client module submitted.
 //
-// 与 RegisterAgentFacts 同一条规矩：要求描述符先到、不许两个人抢同一个客户端。
+// Same rule as RegisterAgentFacts: the descriptor must be
+// there first, and two people may not fight over one client.
 func (r *registry) RegisterAgentInstaller(agentID string, installer AgentInstaller) (modules.Release, error) {
 	if installer == nil {
 		return nil, fmt.Errorf("nil installer for agent %s", agentID)
@@ -132,18 +139,19 @@ func (r *registry) RegisterAgentInstaller(agentID string, installer AgentInstall
 	}), nil
 }
 
-// Installer 返回客户端的安装方式；没交返回 nil。
+// Installer returns the client's install method; nil when none was submitted.
 func (r *registry) Installer(id string) AgentInstaller {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.installers[id]
 }
 
-// RegisterAgentFacts 记下客户端模块交上来的运行时事实。
+// RegisterAgentFacts records the runtime facts a client module submitted.
 //
-// 它要求那个 agent 已经登记过（同 BindTakeover 那条：先有描述符，再谈「它此刻
-// 怎么样」）。重复交会报错——两个实现抢同一个客户端的事实，是我们无法替用户裁决
-// 的一件事（同 RegisterStateField 的字段冲突）。
+// It requires that agent to be registered already (the same as BindTakeover: the
+// descriptor first, then "how it is right now"). A duplicate submission errors
+// -- two implementations fighting over one client's facts is something we cannot
+// arbitrate for the user (same as a field conflict in RegisterStateField).
 func (r *registry) RegisterAgentFacts(agentID string, facts AgentFacts) (modules.Release, error) {
 	if facts == nil {
 		return nil, fmt.Errorf("nil facts for agent %s", agentID)
@@ -163,7 +171,8 @@ func (r *registry) RegisterAgentFacts(agentID string, facts AgentFacts) (modules
 	}), nil
 }
 
-// BindTakeover 把配置接管绑定到已存在客户端，避免产生无法启动的孤立配置插件。
+// BindTakeover binds config takeover to an existing client,
+// avoiding an orphan config plugin that cannot start.
 func (r *registry) BindTakeover(agentID string, takeover ConfigTakeover) (modules.Release, error) {
 	if takeover == nil {
 		return nil, fmt.Errorf("nil config takeover for agent %s", agentID)
@@ -184,7 +193,8 @@ func (r *registry) BindTakeover(agentID string, takeover ConfigTakeover) (module
 	}), nil
 }
 
-// RegisterStateField 为共享状态文件登记字段所有者，提前拒绝跨模块字段冲突。
+// RegisterStateField registers a field owner for the shared
+// state file, rejecting cross-module field conflicts up front.
 func (r *registry) RegisterStateField(owner, name string) (modules.Release, error) {
 	if name == "" {
 		return nil, fmt.Errorf("state field name is required")
@@ -220,7 +230,8 @@ func (r *registry) release(key string, token uint64, remove func()) modules.Rele
 	}
 }
 
-// Get 返回描述符副本，防止只读消费者修改注册表持有的切片。
+// Get returns a copy of the descriptor, preventing read-only
+// consumers from modifying the slice the registry holds.
 func (r *registry) Get(id string) (*Agent, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -231,8 +242,8 @@ func (r *registry) Get(id string) (*Agent, bool) {
 	clone := *agent
 	clone.Bin = append([]string(nil), agent.Bin...)
 	clone.Slots = append([]Slot(nil), agent.Slots...)
-	// Also 是切片里的切片：不深拷贝的话，克隆体与原件的 Also 指向同一块数组
-	// （Bin / UnsetEnv 上面已经这么处理了，同一条理由）。
+	// Also is a slice within a slice: without a deep copy, the clone's and the original's Also
+	// point at the same array (Bin / UnsetEnv are already handled this way above, same reason).
 	for i := range clone.Slots {
 		clone.Slots[i].Also = append([]string(nil), agent.Slots[i].Also...)
 	}
@@ -240,19 +251,20 @@ func (r *registry) Get(id string) (*Agent, bool) {
 	return &clone, true
 }
 
-// Facts 返回客户端交上来的运行时事实；没交返回 nil。
+// Facts returns the runtime facts the client submitted; nil when none.
 func (r *registry) Facts(id string) AgentFacts {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.facts[id]
 }
 
-// Installed 报告这个客户端在不在**这台机器**上。
+// Installed reports whether this client is on **this machine**.
 //
-// 判据次序是这条的全部内容：**客户端自己的事实优先**（它有它的知识：工具可能不止
-// 一个名字、可能不看 PATH），没交才用通用那条（在 PATH 上找 Bin 里的名字，排除
-// 调用方给的 shim 目录）。反过来先查 PATH 的话，一个装在奇怪位置的客户端会被判成
-// 没装，而它明明交了「我在」。
+// The order of criteria is the whole content of this: **the client's own facts win** (it
+// has its knowledge: the tool may have more than one name, may not look at PATH), and
+// only without them is the generic one used (look for the name in Bin on PATH, excluding
+// the shim directory the caller gives). Checking PATH first would judge a client
+// installed in an odd place as not installed, while it plainly submitted "I am here".
 func (r *registry) Installed(id string) bool {
 	r.mu.RLock()
 	facts, agent := r.facts[id], r.agents[id]
@@ -260,7 +272,7 @@ func (r *registry) Installed(id string) bool {
 	return InstalledDefault(agent, facts)
 }
 
-// Names 返回稳定排序的客户端名，使 CLI 输出和测试结果可复现。
+// Names returns the client names in stable order, making CLI output and test results reproducible.
 func (r *registry) Names() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

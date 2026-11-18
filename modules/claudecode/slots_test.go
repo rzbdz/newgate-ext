@@ -11,11 +11,12 @@ import (
 	"github.com/rzbdz/newgate-ext/testing/testkit"
 )
 
-// 槽位映射从 2026-09-21 起可配。这一族测的是那条链上最容易断的三处：读到的值要
-// 真的进注入、写进来的东西要真的落盘、坏值要**响亮地**不起作用（而不是安静地
-// 变成一个不存在的模型名发到上游）。
+// The slot mapping is configurable since 2026-09-21. This family tests the three spots
+// on that chain most easily broken: the value read must really reach the injection,
+// what is written must really be persisted, and a bad value must **loudly** fail to
+// take effect (rather than quietly becoming a nonexistent model name sent upstream).
 
-// slotOf 取一个槽位定义（按名字）。
+// slotOf gets one slot definition (by name).
 func slotOf(t *testing.T, name string) agentapi.Slot {
 	t.Helper()
 	for _, s := range Agent().Slots {
@@ -23,51 +24,55 @@ func slotOf(t *testing.T, name string) agentapi.Slot {
 			return s
 		}
 	}
-	t.Fatalf("没有叫 %q 的槽位", name)
+	t.Fatalf("there is no slot named %q", name)
 	return agentapi.Slot{}
 }
 
-// TestASlotFollowsTheConfig：改过的槽位，注入时走的是新档位。
+// TestASlotFollowsTheConfig: a changed slot takes the new tier when injected.
 //
-// 断言打在 **BuildEnv** 上而不是 TierOf 上：用户看得见的那个结果是 env 里那个值，
-// 而「TierOf 对了、BuildEnv 忘了用它」正是这类改动最容易留下的样子——界面显示
-// 改了、行为没变。
+// The assertion is on **BuildEnv**, not TierOf: the result the user sees is that value in
+// env, and "TierOf is right but BuildEnv forgot to use it" is exactly what this kind of
+// change most easily leaves behind -- the UI shows it changed and the behavior does not.
 func TestASlotFollowsTheConfig(t *testing.T) {
 	testkit.Sandbox(t)
 	writeState(t, map[string]any{SlotsKey: map[string]string{"sonnet": "normal"}})
 
 	a := Agent()
 	if got := agentapi.TierOf(facts{}, slotOf(t, "sonnet")); got != "normal" {
-		t.Errorf("sonnet 该走 normal（配置里改了），实际 %q", got)
+		t.Errorf("sonnet should use normal (changed in config), got %q", got)
 	}
 	env := a.BuildEnv(8899, "tok", facts{})
-	// 注入的是裸档位名（2026-11-12 起不再拼 `[1m]`，见 TestInjectedModelNamesStayBare）。
+	// What is injected is the bare tier name (since 2026-11-12
+	// no `[1m]` suffix; see TestInjectedModelNamesStayBare).
 	if got := env["ANTHROPIC_DEFAULT_SONNET_MODEL"]; got != "normal" {
-		t.Errorf("注入的该是改过的档位，实际 %q", got)
+		t.Errorf("the injected value should be the modified tier, got %q", got)
 	}
-	// 没改过的那些不受影响。
+	// The unchanged ones are unaffected.
 	if got := env["ANTHROPIC_DEFAULT_OPUS_MODEL"]; got != "normal" {
-		t.Errorf("opus 没配过，该是缺省 normal，实际 %q", got)
+		t.Errorf("opus was never configured, so the default normal, got %q", got)
 	}
 	if got := env["ANTHROPIC_DEFAULT_HAIKU_MODEL"]; got != "light" {
-		t.Errorf("haiku 没配过，该是缺省 light，实际 %q", got)
+		t.Errorf("haiku was never configured, so the default light, got %q", got)
 	}
 }
 
-// TestInjectedModelNamesStayBare：注入的模型名是**裸名**，不拼任何能力标记。
+// TestInjectedModelNamesStayBare: the injected model name
+// is the **bare name**, with no capability marker appended.
 //
-// 2026-09-28 曾经给每个槽位拼 `[1m]`，想避免大窗口模型被提前 compact。2026-11-12
-// 现场推翻了那个做法：1M 的声明让会话涨到 1.01M tokens，下一条请求 400
-// "Input tokens exceed the model context limit"，而 /compact 本身也超限——客户端
-// 没有自救路径。现在窗口由 `CLAUDE_CODE_MAX_CONTEXT_TOKENS` 声明（封顶 512K），
-// 名字保持裸的：档位名 `normal` 和真实名 `deepseek-chat` 都是。
+// On 2026-09-28 every slot was given a `[1m]` suffix to keep large-window models from
+// compacting early. The 2026-11-12 scene overturned that: the 1M declaration let the session
+// grow to 1.01M tokens, the next request got 400 "Input tokens exceed the model context
+// limit", and /compact itself was over the limit too -- the client had no self-rescue
+// path. Now the window is declared by `CLAUDE_CODE_MAX_CONTEXT_TOKENS` (capped at 512K),
+// and the name stays bare: both the tier name `normal` and the real name `deepseek-chat`.
 //
-// 这条测试锁两件事：
+// This test pins two things:
 //
-//  1. **动态模式与钉死模式都不带后缀**。两条路是两处拼接（BuildEnv 与 launch 的
-//     钉死分支），这里锁描述符这一侧；另一侧在 launch_test.go。
-//  2. **窗口声明那两个变量不在 BuildEnv 里**。它们是 launch 注入的数字，不归
-//     槽位拼装管。
+//  1. **Neither dynamic mode nor pinned mode carries a suffix**. The two
+//     paths splice in two places (BuildEnv and the pinned branch of launch);
+//     this pins the descriptor side, the other side is in launch_test.go.
+//  2. **The two window-declaration variables are not in BuildEnv**. They
+//     are numbers injected by launch, not the slot assembly's business.
 func TestInjectedModelNamesStayBare(t *testing.T) {
 	testkit.Sandbox(t)
 	a := Agent()
@@ -75,136 +80,143 @@ func TestInjectedModelNamesStayBare(t *testing.T) {
 	for _, s := range a.EnvSlots() {
 		want := agentapi.TierOf(facts{}, s)
 		if got := env[s.EnvVar]; got != want {
-			t.Errorf("槽位 %s 注入的该是裸名 %q，实际 %q", s.Name, want, got)
+			t.Errorf("slot %s should inject the bare name %q, got %q", s.Name, want, got)
 		}
 	}
 	if _, there := env[a.ContextWindowEnv]; there {
-		t.Errorf("窗口声明不该在 BuildEnv 里，实际 %v", env[a.ContextWindowEnv])
+		t.Errorf("the window declaration must not be in BuildEnv, got %v", env[a.ContextWindowEnv])
 	}
 }
 
-// TestClaudeCodeDeclaresItsWindowCap：这个客户端把窗口封在 512K、compact 封在 400K。
+// TestClaudeCodeDeclaresItsWindowCap: this client caps the window at 512K and compaction at 400K.
 //
-// 数字本身是产品决定（见 agent.go 的注释），但它是「400 之后连 /compact 都发不
-// 出去」那条故障的唯一防线——改大它等于把那天的现场放回来，所以在这里钉住。
+// The numbers themselves are a product decision (see the comment in agent.go),
+// but this is the only defense against the "after 400 not even /compact can be
+// sent" failure -- raising it brings that day's scene back, so it is pinned here.
 func TestClaudeCodeDeclaresItsWindowCap(t *testing.T) {
 	a := Agent()
 	if a.ContextWindowCap != 512000 {
-		t.Errorf("ContextWindowCap = %d，应为 512000", a.ContextWindowCap)
+		t.Errorf("ContextWindowCap = %d, should be 512000", a.ContextWindowCap)
 	}
 	if a.AutoCompactCap != 400000 {
-		t.Errorf("AutoCompactCap = %d，应为 400000", a.AutoCompactCap)
+		t.Errorf("AutoCompactCap = %d, should be 400000", a.AutoCompactCap)
 	}
 }
 
-// TestWritingASlotReturnsItToTheDefault：把一行改回缺省 = 那个键消失，而不是留
-// 一条同值记录。
+// TestWritingASlotReturnsItToTheDefault: setting a row back to the default
+// = that key disappears, rather than leaving a record with the same value.
 //
-// 留下同值记录有真实的代价：以后改缺省的人会发现自己的改动对一部分用户不生效，
-// 而那些用户从没配过任何东西——那种「我改了、他们没变」是最难归因的一类。
+// Leaving an equal-valued record has a real cost: whoever changes the default later
+// finds their change not taking effect for some users, and those users never configured
+// anything -- that "I changed it and theirs did not" is the hardest class to attribute.
 func TestWritingASlotReturnsItToTheDefault(t *testing.T) {
 	testkit.Sandbox(t)
 	if err := WriteSlotTiers(map[string]string{"sonnet": "heavy"}); err != nil {
 		t.Fatal(err)
 	}
 	if got := ReadSlotTiersOK(t, "sonnet"); got != "heavy" {
-		t.Fatalf("写进去该读得回来，实际 %q", got)
+		t.Fatalf("writing it should read back, got %q", got)
 	}
-	// 改回缺省（mid）。
+	// Back to the default (mid).
 	if err := WriteSlotTiers(map[string]string{"sonnet": "mid"}); err != nil {
 		t.Fatal(err)
 	}
 	ok, _ := ReadSlotTiers()
 	if v, there := ok["sonnet"]; there {
-		t.Errorf("改回缺省之后那个键该消失，实际还留着 %q", v)
+		t.Errorf("after reverting to the default that key should disappear, but %q is still there", v)
 	}
 	if got := agentapi.TierOf(facts{}, slotOf(t, "sonnet")); got != "mid" {
-		t.Errorf("改回缺省之后该走缺省 mid，实际 %q", got)
+		t.Errorf("after reverting to the default it should use the default mid, got %q", got)
 	}
 }
 
-// TestABadTierIsRefusedOnTheWayIn：写一个不存在的档位要被拒绝。
+// TestABadTierIsRefusedOnTheWayIn: writing a nonexistent tier must be rejected.
 //
-// 它会被原样注入成模型名。一个打错的档位名（`hevy`）在上游那边是「不存在的模型」，
-// 症状是某些请求突然 400，而它跟配置之间隔着好几层——所以必须在入口拦住。
+// It would be injected as a model name as is. A mistyped tier name (`hevy`) is
+// "nonexistent model" upstream, with the symptom that some requests suddenly 400, and
+// it is several layers away from the config -- so it must be stopped at the entrance.
 func TestABadTierIsRefusedOnTheWayIn(t *testing.T) {
 	testkit.Sandbox(t)
 	if err := WriteSlotTiers(map[string]string{"sonnet": "hevy"}); err == nil {
-		t.Fatal("写一个不存在的档位该被拒绝")
+		t.Fatal("writing a nonexistent tier should be rejected")
 	}
 	if got := agentapi.TierOf(facts{}, slotOf(t, "sonnet")); got != "mid" {
-		t.Errorf("被拒的写不该留下任何痕迹，实际走 %q", got)
+		t.Errorf("a rejected write must leave no trace, but it resolves to %q", got)
 	}
 }
 
-// TestABadTierInTheFileDoesNotBreakTakeover：手改坏的文件不能让注入跟着坏。
+// TestABadTierInTheFileDoesNotBreakTakeover: a hand-broken file must not break injection too.
 //
-// state.json 是给人手改的，而这一格改坏的后果是「claude 起不来」——一个改错的
-// 档位不该有这个后果。所以读的时候滤掉，回落到缺省，并且**报出来**（卡片上的
-// why 会说），而不是安静地注入 `hevy`。
+// state.json is meant for human editing, and the consequence of breaking
+// this cell is "claude will not start" -- a mistyped tier should not have that
+// consequence. So it is filtered on read, falls back to the default, and is
+// **reported** (the card's why says so), rather than quietly injecting `hevy`.
 func TestABadTierInTheFileDoesNotBreakTakeover(t *testing.T) {
 	testkit.Sandbox(t)
 	writeState(t, map[string]any{SlotsKey: map[string]string{"sonnet": "hevy", "opus": "light"}})
 
 	if got := agentapi.TierOf(facts{}, slotOf(t, "sonnet")); got != "mid" {
-		t.Errorf("坏值该回落到缺省 mid，实际 %q", got)
+		t.Errorf("a bad value should fall back to the default mid, got %q", got)
 	}
 	if got := agentapi.TierOf(facts{}, slotOf(t, "opus")); got != "light" {
-		t.Errorf("同一个文件里好的那一行该照常生效，实际 %q", got)
+		t.Errorf("the good line in the same file should still take effect, got %q", got)
 	}
-	// 坏的那一行要在界面上说出来：不说的话它会一直静静地不起作用。
+	// The bad row must be spoken of in the UI: otherwise it just sits there silently doing nothing.
 	if note := slotNote("sonnet", "mid"); note == "" {
-		t.Error("坏值该在卡片上有一句话，现在什么都没说")
+		t.Error("a bad value should produce a sentence on the card, but nothing is said now")
 	}
-	// 好的那一行也要有话说（用户改了，界面要看得见）。
+	// The good row also has something to say (the user changed it; the UI must show it).
 	if note := slotNote("opus", "normal"); note == "" {
-		t.Error("改过的那一行该说明它被改过")
+		t.Error("the modified line should say it was modified")
 	}
-	// 没改过的行不多话。
+	// Unchanged rows say nothing.
 	if note := slotNote("haiku", "light"); note != "" {
-		t.Errorf("没改过的行不该有注解，实际 %q", note)
+		t.Errorf("an unmodified line should have no annotation, got %q", note)
 	}
 }
 
-// ReadSlotTiersOK 是测试用的小helper：读回来某一格的值。
+// ReadSlotTiersOK is a small test helper: read back one cell's value.
 func ReadSlotTiersOK(t *testing.T, slot string) string {
 	t.Helper()
 	ok, _ := ReadSlotTiers()
 	return ok[slot]
 }
 
-// TestAClientSpecificValueSurvives：客户端自己的取值不能被当成打错的档位名滤掉。
+// TestAClientSpecificValueSurvives: the client's own
+// value must not be filtered out as a mistyped tier name.
 //
-// `subagent` 的说明里写着「set it to inherit to hand that back to per-slot
-// resolution」——那是 **Claude Code 的**语义，newgate 只是原样注入这个字符串。第一版
-// 只拿 domain.Roles 当判据，于是 `inherit` 界面上设不了、手改的还会被静默忽略：
-// 说明里写着可以，而照做之后什么都没发生。
+// `subagent`'s description says "set it to inherit to hand that back to per-slot resolution" --
+// that is **Claude Code's** semantics, and newgate only injects the string as is. The first version
+// used only domain.Roles as the test, so `inherit` could not be set in the UI and hand-edited
+// values were silently ignored: the description said it could, and following it did nothing.
 //
-// 例外由客户端模块自己声明（agentapi.Slot.Also），所以这条同时锁住了那条边界——
-// 内核与配置层不认识 `inherit` 这个词，它们只知道「这个槽位声明了它」。
+// The exception is declared by the client module itself (agentapi.Slot.Also),
+// so this also pins that boundary -- the kernel and the config layer do
+// not know the word `inherit`, they only know "this slot declared it".
 func TestAClientSpecificValueSurvives(t *testing.T) {
 	testkit.Sandbox(t)
 	if err := WriteSlotTiers(map[string]string{"subagent": "inherit"}); err != nil {
-		t.Fatalf("客户端自己的取值该收得下: %v", err)
+		t.Fatalf("the value from the client itself should be accepted: %v", err)
 	}
 	a := Agent()
 	if got := agentapi.TierOf(facts{}, slotOf(t, "subagent")); got != "inherit" {
-		t.Errorf("该原样走 inherit，实际 %q", got)
+		t.Errorf("it should pass inherit through as is, got %q", got)
 	}
 	if got := a.BuildEnv(8899, "tok", facts{})["CLAUDE_CODE_SUBAGENT_MODEL"]; got != "inherit" {
-		t.Errorf("该原样注入，实际 %q", got)
+		t.Errorf("it should inject as is, got %q", got)
 	}
-	// 这个例外只属于声明了它的那个槽位：别的槽位写 inherit 仍然是打错。
+	// This exception belongs only to the slot that declared
+	// it: writing inherit on another slot is still a typo.
 	if err := WriteSlotTiers(map[string]string{"opus": "inherit"}); err == nil {
-		t.Error("opus 没声明 inherit，该被拒绝")
+		t.Error("opus does not declare inherit, so it should be rejected")
 	}
-	// 下拉里也要有它——不然用户看得到说明、设不了值。
+	// It must be in the dropdown too -- otherwise the user sees the description and cannot set it.
 	opts := allowedFor("subagent")
 	if !contains(opts, "inherit") || !contains(opts, "mid") {
-		t.Errorf("subagent 的取值该是档位 + inherit，实际 %v", opts)
+		t.Errorf("the subagent value should be the tier plus inherit, got %v", opts)
 	}
 	if contains(allowedFor("opus"), "inherit") {
-		t.Error("opus 的取值里不该有 inherit")
+		t.Error("the opus value must not contain inherit")
 	}
 }
 
@@ -217,28 +229,31 @@ func contains(list []string, v string) bool {
 	return false
 }
 
-// TestTheCardsAreLockedWhenTheClientIsNotThere：没装 claude 的机器上，这两张卡
-// 整张锁灰。
+// TestTheCardsAreLockedWhenTheClientIsNotThere: on a machine
+// without claude, both cards are grayed out entirely.
 //
-// 用户的原话：「未安装的东西，直接全锁灰」。给 claude 配槽位、调分类器，在一台没有
-// claude 的机器上一个字节都不会生效——卡片照常可编辑的话，用户会改完才发现白改。
+// The user's words: "anything not installed, gray it out entirely". Configuring slots or
+// adjusting the classifier for claude takes effect not one byte on a machine without claude
+// -- if the card stayed editable, the user would only find out after making useless changes.
 //
-// 判据落在**理由那句话**上，不是「有没有锁这个动作」：锁了但不说为什么，用户只会
-// 以为界面坏了。同时锁的是**两张**卡——只锁一张的话，另一张还在那里能改。
+// The test is on **the reason sentence**, not "was the lock applied": locked
+// without a reason and the user just thinks the UI is broken. And what is
+// locked is **both** cards -- locking only one leaves the other still editable.
 func TestTheCardsAreLockedWhenTheClientIsNotThere(t *testing.T) {
 	testkit.Sandbox(t)
-	// 两个方向都要**自己造**：跑这条测试的人正在用 claude，所以「PATH 上有没有」
-	// 取决于哪台机器——假定它没有，这条测试在开发机上必红。
+	// Both directions must be **fabricated**: whoever runs this
+	// test is using claude, so "is it on PATH" depends on the machine --
+	// assuming it is absent would make this test always red on a dev box.
 	t.Setenv("PATH", t.TempDir()) // 一个空目录：什么都找不到
 	if reason := lockReason(); reason == "" {
-		t.Fatal("PATH 上没有 claude，这两张卡该锁灰")
+		t.Fatal("claude is not on PATH, so these two cards should be greyed out")
 	}
 	for _, c := range []view.Concept{classifierConcept(), slotsConcept()} {
 		if c.Locked == "" {
-			t.Errorf("%s 该带一句锁灰的理由", c.ID)
+			t.Errorf("%s should carry a sentence explaining the grey-out", c.ID)
 		}
 	}
-	// 装上之后（造一个真的可执行的同名文件）不该再锁。
+	// After installing (create a real executable with that name) it should no longer be locked.
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "claude")
 	if err := os.WriteFile(bin, []byte("#!/bin/sh\n"), 0o755); err != nil {
@@ -246,6 +261,6 @@ func TestTheCardsAreLockedWhenTheClientIsNotThere(t *testing.T) {
 	}
 	t.Setenv("PATH", dir)
 	if reason := lockReason(); reason != "" {
-		t.Errorf("PATH 上有 claude 了，不该再锁：%q", reason)
+		t.Errorf("claude is on PATH now, so it should no longer be greyed out: %q", reason)
 	}
 }
