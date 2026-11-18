@@ -20,12 +20,12 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// New declares the Codex client component.
+// New declares the Codex client: install, takeover, launch component.
 func New() modules.Component {
 	var releases []modules.Release
 	return modules.Component{
 		Name: "codex",
-		Desc: func() string { return i18n.T("the Codex client", nil) },
+		Desc: func() string { return i18n.T("the Codex client: install, takeover, launch", nil) },
 		Type: "client",
 		Requires: []modules.Requirement{
 			modules.Need(confighookapi.ConfigHooksCapability),
