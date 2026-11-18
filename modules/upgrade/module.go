@@ -19,7 +19,7 @@ func New() modules.Component {
 	return modules.Component{
 		Name: Name,
 		Desc: func() string {
-			return i18n.T("upgrade newgate itself and the dynamic data modules own, through actions each module registers", nil)
+			return i18n.T("upgrades the binary and the data modules own, asking first (newgate upgrade)", nil)
 		},
 		// Same layer as modellist / verify: infrastructure, not a client, not an upstream patch.
 		Type: "infra",
