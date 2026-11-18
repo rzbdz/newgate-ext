@@ -70,7 +70,7 @@ func New() modules.Component {
 	return modules.Component{
 		Name: Name,
 		Desc: func() string {
-			return corei18n.T("this distribution's own message catalog, appended to the installed language", nil)
+			return corei18n.T("this distribution's message catalog, appended to the installed language", nil)
 		},
 		// The vocabulary belongs to the product layer (see component.Type's comment): copy is part of
 		// the infrastructure layer.
