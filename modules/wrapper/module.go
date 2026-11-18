@@ -47,7 +47,9 @@ func New() modules.Component {
 	instance := &service{}
 	return modules.Component{
 		Name: "wrapper",
-		Desc: func() string { return i18n.T("argv0 dispatch: what runs when we are called by a client's name", nil) },
+		Desc: func() string {
+			return i18n.T("argv0 dispatch: when called as `claude`, installs the shim and execs the real claude", nil)
+		},
 		Type: "client",
 		Requires: []modules.Requirement{
 			modules.Need(runtimeapi.Capability),
