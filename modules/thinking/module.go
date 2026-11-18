@@ -27,7 +27,7 @@ func New() modules.Component {
 	var releases []modules.Release
 	return modules.Component{
 		Name:     "thinking",
-		Desc:     func() string { return i18n.T("thinking-mode policy that is not tied to one model family", nil) },
+		Desc:     func() string { return i18n.T("thinking policy shared across models: downgrade, strip, backfill", nil) },
 		Type:     "model",
 		Requires: []modules.Requirement{modules.Need(gatewayapi.Capability)},
 		Provides: []modules.Provision{
