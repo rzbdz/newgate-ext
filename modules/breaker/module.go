@@ -32,7 +32,7 @@ func New() modules.Component {
 	return modules.Component{
 		Name: "breaker",
 		Desc: func() string {
-			return i18n.T("binding health — availability and latency — consulted at the data plane's decision points", nil)
+			return i18n.T("which bindings are usable right now (health + latency); the gateway asks before each hop", nil)
 		},
 		Type: "infra",
 		Requires: []modules.Requirement{
