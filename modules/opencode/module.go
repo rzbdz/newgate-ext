@@ -1,4 +1,4 @@
-// Package opencode describes the OpenCode client family.
+// Package opencode describes the OpenCode client: install, takeover, launch family.
 //
 // This module registers only OpenCode's Agent descriptor and family identity. How the concrete
 // config file is taken over, and which extra slots OMO has, belongs to opencodeomo; this boundary
@@ -14,13 +14,13 @@ import (
 	confighookapi "github.com/rzbdz/newgate-ext/modules/confighook"
 )
 
-// New declares the OpenCode client component: it provides the family identity, and registers the
+// New declares the OpenCode client: install, takeover, launch component: it provides the family identity, and registers the
 // client descriptor for its lifetime.
 func New() modules.Component {
 	var releases []modules.Release
 	return modules.Component{
 		Name:     "opencode",
-		Desc:     func() string { return i18n.T("the OpenCode client", nil) },
+		Desc:     func() string { return i18n.T("the OpenCode client: install, takeover, launch", nil) },
 		Type:     "client",
 		Requires: []modules.Requirement{modules.Need(confighookapi.ConfigHooksCapability)},
 		Provides: []modules.Provision{
