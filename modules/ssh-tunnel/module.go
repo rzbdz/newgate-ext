@@ -42,7 +42,7 @@ func New() modules.Component {
 	return modules.Component{
 		Name: Name,
 		Desc: func() string {
-			return i18n.T("reaches a remote machine's newgate interface over SSH", nil)
+			return i18n.T("reaches a remote machine's web UI over SSH, no extra port (newgate tunnel)", nil)
 		},
 		// "Infrastructure" class: not a UI, not a client, not a model, and it handles no
 		// forwarded request. It is a **channel** - same tier as porthub / i18n.
