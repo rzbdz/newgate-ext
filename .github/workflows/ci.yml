@@ -84,6 +84,23 @@ jobs:
           out=$(gofmt -l .); if [ -n "$out" ]; then echo "Bad formatting, run gofmt -w:"; echo "$out"; exit 1; fi
           go vet ./...
 
+      # Every platform the release ships must **compile**, and this runs here rather than only in release.yml.
+      #
+      # Why it is a separate step and not part of the tests above: `go build`/`go vet` on the runner only ever compiles
+      # linux/amd64, so "it compiles" was a claim about one platform out of four. v0.9.0 went red in the release job
+      # for exactly that -- lib/term had a `_linux.go` suffix next to a `//go:build linux || darwin` tag, Darwin got
+      # neither and `undefined: enterRaw` surfaced for the first time on tag day. The list below mirrors release.yml's
+      # NEWGATE_PLATFORMS on purpose: **whatever is shipped is compiled before it is tagged**.
+      #
+      # Cost: ~14s warm, ~2min cold. Cheap next to finding out at release time.
+      - name: Cross-compile every released platform
+        run: |
+          set -e
+          for p in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+            echo "== ${p}"
+            GOOS=${p%/*} GOARCH=${p#*/} CGO_ENABLED=0 go build ./...
+          done
+
       # The manifest is **generated but checked in**: it records "what this commit installs". Being stale means
       # someone changed a spec or a module directory without regenerating -- a silent mismatch between artifact and source.
       - name: Is the assembly manifest stale
