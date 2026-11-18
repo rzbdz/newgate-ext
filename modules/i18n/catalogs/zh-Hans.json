@@ -276,10 +276,6 @@
       "reviewed": true,
       "text": "DeepSeek 思考模式要求逐字回传推理内容，客户端却会把它剥掉 → 400\n套着就补回去（客户端带回的原文 → thinkcache；**没有原文就跳过，绝不编**）；只有 Claude Code 那条路干脆显式关掉思考（它剥块，想了也白想）；外来未闭合 tool loop 先从可见工具结果有损重建，再由 DeepSeek 接手"
     },
-    "DeepSeek upstream quirk patches": {
-      "reviewed": true,
-      "text": "DeepSeek 上游怪癖修补"
-    },
     "DeepSeek's /responses accepts `custom` tools only for apply_patch and answers 400 for every other one (the message inside a namespace is a different one); with the degrade off a Codex request carrying any other custom tool is rejected outright": {
       "reviewed": true,
       "text": "DeepSeek 的 /responses 只认 apply_patch 一个 custom 工具，其余一律 400（藏在 namespace 里时换一句）；关掉降级，任何带别的 custom 工具的 Codex 请求都会被直接拒掉"
@@ -307,10 +303,6 @@
     "GLM models treat a missing thinking field as thinking on (Anthropic semantics say off) → requests that never asked to think get dragged into ten-plus seconds\non the Claude Code path an explicit disabled is filled in when it is absent (present is left alone); OpenAI-dialect clients (opencode) have no such field to write, so they are not touched": {
       "reviewed": true,
       "text": "GLM 系模型把「没写 thinking」当默认开思考（Anthropic 语义是关）→ 没要求思考的请求被拖进十几秒\nClaude Code 那条路没写就补显式 disabled（写了不动）；OpenAI 方言的客户端（opencode）没有这个字段可写，不碰"
-    },
-    "GLM upstream quirk patches": {
-      "reviewed": true,
-      "text": "GLM 上游怪癖修补"
     },
     "Generated automatically when oh-my-openagent is taken over. default is the binding this key falls back to when the profile does not spell it out; to move a slot to another tier, edit overrides (it accepts \"@other-key\" / \"tier name\" / \"provider/model\"), or write this key directly in the profile.": {
       "reviewed": true,
@@ -552,10 +544,6 @@
       "reviewed": true,
       "text": "命令不能为 nil"
     },
-    "a global no-reasoning switch, best effort (newgate nothink on|forever|off)": {
-      "reviewed": true,
-      "text": "全局不思考开关，尽力而为（newgate nothink on|forever|off）"
-    },
     "a loopback port forwarded byte-for-byte; empty means this target is reachable only through the rewritten route": {
       "machine": true,
       "text": "逐字节转发的回环端口；为空表示该目标只能通过重写后的路由到达"
@@ -563,10 +551,6 @@
     "a lossy rebuild happened before taking over a foreign unclosed tool loop": {
       "reviewed": true,
       "text": "接手外来未闭合 tool loop 前做了有损重建"
-    },
-    "a menuconfig-style terminal interface": {
-      "reviewed": true,
-      "text": "menuconfig 风格的终端界面"
     },
     "a model-list request needs a provider name": {
       "reviewed": true,
@@ -615,14 +599,6 @@
     "a theme needs an id": {
       "reviewed": true,
       "text": "一套皮肤必须有 id"
-    },
-    "a true-black theme for the web interface": {
-      "reviewed": true,
-      "text": "网页界面的真黑皮肤"
-    },
-    "a white theme for the web interface": {
-      "reviewed": true,
-      "text": "网页界面的白色皮肤"
     },
     "accepted but not rendered": {
       "reviewed": true,
@@ -711,10 +687,6 @@
     "as seen from the far side": {
       "machine": true,
       "text": "从远端看到的"
-    },
-    "ask a provider which models it serves, for the model picker in the web interface": {
-      "reviewed": true,
-      "text": "向 provider 询问它提供哪些模型，供 web 界面的模型选择器使用"
     },
     "ask every upstream not to think: on=60s / forever=permanent / off=disabled": {
       "reviewed": true,
@@ -1344,10 +1316,6 @@
       "reviewed": true,
       "text": "首次配置"
     },
-    "first-run setup: pick clients, one upstream, and go (newgate config)": {
-      "reviewed": true,
-      "text": "首次配置向导：选客户端、配一个上游、直接开工（newgate config）"
-    },
     "first-run wizard: install and take over clients, write the first upstream, start the proxy": {
       "reviewed": true,
       "text": "首次配置向导：安装并接管客户端、写下第一个上游、把代理起起来"
@@ -1904,10 +1872,6 @@
       "reviewed": true,
       "text": "oh-my-openagent 槽位：每一格走什么，以及怎么覆盖"
     },
-    "oh-my-openagent's intra-agent slots": {
-      "reviewed": true,
-      "text": "oh-my-openagent 的 intra-agent 槽位"
-    },
     "omo slot bindings": {
       "reviewed": true,
       "text": "omo 槽位绑定"
@@ -2084,10 +2048,6 @@
       "machine": true,
       "text": "在 {url} 访问"
     },
-    "reaches a remote machine's newgate interface over SSH": {
-      "machine": true,
-      "text": "通过 SSH 访问远程机器的 newgate 界面"
-    },
     "read fingerprint cache {path}: {err}": {
       "reviewed": true,
       "text": "读取指纹缓存 {path} 失败: {err}"
@@ -2171,10 +2131,6 @@
     "rename mode: codex's own model names map to tiers": {
       "reviewed": true,
       "text": "改名模式：codex 用它自己的模型名，进来映射到档位"
-    },
-    "replace the newgate binary from a GitHub release or a local build, with a graceful daemon handoff": {
-      "reviewed": true,
-      "text": "用 GitHub Release 或本地构建替换 newgate 二进制，守护进程优雅交接"
     },
     "replace {path}: {err}": {
       "reviewed": true,
@@ -2436,38 +2392,6 @@
       "reviewed": true,
       "text": "AES 密钥不可用: {err}"
     },
-    "the Anthropic brand palette for the web interface": {
-      "reviewed": true,
-      "text": "网页界面的 Anthropic 品牌配色"
-    },
-    "the Claude Code client": {
-      "reviewed": true,
-      "text": "Claude Code 客户端接入"
-    },
-    "the Claude Code × DeepSeek crossing": {
-      "reviewed": true,
-      "text": "Claude Code × DeepSeek 的交叉语义"
-    },
-    "the Claude Code × GLM crossing": {
-      "reviewed": true,
-      "text": "Claude Code × GLM 的交叉语义"
-    },
-    "the Codex client": {
-      "reviewed": true,
-      "text": "Codex 客户端接入"
-    },
-    "the Codex × DeepSeek crossing": {
-      "reviewed": true,
-      "text": "Codex × DeepSeek 的交叉语义"
-    },
-    "the Hermes Agent client": {
-      "reviewed": true,
-      "text": "Hermes Agent 客户端"
-    },
-    "the OpenCode client": {
-      "reviewed": true,
-      "text": "OpenCode 客户端接入"
-    },
     "the Responses input[] ends on a function_call_output that is not ours and holds no user instruction — appended a continue instruction (the upstream misreports an instruction-less tail as a missing reasoning_text)": {
       "reviewed": true,
       "text": "Responses 的 input[] 以别家产的 function_call_output 收尾、没有用户指令——追加一条 continue 指令（上游对空指令尾部误报 reasoning_text 缺失）"
@@ -2640,10 +2564,6 @@
       "reviewed": true,
       "text": "key 存在了 providers.json 里（0660，同组可读）；想让它不落盘，就把它放进环境变量 {env}，并把配置改成 api_key_env"
     },
-    "the landing screen: every chain this machine resolves right now, in one view": {
-      "reviewed": true,
-      "text": "首屏：这台机器此刻解析出来的每一条链，一屏看完"
-    },
     "the main loop (model.default); /model can still switch to any newgate model": {
       "reviewed": true,
       "text": "主循环（model.default）；/model 仍可切到 newgate 里的任何模型"
@@ -2784,10 +2704,6 @@
       "reviewed": true,
       "text": "末尾的 user 轮只有 tool_result 没有用户指令——追加一条继续指令（上游对空指令尾部误报 reasoning_content 缺失）"
     },
-    "the web configuration interface: a BFF and the front-end bundle": {
-      "reviewed": true,
-      "text": "网页配置界面：BFF 加前端产物"
-    },
     "the whole special_treatment layer is off — none of this counts until it is switched back on": {
       "reviewed": true,
       "text": "整个 special_treatment 层关着 — 在把它开回来之前，这里配的都不算数"
@@ -2875,10 +2791,6 @@
     "this distribution declares no GitHub repository; give one: newgate self-update release <owner/repo>": {
       "reviewed": true,
       "text": "这个发行版没有声明 GitHub 仓库；给一个：newgate self-update release <owner/repo>"
-    },
-    "this distribution's own message catalog, appended to the installed language": {
-      "reviewed": true,
-      "text": "发行版自己的文案目录，追加进已装好的语言"
     },
     "this interface answers on loopback only; reach it as http://127.0.0.1:{port} (the host name in this request was {host})": {
       "reviewed": true,
@@ -3032,10 +2944,6 @@
       "reviewed": true,
       "text": "升级 newgate 以及各模块自带的数据，执行前会先询问；@版本 钉到某个 tag、分支或提交"
     },
-    "upgrade newgate itself and the dynamic data modules own, through actions each module registers": {
-      "reviewed": true,
-      "text": "升级 newgate 本身与各模块自带的动态数据，动作由各模块自己登记"
-    },
     "upgrade would build {version} from {repo} (this binary is {current})": {
       "reviewed": true,
       "text": "upgrade 会从 {repo} 编出 {version}（当前是 {current}）"
@@ -3099,10 +3007,6 @@
     "verify needs both a provider and a model": {
       "reviewed": true,
       "text": "验证需要同时给出上游和模型"
-    },
-    "verify which model an upstream really serves, by fingerprint (newgate verify)": {
-      "reviewed": true,
-      "text": "用指纹验证上游实际服务的模型（newgate verify）"
     },
     "verifying {n} targets (concurrency {c}; each target asks for {count} challenges)": {
       "reviewed": true,
@@ -3683,6 +3587,158 @@
     "↑/↓ or j/k move · ←/→ or Tab switch pane · Enter apply · d follow the default · r reload · q quit": {
       "reviewed": true,
       "text": "↑/↓ 或 j/k 移动 · ←/→ 或 Tab 切换栏 · Enter 应用 · d 跟随缺省 · r 重载 · q 退出"
+    },
+    "which bindings are usable right now (health + latency); the gateway asks before each hop": {
+      "reviewed": true,
+      "text": "binding 健康表：可用性与延迟，网关每一跳之前都问它"
+    },
+    "the config itself: tiers, providers, profiles, state.json — and their meaning": {
+      "reviewed": true,
+      "text": "配置本身：档位、provider、profile 与 state.json，以及它们各自的含义"
+    },
+    "the client catalog: which agents exist, how each is installed, how it is doing now": {
+      "reviewed": true,
+      "text": "客户端目录：有哪些 agent、各自怎么装、此刻是什么状态"
+    },
+    "this distribution's message catalog, appended to the installed language": {
+      "reviewed": true,
+      "text": "发行版自己的文案目录，追加进已装好的语言"
+    },
+    "which language this process speaks (env > config > system), and installs its tables": {
+      "reviewed": true,
+      "text": "这次进程说哪门语言（环境变量 > 配置 > 系统），并装好对应的表"
+    },
+    "asks a provider which models it serves; feeds the model picker in the UI (newgate profile)": {
+      "reviewed": true,
+      "text": "向 provider 询问它提供哪些模型，供界面里的模型选择器使用"
+    },
+    "the module list and each module's runtime switches (newgate plugin)": {
+      "reviewed": true,
+      "text": "模块清单与各自的运行期开关点（newgate plugin）"
+    },
+    "lets several services share one port (the gateway's), or opens its own": {
+      "reviewed": true,
+      "text": "让多个服务共用一个端口（网关的那个），没有共享端口就自己监听一个"
+    },
+    "describes and installs newer binaries: where newgate upgrade downloads from, rollback": {
+      "reviewed": true,
+      "text": "描述并安装更新的二进制：newgate upgrade 从哪下载、怎么回滚"
+    },
+    "a notifier: the process is now serving — other modules hook in to add their own route": {
+      "reviewed": true,
+      "text": "一条通知：「这个进程开始服务了」，别的模块挂上来加自己的路由"
+    },
+    "the first-run wizard: pick clients, one upstream, start (newgate config)": {
+      "reviewed": true,
+      "text": "首次配置向导：选客户端、配一个上游、直接开工（newgate config）"
+    },
+    "reaches a remote machine's web UI over SSH, no extra port (newgate tunnel)": {
+      "reviewed": true,
+      "text": "通过 SSH 访问远程机器的网页界面，不用另开端口（newgate tunnel）"
+    },
+    "upgrades the binary and the data modules own, asking first (newgate upgrade)": {
+      "reviewed": true,
+      "text": "升级二进制与各模块自带的动态数据，动手前先问（newgate upgrade）"
+    },
+    "fingerprints each binding to check which model really answers (newgate verify)": {
+      "reviewed": true,
+      "text": "给每条 binding 打指纹，看上游实际服务的是哪个模型（newgate verify）"
+    },
+    "the data plane: forwards requests, applies upstream patches, passes reasoning back": {
+      "reviewed": true,
+      "text": "数据面：转发请求、打上游补丁、把思维链回传"
+    },
+    "one prompt in, body text out — for scripts (newgate ask); reasoning goes to stderr": {
+      "reviewed": true,
+      "text": "一句话进、正文出，给脚本用（newgate ask）；思维链走 stderr"
+    },
+    "the terminal UI: command dispatch, layout, injection points (newgate --help)": {
+      "reviewed": true,
+      "text": "终端界面：命令分派、版式与注入点（newgate --help）"
+    },
+    "an Anthropic-palette skin for the web UI": {
+      "reviewed": true,
+      "text": "网页界面的 Anthropic 配色皮肤"
+    },
+    "a true-black skin for the web UI": {
+      "reviewed": true,
+      "text": "网页界面的真黑皮肤"
+    },
+    "a white skin for the web UI": {
+      "reviewed": true,
+      "text": "网页界面的白色皮肤"
+    },
+    "menuconfig-style terminal config UI: profiles and their bindings (newgate tui)": {
+      "reviewed": true,
+      "text": "menuconfig 风格的终端配置界面：profile 与它们的绑定（newgate tui）"
+    },
+    "the browser UI: config, breakers, logs, switches (newgate web)": {
+      "reviewed": true,
+      "text": "浏览器界面：配置、熔断、日志、开关点（newgate web）"
+    },
+    "the Claude Code client: install, takeover, launch": {
+      "reviewed": true,
+      "text": "Claude Code 客户端接入：安装、接管、拉起"
+    },
+    "the Codex client: install, takeover, launch": {
+      "reviewed": true,
+      "text": "Codex 客户端接入：安装、接管、拉起"
+    },
+    "the Hermes Agent client: install, config.yaml takeover, /model sync": {
+      "reviewed": true,
+      "text": "Hermes Agent 客户端接入：安装、config.yaml 接管、/model 同步"
+    },
+    "the OpenCode client: install, takeover, launch": {
+      "reviewed": true,
+      "text": "OpenCode 客户端接入：安装、接管、拉起"
+    },
+    "oh-my-openagent's sub-agent slots: classify, bind, explain (newgate omo)": {
+      "reviewed": true,
+      "text": "oh-my-openagent 的子 agent 槽位：分类、绑定、解释（newgate omo）"
+    },
+    "takeover: rewrites a client's config so its traffic comes here; launches it back": {
+      "reviewed": true,
+      "text": "接管：改掉客户端的配置让它的流量走到这里，再把它拉起来"
+    },
+    "argv0 dispatch: when called as `claude`, installs the shim and execs the real claude": {
+      "reviewed": true,
+      "text": "argv0 分发：以 `claude` 的名字被叫起来时，装好 shim 再 exec 真正的 claude"
+    },
+    "DeepSeek's quirks: reasoning backfill, tail shape, /responses": {
+      "reviewed": true,
+      "text": "DeepSeek 的怪癖修补：推理回填、尾部形状、/responses"
+    },
+    "GLM's quirks: what its decoder mangles, and the repair": {
+      "reviewed": true,
+      "text": "GLM 的怪癖修补：它的解码器会搞坏什么，以及怎么修"
+    },
+    "asks every upstream not to think; best effort (newgate nothink on|forever|off)": {
+      "reviewed": true,
+      "text": "让每个上游都别思考，尽力而为（newgate nothink on|forever|off）"
+    },
+    "thinking policy shared across models: downgrade, strip, backfill": {
+      "reviewed": true,
+      "text": "与具体模型无关的思考策略：降级、剥掉、回填"
+    },
+    "Claude Code × DeepSeek: replay reasoning, disable thinking": {
+      "reviewed": true,
+      "text": "Claude Code × DeepSeek：推理回放、关掉思考"
+    },
+    "Claude Code × GLM: what breaks when the two meet, and the fix": {
+      "reviewed": true,
+      "text": "Claude Code × GLM：两者相遇时坏在哪，以及怎么补"
+    },
+    "Codex × DeepSeek: lift tools, degrade custom tools": {
+      "reviewed": true,
+      "text": "Codex × DeepSeek：把工具抬到顶层、降级自定义工具"
+    },
+    "the entry ledger: every `newgate`/`claude` invocation is claimed here": {
+      "reviewed": true,
+      "text": "入口账本：每条 `newgate`/`claude` 调用归谁，在这里判定"
+    },
+    "the home screen: every chain this machine resolves right now, in one view": {
+      "reviewed": true,
+      "text": "首屏：这台机器此刻解析出来的每一条链，一屏看完"
     }
   },
   "meta": {

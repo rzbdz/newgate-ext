@@ -604,6 +604,8 @@
     "Claude Code Bash classifier → the light-tier chain": {},
     "Claude Code slots": {},
     "Claude Code strips third-party DeepSeek thinking blocks; turn DeepSeek thinking off unless it was explicitly asked for, so the next round does not 400 for a block that must be passed back": {},
+    "Claude Code × DeepSeek: replay reasoning, disable thinking": {},
+    "Claude Code × GLM: what breaks when the two meet, and the fix": {},
     "Claude Code's background non-streaming requests (the Bash classifier, etc.) carry no thinking, yet Chinese models think by default → 15-30 seconds, waves of timeouts, a wedged session\nthe classifier (the system prompt says \"security monitor\") takes the whole chain to the light tier (fallback included); other background calls only get thinking disabled (the streaming main loop is unaffected)": {},
     "Claude Code's requests fall into DeepSeek thinking mode by default, but it does not carry third-party thinking blocks into the next round — so every call hits the 400 that says thinking must be passed back": {},
     "Clients": {},
@@ -615,6 +617,7 @@
     "Codex model": {},
     "Codex model names": {},
     "Codex puts its tool definitions in input[0] (additional_tools) while DeepSeek reads tools from the top level; without the lift the model sees no tools at all and answers in its own text format, so the client never gets a tool_result": {},
+    "Codex × DeepSeek: lift tools, degrade custom tools": {},
     "Config": {},
     "Config changes hot-reload within 1 second; no restart needed": {},
     "Config dir": {},
@@ -643,8 +646,8 @@
     "Daemon": {},
     "Data plane": {},
     "DeepSeek thinking mode wants reasoning passed back verbatim, but the client strips it → 400\nso we put it back (the original the client carries → thinkcache; **no original means skip it, never invent one**); only the Claude Code path turns thinking off outright (it strips the blocks, so thinking would be spent for nothing); a foreign unclosed tool loop is first lossily rebuilt from the visible tool results, then DeepSeek takes over": {},
-    "DeepSeek upstream quirk patches": {},
     "DeepSeek's /responses accepts `custom` tools only for apply_patch and answers 400 for every other one (the message inside a namespace is a different one); with the degrade off a Codex request carrying any other custom tool is rejected outright": {},
+    "DeepSeek's quirks: reasoning backfill, tail shape, /responses": {},
     "Default profile": {},
     "Description": {},
     "Disable: newgate st off {name}": {
@@ -690,7 +693,7 @@
     "Full request log (turns itself off after 30 minutes by default)": {},
     "GCM is unusable: {err}": {},
     "GLM models treat a missing thinking field as thinking on (Anthropic semantics say off) → requests that never asked to think get dragged into ten-plus seconds\non the Claude Code path an explicit disabled is filled in when it is absent (present is left alone); OpenAI-dialect clients (opencode) have no such field to write, so they are not touched": {},
-    "GLM upstream quirk patches": {},
+    "GLM's quirks: what its decoder mangles, and the repair": {},
     "Gateway": {},
     "Generated automatically when oh-my-openagent is taken over. default is the binding this key falls back to when the profile does not spell it out; to move a slot to another tier, edit overrides (it accepts \"@other-key\" / \"tier name\" / \"provider/model\"), or write this key directly in the profile.": {},
     "GitHub API refused the request (HTTP {code}; rate limited? set GITHUB_TOKEN): {body}": {
@@ -1182,14 +1185,13 @@
       ]
     },
     "a dynamic role contributed by a module, written like a role": {},
-    "a global no-reasoning switch, best effort (newgate nothink on|forever|off)": {},
     "a glossary provider cannot be nil": {},
     "a loopback port forwarded byte-for-byte; empty means this target is reachable only through the rewritten route": {},
     "a lossy rebuild happened before taking over a foreign unclosed tool loop": {},
-    "a menuconfig-style terminal interface": {},
     "a model-list request needs a provider name": {},
     "a model-list request needs {\"provider\": \"…\"}": {},
     "a name from ~/.ssh/config, or an address": {},
+    "a notifier: the process is now serving — other modules hook in to add their own route": {},
     "a path, never key material. Leave empty to use the usual files and ssh-agent": {},
     "a plugin rewrote the request (each rewrite is logged)": {},
     "a profile must have a name — there is nothing to save it as": {},
@@ -1245,9 +1247,9 @@
     "a status provider cannot be nil": {},
     "a submodule was not at its recorded commit before the pull; left it where it is": {},
     "a theme needs an id": {},
-    "a true-black theme for the web interface": {},
+    "a true-black skin for the web UI": {},
     "a verbose provider cannot be nil": {},
-    "a white theme for the web interface": {},
+    "a white skin for the web UI": {},
     "accepted but not rendered": {},
     "action": {},
     "actions in this build": {},
@@ -1306,6 +1308,7 @@
     "already installed": {},
     "already on the chain": {},
     "always": {},
+    "an Anthropic-palette skin for the web UI": {},
     "an earlier candidate failed and a later one succeeded": {},
     "an excluded profile is only used when selected explicitly; it never joins automatic ordering": {},
     "an external file is still in {dir}: {names} (it shadows newgate's shim)": {
@@ -1337,13 +1340,13 @@
     "api_key missing": {},
     "apply the default to all clients": {},
     "arch": {},
-    "argv0 dispatch: what runs when we are called by a client's name": {},
+    "argv0 dispatch: when called as `claude`, installs the shim and execs the real claude": {},
     "as seen from the far side": {},
     "ask [--tier <tier>] [--profile <name>] <prompt…>": {},
-    "ask a provider which models it serves, for the model picker in the web interface": {},
     "ask every upstream not to think: on=60s / forever=permanent / off=disabled": {},
-    "ask one prompt through the running proxy, and print just the answer": {},
     "asked from the interface": {},
+    "asks a provider which models it serves; feeds the model picker in the UI (newgate profile)": {},
+    "asks every upstream not to think; best effort (newgate nothink on|forever|off)": {},
     "assistant messages in the history no longer get their reasoning text backfilled, and OpenAI-dialect DeepSeek answers 400 to \"reasoning_content must be passed back\" (the chain then advances on its own; the symptom is a silent provider switch)": {},
     "assistant messages: {total} in all, {real} with reasoning text, {missing} without\n(the ones without are **what the upstream never gave us that round**, not something we lost — see the tool id below,\n  grep the log for \"bytes of reasoning\" and you will see) one by one:\n{listing}": {
       "args": [
@@ -1389,7 +1392,6 @@
     "binary": {},
     "binding": {},
     "binding health table: trips after consecutive failures, releases one half-open trial when the cooldown expires": {},
-    "binding health — availability and latency — consulted at the data plane's decision points": {},
     "binding mode must be current or suggested, got {value}": {
       "args": [
         "value"
@@ -2011,6 +2013,7 @@
       "other": "degraded {n} custom tools to standard functions (DeepSeek rejects any custom tool other than apply_patch with 400)"
     },
     "derived from the host, editable": {},
+    "describes and installs newer binaries: where newgate upgrade downloads from, rollback": {},
     "description": {},
     "detached HEAD: not pulling": {},
     "details for lagging and unavailable models: newgate probe": {},
@@ -2172,12 +2175,12 @@
       ]
     },
     "fingerprints are evidence, not proof: fix the request parameters and repeat when it matters": {},
+    "fingerprints each binding to check which model really answers (newgate verify)": {},
     "first byte timed out (non-stream), moved down the chain": {},
     "first byte timed out (stream), moved down the chain": {},
     "first byte timed out, moved down the chain": {},
     "first request a client sends will be routed by tier; watch it with `newgate logs -f`": {},
     "first setup": {},
-    "first-run setup: pick clients, one upstream, and go (newgate config)": {},
     "first-run wizard: install and take over clients, write the first upstream, start the proxy": {},
     "flush failed for {name}: {err}": {
       "args": [
@@ -2200,7 +2203,6 @@
     "forwarded upstream to get the true value": {},
     "forwarding": {},
     "forwarding port": {},
-    "forwarding, upstream quirk patches, and reasoning pass-through": {},
     "four-tier compatibility: a profile that does not write normal behaves like mid": {},
     "from config": {},
     "from the system locale": {},
@@ -2436,6 +2438,7 @@
         "diff"
       ]
     },
+    "lets several services share one port (the gateway's), or opens its own": {},
     "lift Codex tools from input[0] to the top level": {},
     "lifted {n} tool declaration from input[0] to the top level (DeepSeek reads tools only there)": {
       "args": [
@@ -2525,6 +2528,7 @@
     "match": {},
     "meaning": {},
     "menuconfig-style UI: the profile each client uses, and the bindings behind it": {},
+    "menuconfig-style terminal config UI: profiles and their bindings (newgate tui)": {},
     "messages left untouched ({err})": {
       "args": [
         "err"
@@ -2845,7 +2849,7 @@
     "off (whole layer)": {},
     "off — the Bash classifier is asked as usual": {},
     "oh-my-openagent slots: what each one uses, and how to override it": {},
-    "oh-my-openagent's intra-agent slots": {},
+    "oh-my-openagent's sub-agent slots: classify, bind, explain (newgate omo)": {},
     "omo slot bindings": {},
     "on": {},
     "on (forever) — every request goes upstream with thinking off, best effort; newgate nothink off ends it": {},
@@ -2868,6 +2872,7 @@
     },
     "once the cooldown expires, one real request is let through as a trial: success closes the breaker, failure re-trips it and doubles the cooldown (capped at 10 minutes)": {},
     "one per line": {},
+    "one prompt in, body text out — for scripts (newgate ask); reasoning goes to stderr": {},
     "only POST is accepted": {},
     "only if the two dialects live on different bases": {},
     "only look: what would change; nothing is downloaded, replaced or restarted": {},
@@ -3223,7 +3228,7 @@
       ]
     },
     "reachable": {},
-    "reaches a remote machine's newgate interface over SSH": {},
+    "reaches a remote machine's web UI over SSH, no extra port (newgate tunnel)": {},
     "read capability cache {path}: {err}": {
       "args": [
         "path"
@@ -3358,7 +3363,6 @@
     "rename mode": {},
     "rename mode: codex's own model names map to tiers": {},
     "reopen the shell or exec $SHELL -l": {},
-    "replace the newgate binary from a GitHub release or a local build, with a graceful daemon handoff": {},
     "replace {path}: {err}": {
       "args": [
         "err",
@@ -3546,7 +3550,6 @@
       ]
     },
     "set — leave empty to keep it": {},
-    "several services on one port, or a port of its own when there is no shared one": {},
     "short-circuit the Bash classifier: on=60s / forever=permanent / off=disabled": {},
     "show or choose where newgate upgrade gets new binaries; rollback restores the previous one": {},
     "simple-cli (renders status and the commands; the other injection points are accepted but not shown)": {},
@@ -3687,10 +3690,10 @@
       ]
     },
     "taken over": {},
-    "takeover and injection: how a client's traffic gets intercepted": {},
     "takeover mode": {},
     "takeover mode: one tier is written into config.toml": {},
     "takeover · config.toml gets the tier name": {},
+    "takeover: rewrites a client's config so its traffic comes here; launches it back": {},
     "takes effect immediately; running sessions are unaffected": {},
     "takes effect on the next request": {},
     "takes effect within 1 second; if the profile spells out this key, the profile wins": {},
@@ -3709,14 +3712,10 @@
     },
     "the /model list is already up to date": {},
     "the AES key is unusable: {err}": {},
-    "the Anthropic brand palette for the web interface": {},
-    "the Claude Code client": {},
-    "the Claude Code × DeepSeek crossing": {},
-    "the Claude Code × GLM crossing": {},
-    "the Codex client": {},
-    "the Codex × DeepSeek crossing": {},
-    "the Hermes Agent client": {},
-    "the OpenCode client": {},
+    "the Claude Code client: install, takeover, launch": {},
+    "the Codex client: install, takeover, launch": {},
+    "the Hermes Agent client: install, config.yaml takeover, /model sync": {},
+    "the OpenCode client: install, takeover, launch": {},
     "the Responses input[] ends on a function_call_output that is not ours and holds no user instruction — appended a continue instruction (the upstream misreports an instruction-less tail as a missing reasoning_text)": {},
     "the answer broke off: {err}": {
       "args": [
@@ -3730,6 +3729,7 @@
         "value"
       ]
     },
+    "the browser UI: config, breakers, logs, switches (newgate web)": {},
     "the chain head is fixed; fallbacks follow the predicted TTFT of this context": {},
     "the chain's attempt budget is exhausted — see state.json chain.max_attempts": {},
     "the classifier settings in this request are not readable: {err}": {
@@ -3737,8 +3737,9 @@
         "err"
       ]
     },
-    "the client catalog: what a client is, how to install it, and how it is right now": {},
+    "the client catalog: which agents exist, how each is installed, how it is doing now": {},
     "the client uses whatever the global default is": {},
+    "the config itself: tiers, providers, profiles, state.json — and their meaning": {},
     "the config says {tier}, which is not a tier — the default is in use": {
       "args": [
         "tier"
@@ -3766,11 +3767,11 @@
     "the daemon is not running: forwarding ports and background reconnection only happen there": {},
     "the daemon is not running; its next start uses the new binary": {},
     "the daemon picks this up within a couple of seconds": {},
+    "the data plane: forwards requests, applies upstream patches, passes reasoning back": {},
     "the diagram is read-only": {},
-    "the edge that says this process is serving": {},
     "the endpoint is empty (run newgate config join <endpoint> first)": {},
     "the endpoint your keys belong to; OpenAI-compatible gateways (newapi, one-api, DeepSeek, GLM …) all work": {},
-    "the entry ledger: which module claims this process invocation": {},
+    "the entry ledger: every `newgate`/`claude` invocation is claimed here": {},
     "the envelope claims to be the {got} channel, but {want} was expected": {
       "args": [
         "got",
@@ -3817,6 +3818,7 @@
         "dir"
       ]
     },
+    "the first-run wizard: pick clients, one upstream, start (newgate config)": {},
     "the full assembly record above is new; it is written again only when the graph changes": {},
     "the gateway re-reads config.yaml on the next message; no restart needed": {},
     "the global default": {},
@@ -3825,6 +3827,7 @@
     "the haiku tier; background features": {},
     "the health score uses the main probe latency only; total time also includes dialect and quirk checks": {},
     "the hermes messaging gateway is not running": {},
+    "the home screen: every chain this machine resolves right now, in one view": {},
     "the host declares build {want}, this machine is {got}: this machine can still parse the configuration (unknown fields are ignored, missing ones fall back to defaults), so it was let through. Upgrade newgate to line up exactly.": {
       "args": [
         "got",
@@ -3862,7 +3865,6 @@
         "env"
       ]
     },
-    "the landing screen: every chain this machine resolves right now, in one view": {},
     "the language in this request is not readable: {err}": {
       "args": [
         "err"
@@ -3879,7 +3881,7 @@
         "err"
       ]
     },
-    "the module list and the runtime switch points": {},
+    "the module list and each module's runtime switches (newgate plugin)": {},
     "the module_config section is not an object: {err}": {},
     "the new binary does not run here, nothing was replaced: {err}": {},
     "the new binary reports {version}, which is not a {dist} build; nothing was replaced (--force to install it anyway)": {
@@ -4019,7 +4021,7 @@
         "err"
       ]
     },
-    "the terminal interface: dispatch, layout and injection points, with no business knowledge": {},
+    "the terminal UI: command dispatch, layout, injection points (newgate --help)": {},
     "the theme in this request is not readable: {err}": {
       "args": [
         "err"
@@ -4032,7 +4034,6 @@
     },
     "the top level already has this key": {},
     "the trailing user turn holds only tool_result and no user instruction — appended a continue instruction (the upstream misreports an instruction-less tail as a missing reasoning_content)": {},
-    "the web configuration interface: a BFF and the front-end bundle": {},
     "the whole special_treatment layer is off — none of this counts until it is switched back on": {},
     "theme {id} has no name": {
       "args": [
@@ -4107,7 +4108,7 @@
         "err"
       ]
     },
-    "thinking-mode policy that is not tied to one model family": {},
+    "thinking policy shared across models: downgrade, strip, backfill": {},
     "thinking:disabled → enabled (this model cannot turn thinking off)": {},
     "thinking:{was} → disabled (nothink is on)": {
       "args": [
@@ -4148,7 +4149,7 @@
       ]
     },
     "this distribution declares no GitHub repository; give one: newgate self-update release <owner/repo>": {},
-    "this distribution's own message catalog, appended to the installed language": {},
+    "this distribution's message catalog, appended to the installed language": {},
     "this interface answers on loopback only; reach it as http://127.0.0.1:{port} (the host name in this request was {host})": {
       "args": [
         "host",
@@ -4208,7 +4209,6 @@
         "tiers"
       ]
     },
-    "tiers, providers and state.json: what they mean, and how they are read and written": {},
     "timeout": {},
     "toggle one point:   newgate plugin <module>.<path> on|off [5m|forever]": {},
     "toggle the whole module: newgate plugin {name} off": {
@@ -4338,7 +4338,6 @@
       ]
     },
     "upgrade newgate and the data its modules own, asking first; @version pins a tag, branch or commit": {},
-    "upgrade newgate itself and the dynamic data modules own, through actions each module registers": {},
     "upgrade would build {version} from {repo} (this binary is {current})": {
       "args": [
         "current",
@@ -4367,6 +4366,7 @@
         "id"
       ]
     },
+    "upgrades the binary and the data modules own, asking first (newgate upgrade)": {},
     "upstream quirks learned from traffic could not be saved; the next restart relearns them: {err}": {
       "args": [
         "err"
@@ -4420,7 +4420,6 @@
     "verbose mode": {},
     "verdict": {},
     "verify needs both a provider and a model": {},
-    "verify which model an upstream really serves, by fingerprint (newgate verify)": {},
     "verifying {n} targets (concurrency {c}; each target asks for {count} challenges)": {
       "args": [
         "c",
@@ -4531,7 +4530,8 @@
     "where the browser interface is served, and how to reach it": {},
     "whether a target is currently connected is the daemon's business — this command runs in its own process and cannot see it (the web interface can)": {},
     "which bindings are tripped, why, and for how long": {},
-    "which language this process speaks: resolve it, install the tables, honour disk overrides": {},
+    "which bindings are usable right now (health + latency); the gateway asks before each hop": {},
+    "which language this process speaks (env > config > system), and installs its tables": {},
     "which message catalog the interface reads — see `newgate lang`": {},
     "which message catalog the interface reads; lang <tag> switches it": {},
     "which model?": {},
