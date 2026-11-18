@@ -39,7 +39,7 @@ const ID = "dark"
 func New() modules.Component {
 	return modules.Component{
 		Name: Name,
-		Desc: func() string { return i18n.T("a true-black theme for the web interface", nil) },
+		Desc: func() string { return i18n.T("a true-black skin for the web UI", nil) },
 		// Type is "cli": same class as web-dashboard / tui / simple-cli (the existing value
 		// for "UI shell"). A skin is part of the UI, not a business module.
 		Type:     "cli",
