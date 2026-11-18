@@ -17,7 +17,7 @@ import (
 func New() modules.Component {
 	return modules.Component{
 		Name: "glm",
-		Desc: func() string { return i18n.T("GLM upstream quirk patches", nil) },
+		Desc: func() string { return i18n.T("GLM's quirks: what its decoder mangles, and the repair", nil) },
 		Type: "model",
 		Provides: []modules.Provision{
 			modules.Provide(Capability, Model{
