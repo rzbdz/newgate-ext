@@ -30,7 +30,7 @@ func New() modules.Component {
 	return modules.Component{
 		Name: Name,
 		Desc: func() string {
-			return i18n.T("first-run setup: pick clients, one upstream, and go (newgate config)", nil)
+			return i18n.T("the first-run wizard: pick clients, one upstream, start (newgate config)", nil)
 		},
 		Type: "infra",
 		Requires: []modules.Requirement{
