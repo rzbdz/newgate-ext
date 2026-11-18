@@ -50,7 +50,7 @@ jobs:
 
       # The artifact must run, and the version must match. A multi-invocation binary (argv0 decides the entry point) -- so
       # drop a copy under the correct name before running it, or `newgate version` gets treated as a profile name.
-      - name: Self-check: the artifact runs
+      - name: "Self-check: the artifact runs"
         run: |
           mkdir -p /tmp/bin
           cp dist/newgate-*-linux-amd64 /tmp/bin/newgate
