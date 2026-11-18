@@ -60,7 +60,7 @@ func New() modules.Component {
 	var releases []modules.Release
 	return modules.Component{
 		Name: "codex-deepseek",
-		Desc: func() string { return i18n.T("the Codex × DeepSeek crossing", nil) },
+		Desc: func() string { return i18n.T("Codex × DeepSeek: lift tools, degrade custom tools", nil) },
 		Type: "bridge",
 		Requires: []modules.Requirement{
 			modules.Need(gatewayapi.Capability),
