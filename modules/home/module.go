@@ -56,7 +56,7 @@ func New() modules.Component {
 	return modules.Component{
 		Name: Name,
 		Desc: func() string {
-			return i18n.T("the landing screen: every chain this machine resolves right now, in one view", nil)
+			return i18n.T("the home screen: every chain this machine resolves right now, in one view", nil)
 		},
 		// "other": it is not the kernel, gateway, UI, client or model, nor a bridge between them.
 		// The same kind as arch-diagram -- a presentation surface that owns no mechanism, and
