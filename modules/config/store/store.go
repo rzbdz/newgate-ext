@@ -174,7 +174,7 @@ func loadProfile(name string, loading map[string]bool) (*domain.Profile, error) 
 		return nil, i18n.Ef(err, "cannot resolve extends {name}: {err}", i18n.A{"name": pr.Extends})
 	}
 	pr.MergeFrom(base)
-	pr.Extends = "" // 已合并，解析后的视图不再背 extends 声明
+	pr.Extends = "" // already merged; the resolved view no longer carries the extends declaration
 	return pr, nil
 }
 

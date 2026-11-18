@@ -22,8 +22,8 @@ import (
 // as gray on the web page. Both errors are silent, so they are blocked here.
 func TestHealthTableCellsMatchColumns(t *testing.T) {
 	b, _ := clocked()
-	trip(t, b, "relay", "slow")                            // 摘牌：State=open
-	b.Report("relay", "fresh", Input{Kind: KindConnError}) // 只计数：Fails=1
+	trip(t, b, "relay", "slow")                            // trip: State=open
+	b.Report("relay", "fresh", Input{Kind: KindConnError}) // counts only: Fails=1
 
 	concepts, err := healthConcepts(b, nil)
 	if err != nil {
@@ -162,7 +162,7 @@ func TestHealthCardIsLive(t *testing.T) {
 // red. So both halves are pinned here: polling does **not** move it, `Available` does.
 func TestPollingTheCardDoesNotAdvanceTheBreaker(t *testing.T) {
 	b, adv := clocked()
-	trip(t, b, "relay", "slow") // 摘牌（trip 内部走的是 Available，那是写路径）
+	trip(t, b, "relay", "slow") // trip (trip internally goes through Available, the write path)
 
 	state := func() view.Cell {
 		t.Helper()

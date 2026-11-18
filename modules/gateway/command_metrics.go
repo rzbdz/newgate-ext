@@ -219,11 +219,11 @@ func healthDisplayRank(h status.Status) int {
 // the language, see breaker/status), so switching on it would make this screen depend
 // on the current language. Identity stays here, the rendering is given in healthLabel.
 const (
-	healthFast        = "fast"        // 流畅
-	healthUsable      = "usable"      // 可用
-	healthLaggy       = "laggy"       // 卡顿
-	healthUnavailable = "unavailable" // 不可用
-	healthUnrated     = "unrated"     // 未评分
+	healthFast        = "fast"        // smooth
+	healthUsable      = "usable"      // usable
+	healthLaggy       = "laggy"       // laggy
+	healthUnavailable = "unavailable" // unavailable
+	healthUnrated     = "unrated"     // not yet rated
 )
 
 // healthLabel turns a tier identity into a human-facing rendering.

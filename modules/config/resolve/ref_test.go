@@ -30,8 +30,8 @@ func TestRefSplicesInPlace(t *testing.T) {
 
 	steps, _ := BuildChain("omo-sisyphus", profiles, provs, Opts{Active: "head"})
 	eq(t, names(steps),
-		"head:p1/opus", // @normal 展开：链头 profile 的 normal
-		"b:p2/sonnet",  // @normal 展开：下一个 profile 的 normal
+		"head:p1/opus", // @normal expansion: the normal tier of the head profile
+		"b:p2/sonnet",  // @normal expansion: the normal tier of the next profile
 		"head:p9/fallback",
 	)
 }

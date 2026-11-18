@@ -53,14 +53,14 @@ const (
 type Status struct {
 	Agent     string
 	Mechanism Mechanism
-	Wanted    bool // 用户意愿（state.json）
+	Wanted    bool // user intent (state.json)
 	// Active is "is there something we did on disk" - shim: is the link there; config: is
 	// the file we rewrote there. It is **what we did**, not **the user has the tool**;
 	// the latter is Installed, and the split is deliberate (see Installed's note).
 	Active    bool
-	Installed bool     // 这家客户端本身在不在这台机器上（`which`，排除我们的 shim）
-	Detail    string   // 一句人话：怎么接管的，或为什么没有
-	Files     []string // config 机制涉及的文件
+	Installed bool     // whether this client itself is on the machine (`which`, our shim excluded)
+	Detail    string   // one plain sentence: how it was taken over, or why not
+	Files     []string // files the config mechanism touched
 }
 
 // Result is the outcome of one takeover/release.
@@ -70,7 +70,7 @@ type Result struct {
 	// Skipped: this agent was deliberately skipped (the user off'd it). Neither success nor
 	// failure, and must be shown apart from "taken over" - a ✓ makes the user think it worked.
 	Skipped bool
-	Lines   []string // 逐条说明，直接展示给用户
+	Lines   []string // one line each, shown to the user as-is
 	Warn    []string
 	Err     error
 }
@@ -213,7 +213,7 @@ func OffAll() []Result {
 		}
 		r := release(a)
 		if len(r.Lines) == 0 && r.Err == nil {
-			continue // 本来就没接管，不用报
+			continue // never taken over, nothing to report
 		}
 		out = append(out, r)
 	}

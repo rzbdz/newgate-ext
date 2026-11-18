@@ -184,7 +184,7 @@ func TestReleaseOnlyRemovesItsOwn(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	_ = first() // 再撤一次（幂等，且不许误删后来者那条）
+	_ = first() // revoke again (idempotent, and must not delete the latecomer's)
 	if all, _ := r.Snapshot(); len(all) != 1 {
 		t.Fatalf("the latecomer's concept was deleted by mistake: %+v", all)
 	}
@@ -958,7 +958,7 @@ func TestCellHrefReachesTheWire(t *testing.T) {
 		t.Fatalf("cannot decode: %v (%s)", err, raw)
 	}
 	if got := back.Rows[0].Cells["route"].Href; got != "/ui/remote/ds/" {
-		t.Errorf("Href = %q（%s）", got, raw)
+		t.Errorf("Href = %q (%s)", got, raw)
 	}
 	// A cell with no link should not grow an href out of
 	// nowhere -- an empty string is "this is not a link".

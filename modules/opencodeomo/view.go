@@ -1,28 +1,32 @@
 package opencodeomo
 
-// 本文件是 omo 槽位贡献给 web 界面的那一面：**哪个槽位现在跟哪个档位走**，
-// 以及**在这里改它**。
+// This file is the face omo slots contribute to the web UI: **which slot follows which tier right
+// now**, and **changing it right here**.
 //
-// 它是**发行版模块**贡献的第一张卡片（此前四个贡献者全在内核）。路径完全一样：
-// `Optional(viewapi.Capability)` + 登记一个产出函数，前端一个字都不用改——
-// 这正是 lib/view 那句「加一个模块的界面不需要改前端」要成立的地方。
+// It is the first card contributed by a **distribution module** (the four contributors before it
+// were all in the kernel). The path is exactly the same: `Optional(viewapi.Capability)` +
+// register a producer function, and the front end changes not one word -- this is exactly where
+// lib/view's "adding a module's UI needs no front-end change" has to hold.
 //
-// # 可写（2026-09-20 起）
+// # Writable (since 2026-09-20)
 //
-// 之前是只读的，理由是「写槽位归属是 newgate omo use/unset 的语义，界面再开一个
-// 口子等于造第二份写语义」。那个顾虑用一个办法消掉：**界面的写就是走同一份判据**
-// （validateBindingValue + WriteOmoSlots，与 omoUse 一字不差），不是另写一套。
-// 于是同一条规矩在两边都成立，而用户不必为了把一个槽位挪到别的档位去开终端。
+// It used to be read-only, on the reasoning "writing slot bindings is the semantics of newgate omo
+// use/unset, and opening another mouth in the UI equals creating a second write semantics". That
+// worry is removed by one means: **the UI's write goes through the same criterion**
+// (validateBindingValue + WriteOmoSlots, word for word the same as omoUse), not a separate one. So
+// the same rule holds on both sides, and the user need not open a terminal to move a slot to
+// another tier.
 //
-// 只动 Overrides 与 Mode 两个字段：其余（Was/Current/Suggested/Slots）是接管时
-// 算出来的现场记录，界面不该也没能力改。
+// Only the two fields Overrides and Mode are touched: the rest (Was/Current/Suggested/Slots) are
+// the field record computed at takeover, which the UI should not and cannot change.
 //
-// # 形状：不是表，是「一行一个选择器」
+// # Shape: not a table, but "one selector per row"
 //
-// 表格每列都得窄，而这里每行只有「键 + 一个选择」，塞进表里反而要横着读；
-// 而 `toggles` 那个 Kind 本来就是「一组同构的选择器、每条带一句为什么」——
-// 槽位正是这个形状。每行的 why 里带着 now / effective / suggested 三个现场值，
-// 表里那三列的信息一条都没丢。
+// Every column of a table must be narrow, while each row here is only "key + one choice", which
+// reads sideways inside a table; and the `toggles` Kind is by nature "a group of homogeneous
+// selectors, each with a why" -- slots are exactly that shape. Each row's why carries the
+// three field values now / effective / suggested, so not one piece of the table's three
+// columns is lost.
 
 import (
 	"encoding/json"
@@ -37,11 +41,11 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// profileOf 是 opencode 的**链头**那一格（读写的实现在内核，见
-// confighook.AgentProfile）：它整条链从哪条 profile 起步。
+// profileOf is opencode's **chain head** cell (the read/write implementation lives in the kernel,
+// see confighook.AgentProfile): which profile its whole chain starts from.
 func profileOf() agentapi.AgentProfile { return agentapi.AgentProfile{AgentID: opencodeapi.ID} }
 
-// slotsConceptID 是这张卡片的稳定身份。
+// slotsConceptID is this card's stable identity.
 const slotsConceptID = "opencode-omo.slots"
 
 // omoToggle is one row of this card. Same shape as config's toggles (the front
@@ -124,7 +128,7 @@ func omoConcepts(lock string) ([]view.Concept, error) {
 			ID: key, Label: key, Kind: "select",
 			Value:   reg.Overrides[key],
 			Options: opts,
-			Group:   s.Kind, // agent / category：界面按它分两组
+			Group:   s.Kind, // agent / category: the UI groups by it into two groups
 			Why:     why,
 		})
 	}

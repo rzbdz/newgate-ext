@@ -7,28 +7,32 @@ import (
 	"strings"
 )
 
-// 本文件是写进 config.yaml 的**值**：有序映射、列表、标量，以及把它们排成 YAML 行。
+// This file is the **values** written into config.yaml: ordered mappings, lists, scalars, and
+// laying them out as YAML lines.
 //
-// 为什么值要有类型（而不是直接拼字符串行）：同一份值要交给两个读者——
+// Why values need types (rather than string lines assembled directly): the same value goes to
+// two readers --
 //
-//  1. emit 把它排成 YAML 行，写进文件；
-//  2. 校验那一步（verify.go）把它序列化成 JSON，交给 **hermes 自己的 YAML 解析器**
-//     去比：「原文件 + 这些改动」解析出来的东西，必须与「写出来的文件」解析出来的
-//     **逐值相等**。
+//  1. emit lays it out as YAML lines and writes it to the file;
+//  2. the verify step (verify.go) serializes it to JSON and hands it to **hermes' own YAML
+//     parser** for comparison: what "the original file + these edits" parses to must be
+//     **value-for-value equal** to what "the written file" parses to.
 //
-// 只有值是结构化的，第二步才有一个可比的「期望」——拼出来的字符串行没有。
+// Only with structured values does the second step have a comparable "expected" -- assembled
+// string lines have none.
 
-// kv 是有序映射的一项。
+// kv is one entry of an ordered mapping.
 type kv struct {
 	K string
 	V any
 }
 
-// omap 是**有序**映射：写进文件的顺序就是这里的顺序（给人看的文件，每次接管排出
-// 同一个样子，理由见 codex 的 rewrite）。
+// omap is an **ordered** mapping: the order written to the file is the order here (a
+// human-facing file, laid out the same way on every takeover, reason in codex's rewrite).
 type omap []kv
 
-// MarshalJSON 按顺序写成 JSON 对象（校验时交给 Python，它只关心值）。
+// MarshalJSON writes a JSON object in order (handed to Python at verify time; it cares only
+// about values).
 func (m omap) MarshalJSON() ([]byte, error) {
 	var b bytes.Buffer
 	b.WriteByte('{')
@@ -49,7 +53,7 @@ func (m omap) MarshalJSON() ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-// scalarLit 标量的 YAML 字面量；不是标量返回 false。
+// scalarLit the YAML literal of a scalar; false if it is not a scalar.
 func scalarLit(v any) (string, bool) {
 	switch x := v.(type) {
 	case string:
@@ -65,10 +69,10 @@ func scalarLit(v any) (string, bool) {
 	return "", false
 }
 
-// emit 把 key: v 排成行，缩进 indent。
+// emit lays out key: v as lines, indented by indent.
 //
-// 形状与 hermes 落盘的一致：块风格、子级多两格、空映射/空列表写成 `{}` / `[]`、
-// 列表项缩进在父键下面两格。
+// The shape matches hermes' dump: block style, children two spaces deeper, empty mappings/lists
+// written as `{}` / `[]`, list items indented two spaces under their parent key.
 func emit(key string, v any, indent int) []string {
 	pad := strings.Repeat(" ", indent)
 	if s, ok := scalarLit(v); ok {
@@ -92,8 +96,8 @@ func emit(key string, v any, indent int) []string {
 		for _, item := range x {
 			s, ok := scalarLit(item)
 			if !ok {
-				// 列表里只放标量：今天写的只有那种，复杂项的排版是另一套规则，
-				// 写一半不如不写。
+				// Lists hold scalars only: that is all we write today, and laying out complex items
+				// is another set of rules -- half-written is worse than not written.
 				panic("hermes: emit: non-scalar list item")
 			}
 			out = append(out, pad+"  - "+s)
@@ -103,20 +107,22 @@ func emit(key string, v any, indent int) []string {
 	panic("hermes: emit: unsupported value type")
 }
 
-// edit 是一处改动：把 Path 写成 Value；Value 为 nil = 删掉这个键。
+// edit is one change: write Value at Path; Value nil = remove this key.
 //
-// FromOrig 是还原那条路用的（见 takeover.go 的 Restore）：这一处的值取自**原件**
-// （接管前那一份）——原件里有就放回原样，没有就删掉。它不走 put，走 putRaw。
+// FromOrig is for the restore path (see Restore in takeover.go): this place's value comes from
+// the **original** (the pre-takeover copy) -- put it back as it was if present there, remove it
+// if not. It does not go through put, it goes through putRaw.
 type edit struct {
 	Path     []string
 	Value    any
 	FromOrig bool
 }
 
-// put 执行一处改动，返回是否真的改了（没变的不记账）。
+// put applies one edit and returns whether it really changed anything (no change, no record).
 //
-// 那个键已经在：整块换掉（原来是块、现在是标量也一样——留着子行就成了一份解析
-// 不了的文件）。不在：补在父块末尾，父级缺的一路补出来（见 ensure）。
+// If the key is already there: replace the whole block (the same when it was a block and is now
+// a scalar -- leaving the child lines makes an unparseable file). If not: append at the end of
+// the parent block, creating whatever levels are missing (see ensure).
 func (d *doc) put(e edit) (bool, error) {
 	if e.Value == nil {
 		return d.remove(e.Path...), nil
@@ -139,7 +145,8 @@ func (d *doc) put(e edit) (bool, error) {
 	if strings.Join(d.lines[s.head:s.end], "\n") == strings.Join(block, "\n") {
 		return false, nil
 	}
-	// 同一个标量、只是引号写法不同（`normal` vs `"normal"`）：不改，免得记一笔假账。
+	// Same scalar, only a different quoting style (`normal` vs `"normal"`): no edit, so no false
+	// record.
 	if s.end == s.head+1 && len(block) == 1 {
 		if want, ok := scalarLit(e.Value); ok && sameScalar(valueOf(d.lines[s.head]), want) {
 			return false, nil

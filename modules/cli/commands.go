@@ -28,12 +28,12 @@ import (
 // Help line positions. The numbers leave gaps so others
 // can jump in; within a section sorted by Rank then Usage.
 const (
-	rankTakeover = 10 // 接管
-	rankRunOnce  = 20 // 跑一次
-	rankRouting  = 30 // 路由与配置
-	rankObserve  = 40 // 探测与观测
-	rankMaint    = 50 // 维护
-	rankSystem   = 60 // 界面自身（help / version）
+	rankTakeover = 10 // takeover
+	rankRunOnce  = 20 // run once
+	rankRouting  = 30 // routing and configuration
+	rankObserve  = 40 // probing and observation
+	rankMaint    = 50 // maintenance
+	rankSystem   = 60 // the interface itself (help / version)
 )
 
 type statusCommand struct{ s *service }

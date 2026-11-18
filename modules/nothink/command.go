@@ -12,24 +12,25 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// defaultTTL 是 `newgate nothink on` 的默认窗口，与 `newgate naked on` 同一个数。
+// defaultTTL is the default window of `newgate nothink on`, the same number as `newgate naked on`.
 //
-// `on` 这个子命令的用途是「就这会儿」——调一次长活、跑一轮贵的批处理——那需要一个
-// 会自己消失的缺省；长期开着的人写 `forever`，那是一个**要说出口**的决定。
+// The purpose of the `on` subcommand is "just for now" -- one long job, one round of expensive
+// batch work -- which needs a default that disappears on its own; people who want it on long term
+// write `forever`, and that is a decision that **has to be said out loud**.
 const defaultTTL = 60 * time.Second
 
-// nothinkCommand 是 `newgate nothink`。
+// nothinkCommand is `newgate nothink`.
 //
-// **它住在这里而不是 modules/cli**：这是 nothink 这个插件的用户界面，而插件的配置
-// 类型（Config / StateKey）就归本模块。界面不认识任何业务模块，是模块把自己的命令
-// 注入给界面（cli.RegisterCommand）。
+// **It lives here rather than in modules/cli**: this is the nothink plugin's UI, and the plugin's
+// config types (Config / StateKey) belong to this module. The UI knows no business module;
+// the module injects its own command into the UI (cli.RegisterCommand).
 //
-// 用法：
+// Usage:
 //
-//	newgate nothink off       关（默认）
-//	newgate nothink on        开 60 秒自限窗口
-//	newgate nothink 30s       自定义时长（30s / 2m / 2min / 1h …）
-//	newgate nothink forever   一直开（status 会一直打这一行）
+//	newgate nothink off       off (the default)
+//	newgate nothink on        on, a self-limiting 60 second window
+//	newgate nothink 30s       custom duration (30s / 2m / 2min / 1h …)
+//	newgate nothink forever   always on (status keeps printing that line)
 type nothinkCommand struct{}
 
 var (
@@ -47,8 +48,9 @@ func (nothinkCommand) Help() cliapi.HelpLine {
 	}
 }
 
-// Run 分派子命令。为什么不做成 `newgate st on nothink`：st 管的是插件层整体开关、
-// 不带时间语义，而这条策略常用的是「这一小时别想」，到期必须自己消失。
+// Run dispatches the subcommands. Why not `newgate st on nothink`: st manages the plugin layer's
+// overall switches and carries no time semantics, while what this policy usually wants is "not this
+// hour", which must disappear on its own when it expires.
 func (nothinkCommand) Run(host cliapi.Host, args []string) int {
 	sub := cliapi.Positional(args, 0)
 	switch sub {
@@ -103,11 +105,12 @@ func nothinkForever(host cliapi.Host) int {
 	return 0
 }
 
-// printBestEffort 说清这条开关**做不到**什么。
+// printBestEffort spells out what this switch **cannot** do.
 //
-// 用户打开它的时候必须知道边界在哪：有的模型关不掉思考（给它最小强度），
-// OpenAI 方言的请求没有这个字段可写（一个字节都不动）。不说的话，症状是
-// 「我开了啊，怎么还在想」——而那是设计，不是故障。
+// The user must know where the boundary is when turning it on: some models cannot have thinking
+// turned off (give them the lowest effort), OpenAI-dialect requests have no such field to write
+// (not one byte touched). Unsaid, the symptom is "I turned it on, why is it still thinking" -- yet
+// that is by design, not a failure.
 func printBestEffort() {
 	fmt.Println(style.Hint(i18n.T("best effort: a model that cannot turn thinking off gets the lowest reasoning effort, and OpenAI-dialect requests are untouched", nil)))
 }

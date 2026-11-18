@@ -274,7 +274,7 @@ func (s Section) Display() string {
 	case SectionOthers:
 		return i18n.T("Other", nil)
 	}
-	return string(s) // 自定义槽位：模块自己起的键，显示它本身
+	return string(s) // custom slot: a key a module invented; show it as-is
 }
 
 // generalSections are the generic slots the UI publishes; the

@@ -1,42 +1,45 @@
-// Package policy 是数据面**自己留出来的决策点**。
+// Package policy is the decision points the data plane **carves out for itself**.
 //
-// # 为什么需要它
+// # Why it is needed
 //
-// 一次转发在流程上有四处「必须做个决定」的地方：
+// For one forwarding flow there are four places that "must make a decision":
 //
-//	A 建链期  这条 binding 现在能不能进候选？排第几？
-//	B 结局期  沿不沿链走？这一发算不算这条 binding 的失败？留什么痕？
-//	C 控制面  我自己那份状态怎么报出去？探活结论怎么收？
-//	D 停机    关机前还有谁的账没落盘？
+//	A chain build  may this binding enter the candidates now? in what position?
+//	B outcome      walk the chain or not? does this shot count against this binding? what trail?
+//	C control      how do I report my own state? how do I take probe conclusions?
+//	D shutdown     whose ledger is still unflushed before we exit?
 //
-// 2026-09-18 之前这四个问题都由 modules/breaker 回答，而 gateway 是**直接调用
-// 它**的：`forward.Server` 上有一个 `Health breaker.Breaker` 字段，热路径里写着
-// `breaker.Input{Kind: breaker.KindConnError}`、`res.Verdict.Bucket`、
-// `case breaker.BucketShape:`。也就是说 gateway 的源码里出现了**策略的名字**——
-// 它把 breaker 当成了一个 lib，而不是「往我这儿插东西的一个组件」。
+// Before 2026-09-18 modules/breaker answered all four, and gateway **called it directly**:
+// `forward.Server` had a `Health breaker.Breaker` field, and the hot path read
+// `breaker.Input{Kind: breaker.KindConnError}`, `res.Verdict.Bucket`, `case breaker.BucketShape:`.
+// That is, **a policy's name** appeared in gateway's source -- it treated breaker as a lib
+// rather than "a component that plugs things into me".
 //
-// 这一层把能力方向掉头：gateway 从自己的状态机里读出上面四个决策点，各留一个
-// 可注册的口；谁有意见谁注册进来。判据是可机械核对的——
+// This layer turns the direction of the capability around: gateway reads the four decision
+// points out of its own state machine, leaves one registerable port for each, and whoever has
+// an opinion registers. The criterion is mechanically checkable --
 //
 //	command grep -rn "breaker" modules/gateway/forward/ modules/gateway/module.go
 //
-// 必须是 0 行（`modules/breaker/status` 是 wire 叶子，按
-// docs/03-architecture.md §2 的注允许直接 import，不算）。
+// must be 0 lines (`modules/breaker/status` is a wire leaf, allowed to be imported directly
+// by the note in docs/03-architecture.md §2, and does not count).
 //
-// # 内核给的是机制，不是政策
+// # The kernel gives mechanism, not policy
 //
-// **没有贡献者时 = 最小系统**，四个口都有明确的内核默认：
+// **With no contributors = the minimal system**, and all four ports have explicit kernel defaults:
 //
-//	A 全部候选可用、不重排（与 resolve.Opts 的 nil 语义一致）
-//	B 停 = 响应已开始 || 链上没有下一站；不记任何账、不打任何痕
-//	C 控制面少一节；探活结论收下、无话可说
-//	D 无事可做
+//	A all candidates usable, no reordering (consistent with resolve.Opts' nil semantics)
+//	B stop = the response has started || no next stop on the chain; no ledger, no trail
+//	C one section less on the control plane; probe conclusions taken, nothing to say
+//	D nothing to do
 //
-// 有一条边界值得写死：**策略只能叫停，不能强行前进**。核对过旧分类表的全表，
-// 除「其它 4xx」（本可重试却停下）之外，换站与否恒等于「没写过响应 + 还有下一站」，
-// 与记进哪本账无关——所以「叫停」是唯一的干涉方向，不存在反过来的情形。
-// 零值 Verdict 表示「没有意见」，于是它落在内核默认上；这与仓库的 fail-open
-// 硬要求一致（见 CLAUDE.md §4）：一个报错/没认领的贡献者，绝不该让整条链断掉。
+// One boundary is worth writing into stone: **policy can only stop, never force an advance**.
+// The whole old classification table was checked: apart from "other 4xx" (retryable but
+// stopped), swapping always equals "the response has not been written + there is a next stop",
+// regardless of which ledger is kept -- so "stop" is the only direction of interference, and
+// the reverse cannot occur. A zero Verdict means "no opinion" and so lands on the kernel
+// default; that is consistent with the repo's fail-open hard requirement (see CLAUDE.md §4):
+// an erroring/unclaimed contributor must never break the whole chain.
 package policy
 
 import (
@@ -50,95 +53,105 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// Filter 是一个贡献者的身份。
+// Filter is a contributor's identity.
 //
-// 与 special.Plugin 的 Name()/Why() 同构：名字进日志与查重，Why 回答「这东西
-// 为什么在」。少了它，一个贡献者出问题时就只剩「有个东西返回了 Stop」。
+// Isomorphic to special.Plugin's Name()/Why(): the name goes into logs and dedup, and Why
+// answers "why does this exist". Without it, a contributor going wrong leaves only "something
+// returned Stop".
 type Filter interface {
 	Name() string
 	Why() string
 }
 
-// OutcomeKind 是「这一次尝试到底怎么了」——**只有事实，没有判断**。
+// OutcomeKind is "what actually happened on this attempt" -- **facts only, no judgment**.
 //
-// 数据面说「连接失败了」「上游回了 500」「响应已经开始写了」，不解释这意味着
-// 什么；解释在贡献者的 Judge 里。这条分界与旧 modules/breaker 的 Kind 一致，
-// 只是名字换成了中性的：内核不该出现任何一家策略的词汇。
+// The data plane says "the connection failed", "the upstream returned 500", "the response has
+// started writing", without explaining what that means; the explanation is in the contributor's
+// Judge. This boundary matches the old modules/breaker's Kind, only the names became neutral:
+// no policy's vocabulary should appear in the kernel.
 type OutcomeKind string
 
 const (
-	// Succeeded 拿到了 2xx 响应头。
+	// Succeeded got a 2xx response header.
 	Succeeded OutcomeKind = "succeeded"
-	// ConnectionFailed 连接阶段失败（dial/DNS/TLS/reset/EOF，或首字节超时）。
-	// 客户端自己取消**不在这里**：数据面不把它交给策略（见 Outcome 的说明）。
+	// ConnectionFailed failed at the connect stage (dial/DNS/TLS/reset/EOF, or a first-byte timeout).
+	// A client cancelling itself is **not here**: the data plane does not hand it to policy (see
+	// the note on Outcome).
 	ConnectionFailed OutcomeKind = "connection_failed"
-	// RejectedStatus 上游回了一个 >= 400 的状态码。
+	// RejectedStatus the upstream returned a status code >= 400.
 	RejectedStatus OutcomeKind = "rejected_status"
-	// StreamCut 响应已经开始往客户端写，中途上游断流。
+	// StreamCut the response already started writing to the client and the upstream broke mid-way.
 	StreamCut OutcomeKind = "stream_cut"
 )
 
-// Outcome 是内核交给策略的全部事实。**没有隐藏输入**：同一个 Outcome 永远得到
-// 同一个 Verdict，所以每一条策略都能被一张表穷举测完。
+// Outcome is all the facts the kernel hands to policy. **No hidden input**: the same Outcome
+// always yields the same Verdict, so every policy can be exhaustively tested from one table.
 type Outcome struct {
 	Provider string
 	Model    string
-	// Binding 是 provider/model 的展示形式，只给日志用。
+	// Binding is the display form of provider/model, for the log only.
 	Binding string
 	Kind    OutcomeKind
-	// Status 上游状态码，只有 RejectedStatus 有。
+	// Status the upstream status code, present only for RejectedStatus.
 	Status int
-	// Body 上游错误原文（已截断）。只有 RejectedStatus 有——数据面为了这段
-	// 证据本来就读了它，读它的原因从「喂给 breaker」变成「喂给策略」。
+	// Body the upstream's raw error text (truncated). Present only for RejectedStatus -- the
+	// data plane read it anyway for that evidence; the reason changed from "feed breaker" to
+	// "feed policy".
 	Body []byte
-	// ResponseStarted 已经往客户端发过响应头了吗。开始写之后就不能换站：
-	// 客户端已经收到半截响应，换个人接着写只会得到拼接的垃圾。
+	// ResponseStarted has a response header already gone to the client? No swapping once writing
+	// has begun: the client already holds half a response, and another writer would only
+	// append garbage.
 	ResponseStarted bool
-	// IsLast 链上没有下一站了（最后一个候选，或总预算已用尽）。
+	// IsLast no next stop on the chain (the last candidate, or the total budget is used up).
 	IsLast bool
-	// FallbackOn400 是 chain.fallback_on_400 开关。
+	// FallbackOn400 is the chain.fallback_on_400 switch.
 	FallbackOn400 bool
-	// RequestBytes 我们发出去的 body 字节数；延迟样本按它选上下文桶。
+	// RequestBytes the body byte count we sent; latency samples pick the context bucket by it.
 	RequestBytes int
-	// TTFT 从发出请求到拿到响应头的时间。
+	// TTFT time from sending the request to getting the response header.
 	TTFT time.Duration
 }
 
-// Verdict 是策略的回答。
+// Verdict is policy's answer.
 //
-// 内核只搬运、不解释：Metrics 是计数器名、Note 是一句人话、Evidence.Tag 是日志
-// 标记与证据目录前缀——全是**不透明字符串**。gateway 里因此不出现任何一家上游
-// 或策略的专有词汇（`[shape-400]` 这个字面量由贡献者给，见 Evidence）。
+// The kernel carries, it does not interpret: Metrics is a counter name, Note is a sentence,
+// Evidence.Tag is a log tag and evidence directory prefix -- all **opaque strings**. So no
+// upstream's or policy's private vocabulary appears in gateway (the literal `[shape-400]` is
+// given by the contributor, see Evidence).
 type Verdict struct {
-	// Stop 这一次不要再换站了。
+	// Stop do not swap on this shot.
 	//
-	// 零值（false）= 「我没意见」，于是落在内核默认上：只要响应还没开始写、
-	// 链上还有下一站，就继续沿链走。fail-open 的方向（CLAUDE.md §4）。
+	// The zero value (false) = "no opinion", so it lands on the kernel default: as long as the
+	// response has not started writing and the chain has a next stop, keep walking. The
+	// fail-open direction (CLAUDE.md §4).
 	Stop bool
-	// Attribute 这一发算在这条 binding 头上吗。
+	// Attribute does this shot count against this binding.
 	//
-	// 它驱动 `newgate status` 里那个 failures 计数（今天只数「上游的账」：
-	// 形状类 400 与「请求本身有问题」的 4xx 都不算）。它是内核的问题
-	// （「记在谁头上」），不是策略的桶名——所以内核只当布尔搬运。
+	// It drives the failures count in `newgate status` (today only "the upstream's account" is
+	// counted: shape 400s and 4xx for "the request itself is wrong" are not). It is the kernel's
+	// question ("whose account"), not the policy's bucket name -- so the kernel carries it as a bool.
 	Attribute bool
-	// Metrics 要 +1 的计数器名，内核原样 Inc。
+	// Metrics the counter names to +1; the kernel Incs them as-is.
 	Metrics []string
-	// Note 日志后缀，原样打在那一行末尾（含前导空格由贡献者自己给）。
+	// Note a log suffix, printed as-is at the end of that line (the contributor supplies the
+	// leading space).
 	Note string
-	// Evidence 非 nil = 这一发要留证据（形状类错误的专属日志与存档）。
+	// Evidence non-nil = this shot needs evidence (the dedicated log and archive for shape errors).
 	Evidence *Evidence
 }
 
-// Verdict 的合成规则（多个贡献者时）。
+// Verdict composition rules (with several contributors).
 //
-// 写死在这里而不是留给调用方，是因为「谁的判决赢」这种事一旦各写一遍必然漂移：
+// Written here rather than left to callers because "whose verdict wins" always drifts once
+// each side writes it:
 //
-//	Stop / Attribute  OR      —— 任何一个说停就停，说记账就记账
-//	Metrics           并集    —— 去重后按字典序（输出稳定）
-//	Note              拼接    —— 按贡献者的注册顺序
-//	Evidence          第一个非 nil（注册顺序）
+//	Stop / Attribute  OR       -- any one saying stop stops, saying charge charges
+//	Metrics           union    -- deduped, then lexicographic (stable output)
+//	Note              concat   -- in contributor registration order
+//	Evidence          first non-nil (registration order)
 //
-// 注意 OR 的方向与「内核默认」是一致的：判决只往「更保守」的方向叠。
+// Note the OR direction matches "the kernel default": verdicts only stack toward the more
+// conservative side.
 func merge(a, b Verdict) Verdict {
 	a.Stop = a.Stop || b.Stop
 	a.Attribute = a.Attribute || b.Attribute
@@ -152,76 +165,86 @@ func merge(a, b Verdict) Verdict {
 	return a
 }
 
-// Evidence 是一发「要留痕」的结局的证据元数据。
+// Evidence is the evidence metadata of an outcome that "needs a trail".
 //
-// 为什么整块由贡献者给：`[shape-400]` 与 `dump/shape-400-deepseek/` 里那两个词
-// 都是**上游方言**（哪家的请求形状校验、判据叫什么名字），而转发路径按
-// docs/05-gateway.md 的规矩不许出现上游专有字符串。贡献者给标记，内核只负责
-// 打日志、落盘、以及保持无知。
+// Why the whole block comes from the contributor: both words in `[shape-400]` and
+// `dump/shape-400-deepseek/` are **upstream dialect** (whose request-shape validation, what the
+// criterion is called), and the forwarding path must not contain upstream-specific strings per
+// docs/05-gateway.md. The contributor gives the tag; the kernel only logs, persists, and
+// stays ignorant.
 type Evidence struct {
-	// Tag 日志里的方括号标记与证据目录前缀，如 "shape-400"。
+	// Tag the bracketed tag in the log and the evidence directory prefix, e.g. "shape-400".
 	Tag string
-	// Subject 是谁认领的，进日志与目录名，如 "deepseek"。
+	// Subject who claimed it, into the log and the directory name, e.g. "deepseek".
 	Subject string
-	// Archive 另外存一份不参与滚动清理的现场。
+	// Archive also store a scene that takes no part in rolling cleanup.
 	//
-	// 为什么要有这一位：这类 400 偶发又致命，dump 目录的滚动清理会把它挤掉，
-	// 所以现场要单独留档。
+	// Why this bit exists: these 400s are rare and fatal, the dump directory's rolling cleanup
+	// would squeeze them out, so the scene needs its own archive.
 	Archive bool
 }
 
-// --- 可选接口：按阶段实现，缺哪个就跳过哪个 -------------------------------
+// --- Optional interfaces: implement per stage, skip what is missing -------------------------
 //
-// 复用仓库已有的「必选身份 + 可选阶段」形状（gateway/special 那套）：贡献者
-// 只实现自己关心的阶段，内核 type-assert 发现。
+// Reuses the repo's existing "required identity + optional stages" shape (the gateway/special
+// one): a contributor implements only the stages it cares about, and the kernel finds them by
+// type assertion.
 
-// Admitter 是 A 阶段（建链期）的贡献者。
+// Admitter is the contributor for phase A (chain building).
 //
-// **只允许一个**（注册第二个当场报错）。理由不是保守，是 Admit 不是查询：
-// 健康表在冷却期满时要发放「半开试探名额」，一个名额只放行一次真实请求，而
-// resolve 对每个候选问一次、覆盖链的路径上还会再问一次——「恰好一次」这件事
-// 今天靠的是名额自己有 TTL 兜底（见 modules/breaker 的 state.go）。多个
-// Admitter 求 AND 会让「名额发不发」取决于**另一个不相关贡献者**的返回值：
-// 前者发了名额、后者否决，那条 binding 就在 TTL 内既进不了链也没人在试。
+// **Only one is allowed** (registering a second fails right there). The reason is not
+// conservatism: Admit is not a query. When the cooldown expires, the health table issues a
+// "half-open trial slot", one slot lets exactly one real request through, and resolve asks
+// once per candidate and asks again on the path that overrides the chain - today
+// "exactly once" rests on the slot's own TTL fallback (see state.go in modules/breaker).
+// Multiple Admitters ANDed together would make "is a slot issued" depend on **another
+// unrelated contributor**'s return value: the first issues the slot, the second denies, and
+// that binding can neither enter the chain nor is anyone trying it, for the whole TTL.
 //
-// 所以这一位留出的是「谁来回答准入」而不是「多方共同回答」。真要多个来源，
-// 做法是它们自己合成一个 Admitter 再注册。
+// So this seat is for "who answers admission", not "several parties answering together".
+// If several sources really are wanted, they compose one Admitter themselves and register it.
 type Admitter interface {
-	// Admit 这条 binding 现在能不能进候选。false 时 reason 是给用户看的
-	// 跳过原因（`newgate tier` 会原样打出来）。
+	// Admit says whether this binding can enter the candidates right now. On false, reason
+	// is the user-facing skip reason (`newgate tier` prints it verbatim).
 	Admit(provider, model string) (ok bool, reason string)
-	// Rank 排序键，越小越优先。只重排链头之后的 fallback。
+	// Rank is the sort key, smaller first. It only reorders the fallback after the chain head.
 	Rank(provider, model string, contextBytes int) int
 }
 
-// Adjudicator 是 B 阶段（结局期）的贡献者。
+// Adjudicator is the contributor for phase B (outcome).
 //
-// 可以多个，判决按 merge 的规则合成（见 Verdict 的说明）。
+// There may be several; verdicts are composed by the merge rules (see Verdict).
 type Adjudicator interface {
-	// Judge 对这一次结合作出判决。**必须是纯函数**：同一个 Outcome 永远
-	// 同样的 Verdict，不加锁、不写状态。记账在 Observe 里。
+	// Judge passes verdict on this one outcome. **It must be pure**: the same Outcome always
+	// yields the same Verdict, no locking, no state written. Accounting lives in Observe.
 	Judge(Outcome) Verdict
-	// Observe 只有成功那一发会走到：记一次真实观测量（延迟样本）。
+	// Observe is reached only on the successful shot: it records one real observation (a
+	// latency sample).
 	Observe(Outcome)
 }
 
-// Controller 是 C 阶段（控制面）的贡献者。
+// Controller is the contributor for phase C (control plane).
 type Controller interface {
-	// Doc 是贡献给 `/__newgate/status` 的字段，键就是它在文档顶层的样子。
+	// Doc is the field contributed to `/__newgate/status`; the key is how it looks at the
+	// document's top level.
 	//
-	// gateway 把它并进状态文档的顶层——**刻意不是塞进一个 extra 对象**：
-	// 老版本 CLI（优雅交接期间新旧二进制会混跑）读的是顶层 `breakers`，
-	// 挪窝会让它在升级窗口里看见空表。键撞车在**注册期**就报错（与
-	// `confighook.RegisterStateField` 抢同一个字段的处置一致），不静默覆盖。
+	// gateway merges it into the top level of the status document - **deliberately not
+	// tucked into an extra object**: older CLIs (new and old binaries mix during a graceful
+	// takeover) read the top-level `breakers`, and moving it would show them an empty table
+	// during the upgrade window. A key collision fails at **registration time** (the same
+	// handling as `confighook.RegisterStateField` claiming the same field), never a silent
+	// overwrite.
 	//
-	// 契约：便宜、无副作用（注册时问一次，之后每个 status 请求问一次）。
+	// Contract: cheap and side-effect free (asked once at registration, then once per status
+	// request).
 	Doc() map[string]json.RawMessage
 
-	// ObserveProbes 收下探活的主动结论。
+	// ObserveProbes takes in the active conclusions of probes.
 	ObserveProbes(obs []ProbeObservation) []ProbeAck
 }
 
-// ProbeObservation 是一条探活结论（`newgate probe` 经控制端点回传）。
+// ProbeObservation is one probe conclusion (`newgate probe` sends it back via the control
+// endpoint).
 type ProbeObservation struct {
 	Provider     string
 	Model        string
@@ -229,65 +252,74 @@ type ProbeObservation struct {
 	Latency      time.Duration
 	ContextBytes int
 	Error        string
-	// SlowAfter 是分类器首字节阈值：probe 是 4-token 极小请求，超过这个阈值
-	// 仍未完成，就不具备进入交互 fallback 链的资格，即使它最终回了 200。
+	// SlowAfter is the classifier's first-byte threshold: a probe is a tiny 4-token request,
+	// and if it is still unfinished past this threshold it does not qualify for the
+	// interactive fallback chain, even if it eventually returns 200.
 	SlowAfter time.Duration
 }
 
-// ProbeAck 是贡献者对一条探活结论的回应（只用来打日志与计数）。
+// ProbeAck is a contributor's reply to one probe conclusion (used only for logging and
+// counting).
 type ProbeAck struct {
-	// Opened 这条结论把闸打开了。
+	// Opened: this conclusion opened the gate.
 	Opened bool
-	// Note 要打出来的一行人话；空 = 没什么可说。
+	// Note is one line of plain language to print; empty = nothing to say.
 	Note string
 }
 
-// Flusher 是 D 阶段（停机）的贡献者：把还没落盘的状态同步写出去。
+// Flusher is the contributor for phase D (shutdown): write out not-yet-persisted state
+// synchronously.
 type Flusher interface {
 	Flush() error
 }
 
-// Env 是数据面在**运行期**提供给贡献者的能力。
+// Env is the capability the data plane lends contributors **at runtime**.
 //
-// 它不是「配置」，是此刻活着的事实：日志出口、以及拿当前配置快照发一次最小
-// 探活。它存在的原因是「上闸前诊断」——某个 binding 连续失败到阈值时，先主动
-// 探一次，通就不摘牌（见 modules/breaker 的 SetVerifier）。
+// It is not "configuration" but facts alive right now: the log outlet, and sending one
+// minimal probe against the current config snapshot. It exists for "diagnose before
+// tripping" - when a binding fails consecutively up to the threshold, probe it once first,
+// and if it works, do not delist it (see SetVerifier in modules/breaker).
 //
-// 为什么是 gateway 给而不是 breaker 自己发：探活要读当前配置快照（provider 的
-// base、key、方言）并复用数据面的探活实现。能力归 gateway，借给贡献者。
+// Why gateway hands it out instead of breaker sending it itself: a probe must read the
+// current config snapshot (the provider's base, key, dialect) and reuse the data plane's
+// probe implementation. The capability belongs to gateway and is lent to contributors.
 type Env interface {
 	Logf(format string, args ...any)
-	// Probe 发一次最小探活。**fail-closed**：拿不到 provider 配置、key 为空、
-	// 出错，一律 false——诊断不能成为坏 binding 的免死金牌，它只该拦住误判。
+	// Probe sends one minimal probe. **fail-closed**: no provider config, empty key, any
+	// error - always false. Diagnosis must not be a get-out-of-jail card for a bad binding;
+	// it should only stop a misjudgment.
 	Probe(provider, model string) bool
 }
 
-// EnvBinder 是可选阶段：要运行期能力的贡献者实现它。
+// EnvBinder is an optional phase: contributors that want runtime capabilities implement it.
 type EnvBinder interface {
 	BindEnv(Env)
 }
 
-// MetricNamer 是可选阶段：给自己的计数器声明分组与说明。
+// MetricNamer is an optional phase: declare a group and description for your own counters.
 //
-// 为什么不放在 Controller 里：观测面的命名与状态文档的字段是两件事，而且
-// 将来可能有只产生计数器、不产生状态节的贡献者。
+// Why not put it in Controller: naming on the observability side and fields in the status
+// document are two different things, and one day a contributor may produce counters but no
+// status section.
 type MetricNamer interface {
-	// MetricGroup 这个计数器归哪一组：身份（ASCII 稳定标识，排序/去重用）与
-	// 说法（给人看的锚点）；不认识给两个空串。身份与说法分开的理由见
-	// modules/gateway/metrics.Group——排序必须与语言无关。
+	// MetricGroup says which group this counter belongs to: the identity (a stable ASCII id,
+	// used for sorting/dedup) and the rendering (the human-facing anchor); two empty strings
+	// if unknown. Why identity and rendering are split: see modules/gateway/metrics.Group -
+	// sorting must not depend on language.
 	MetricGroup(key string) (id, label string)
-	// MetricHint 这个计数器的人话说明；不认识给空串。
+	// MetricHint is the plain-language description of this counter; empty if unknown.
 	MetricHint(key string) string
 }
 
-// --- 账本 -----------------------------------------------------------------
+// --- Ledger --------------------------------------------------------------
 
-// Registry 是贡献者账本。
+// Registry is the contributor ledger.
 //
-// 它按注册顺序执行（filter 之间的**相对顺序**由注册顺序决定，同
-// `component.Registry[T]`）：A 阶段只允许一个，B/C/D 阶段的合成规则本身与顺序
-// 无关（OR / 并集），只有 Note 的拼接顺序依赖它——而 Note 的先后是给人看的，
-// 稳定即可。
+// It runs in registration order (the **relative order** of filters is decided by
+// registration order, same as `component.Registry[T]`): phase A allows only one, and the
+// composition rules of phases B/C/D do not care about order (OR / union); only the order in
+// which Notes are concatenated depends on it - and Note order is for humans, so stable is
+// enough.
 type Registry struct {
 	mu      sync.RWMutex
 	filters []Filter
@@ -295,34 +327,38 @@ type Registry struct {
 	next    uint64
 }
 
-// New 建一本空账本。空账本 = 最小系统，四个口都走内核默认。
+// New builds an empty ledger. An empty ledger = the minimal system: all four ports use
+// kernel defaults.
 func New() *Registry { return &Registry{tokens: map[string]uint64{}} }
 
-// 进程级默认账本。**形状照抄 gateway/special 的 InstallDefault/SetDefault**
-// （见那边的注释）：装配出来的 gateway 在 Start 里把自己的账本装成默认，
-// 而「启动数据面的人」可以拿到它。
+// The process-level default ledger. **The shape is copied from InstallDefault/SetDefault in
+// gateway/special** (see the notes there): the assembled gateway installs its own ledger as
+// the default in Start, and "whoever starts the data plane" can pick it up.
 //
-// 为什么需要这一层：起数据面的地方有两处——守护进程主循环（serve.go，包内
-// 直接拿 port.filters）和系统级测试（testing/system 从真组件图里起一份真
-// 数据面）。后者若自己 New() 一本，就会绕过所有贡献者的注册，把「接线对了
-// 吗」这类回归变成空转（2026-09-17 那条形状判据的测试正是这么空转掉的）。
+// Why this layer is needed: the data plane is started in two places - the daemon's main loop
+// (serve.go, which takes port.filters inside the package) and system-level tests
+// (testing/system starts a real data plane from the real component graph). If the latter
+// New()'ed its own, it would bypass every contributor's registration and turn regressions
+// like "is the wiring right" into a no-op (that is exactly how the 2026-09-17 shape
+// criterion test went hollow).
 //
-// 它**不是**给业务代码用的后门：写入口永远只有 RegisterFilter/Register，
-// 读侧只有数据面。生产进程里只会装配一个 gateway，所以「哪一本」没有歧义；
-// 测试里同进程起多张图时靠 InstallDefault 返回的 restore 互相隔离。
+// It is **not** a back door for business code: the only write entry is
+// RegisterFilter/Register, and the only read side is the data plane. A production process
+// assembles one gateway, so "which one" is unambiguous; in tests that start several graphs
+// in one process, the restore returned by InstallDefault keeps them isolated.
 var (
 	defaultMu       sync.RWMutex
 	defaultRegistry = New()
 )
 
-// Default 当前装配出来的那本账（没装配过任何 gateway 时是一本空账）。
+// Default is the ledger currently assembled (an empty ledger when no gateway was assembled).
 func Default() *Registry {
 	defaultMu.RLock()
 	defer defaultMu.RUnlock()
 	return defaultRegistry
 }
 
-// SetDefault 直接设置默认账本。装配路径请优先用 InstallDefault。
+// SetDefault sets the default ledger directly. On the assembly path, prefer InstallDefault.
 func SetDefault(r *Registry) {
 	if r == nil {
 		panic("policy: nil default registry")
@@ -332,8 +368,9 @@ func SetDefault(r *Registry) {
 	defaultMu.Unlock()
 }
 
-// InstallDefault 装上带所有权的默认账本，返回恢复函数。恢复时核对当前实例，
-// 免得一个先启动的组件在自己的 Stop 里把后启动者的账本顶掉。
+// InstallDefault installs an owned default ledger and returns a restore function. The
+// restore checks the current instance, so a component that started earlier cannot displace a
+// later one's ledger in its own Stop.
 func InstallDefault(r *Registry) func() {
 	if r == nil {
 		panic("policy: nil default registry")
@@ -351,11 +388,12 @@ func InstallDefault(r *Registry) func() {
 	}
 }
 
-// Register 挂一个贡献者进来。
+// Register attaches one contributor.
 //
-// 写锁内查重：名字撞车、以及「第二个 Admitter」当场报错。查重与插入对并发注册
-// 是原子的——先到先得是这个功能最不该有的行为（那样「谁占了这个名字」在清单里
-// 看不出来）。
+// Duplicate checks run under the write lock: a name collision, or "a second Admitter", fails
+// right there. Check and insert are atomic against concurrent registration -
+// first-come-first-served is the worst behavior this feature could have (then "who took
+// this name" is invisible in the listing).
 func (r *Registry) Register(f Filter) (modules.Release, error) {
 	if f == nil || f.Name() == "" {
 		return nil, i18n.E("policy: contributor must have a name", nil)
@@ -389,7 +427,7 @@ func (r *Registry) Register(f Filter) (modules.Release, error) {
 		r.mu.Lock()
 		defer r.mu.Unlock()
 		if r.tokens[f.Name()] != token {
-			return nil // 陈旧 Release：这一条已经被撤过了，Stop 要幂等
+			return nil // stale Release: this filter was already withdrawn; Stop must be idempotent
 		}
 		delete(r.tokens, f.Name())
 		for i, existing := range r.filters {
@@ -402,10 +440,11 @@ func (r *Registry) Register(f Filter) (modules.Release, error) {
 	}, nil
 }
 
-// validate 在拿到写锁之前做「一眼能看出来的错」的检查：状态文档的键撞车。
+// validate does the "obvious at a glance" checks before the write lock is taken: status
+// document key collisions.
 //
-// 放在锁外是因为它要调贡献者的 Doc()，而那是个可能加锁的调用；把别人的代码
-// 放在我们的写锁里是自找的锁序问题。
+// It sits outside the lock because it calls the contributor's Doc(), which may lock; running
+// someone else's code under our write lock is asking for lock-order trouble.
 func (r *Registry) validate(f Filter) error {
 	controller, ok := f.(Controller)
 	if !ok {
@@ -444,27 +483,28 @@ func (r *Registry) validate(f Filter) error {
 	return nil
 }
 
-// Filters 当前贡献者（副本，按注册顺序）。
+// Filters returns the current contributors (a copy, in registration order).
 func (r *Registry) Filters() []Filter {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return append([]Filter(nil), r.filters...)
 }
 
-// Empty 一个贡献者都没有——即「最小系统」。
+// Empty means no contributors at all -- the "minimal system".
 func (r *Registry) Empty() bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return len(r.filters) == 0
 }
 
-// --- A 阶段：准入与排序 ----------------------------------------------------
+// --- Phase A: admission and ranking --------------------------------------
 
-// Admit 问准入。
+// Admit asks for admission.
 //
-// **必须对每个候选恰好问一次**（resolve 就是这么调的），因为健康表在这条路径
-// 上有副作用（发放半开试探名额）。所以这里**不短路**：即便将来有多个来源，
-// 也是全部问完再合成——短路会让后面的贡献者少调一次，把名额漏发。
+// **Every candidate must be asked exactly once** (that is how resolve calls it), because the
+// health table has a side effect on this path (issuing half-open trial slots). So this
+// **does not short-circuit**: even with multiple sources one day, all are asked and then
+// composed - short-circuiting would skip a later contributor and drop its slot.
 func (r *Registry) Admit(provider, model string) (bool, string) {
 	r.mu.RLock()
 	var admitter Admitter
@@ -481,7 +521,8 @@ func (r *Registry) Admit(provider, model string) (bool, string) {
 	return admitter.Admit(provider, model)
 }
 
-// Rank 问排序键；没有贡献者时给中性值（等价于「不重排」）。
+// Rank asks for the sort key; with no contributor it gives the neutral value (equivalent to
+// "no reordering").
 func (r *Registry) Rank(provider, model string, contextBytes int) int {
 	r.mu.RLock()
 	var admitter Admitter
@@ -498,15 +539,15 @@ func (r *Registry) Rank(provider, model string, contextBytes int) int {
 	return admitter.Rank(provider, model, contextBytes)
 }
 
-// NeutralRank 是「没有意见」的排序键，也是 resolve 里中性值的同一档。
+// NeutralRank is the sort key for "no opinion", the same tier as the neutral value in resolve.
 const NeutralRank = 1_000_000
 
-// --- B 阶段：结局裁决 -----------------------------------------------------
+// --- Phase B: outcome verdicts -------------------------------------------
 
-// Judge 收集所有裁决并合成。
+// Judge collects all verdicts and composes them.
 //
-// 贡献者 panic 按「没有意见」处置（fail-open）：一个坏插件绝不能把整条链的
-// 判断夺走——这与 special.Respond 的处置同一条规矩。
+// A panicking contributor is treated as "no opinion" (fail-open): one bad plugin must never
+// take the whole chain's judgment away - the same rule as special.Respond.
 func (r *Registry) Judge(o Outcome) Verdict {
 	var out Verdict
 	for _, f := range r.Filters() {
@@ -543,7 +584,7 @@ func dedupe(in []string) []string {
 	return out
 }
 
-// Observe 把成功观测量交给所有裁决者。
+// Observe hands the successful observation to every adjudicator.
 func (r *Registry) Observe(o Outcome) {
 	for _, f := range r.Filters() {
 		if adj, ok := f.(Adjudicator); ok {
@@ -557,11 +598,12 @@ func safely(fn func()) {
 	fn()
 }
 
-// --- C 阶段：控制面 -------------------------------------------------------
+// --- Phase C: control plane ----------------------------------------------
 
-// Doc 合并所有贡献者的状态字段。
+// Doc merges the status fields of every contributor.
 //
-// 键撞车在注册期已经拦掉，所以这里的合并是纯拼接。
+// Key collisions were already rejected at registration, so the merge here is plain
+// concatenation.
 func (r *Registry) Doc() map[string]json.RawMessage {
 	out := map[string]json.RawMessage{}
 	for _, f := range r.Filters() {
@@ -579,7 +621,7 @@ func (r *Registry) Doc() map[string]json.RawMessage {
 	return out
 }
 
-// ObserveProbes 把探活结论分发给所有控制面贡献者。
+// ObserveProbes fans probe conclusions out to every control-plane contributor.
 func (r *Registry) ObserveProbes(obs []ProbeObservation) []ProbeAck {
 	var acks []ProbeAck
 	for _, f := range r.Filters() {
@@ -592,7 +634,8 @@ func (r *Registry) ObserveProbes(obs []ProbeObservation) []ProbeAck {
 	return acks
 }
 
-// MetricGroup / MetricHint 问观测面的命名；没人认识就给空串，由调用方兜底。
+// MetricGroup / MetricHint ask for observability naming; empty strings when nobody knows
+// the counter, and the caller falls back.
 func (r *Registry) MetricGroup(key string) (id, label string) {
 	for _, f := range r.Filters() {
 		if namer, ok := f.(MetricNamer); ok {
@@ -615,9 +658,10 @@ func (r *Registry) MetricHint(key string) string {
 	return ""
 }
 
-// --- D 阶段：停机 ---------------------------------------------------------
+// --- Phase D: shutdown ---------------------------------------------------
 
-// Flush 让所有有账的贡献者落盘。错误按「不静默」报出去，但不阻断停机。
+// Flush makes every contributor with a ledger persist. Errors are reported ("never silent")
+// but do not block shutdown.
 func (r *Registry) Flush(logf func(string, ...any)) {
 	for _, f := range r.Filters() {
 		flusher, ok := f.(Flusher)
@@ -630,13 +674,13 @@ func (r *Registry) Flush(logf func(string, ...any)) {
 	}
 }
 
-// --- 运行期能力 -----------------------------------------------------------
+// --- Runtime capabilities ------------------------------------------------
 
-// BindEnv 把运行期能力交给要它的贡献者。
+// BindEnv hands runtime capabilities to the contributors that want them.
 //
-// 时刻是**数据面自己 Start 的时候**（Serve 期），不是装配期：Env 里那两件事
-// （日志出口、拿当前配置快照探活）只有在服务真的起来了才存在。见
-// docs/02-component-framework.md 的三段法则。
+// The moment is **when the data plane itself starts** (Serve time), not assembly time: the
+// two things in Env (the log outlet, probing against the current config snapshot) exist only
+// once the service is really up. See the three-phase rule in docs/02-component-framework.md.
 func (r *Registry) BindEnv(env Env) {
 	for _, f := range r.Filters() {
 		if binder, ok := f.(EnvBinder); ok {

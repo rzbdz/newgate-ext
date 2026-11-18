@@ -335,7 +335,7 @@ func (reasoning) Apply(body []byte, r *special.Request) ([]byte, []string, error
 			return q
 		}
 		sk1.add(skipCauseOf(item), toolIDsAny(item))
-		return nil // 没有原文 → 这条一个字节都不补
+		return nil // no source text -> not one byte backfilled for this message
 	}
 	//    The pass turned off by a switch point **does not** emit a per-request note:
 	//    that is the user's own setting, and repeating it is the noise the rule
@@ -376,7 +376,7 @@ func (reasoning) Apply(body []byte, r *special.Request) ([]byte, []string, error
 				return []byte(`{"type":"thinking","thinking":` + string(q) + `}`)
 			}
 			sk2.add(skipCauseOf(item), toolIDsAny(item))
-			return nil // 没有原文 → 不插块
+			return nil // no source text -> no block inserted
 		}
 		if nb, n, err := rewrite.EnsureArrayItemArrayHeadFunc(out, "messages", "content",
 			valBlock, isAssistant, lacksThinking); err != nil {
@@ -752,9 +752,9 @@ func pickReasoning(item []byte) ([]byte, bool) {
 type skipCause string
 
 const (
-	causeNoToolUse  skipCause = "notool"  // 纯文本轮（靠正文哈希找回，miss）
-	causeToolNotIn  skipCause = "nocache" // 有 tool_use 但缓存查不到
-	causeNoIdentity skipCause = "nokey"   // 既无 tool_use 也无正文，认不出
+	causeNoToolUse  skipCause = "notool"  // text-only turn (recovered by body hash, miss)
+	causeToolNotIn  skipCause = "nocache" // has tool_use but the cache has no entry
+	causeNoIdentity skipCause = "nokey"   // neither tool_use nor text: unidentifiable
 )
 
 // skipCauseOf decides why an assistant message has no text to fill in (classify above).
@@ -782,11 +782,11 @@ func hasToolUse(item []byte) bool {
 // thinkcache's KeysForAssistantMessage accepts both dialects (it parses JSON); if this
 // side knew only Anthropic, OpenAI-dialect turns would be misreported as notool.
 func toolIDsAny(item []byte) []string {
-	ids := toolUseIDs(item) // Anthropic 方言
+	ids := toolUseIDs(item) // Anthropic dialect
 	if len(ids) > 0 {
 		return ids
 	}
-	raw, ok := rewrite.TopLevelRaw(item, "tool_calls") // OpenAI 方言
+	raw, ok := rewrite.TopLevelRaw(item, "tool_calls") // OpenAI dialect
 	if !ok {
 		return nil
 	}
@@ -828,7 +828,7 @@ func toolIDsAny(item []byte) []string {
 type skipTally struct {
 	total  int
 	byKind map[skipCause]int
-	ids    []string // 跳过消息的 tool call id（纯文本轮没有 id，不计入）
+	ids    []string // tool call ids of skipped messages (text-only turns have none)
 }
 
 func (t *skipTally) add(c skipCause, ids []string) {
@@ -948,7 +948,7 @@ func anthropicDialect(r *special.Request) bool {
 func lacksThinking(content []byte) bool {
 	items, ok := rewrite.ArrayItems(content)
 	if !ok {
-		return false // 形状不认识：不动
+		return false // unrecognized shape: leave it alone
 	}
 	for _, it := range items {
 		if len(it) == 0 || it[0] != '{' {

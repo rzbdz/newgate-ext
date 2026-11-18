@@ -6,16 +6,17 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// ReplaceTopLevelString 在原始 JSON 字节里定位顶层 key 的字符串值，
-// 只替换那一段，其余**每一个字节**原样保留——包括 key 顺序、缩进、空白、
-// 数字字面量、Unicode 转义形式。
+// ReplaceTopLevelString locates the string value of a top-level key in the raw JSON bytes
+// and replaces only that span, keeping **every other byte** as is - including key order,
+// indentation, whitespace, number literals and Unicode escape forms.
 //
-// 为什么不能用 Unmarshal/Marshal 往返：
-//   - map[string]interface{} 会把整数变 float64（9007199254740993 → ...92）、
-//     1e10 变 10000000000、所有 key 重排
-//   - map[string]json.RawMessage 保住了嵌套字节，但顶层 key 仍被重排、空白仍被压掉
+// Why an Unmarshal/Marshal round trip cannot be used:
+//   - map[string]interface{} turns integers into float64 (9007199254740993 → ...92), turns
+//     1e10 into 10000000000, and reorders every key
+//   - map[string]json.RawMessage keeps the nested bytes, but top-level keys are still
+//     reordered and whitespace still compressed
 //
-// 转发一个请求就该是转发，不该顺手重写它。
+// Forwarding a request should be forwarding, not rewriting it on the way.
 func ReplaceTopLevelString(body []byte, key, newVal string) ([]byte, error) {
 	start, end, err := findTopLevelStringValue(body, key)
 	if err != nil {
@@ -32,8 +33,8 @@ func ReplaceTopLevelString(body []byte, key, newVal string) ([]byte, error) {
 	return out, nil
 }
 
-// ReplaceTopLevelRaw 把顶层 key 的整个值换成 newRaw（原始 JSON 字节），
-// 其余字节原样保留。用于只重写 tools 而不动 messages。
+// ReplaceTopLevelRaw replaces the whole value of a top-level key with newRaw (raw JSON
+// bytes), keeping every other byte as is. Used to rewrite tools without touching messages.
 func ReplaceTopLevelRaw(body []byte, key string, newRaw []byte) ([]byte, error) {
 	start, end, err := findTopLevelValue(body, key)
 	if err != nil {
@@ -46,7 +47,7 @@ func ReplaceTopLevelRaw(body []byte, key string, newRaw []byte) ([]byte, error) 
 	return out, nil
 }
 
-// TopLevelRaw 只读地取出顶层 key 的原始值字节。
+// TopLevelRaw reads out the raw value bytes of a top-level key.
 func TopLevelRaw(body []byte, key string) ([]byte, bool) {
 	s, e, err := findTopLevelValue(body, key)
 	if err != nil {
@@ -55,13 +56,14 @@ func TopLevelRaw(body []byte, key string) ([]byte, bool) {
 	return body[s:e], true
 }
 
-// InsertTopLevelRaw 在顶层对象里**新增**一个 key，插在开头（紧跟 `{`），
-// 其余每个字节原样保留。已经存在同名 key 时报错——调用方要先用
-// TopLevelRaw 判断，然后决定是插入还是 ReplaceTopLevelRaw，
-// 绝不能悄悄产生重复 key。
+// InsertTopLevelRaw **adds** a key to the top-level object, inserted at the start (right
+// after `{`), keeping every other byte as is. It errors if a key of that name already
+// exists - the caller must check with TopLevelRaw first and then decide between insert and
+// ReplaceTopLevelRaw, never silently produce a duplicate key.
 //
-// 为什么插在开头而不是末尾：末尾要处理尾随空白、换行、以及「最后一个值
-// 后面到 `}` 之间有什么」，出错概率高；开头只需要判断对象是不是空的。
+// Why insert at the start rather than the end: the end means handling trailing whitespace,
+// newlines, and "what sits between the last value and `}`", with a high chance of error;
+// the start only needs to check whether the object is empty.
 func InsertTopLevelRaw(body []byte, key string, raw []byte) ([]byte, error) {
 	if _, _, err := findTopLevelValue(body, key); err == nil {
 		return nil, errDupKey
@@ -82,7 +84,7 @@ func InsertTopLevelRaw(body []byte, key string, raw []byte) ([]byte, error) {
 	ins = append(ins, quoted...)
 	ins = append(ins, ':')
 	ins = append(ins, raw...)
-	if body[j] != '}' { // 对象非空，得补逗号
+	if body[j] != '}' { // the object is non-empty, so a comma is needed
 		ins = append(ins, ',')
 	}
 	out := make([]byte, 0, len(body)+len(ins))
@@ -92,17 +94,20 @@ func InsertTopLevelRaw(body []byte, key string, raw []byte) ([]byte, error) {
 	return out, nil
 }
 
-// EnsureArrayItemField 给顶层数组（messages 等）里满足 match 的每个对象元素
-// 补上一个字段——**只在该元素还没有这个字段时**补，已有的一律不动。
+// EnsureArrayItemField adds a field to every object element of a top-level array (messages
+// and the like) that matches match - **only when that element does not have the field yet**;
+// existing ones are never touched.
 //
-// 依然是纯字节手术：把所有插入点先收集起来，再一次性拼接。除了插入的那几段，
-// 每条消息的 content 块、cache_control、Unicode 转义形式、缩进都逐字节不变。
-// 这一点是硬要求：把整个 body 做一次 JSON 往返会重排 key、把大整数变成
-// float64、压掉空白——转发一个请求就该是转发。
+// Still pure byte surgery: collect every insertion point first, then splice in one go.
+// Apart from the inserted spans, each message's content blocks, cache_control, Unicode
+// escape forms and indentation stay byte-for-byte. That is a hard requirement: a full JSON
+// round trip over the body would reorder keys, turn big integers into float64 and compress
+// whitespace - forwarding a request should be forwarding.
 //
-// match 收到的是这条元素完整的原始字节（一个 JSON 对象），可以直接用
-// TopLevelString(item, "role") 之类去判断。
-// 返回补了几条；数组不存在或元素不是对象时返回 0 而不报错的情况见 err。
+// match receives this element's complete raw bytes (one JSON object), so it can decide with
+// TopLevelString(item, "role") and the like.
+// It returns how many were added; for "the array is absent or the element is not an object"
+// it returns 0 without error - see err.
 func EnsureArrayItemField(body []byte, arrayKey, field string, rawVal []byte,
 	match func(item []byte) bool) ([]byte, int, error) {
 
@@ -110,12 +115,13 @@ func EnsureArrayItemField(body []byte, arrayKey, field string, rawVal []byte,
 		func([]byte) []byte { return rawVal }, match)
 }
 
-// EnsureArrayItemFieldFunc 同 EnsureArrayItemField，但值**逐条算**：
-// val 收到这条元素的原始字节，返回要插的值，返回 nil 表示这条跳过。
+// EnsureArrayItemFieldFunc is EnsureArrayItemField with the value **computed per item**:
+// val receives this element's raw bytes and returns the value to insert; nil skips this
+// element.
 //
-// 为什么需要逐条：推理内容回填时每条 assistant 消息要插的是**它自己那轮**
-// 的推理，不是同一个常量。给所有消息插同一段推理，等于把别人的思考塞给
-// 这一轮，比补空串更糟。
+// Why per item: when backfilling reasoning, each assistant message must get **its own
+// round's** reasoning, not one constant. Inserting the same reasoning into every message
+// hands someone else's thinking to this round - worse than an empty string.
 func EnsureArrayItemFieldFunc(body []byte, arrayKey, field string,
 	val func(item []byte) []byte, match func(item []byte) bool) ([]byte, int, error) {
 
@@ -134,19 +140,19 @@ func EnsureArrayItemFieldFunc(body []byte, arrayKey, field string,
 	}
 
 	type point struct {
-		off   int    // body 里的绝对偏移（元素 `{` 之后）
-		raw   []byte // 这条元素要插的值
-		comma bool   // 元素非空时要补逗号
+		off   int    // absolute offset in body (right after the element's `{`)
+		raw   []byte // value to insert for this element
+		comma bool   // a comma is needed when the element is non-empty
 	}
 	var points []point
 
 	for _, sp := range spans {
 		item := arr[sp[0]:sp[1]]
 		if len(item) == 0 || item[0] != '{' {
-			continue // 元素不是对象：不是我们该管的形状，跳过
+			continue // not an object: not a shape we handle, skip
 		}
 		if _, _, err := findTopLevelValue(item, field); err == nil {
-			continue // 已经有了，一个字节都不碰
+			continue // already present, not a single byte is touched
 		}
 		if match != nil && !match(item) {
 			continue
@@ -164,7 +170,7 @@ func EnsureArrayItemFieldFunc(body []byte, arrayKey, field string,
 	}
 
 	if len(points) == 0 {
-		return body, 0, nil // 没东西要补：调用方保持原字节
+		return body, 0, nil // nothing to insert: the caller keeps the original bytes
 	}
 
 	out := make([]byte, 0, len(body)+len(points)*(len(quoted)+16))
@@ -183,20 +189,22 @@ func EnsureArrayItemFieldFunc(body []byte, arrayKey, field string,
 	return out, len(points), nil
 }
 
-// EnsureArrayItemArrayHead 往顶层数组 arrayKey（messages）里满足 match 的每个
-// 对象元素的**子数组**字段 field（content）的**开头**插入 rawVal，
-// 且只在 need(childArr) 为真时插。返回插了几条。
+// EnsureArrayItemArrayHead inserts rawVal at the **start** of the **sub-array** field named
+// field (content) of every object element of top-level array arrayKey (messages) that matches
+// match, and only when need(childArr) is true. It returns how many were inserted.
 //
-// 为什么要单独一个原语：EnsureArrayItemField 只能往元素对象上补顶层字段，
-// 够不着元素里面那个 content 数组。而 Anthropic 协议里 thinking 是
-// content[] 的一个**块**，且必须排在 text / tool_use 之前——位置是协议的
-// 一部分，不能随便追加到末尾。
+// Why a separate primitive: EnsureArrayItemField can only add top-level fields to the
+// element object and cannot reach the content array inside it. And in the Anthropic protocol
+// thinking is one **block** of content[], and it must come before text / tool_use - position
+// is part of the protocol, so it cannot just be appended at the end.
 //
-// 依旧是纯字节手术：先把所有插入点收集齐，再一次拼接。除了插进去的那几段，
-// 每个块的 cache_control、tool_use 的 input、缩进、转义形式逐字节不变。
+// Still pure byte surgery: collect every insertion point first, then splice once. Apart from
+// the inserted spans, each block's cache_control, tool_use input, indentation and escape
+// forms stay byte-for-byte.
 //
-// 跳过（不算错，也不算改）：元素不是对象、没有 field 字段、field 的值不是
-// 数组（content 是纯字符串时就是这样）。
+// Skipped (neither an error nor a change): the element is not an object, it has no such
+// field, or the field's value is not an array (that is the case when content is a plain
+// string).
 func EnsureArrayItemArrayHead(body []byte, arrayKey, field string, rawVal []byte,
 	match func(item []byte) bool, need func(childArr []byte) bool) ([]byte, int, error) {
 
@@ -204,9 +212,9 @@ func EnsureArrayItemArrayHead(body []byte, arrayKey, field string, rawVal []byte
 		func([]byte) []byte { return rawVal }, match, need)
 }
 
-// EnsureArrayItemArrayHeadFunc 同上，但值逐条算（val 返回 nil = 跳过）。
-// 理由同 EnsureArrayItemFieldFunc：每条 assistant 消息要插的是它自己那轮的
-// thinking 块。
+// EnsureArrayItemArrayHeadFunc is the same, with the value computed per item (val returns
+// nil = skip). Same reason as EnsureArrayItemFieldFunc: each assistant message must get its
+// own round's thinking block.
 func EnsureArrayItemArrayHeadFunc(body []byte, arrayKey, field string,
 	val func(item []byte) []byte,
 	match func(item []byte) bool, need func(childArr []byte) bool) ([]byte, int, error) {
@@ -222,9 +230,9 @@ func EnsureArrayItemArrayHeadFunc(body []byte, arrayKey, field string,
 	}
 
 	type point struct {
-		off   int    // body 里的绝对偏移（子数组 `[` 之后）
-		raw   []byte // 这条元素要插的块
-		comma bool   // 子数组非空时要补逗号
+		off   int    // absolute offset in body (right after the sub-array's `[`)
+		raw   []byte // block to insert for this element
+		comma bool   // a comma is needed when the sub-array is non-empty
 	}
 	var points []point
 
@@ -238,11 +246,11 @@ func EnsureArrayItemArrayHeadFunc(body []byte, arrayKey, field string,
 		}
 		cs, ce, err := findTopLevelValue(item, field)
 		if err != nil {
-			continue // 没有 content 字段
+			continue // no content field
 		}
 		child := item[cs:ce]
 		if len(child) == 0 || child[0] != '[' {
-			continue // content 是字符串：没有块可插
+			continue // content is a string: no block to insert
 		}
 		if need != nil && !need(child) {
 			continue
@@ -277,9 +285,10 @@ func EnsureArrayItemArrayHeadFunc(body []byte, arrayKey, field string,
 	return out, len(points), nil
 }
 
-// AppendLastArrayItemArray 往顶层数组最后一个对象元素的子数组末尾追加 rawVal。
-// match 用来确认最后一项确实是调用方要处理的形状。只插入这一段字节，其余
-// 请求（包括大整数、字段顺序和未知字段）保持原样。
+// AppendLastArrayItemArray appends rawVal to the end of the sub-array of the last object
+// element of a top-level array. match confirms the last entry really is the shape the caller
+// handles. Only that span of bytes is inserted; the rest of the request (big integers, field
+// order, unknown fields) stays as is.
 func AppendLastArrayItemArray(body []byte, arrayKey, field string, rawVal []byte,
 	match func(item []byte) bool) ([]byte, bool, error) {
 	s, e, err := findTopLevelValue(body, arrayKey)
@@ -332,14 +341,15 @@ func AppendLastArrayItemArray(body []byte, arrayKey, field string, rawVal []byte
 	return out, true, nil
 }
 
-// AppendArrayItemArrayAt 与 AppendLastArrayItemArray 同形，但按下标挑元素，
-// 而不是"从后往前找第一个 match 为真的"。
+// AppendArrayItemArrayAt has the same shape as AppendLastArrayItemArray but picks the
+// element by index, rather than "scanning backwards for the first match".
 //
-// 存在的理由（2026-09-17 现场，2026-09-18 复核）：deepseek 的尾部形状修复要锚
-// 在**最后一条 role:user 的消息**上，而下标可能不是数组最后一项——Claude Code
-// 会在 tool_result 之后追加一条 role:"system" 的插话，数组最后一项是那条
-// system。写成"从后往前找"在长历史里会去改一条中段的 tool_result-only 老消息
-// （那种轮次到处都是），把一句用户没说过的话塞进对话中段。
+// Why it exists (field, 2026-09-17; rechecked 2026-09-18): deepseek's tail shape repair must
+// anchor on the **last role:user message**, and its index may not be the array's last entry -
+// Claude Code appends a role:"system" remark after a tool_result, and the last entry is that
+// system one. Written as "scan backwards", it would modify a mid-history tool_result-only old
+// message (such turns are everywhere) and stuff a sentence the user never said into the
+// middle of the conversation.
 func AppendArrayItemArrayAt(body []byte, arrayKey, field string, itemIndex int,
 	rawVal []byte) ([]byte, bool, error) {
 	s, e, err := findTopLevelValue(body, arrayKey)
@@ -392,15 +402,18 @@ func AppendArrayItemArrayAt(body []byte, arrayKey, field string, itemIndex int,
 	return out, true, nil
 }
 
-// AppendTopLevelArrayItem 往**顶层那个数组**追加一个元素，其余字节原样保留。
+// AppendTopLevelArrayItem appends one element to **the top-level array**, keeping every
+// other byte as is.
 //
-// 与 AppendLastArrayItemArray / AppendArrayItemArrayAt 的区别是「插进哪个数组」：
-// 那两个插进的是**某个元素内部的**数组字段（messages[i].content），这一个插进的是
-// 顶层数组本身。Responses 方言（Codex）的尾部形状修复要补的正好是后者——一条新的
-// 顶层 input[] 项，而不是某个项 content 里的一块。
+// The difference from AppendLastArrayItemArray / AppendArrayItemArrayAt is "which array":
+// those insert into an array field **inside an element** (messages[i].content), while this
+// one inserts into the top-level array itself. The tail shape repair of the Responses dialect
+// (Codex) needs exactly the latter - a new top-level input[] item, not a block in some item's
+// content.
 //
-// 空数组不补逗号（`[` 紧跟 `]` 时补出来的是 `[,x]`，不是合法 JSON）；非空数组插在
-// 收尾 `]` 之前，跳过 `]` 前的空白，所以原来那点缩进与换行逐字还在。
+// An empty array gets no comma (`[` right before `]` would yield `[,x]`, which is not valid
+// JSON); a non-empty array inserts before the closing `]`, skipping whitespace before it, so
+// the existing indentation and newlines stay verbatim.
 func AppendTopLevelArrayItem(body []byte, arrayKey string, rawVal []byte) ([]byte, bool, error) {
 	s, e, err := findTopLevelValue(body, arrayKey)
 	if err != nil {
@@ -435,8 +448,9 @@ func AppendTopLevelArrayItem(body []byte, arrayKey string, rawVal []byte) ([]byt
 	return out, true, nil
 }
 
-// ArrayItems 把一个 JSON 数组的原始字节切成各元素的原始字节（只读判断用，
-// 比如「这条 content[] 里有没有 thinking 块」）。切片指向原字节，不拷贝。
+// ArrayItems cuts a JSON array's raw bytes into the raw bytes of its elements (for read-only
+// checks, e.g. "does this content[] hold a thinking block"). The slices point into the
+// original bytes, no copying.
 func ArrayItems(arr []byte) ([][]byte, bool) {
 	spans, ok := arrayItemSpans(arr)
 	if !ok {
@@ -449,9 +463,9 @@ func ArrayItems(arr []byte) ([][]byte, bool) {
 	return out, true
 }
 
-// arrayItemSpans 返回数组里每个元素相对 arr 的 [start,end)。
-// 扫不动（不是数组、或值残缺）时返回 false——调用方一律按「形状不认识，
-// 不动它」处理，绝不去猜。
+// arrayItemSpans returns each element's [start,end) relative to arr.
+// When the scan cannot proceed (not an array, or a malformed value) it returns false - the
+// caller always treats that as "shape unrecognized, leave it alone" and never guesses.
 func arrayItemSpans(arr []byte) ([][2]int, bool) {
 	if len(arr) == 0 || arr[0] != '[' {
 		return nil, false
@@ -487,7 +501,7 @@ var (
 	errDupKey    = i18n.E("the top level already has this key", nil)
 )
 
-// findTopLevelStringValue 同 findTopLevelValue，但要求值是字符串。
+// findTopLevelStringValue is findTopLevelValue but requires the value to be a string.
 func findTopLevelStringValue(body []byte, key string) (int, int, error) {
 	s, e, err := findTopLevelValue(body, key)
 	if err != nil {
@@ -499,14 +513,14 @@ func findTopLevelStringValue(body []byte, key string) (int, int, error) {
 	return s, e, nil
 }
 
-// findTopLevelValue 返回顶层 key 的值在 body 中的字节区间 [start,end)。
-// 只看深度 1 的键，所以嵌套在 tools 里的同名 "model" 不会被误伤。
+// findTopLevelValue returns the byte span [start,end) of a top-level key's value in body.
+// It only looks at depth-1 keys, so a nested "model" inside tools is not hit by mistake.
 func findTopLevelValue(body []byte, key string) (int, int, error) {
 	i := skipWS(body, 0)
 	if i >= len(body) || body[i] != '{' {
 		return 0, 0, errNotObject
 	}
-	i++ // 进入对象，深度 = 1
+	i++ // enter the object, depth = 1
 
 	for {
 		i = skipWS(body, i)
@@ -524,7 +538,7 @@ func findTopLevelValue(body []byte, key string) (int, int, error) {
 			return 0, 0, errNotObject
 		}
 
-		// 读 key
+		// Read the key
 		kStart := i
 		kEnd, ok := scanString(body, i)
 		if !ok {
@@ -567,7 +581,7 @@ func skipWS(b []byte, i int) int {
 	return i
 }
 
-// scanString 从 b[i]=='"' 开始，返回闭合引号之后的位置。
+// scanString starts at b[i]=='"' and returns the position after the closing quote.
 func scanString(b []byte, i int) (int, bool) {
 	if i >= len(b) || b[i] != '"' {
 		return 0, false
@@ -576,7 +590,7 @@ func scanString(b []byte, i int) (int, bool) {
 	for i < len(b) {
 		switch b[i] {
 		case '\\':
-			i += 2 // 跳过转义序列（\uXXXX 的后续字符都不是 " 或 \，安全）
+			i += 2 // skip the escape sequence (chars after \uXXXX are never " or \, safe)
 		case '"':
 			return i + 1, true
 		default:
@@ -586,8 +600,9 @@ func scanString(b []byte, i int) (int, bool) {
 	return 0, false
 }
 
-// scanValue 返回 b[i] 开始的这个 JSON 值之后的位置。
-// 只需要正确划界，不需要校验合法性——校验是上游的事，我们只管别改坏。
+// scanValue returns the position after the JSON value starting at b[i].
+// It only needs to delimit correctly, not validate - validation is the upstream's job; our
+// only concern is not breaking anything.
 func scanValue(b []byte, i int) (int, bool) {
 	if i >= len(b) {
 		return 0, false
@@ -622,7 +637,7 @@ func scanValue(b []byte, i int) (int, bool) {
 		}
 		return 0, false
 	default:
-		// 数字 / true / false / null：扫到分隔符为止
+		// Number / true / false / null: scan up to the delimiter
 		for i < len(b) {
 			switch b[i] {
 			case ',', '}', ']', ' ', '\t', '\n', '\r':
@@ -634,7 +649,7 @@ func scanValue(b []byte, i int) (int, bool) {
 	}
 }
 
-// TopLevelString 只读地取出顶层某个字符串字段。
+// TopLevelString reads out a top-level string field.
 func TopLevelString(body []byte, key string) (string, bool) {
 	s, e, err := findTopLevelStringValue(body, key)
 	if err != nil {
@@ -647,7 +662,7 @@ func TopLevelString(body []byte, key string) (string, bool) {
 	return v, true
 }
 
-// TopLevelBool 只读地取出顶层某个布尔字段（stream 用）。
+// TopLevelBool reads out a top-level boolean field (used for stream).
 func TopLevelBool(body []byte, key string) bool {
 	i := skipWS(body, 0)
 	if i >= len(body) || body[i] != '{' {

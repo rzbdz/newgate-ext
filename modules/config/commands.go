@@ -218,7 +218,7 @@ func skipKind(s resolve.Skip) string {
 func skipLabel(kind string) string {
 	switch kind {
 	case resolve.SkipExcluded:
-		return "excluded" // profile 的标志名，机器标记，不翻
+		return "excluded" // the profile's flag name; a machine marker, never translated
 	case resolve.SkipUndefined:
 		return i18n.T("not defined", nil)
 	case resolve.SkipNoKey:
@@ -833,7 +833,7 @@ func cmdProfileRestore(args []string) int {
 		return style.Die(65, i18n.T("{name} has no history yet — there is nothing to bring back",
 			i18n.A{"name": name}))
 	}
-	idx := 1 // 不带版本号 = 最近那一版：最常见的用法是「刚改坏了」
+	idx := 1 // no version number = the latest one: the usual use is "just broke it"
 	if v := cliapi.Positional(args, 1); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil || n < 1 || n > len(ents) {

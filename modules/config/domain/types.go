@@ -48,8 +48,8 @@ const (
 type Provider struct {
 	BaseURL   string `json:"base_url"`
 	APIKey    string `json:"api_key,omitempty"`
-	APIKeyEnv string `json:"api_key_env,omitempty"` // 优先于 APIKey
-	Protocol  string `json:"protocol,omitempty"`    // openai | anthropic，默认 openai
+	APIKeyEnv string `json:"api_key_env,omitempty"` // takes precedence over APIKey
+	Protocol  string `json:"protocol,omitempty"`    // openai | anthropic, default openai
 
 	// AnthropicURL this upstream's **Anthropic dialect** base. Empty = both
 	// dialects on the same base (all aggregate gateways are like this).
@@ -313,7 +313,7 @@ func (p *Profile) resolve(role string, depth int) (Binding, bool) {
 		return bd, true
 	}
 	if depth >= 8 {
-		return Binding{}, false // 引用成环 / 套得太深
+		return Binding{}, false // reference cycle / nested too deep
 	}
 	return p.resolve(bd.Ref, depth+1)
 }
@@ -321,9 +321,9 @@ func (p *Profile) resolve(role string, depth int) (Binding, bool) {
 // ChainLimits prevents one request from walking the whole
 // chain (6 providers x 40s = 4 minutes before failing).
 type ChainLimits struct {
-	MaxAttempts   int  `json:"max_attempts"` // 实际发出的请求数上限，跨两级累计
+	MaxAttempts   int  `json:"max_attempts"` // cap on requests actually sent, summed across both tiers
 	TotalBudgetMs int  `json:"total_budget_ms"`
-	FallbackOn400 bool `json:"fallback_on_400"` // 见 docs/04-configuration.md：默认关
+	FallbackOn400 bool `json:"fallback_on_400"` // see docs/04-configuration.md: off by default
 }
 
 func (c ChainLimits) Attempts() int {

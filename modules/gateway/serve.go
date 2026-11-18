@@ -1,18 +1,20 @@
 package gateway
 
-// 本文件是**守护进程的主循环**：`newgate __serve`（由 daemon.Spawn 拉起）。
+// This file is the **daemon's main loop**: `newgate __serve` (spawned by daemon.Spawn).
 //
-// **为什么它住在这里**（2026-09-18）：它在跑的就是数据面本身——配置热更新的原子
-// 换页、thinkcache 的磁盘冷层、转发服务（forward.New）的启停、优雅交接的排空。
-// 这些没有一样是「命令行」的事。它留在 modules/cli 的时候，界面为了跑起来得认识
-// forward / thinkcache / 健康表 / config,store / runtime,daemon ——界面的依赖表
-// 里于是有一半是数据面。
+// **Why it lives here** (2026-09-18): what it runs is the data plane itself - the atomic
+// page swap of config hot reload, thinkcache's disk cold tier, starting and stopping the
+// forwarding service (forward.New), draining for a graceful takeover. None of that is a
+// "command line" matter. While it lived in modules/cli, the UI had to know forward /
+// thinkcache / the health table / config,store / runtime,daemon just to run - so half of the
+// UI's dependency table was the data plane.
 //
-// 搬过来之后：界面不认识进程生命周期，进程也不认识界面。`__serve` 是网关自己
-// 在 Start 里注册进界面的命令（本模块对 ui 是弱依赖 Optional(cli)），用户看不见
-// 它（故意没有 HelpLine）。
+// After the move: the UI does not know the process lifecycle, and the process does not know
+// the UI. `__serve` is a command the gateway registers into the UI itself in Start (this
+// module has a weak Optional(cli) dependency on ui), and users do not see it (deliberately
+// no HelpLine).
 //
-// 依赖方向：gateway → cli/extension（叶子契约），不是 → modules/cli。
+// Dependency direction: gateway → cli/extension (a contract leaf), not → modules/cli.
 
 import (
 	"fmt"
@@ -38,65 +40,75 @@ import (
 	"github.com/rzbdz/newgate/lib/i18n"
 )
 
-// serveEntry 是守护进程本体：`newgate __serve`。
+// serveEntry is the daemon itself: `newgate __serve`.
 //
-// **它是一个入口申报（component/entry），不是一条界面命令**（2026-09-20 改）。
+// **It is an entry declaration (component/entry), not a UI command** (changed 2026-09-20).
 //
-// 为什么：`__serve` 回答的是「这次进程调用归谁」，那正是入口账本的问题；而挂成
-// cli 命令时，**关掉界面就等于关掉了守护进程本体**——`disable: ["cli"]` 的装配
-// 编得出来，却起不了 daemon（实测：`newgate: no entry claimed this call (asked:
-// wrapper did not claim)`）。纯 dashboard 的发行版（没有终端界面，只有一个网页
-// 控制台）因此根本不成立，而它是**合法**的产品形状：那时候守护进程仍然要有人
-// 起，网页才有东西可连。wrapper 报「argv0 是被接管的 client」走的也是这条道。
+// Why: `__serve` answers "who does this process invocation belong to", which is exactly the
+// entry ledger's question; and when hung as a cli command, **turning off the UI turned off
+// the daemon itself** - a `disable: ["cli"]` assembly compiles but cannot start a daemon
+// (measured: `newgate: no entry claimed this call (asked: wrapper did not claim)`). A pure
+// dashboard distribution (no terminal UI, just a web console) was therefore impossible, and
+// it is a **legitimate** product shape: the daemon still has to be started by someone for
+// the web page to have anything to connect to. The wrapper reporting "argv0 is a taken-over
+// client" takes this same road.
 //
-// 顺带少一样声明：它当命令时得报 Unstyled（输出不是版式），当入口就不必了——
-// 入口的输出去哪儿是入口自己的事。
+// One declaration less, too: as a command it had to report Unstyled (the output is not a
+// layout), as an entry it need not - where an entry's output goes is the entry's own
+// business.
 //
-// 它只带 filters（数据面策略账本）进去，不带任何具体策略：账本在 Bind 期就存在
-// （gateway 的 New 里建），贡献者在各自 Start 期往里写，数据面在 Serve 期读。
+// It carries only filters (the data plane policy ledger) in, no concrete policy: the ledger
+// exists at Bind time (created in gateway's New), contributors write into it in their own
+// Start, and the data plane reads it at Serve time.
 type serveEntry struct {
 	filters *policy.Registry
-	// hub 是共享端口那张表（porthub 没装就是 nil）。
+	// hub is the shared-port table (nil when porthub is not installed).
 	//
-	// 它只在这一处出现：**守护进程入口**是这个进程里唯一知道「端口上还有别人」
-	// 的地方。数据面（forward）拿到的是一个 handler，不知道它从哪来；porthub
-	// 拿到的是一个 handler，不知道它是谁——两边都不认识对方。
+	// It appears only here: **the daemon entry** is the only place in this process that knows
+	// "someone else is on the port". The data plane (forward) gets a handler and does not know
+	// where it came from; porthub gets a handler and does not know whose it is - neither side
+	// knows the other.
 	hub porthubapi.Service
-	// listeners 是「这个进程开始服务了」那本账（serving 没装就是 nil）。
+	// listeners is the ledger of "this process has started serving" (nil when serving is not
+	// installed).
 	//
-	// 它与 hub 出现在同一处、理由也一样：**守护进程入口是这个进程里唯一说得出口
-	// 「我在服务」的地方**。数据面拿到的是一个已经装好的进程，界面拿到的是一个
-	// 「可以起来了」的通知——两边都不认识对方，也不认识本模块的另一半。
+	// It appears in the same place as hub, for the same reason: **the daemon entry is the only
+	// place in this process that can say "I am serving"**. The data plane gets a process
+	// that is already set up, the UI gets a "you may start now" notification - neither side
+	// knows the other, nor the other half of this module.
 	listeners servingapi.Service
 
-	// headless 记的是「这个装配里没有终端界面」，由 Start 按装了什么算出来
-	// （见 module.go），决定**无参数时这个进程是什么**。
+	// headless records "this assembly has no terminal UI", computed by Start from what is
+	// installed (see module.go), and decides **what this process is when given no arguments**.
 	//
-	// 有界面时：`newgate` 无参数是给界面回答的（帮助 / 状态），守护进程只在
-	// 显式 `__serve` 时认领。没有界面时（纯 dashboard 的发行版就是这种形状）：
-	// 这个进程**就是**守护进程——那时没有第二个答案可给，而 `newgate start`
-	// 也随界面一起没了（它是 runtime 注册进界面的命令），不给兜底的话这种构建
-	// 编得出来却永远起不来（`no entry claimed this call`）。
+	// With a UI: a bare `newgate` is answered by the UI (help / status), and the daemon claims
+	// only an explicit `__serve`. Without a UI (a pure dashboard distribution has this shape):
+	// this process **is** the daemon - there is no second answer to give, and `newgate start`
+	// went away with the UI (it is a command runtime registers into the UI), so without a
+	// fallback such a build compiles but can never start (`no entry claimed this call`).
 	headless bool
 }
 
 var _ entryapi.Handler = (*serveEntry)(nil)
 
-// Name 进日志：组合根那句 `[entry] resolve: … → <Name>`。
+// Name goes into the log: the composition root's `[entry] resolve: … → <Name>` line.
 func (serveEntry) Name() string { return "__serve" }
 
-// Claims 认两件事：显式的 `newgate __serve …`，以及**没有界面时的「只有本入口
-// 自己的 flag」**（`newgate --port 8907`）。
+// Claims claims two things: an explicit `newgate __serve …`, and **"only this entry's own
+// flags" when there is no UI** (`newgate --port 8907`).
 //
-// 第一条逐字相等，不做拼写容错：`__serve` 是内部入口（daemon.Spawn 拼出来的），
-// 不是给人敲的，猜错一个近似拼写只会让真正的错误更难看出来。
+// The first is literal equality with no spelling tolerance: `__serve` is an internal entry
+// (assembled by daemon.Spawn), not something a human types, and accepting a near miss only
+// makes the real error harder to see.
 //
-// 第二条只在不装界面时成立（见 headless）：那时没有子命令可派，flag 只可能是
-// 守护进程自己的，所以「起服务」是唯一说得通的行为。**带了别的东西就放过去**
-// ——`newgate frobnicate` 该得到「没人认领这次调用」这句人话，而不是悄悄起一个
-// 守护进程（那种错要等端口被占或者根本连不上才会被发现）。
+// The second holds only without a UI (see headless): there is no sub-command to dispatch to,
+// so the flags can only be the daemon's own and "start serving" is the only behavior that
+// makes sense. **Anything else is passed through** - `newgate frobnicate` should get the
+// plain-language "no entry claimed this call", not a daemon quietly started (that kind of
+// mistake is only discovered once the port is taken or nothing can connect).
 //
-// 只读 Process、没有副作用——入口账本会问好几个申报者，问的顺序不该改变结果。
+// It only reads Process and has no side effects - the entry ledger asks several declarers,
+// and the order it asks in must not change the answer.
 func (e serveEntry) Claims(p entryapi.Process) bool {
 	if len(p.Args) > 0 && p.Args[0] == "__serve" {
 		return true
@@ -104,17 +116,18 @@ func (e serveEntry) Claims(p entryapi.Process) bool {
 	return e.headless && onlyOwnFlags(p.Args)
 }
 
-// onlyOwnFlags 报告这串参数**只**由本入口自己的 flag 组成。
+// onlyOwnFlags reports that this argument string consists **only** of this entry's own flags.
 //
-// 认得的就是 `--port`：它是守护进程的参数，而「哪些参数属于我」这件事只有
-// 守护进程自己知道。将来它多一个 flag，这里跟着加一行——这是诚实的代价，
-// 比「凡是横杠开头的都算我的」安全得多（那会把 `--help` 也吞进来，
-// 于是在一个没有界面的构建里敲 `newgate --help` 会起一个守护进程）。
+// The one it knows is `--port`: that is the daemon's parameter, and "which parameters are
+// mine" is something only the daemon itself knows. When it gains a flag, a line is added
+// here - the honest cost, and far safer than "anything starting with a dash is mine" (which
+// would swallow `--help` too, so `newgate --help` on a build without a UI would start a
+// daemon).
 func onlyOwnFlags(args []string) bool {
 	for i := 0; i < len(args); i++ {
 		switch a := args[i]; {
 		case a == "--port":
-			i++ // 吃掉它的值；值缺了 intFlag 会退回默认端口
+			i++ // consume its value; a missing value makes intFlag fall back to the default port
 		case strings.HasPrefix(a, "--port="):
 		default:
 			return false
@@ -127,7 +140,7 @@ func (c serveEntry) Handle(p entryapi.Process) int {
 	return Serve(c.filters, c.hub, c.listeners, intFlag(p.Args, "--port", 0))
 }
 
-// intFlag 取 `--名字 N` 或 `--名字=N` 里的整数，没有给默认值。
+// intFlag takes the integer in `--name N` or `--name=N`, with a default when absent.
 func intFlag(args []string, name string, def int) int {
 	for i, a := range args {
 		v := ""
@@ -147,19 +160,22 @@ func intFlag(args []string, name string, def int) int {
 	return def
 }
 
-// Serve 是守护进程的主循环。
+// Serve is the daemon's main loop.
 //
-// 热更新在这里落地（服务稳定性的地基）：watcher 后台监测配置目录，
-// 变了就原子换页。已经在跑的 agent **完全不受影响**——改 claude 的
-// profile 不会打断正在跑的 opencode，因为：
-//   - 每个 agent 读自己的绑定（per-agent profile）
-//   - 换页是原子指针替换，不存在「读到一半配置变了」的中间态
-//   - 新配置加载失败时**保留旧快照**，正在跑的一切继续工作
+// Hot reload lands here (the foundation of service stability): a watcher monitors the config
+// directory in the background and atomically swaps the page when it changes. Already running
+// agents are **completely unaffected** - changing claude's profile does not interrupt a
+// running opencode, because:
+//   - each agent reads its own bindings (per-agent profile)
+//   - the swap is an atomic pointer replacement; there is no "config changed mid-read" state
+//   - when the new config fails to load, **the old snapshot is kept**, and everything running
+//     keeps working
 //
-// 依赖方向：数据面只认识**策略账本**（policy.Registry），不认识任何一位策略。
-// 账本由 gateway 的 New 建好（Bind 期），策略在各自 Start 期注册进来。
+// Dependency direction: the data plane knows only the **policy ledger** (policy.Registry),
+// no individual policy. The ledger is built by gateway's New (Bind time), and policies
+// register into it in their own Start.
 func Serve(filters *policy.Registry, hub porthubapi.Service, listeners servingapi.Service, port int) int {
-	rot, rerr := logx.New(paths.LogFile(), 16<<20, 3) // 16MB × 4 份
+	rot, rerr := logx.New(paths.LogFile(), 16<<20, 3) // 16MB x 4 files
 	var lg *log.Logger
 	if rerr != nil {
 		lg = log.New(os.Stdout, "", log.LstdFlags)
@@ -169,8 +185,9 @@ func Serve(filters *policy.Registry, hub porthubapi.Service, listeners servingap
 		lg = log.New(rot, "", log.LstdFlags)
 	}
 
-	// 优雅交接进来的进程：pid/lock 已由父进程改写到自己名下（AdoptRuntime），
-	// 此时抢锁会读到自己的 pid 而误判「已在运行」。父进程就是担保人，跳过。
+	// A process taken over gracefully: pid/lock were already rewritten to us by the parent
+	// (AdoptRuntime), so taking the lock now would read our own pid and wrongly conclude
+	// "already running". The parent is the guarantor; skip.
 	inherited := os.Getenv("NEWGATE_LISTENER_FD") != ""
 	if !inherited {
 		if err := daemon.AcquireLock(); err != nil {
@@ -178,11 +195,12 @@ func Serve(filters *policy.Registry, hub porthubapi.Service, listeners servingap
 			return 69
 		}
 		defer daemon.RemoveLock()
-		// 抢到锁之后**自己**写 pidfile：只有持有监听权的进程才该出现在那里。
-		// 父进程代写会被这一步之后的「陈旧锁清理」删掉（AcquireLock 里那句
-		// RemovePid），而再没有人补回来——2026-09-18 两次现场的完整链条见
-		// daemon.WriteOwn。写不出去只警告：代理照常服务，只是 status/metrics
-		// 会看不到它（那时候 doctor 的「守护进程」一项会说出来）。
+		// After taking the lock, **we** write the pidfile: only the process holding the
+		// listening right should appear there. Written by the parent, it gets deleted by the
+		// "stale lock cleanup" that follows (the RemovePid in AcquireLock) and nobody puts it
+		// back - for the full chain of the two field cases on 2026-09-18 see daemon.WriteOwn.
+		// Failing to write only warns: the proxy keeps serving, just status/metrics cannot see
+		// it (doctor's "daemon" item says so at that point).
 		if err := daemon.WriteOwn(port); err != nil {
 			lg.Printf("%s", i18n.T("Cannot write the pidfile (status/metrics will not see this process): {err}", i18n.A{"err": err}))
 		}
@@ -190,11 +208,13 @@ func Serve(filters *policy.Registry, hub porthubapi.Service, listeners servingap
 		lg.Printf("%s", i18n.T("Graceful handover: taking over the listening socket from the parent process", nil))
 	}
 
-	// 控制令牌必须先于 watcher 落盘：别的用户 `newgate stop` 发不出信号，
-	// 只能走 /__newgate/stop，daemon 一启动就得能验它。这里是最后兜底
-	// （cmdStart / launch.Launch 在 Spawn 前已经各兜一次，正常早就有）。
+	// The control token must be on disk before the watcher: other users' `newgate stop`
+	// cannot send a signal and can only go through /__newgate/stop, so the daemon must be able
+	// to verify it as soon as it starts. This is the last fallback (cmdStart / launch.Launch
+	// each do it once before Spawn; normally it is long there).
 	if st, err := store.EnsureControlToken(); err != nil {
-		// daemon 照常起：没有令牌只是跨用户停机不可用，不该拦下整个代理。
+		// The daemon starts as usual: no token only means cross-user stop is unavailable, and
+		// that should not hold up the whole proxy.
 		lg.Printf("%s", i18n.T("Cannot write the control token (cross-user stop unavailable): {err}", i18n.A{"err": err}))
 	} else if st.ControlToken != "" {
 		lg.Printf("%s", i18n.T("Control endpoint /__newgate/stop is ready (cross-user stop available)", nil))
@@ -216,8 +236,8 @@ func Serve(filters *policy.Registry, hub porthubapi.Service, listeners servingap
 			i18n.A{"gen": watcher.Generation(), "changes": changes}))
 	})
 	watcher.OnError(func(e error) {
-		// 关键：坏配置不替换快照。宁可用旧配置继续跑，也不能因为一次
-		// 手误让所有 agent 同时失效。
+		// Key point: a bad config does not replace the snapshot. Better to keep running on the
+		// old config than to have one typo take every agent down at once.
 		lg.Printf("[config] %s", i18n.T("New configuration failed to load, still using the last usable configuration: {err}",
 			i18n.A{"err": e}))
 	})
@@ -227,25 +247,29 @@ func Serve(filters *policy.Registry, hub porthubapi.Service, listeners servingap
 	if port <= 0 {
 		port = watcher.Current().State.Port
 	}
-	// thinkcache 落盘冷层：daemon 重启后找回上一进程的推理内容。失败就降级
-	// 纯内存（重启前那几轮的原文找不回来了），落盘永远不反过来搞挂代理。
+	// thinkcache's disk cold tier: find the previous process's reasoning again after a daemon
+	// restart. On failure it degrades to memory only (the text of the rounds before the
+	// restart cannot be recovered), and persisting must never take the proxy down.
 	if err := thinkcache.AttachDisk(paths.ThinkCacheFile(), 100<<20); err != nil {
 		lg.Printf("%s", i18n.T("thinkcache disk layer disabled (memory-only): {err}", i18n.A{"err": err}))
 	}
-	// 冷层跑起来之后的失败（压实丢记录、刷盘失败、冷层停用）必须说出来：
-	// 用户能观察到的现象是「重启后推理找不回来了」，而那正是最难反推原因的一类。
+	// Failures after the cold tier is running (compaction dropping records, flush failures,
+	// the cold tier being disabled) must be spoken: the user-observable symptom is "reasoning
+	// cannot be recovered after a restart", exactly the hardest kind to trace back.
 	thinkcache.SetErrorHandler(func(err error) {
 		lg.Printf("[thinkcache] %v", err)
 	})
 	srv := forward.New(watcher.Current().State.BindHost(), port, lg, watcher, filters)
 
-	// 这个端口的根 handler：装了 porthub 就交给它（挂载表优先，没人认领的落回
-	// 数据面），没装就是数据面自己——也就是这个机制出现之前的样子。
+	// The root handler of this port: with porthub installed it goes there (the mount table
+	// wins, and unclaimed paths fall back to the data plane); without it, it is the data plane
+	// itself - i.e. the way things looked before this mechanism existed.
 	//
-	// 为什么合成放在这里而不是数据面里：**这是组合，不是数据面的逻辑**。数据面
-	// 是「转发一次模型请求」这条链，它不该知道这个进程的端口上还住着谁；而守护
-	// 进程入口本来就是「把这个进程装起来」的地方（日志、锁、信号、排空都在这儿）。
-	// 依赖本身是声明的（module.go 里的 Optional），所以在依赖图上看得见。
+	// Why the composition lives here and not in the data plane: **this is composition, not data
+	// plane logic**. The data plane is the "forward one model request" chain and should not know
+	// who else lives on this process's port; the daemon entry is by nature the place that
+	// "assembles this process" (logging, locks, signals, draining all live here). The dependency
+	// itself is declared (Optional in module.go), so it is visible on the dependency graph.
 	if hub != nil {
 		root, err := hub.Root("gateway", srv.Handler())
 		if err != nil {
@@ -260,26 +284,28 @@ func Serve(filters *policy.Registry, hub porthubapi.Service, listeners servingap
 	sig := make(chan os.Signal, 2)
 	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
 
-	// requested 记录「这次退出是有人要求的」，只影响退出码。
+	// requested records "someone asked for this exit"; it only affects the exit code.
 	//
-	// 停机路径**只有一个出口**：下面的 goroutine 只负责 `srv.Shutdown()`
-	// 让 Serve() 返回，pid/lock 的清理和退出码一律由 srv.Start() 之后那段
-	// 统一做。曾经三个出口各自 `RemoveLock + RemovePid + os.Exit(0)`，和主
-	// 路径的 `return 70` 抢跑：实测（2026-09-17，mock/e2e_claude.sh 第 11 章）
-	// 主路径先跑完，`RemoveLock` 有 defer 兜住、`RemovePid` 没有，于是
-	// .newgate.pid 留在磁盘上——下次 start/restart 就会读到一个死 pid。
+	// The shutdown path has **exactly one exit**: the goroutine below only calls `srv.Shutdown()`
+	// so Serve() returns, and pid/lock cleanup and the exit code are all done in the one place
+	// after srv.Start(). There used to be three exits each doing `RemoveLock + RemovePid +
+	// os.Exit(0)`, racing the main path's `return 70`: measured (2026-09-17, chapter 11 of
+	// mock/e2e_claude.sh) the main path finished first, `RemoveLock` was covered by a defer,
+	// `RemovePid` was not, so .newgate.pid stayed on disk - and the next start/restart reads a
+	// dead pid.
 	var requested int32
 
 	go func() {
 		for s := range sig {
 			if s == syscall.SIGHUP {
-				// SIGHUP 是「重读配置」的传统语义
+				// SIGHUP is the traditional "reload config" semantics
 				lg.Printf("%s", i18n.T("Received SIGHUP, forcing a configuration reload", nil))
 				watcher.Reload(true)
 				continue
 			}
 			if srv.Draining() {
-				// 排空期被信号打断：pid/lock 已是新进程的，清不得
+				// Interrupted by a signal during draining: pid/lock already belong to the new
+				// process, do not clear them
 				lg.Printf("%s", i18n.T("Received {sig} while draining, exiting now (pid/lock untouched)",
 					i18n.A{"sig": s}))
 				os.Exit(0)
@@ -291,12 +317,14 @@ func Serve(filters *policy.Registry, hub porthubapi.Service, listeners servingap
 		}
 	}()
 
-	// 控制端点停机（别的用户 `newgate stop`）：发不出信号的用户靠它停机。
-	// 同样只关 listener，清理交给下面统一做。
+	// Control-endpoint shutdown (another user's `newgate stop`): users who cannot send a signal
+	// stop it this way. It likewise only closes the listener; cleanup is done in the one place
+	// below.
 	go func() {
 		<-srv.StopRequested()
 		if srv.Draining() {
-			// 排空期收到停机：同样不许动新进程的 pid/lock
+			// Shutdown received during draining: likewise, do not touch the new process's
+			// pid/lock
 			lg.Printf("%s", i18n.T("Received a control stop while draining, exiting now (pid/lock untouched)", nil))
 			os.Exit(0)
 		}
@@ -308,29 +336,34 @@ func Serve(filters *policy.Registry, hub porthubapi.Service, listeners servingap
 	lg.Printf("%s", i18n.T("newgate {version} (built {built}) started, default profile={profile}, config hot-reload enabled",
 		i18n.A{"version": buildinfo.Version(), "built": buildinfo.BuildTimeDisplay(),
 			"profile": watcher.Current().State.DefaultProfile}))
-	// 「这个进程开始服务了」：想搭车的模块（装了 porthub 就挂共享端口、没装就自己
-	// 监听一个端口的 web 界面）在这一刻起来。
+	// "This process has started serving": modules that want to ride along (a web UI that mounts
+	// on the shared port when porthub is installed, or listens on its own port otherwise) come
+	// up at this moment.
 	//
-	// **为什么不能放在模块的 Start 里**：Start 每一条 `newgate …` 命令都会跑一遍，
-	// 在那里起监听等于敲一次 `newgate status` 就开一台服务器。而这里是这件事唯一
-	// 说得出口的地方——这个进程真的要把端口交给内核了。
+	// **Why it cannot go in a module's Start**: Start runs for every single `newgate …`
+	// command, and starting a listener there means one `newgate status` opens a server. And this
+	// is the only place that can say it - this process is really about to hand the port to the
+	// kernel.
 	//
-	// 位置在 Start 之前（而不是 accept 之后）：它说的是「我要开始了」。差一拍的
-	// 代价是「绑定失败时已经起来的监听」——那由下面这个 stop 收掉，而且那种情况下
-	// 进程立刻就走（见下面的失败分支）。
+	// It sits before Start (rather than after accept): it says "I am about to begin". The cost
+	// of that one beat is "a listener that is already up when binding fails" - which the stop
+	// below collects, and in that case the process leaves at once anyway (see the failure
+	// branch below).
 	if listeners != nil {
 		stop, err := listeners.Notify()
 		if err != nil {
-			// fail-open：一个界面起不来不该拖垮数据面（日志里点名是谁）。
+			// fail-open: one UI failing to start must not drag down the data plane (the log
+			// names who).
 			lg.Printf("%s", i18n.T("Some services did not start: {err}", i18n.A{"err": err}))
 		}
 		defer stop()
 	}
 
 	if err := srv.Start(); err != nil {
-		// 优雅交接的排空：listener 已移交新进程，Serve 因此返回——但这
-		// 不是退出的时候。等在途请求流完（Drained），再直接退（os.Exit
-		// 跳过 defer 的 RemoveLock：pid/lock 已是 新进程的）。
+		// Draining for a graceful takeover: the listener has been handed to the new process, so
+		// Serve returns - but this is not the time to exit. Wait for in-flight requests to finish
+		// (Drained), then exit directly (os.Exit skips the deferred RemoveLock: pid/lock already
+		// belong to the new process).
 		if srv.Draining() {
 			lg.Printf("%s", i18n.T("Listening socket handed over to the new process, waiting for in-flight requests to drain (up to 10 minutes)", nil))
 			<-srv.Drained()
@@ -338,8 +371,8 @@ func Serve(filters *policy.Registry, hub porthubapi.Service, listeners servingap
 			os.Exit(0)
 		}
 		lg.Printf("%s", i18n.T("Proxy exiting: {err}", i18n.A{"err": err}))
-		// 唯一出口：进程要走了，pid/lock 是它自己的，必须一起带走。
-		// defer 的 RemoveLock 只管 lock，pid 得在这里补上。
+		// The only exit: the process is leaving, pid/lock are its own, and must go with it.
+		// The deferred RemoveLock only handles lock; pid must be added here.
 		daemon.RemoveLock()
 		daemon.RemovePid()
 		if atomic.LoadInt32(&requested) == 1 {

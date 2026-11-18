@@ -35,12 +35,12 @@ import (
 type Type = modules.Type
 
 const (
-	TypeInfra   Type = "infra"   // 地基：config / confighook / breaker / plugin-manager
-	TypeGateway Type = "gateway" // 数据面：gateway
-	TypeCLI     Type = "cli"     // 命令行：cli
-	TypeClient  Type = "client"  // 客户端家族：claudecode / opencode / opencodeomo / runtime / wrapper
-	TypeModel   Type = "model"   // 模型家族：deepseek / glm / thinking
-	TypeBridge  Type = "bridge"  // 客户端 × 模型 的交叉语义：claudecode_deepseek / claudecode_glm
+	TypeInfra   Type = "infra"   // foundation: config / confighook / breaker / plugin-manager
+	TypeGateway Type = "gateway" // data plane: gateway
+	TypeCLI     Type = "cli"     // command line: cli
+	TypeClient  Type = "client"  // clients: claudecode / opencode / opencodeomo / runtime / wrapper
+	TypeModel   Type = "model"   // model family: deepseek / glm / thinking
+	TypeBridge  Type = "bridge"  // cross client x model: claudecode_deepseek / claudecode_glm
 
 	// TypeOthers is where every classification **not in the table above** lands.
 	TypeOthers Type = "others"
@@ -74,9 +74,9 @@ const (
 // Path must be prefixed with the owning module's name (`<module>.<path>`), globally
 // unique. That makes "whose switch" visible without a lookup, and self-verifiable.
 type Switch struct {
-	Path  string // "<模块名>.<路径>"，如 "deepseek.tail-shape"
-	Title string // 人话
-	Why   string // 关掉会发生什么
+	Path  string // "<module>.<path>", e.g. "deepseek.tail-shape"
+	Title string // plain words
+	Why   string // what happens if you turn it off
 
 	Danger Danger
 

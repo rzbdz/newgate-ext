@@ -37,13 +37,14 @@ func (omoCommand) Run(host cliapi.Host, args []string) int {
 	return cmdOmo(host, args)
 }
 
-// cmdOmo 管 omo（opencode 的 oh-my-openagent 插件）的 intra-agent 槽位。
+// cmdOmo manages omo's (opencode's oh-my-openagent plugin) intra-agent slots.
 //
-// 槽位键（omo-sisyphus / cat-deep …）是**模块贡献的动态角色**：接管时由
-// omo 模块注册给框架（runtime/injection/omo.go），框架把它们和档位一视同仁
-// 地解析。所以这个命令只做三件事——看一眼现状、改缺省归属、解释解析结果。
+// Slot keys (omo-sisyphus / cat-deep …) are **dynamic roles contributed by a module**: at takeover
+// time the omo module registers them with the framework (runtime/injection/omo.go), and the
+// framework resolves them exactly like tiers. So this command does only three things -- look at the
+// current state, change the default binding, explain the resolution result.
 //
-// 用户不需要记键名：不带参数就是列表。
+// The user need not remember key names: no arguments means the list.
 func cmdOmo(host cliapi.Host, args []string) int {
 	if len(args) == 0 {
 		return omoList()
@@ -85,8 +86,9 @@ func omoRegistry() *OmoSlots {
 	return reg
 }
 
-// omoList 槽位清单使用纵向卡片。键、槽位和模型标识符都是不可分割的信息，
-// 不能为了六列表格从中间硬切；属性放在后续缩进行。
+// omoList lays the slot list out in vertical cards. The key, the slot and the model identifier are
+// indivisible pieces of information and must not be cut in the middle to fit six columns; the
+// attributes go on following indented lines.
 func omoList() int {
 	reg := omoRegistry()
 	fmt.Println(style.Title("newgate omo",
@@ -160,7 +162,8 @@ func omoModeName(reg *OmoSlots) string {
 	return "current"
 }
 
-// omoDiffCount 建议档位与现状不同的键数（有覆盖的不算——那些已经定了）。
+// omoDiffCount is the number of keys whose suggested tier differs from the current one (those with
+// overrides do not count -- those are already decided).
 func omoDiffCount(reg *OmoSlots) int {
 	if reg == nil {
 		return 0
@@ -184,7 +187,7 @@ func dash(s string) string {
 	return s
 }
 
-// omoUse 写/删一个覆盖。value 为空表示删除。
+// omoUse writes/deletes one override. An empty value means delete.
 func omoUse(host cliapi.Host, key, value string, set bool) int {
 	reg := ReadOmoSlots()
 	if reg == nil {
@@ -287,15 +290,16 @@ func omoMode(host cliapi.Host, mode string) int {
 	return 0
 }
 
-// omoExplain 把一个槽位键解析成实际的 fallback 链——「为什么不是我想的那个」
-// 只能靠这个回答（docs/04-configuration.md）。
+// omoExplain resolves one slot key into the actual fallback chain -- "why is it not what I
+// thought" can only be answered by this (docs/04-configuration.md).
 func omoExplain(host cliapi.Host, key string) int {
 	reg := ReadOmoSlots()
 	if reg == nil {
 		return host.Die(65, i18n.T("no omo slot registry; run newgate on opencode first", nil))
 	}
-	// 先装快照：角色键是 store.Load 里跟着刷新的（core/roleprov），
-	// 不先装一次的话 IsKnownRole 会说不认识我们自己刚注册的键。
+	// Install the snapshot first: role keys are refreshed as part of store.Load (core/roleprov), and
+	// without installing once first IsKnownRole would say it does not know the key we just registered
+	// ourselves.
 	snap, err := store.Load()
 	if err != nil {
 		return host.Die(65, err.Error())
@@ -334,7 +338,8 @@ func omoExplain(host cliapi.Host, key string) int {
 		}
 	}
 
-	// 熔断表快照直接读控制面叶子（见 cliapi.Host 的说明：LiveRouting 不再走界面）。
+	// The breaker-table snapshot reads the control-plane leaf directly (see the note on cliapi.Host:
+	// LiveRouting no longer goes through the UI).
 	_, doc := controlplane.State()
 	available, rank := doc.Available(), doc.Rank()
 	for _, head := range names {

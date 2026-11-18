@@ -9,9 +9,10 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// 本文件是 hermes 交给 web 界面的那一面：**它跑哪个档位**，外加网关那两件事
-// （清单同步、要不要重启）。形状与 codex 的档位卡对齐（同一套 Kind、同一个位置），
-// 因为它们是同一件事：「这个客户端此刻走哪个档位」。
+// This file is the side of hermes handed to the web UI: **which tier it runs**, plus the two
+// gateway things (list sync, does it need a restart). The shape is aligned with codex's tier
+// card (same set of Kinds, same position), because they are the same thing: "which tier this
+// client uses right now".
 
 const conceptID = "hermes.model"
 
@@ -52,8 +53,8 @@ func modelConcept() view.Concept {
 		Data:  view.Toggles{File: file, Items: items},
 		Order: 20,
 		Apply: applyModel,
-		// 没装 hermes 的机器上整张锁灰（facts{} 必须传：它比 PATH 多认 ~/.local/bin，
-		// 见 facts.go）。
+		// On a machine without hermes the whole card is grayed out (facts{} must be passed: it
+		// recognizes ~/.local/bin beyond PATH, see facts.go).
 		Locked: agentapi.NotInstalled(a, facts{}),
 	}
 	if (Takeover{}).IsTakenOver(ConfigPath()) {
@@ -78,11 +79,13 @@ func modelConcept() view.Concept {
 	return c
 }
 
-// applyModel 写链头与槽位映射，然后**当场重新接管一次**（已接管时）。
+// applyModel writes the chain head and the slot map, then **takes over again right there**
+// (when already taken over).
 //
-// 与 codex 卡片不同的一处：codex 的档位要等下一次 `newgate on codex` 才写进文件，
-// 那是它的历史行为；hermes 这里按下保存就写——槽位的意义就是 config.yaml 里那几格，
-// 只记在 state.json 里等于什么都没发生（与 codex 的 switchMode 同一条规矩）。
+// One difference from codex's card: codex's tier waits for the next `newgate on codex` to be
+// written into the file -- that is its historical behavior; hermes writes it as soon as save is
+// pressed -- a slot's meaning is exactly those cells in config.yaml, and recording it only in
+// state.json would mean nothing happened (the same rule as codex's switchMode).
 func applyModel(edit json.RawMessage, _ string) (string, error) {
 	var patch map[string]string
 	if err := json.Unmarshal(edit, &patch); err != nil {

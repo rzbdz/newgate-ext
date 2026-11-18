@@ -81,7 +81,7 @@ func (configCommand) Unstyled([]string) bool { return true }
 func (configCommand) Help() cliapi.HelpLine {
 	return cliapi.HelpLine{
 		Section: cliapi.SectionMaintenance,
-		Rank:    5, // 维护那一节的最前面：新装一台机器时第一件要做的事
+		Rank:    5, // first in the maintenance section: the first thing to do on a new machine
 		Usage:   "config [--reconfigure] [--no-start]",
 		Summary: i18n.T("first-run wizard: install and take over clients, write the first upstream, start the proxy", nil),
 	}

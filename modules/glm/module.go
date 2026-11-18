@@ -1,8 +1,9 @@
-// Package glm 拥有 GLM 模型家族的身份判断。
+// Package glm owns the identity decision for the GLM model family.
 //
-// 它目前不需要单方协议修补，所以组件只提供 Model capability。需要同时了解
-// Claude Code 和 GLM 的行为由 claudecode_glm 组合，避免为了未来可能性预建
-// 空插件或把客户端知识塞进模型模块。
+// It needs no unilateral protocol patch today, so the component provides only the Model
+// capability. Behavior that needs to know both Claude Code and GLM is composed by
+// claudecode_glm, avoiding building an empty plugin for a future possibility or stuffing
+// client knowledge into the model module.
 package glm
 
 import (
@@ -10,8 +11,9 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// New 声明纯模型身份组件。它没有生命周期副作用，
-// 只把 GLM 目标判定能力提供给需要组合客户端行为的组件。
+// New declares a pure model-identity component. It has no lifecycle side effects;
+// it only provides the GLM target decision capability to components that need to compose
+// client behavior.
 func New() modules.Component {
 	return modules.Component{
 		Name: "glm",

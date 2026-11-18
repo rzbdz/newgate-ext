@@ -31,7 +31,7 @@ func fakeBinary(ver string) []byte {
 // fakeGitHub starts a minimal GitHub API: /releases/latest, /releases/tags/<tag>, downloads.
 type fakeGitHub struct {
 	srv      *httptest.Server
-	releases map[string]map[string][]byte // tag → 产物名 → 内容
+	releases map[string]map[string][]byte // tag -> artifact name -> content
 	latest   string
 	badSum   bool
 	// limited makes the API always 403 (the egress IP's quota spent by others), leaving only web.

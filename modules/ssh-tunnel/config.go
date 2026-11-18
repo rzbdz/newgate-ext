@@ -66,7 +66,7 @@ const (
 const (
 	DefaultSSHPort    = 22
 	DefaultRemoteHost = "127.0.0.1"
-	DefaultRemotePort = 8899 // = domain.ProxyPort，远端 newgate 的默认端口
+	DefaultRemotePort = 8899 // = domain.ProxyPort, the default port of the remote newgate
 	DefaultIdleSecs   = 300
 )
 
@@ -85,7 +85,7 @@ type Target struct {
 	Host     string `json:"host"`
 	Port     int    `json:"port,omitempty"`
 	User     string `json:"user,omitempty"`
-	Identity string `json:"identity,omitempty"` // 私钥**路径**；空 = 默认那几把 + agent
+	Identity string `json:"identity,omitempty"` // private key **path**; empty = default keys + agent
 
 	// What to look at once there. From the **remote machine's** view: remote_host defaults
 	// to 127.0.0.1 (the remote webui listens there), remote_port to 8899.
@@ -147,13 +147,13 @@ func (t Target) DialAddr() string {
 type Problem struct {
 	ID   string
 	Why  string
-	Line string // 界面/终端上那一行原文
+	Line string // the raw line as shown in the UI/terminal
 }
 
 // Loaded is all of one config read's conclusions.
 type Loaded struct {
-	Targets  []Target  // 合法且已归一化的，按 ID 排序（顺序稳定，界面才不跳）
-	Rejected []Problem // 不合法的：**跳过，但不咽下去**
+	Targets  []Target  // valid and normalized, sorted by ID (a stable order keeps the UI from jumping)
+	Rejected []Problem // invalid ones: **skipped, but not swallowed**
 	// Base is state.json's revision hash right now (store.Revision), used by writable records
 	// for CAS - without a baseline there is no telling "is mine the latest", and that is the
 	// only defense against "the CLI just changed the same file".

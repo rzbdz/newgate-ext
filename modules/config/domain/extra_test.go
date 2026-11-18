@@ -38,7 +38,7 @@ func TestExtraRolesSurvivesConcurrentRefresh(t *testing.T) {
 	var wg sync.WaitGroup
 	const rounds = 2000
 
-	wg.Add(1) // 写者：watcher 协程
+	wg.Add(1) // writer: the watcher goroutine
 	go func() {
 		defer wg.Done()
 		for i := 0; i < rounds; i++ {
@@ -46,7 +46,7 @@ func TestExtraRolesSurvivesConcurrentRefresh(t *testing.T) {
 		}
 	}()
 
-	wg.Add(2) // 读者：请求协程
+	wg.Add(2) // readers: request goroutines
 	for r := 0; r < 2; r++ {
 		go func() {
 			defer wg.Done()

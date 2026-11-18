@@ -86,7 +86,7 @@ func (r *shapeRegistry) Register(d ShapeDetector) (modules.Release, error) {
 		r.mu.Lock()
 		defer r.mu.Unlock()
 		if r.tokens[d.Name()] != token {
-			return nil // 已经被后来的注册顶掉了，不动
+			return nil // already superseded by a later registration; leave it alone
 		}
 		delete(r.tokens, d.Name())
 		for i, existing := range r.detectors {

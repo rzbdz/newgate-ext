@@ -238,7 +238,7 @@ func leftover(args []string) []string {
 		}
 		if matchesAnyFlag(a, flagsWithValues) {
 			if !strings.Contains(a, "=") {
-				i++ // 连同它的值一起跳过（`--tier normal`）
+				i++ // skip its value too (`--tier normal`)
 			}
 			continue
 		}

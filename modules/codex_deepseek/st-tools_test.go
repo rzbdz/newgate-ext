@@ -214,7 +214,7 @@ func TestApplyReplacesExistingToolsKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(string(out), `"tools"`) != 2 { // 顶层一个 + additional_tools 里那一个
+	if strings.Count(string(out), `"tools"`) != 2 { // one at top level + the one in additional_tools
 		t.Fatalf("tools key must appear exactly twice, no duplicates:\n%s", out)
 	}
 	var doc struct {

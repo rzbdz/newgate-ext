@@ -26,7 +26,7 @@ import (
 // Semantics must not starve the fleet of config updates (fail-open).
 func ValidateSnapshot(dir string, files map[string][]byte) (warnings []string, err error) {
 	providers := map[string]cfg.Provider{}
-	profiles := map[string]cfg.Profile{} // 档位名 → 解析后的 profile
+	profiles := map[string]cfg.Profile{} // tier name → resolved profile
 
 	for _, rel := range sortedKeys(files) {
 		if _, ok := ManagedPath(rel); !ok {
@@ -114,12 +114,12 @@ func semanticWarnings(dir string, providers map[string]cfg.Provider, profiles ma
 		}
 	}
 
-	missingProvider := map[string][]string{} // provider 名 → 用到它的档位
+	missingProvider := map[string][]string{} // provider name → the tiers that use it
 	for _, name := range sortedProfileNames(profiles) {
 		pr := profiles[name]
 		check := func(where string, b cfg.Binding) {
 			if b.IsRef() {
-				return // 引用由 resolve 展开，展开不了会有它自己的诊断
+				return // refs are expanded by resolve; if that fails it has its own diagnostic
 			}
 			if b.Provider == "" {
 				return
@@ -160,10 +160,10 @@ func semanticWarnings(dir string, providers map[string]cfg.Provider, profiles ma
 
 // Result is the outcome of one write-to-disk.
 type Result struct {
-	Written   []string          // 真的改变了内容的文件
-	Unchanged []string          // 内容一致、刻意没碰的文件
-	Removed   []string          // 这份快照不再包含、因而被删掉的托管文件
-	Manifest  map[string]string // 新的 applied 清单（相对路径 → sha256）
+	Written   []string          // files whose content really changed
+	Unchanged []string          // files with identical content, deliberately left alone
+	Removed   []string          // managed files this snapshot no longer contains, hence deleted
+	Manifest  map[string]string // the new applied list (relative path → sha256)
 }
 
 // Materialize writes a **validated** snapshot to the config dir. All or nothing.
@@ -252,7 +252,7 @@ func Materialize(dir string, files map[string][]byte, applied map[string]string)
 			continue
 		}
 		if _, ok := ManagedPath(rel); !ok {
-			continue // 已不在托管集合里的老记录，不去碰
+			continue // an old record no longer in the managed set: leave it alone
 		}
 		if err := root.Remove(rel); err != nil && !os.IsNotExist(err) {
 			return res, i18n.Ef(err, "cannot remove the retired {path}: {err}", i18n.A{"path": rel})

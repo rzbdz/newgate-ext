@@ -371,9 +371,9 @@ func TestOnlyAddressesNotNamesAreAnswered(t *testing.T) {
 
 	accepted := []string{
 		loopback, "localhost:8899", "[::1]:8899",
-		"10.0.50.11:8899",     // 局域网 / 另一台机器
+		"10.0.50.11:8899",     // LAN / another machine
 		"100.101.224.37:8899", // Tailscale（100.64.0.0/10）
-		"172.24.1.5:8899",     // WSL / 容器网段
+		"172.24.1.5:8899",     // WSL / container subnet
 	}
 	for _, host := range accepted {
 		if rec := raw(t, h, http.MethodGet, "/api/snapshot", "", host, ""); rec.Code != http.StatusOK {

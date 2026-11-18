@@ -7,8 +7,9 @@ import (
 	"time"
 )
 
-// 落盘冷层的核心价值：daemon 重启后找回上一进程攒的推理内容。
-// 用一个新 DiskStore 打开同一份文件 = 模拟一次重启。
+// The core value of the on-disk cold tier: after a daemon restart, find back the reasoning the
+// previous process accumulated. Opening the same file with a new DiskStore = simulating a
+// restart.
 func TestDiskStoreSurvivesReopen(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "thinkcache.bin")
@@ -22,7 +23,7 @@ func TestDiskStoreSurvivesReopen(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 重启：新进程重新 open，replay 索引
+	// Restart: a new process opens again, replays the index
 	d2, err := openDisk(path, 1<<20, time.Hour)
 	if err != nil {
 		t.Fatal(err)
@@ -61,7 +62,7 @@ func TestOriginSurvivesReopen(t *testing.T) {
 	}
 }
 
-// 过期项在 replay 时就被跳过，不占索引。
+// Expired entries are skipped during replay and never enter the index.
 func TestDiskStoreDropsExpiredOnReopen(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "thinkcache.bin")
@@ -87,7 +88,8 @@ func TestDiskStoreDropsExpiredOnReopen(t *testing.T) {
 	}
 }
 
-// 超过 maxBytes*2 就重写一遍（滚动）：过期项被丢、活项保留、文件缩回。
+// Past maxBytes*2 the file is rewritten (rolling): expired entries dropped, live ones kept,
+// and the file shrinks back.
 func TestDiskStoreRollsOver(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "thinkcache.bin")
@@ -102,7 +104,7 @@ func TestDiskStoreRollsOver(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		at := now
 		if i < 10 {
-			at = now.Add(-2 * time.Hour) // 前 10 条过期，后 10 条活
+			at = now.Add(-2 * time.Hour) // first 10 expired, last 10 alive
 		}
 		d.appendKeys([]string{fmt.Sprintf("tool:k%d", i)}, blob, at)
 	}

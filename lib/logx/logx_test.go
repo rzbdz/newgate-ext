@@ -86,10 +86,10 @@ func TestPruneDirByKeepsNewestGroup(t *testing.T) {
 // old implementation kept the "largest name", which deleted exactly it first.
 func TestPruneDirByKeepsNewestEvenIfNameSortsFirst(t *testing.T) {
 	dir := t.TempDir()
-	mkGroup(t, dir, "err-402-req000001", epoch.Add(1*time.Minute)) // 最旧
+	mkGroup(t, dir, "err-402-req000001", epoch.Add(1*time.Minute)) // oldest
 	mkGroup(t, dir, "err-422-req000002", epoch.Add(2*time.Minute))
 	mkGroup(t, dir, "err-429-req000003", epoch.Add(3*time.Minute))
-	mkGroup(t, dir, "err-400-req001840", epoch.Add(4*time.Minute)) // 名字最小、最新
+	mkGroup(t, dir, "err-400-req001840", epoch.Add(4*time.Minute)) // smallest name, newest
 
 	PruneDirBy(dir, "err-", 2)
 

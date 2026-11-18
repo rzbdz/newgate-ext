@@ -163,7 +163,7 @@ func Refresh() []error {
 	var (
 		out  []domain.ExtraRole
 		errs []error
-		seen = map[string]string{} // key -> 谁登记的
+		seen = map[string]string{} // key -> who registered it
 	)
 	for _, p := range ps {
 		roles, err := p.Roles()

@@ -71,7 +71,7 @@ func (c Cap) String() string {
 
 type entry struct {
 	supported Cap
-	known     Cap // known 里为 0 的位 = 探过了、明确不支持
+	known     Cap // bits that are 0 in known = probed and definitely unsupported
 }
 
 var (

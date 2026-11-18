@@ -24,7 +24,7 @@ func isolate(t *testing.T) string {
 	}
 	t.Setenv("NEWGATE_HOME", dir)
 	t.Setenv("NEWGATE_TARGET_DIR", target)
-	t.Setenv("HOME", filepath.Join(dir, "home")) // 不创建 → 没有 rc 文件可动
+	t.Setenv("HOME", filepath.Join(dir, "home")) // not created -> no rc file to touch
 	return dir
 }
 
@@ -158,7 +158,7 @@ func TestOffAllLeavesForeignEntriesAlone(t *testing.T) {
 func TestUnknownAgent(t *testing.T) {
 	isolate(t)
 
-	r := On("claud", 8899) // 少个 e
+	r := On("claud", 8899) // missing an e
 	if r.Err == nil {
 		t.Fatal("it took over a nonexistent agent")
 	}

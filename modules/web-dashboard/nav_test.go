@@ -99,7 +99,7 @@ func stripComments(s string) string {
 			for i+1 < len(runes) && !(runes[i] == '*' && runes[i+1] == '/') {
 				i++
 			}
-			i++ // 停在 '/' 上，循环的 i++ 跳过它
+			i++ // stops on '/', the loop's i++ skips it
 		case c == '"' || c == '\'' || c == '`':
 			b.WriteRune(c)
 			for i++; i < len(runes); i++ {

@@ -561,7 +561,7 @@ func splitDirective(line string) (key, val string, ok bool) {
 // Step is one step of a probe.
 type Step struct {
 	Name  string
-	State string // ok / warn / bad（与 cli 那套语气同一份词汇）
+	State string // ok / warn / bad (the same vocabulary as the cli's tone)
 	Line  string
 }
 

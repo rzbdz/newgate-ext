@@ -30,7 +30,7 @@ import (
 // having typed config pull, waiting two seconds beats getting "busy" back.
 func WithLock(path string, wait time.Duration, fn func() error) (bool, error) {
 	if path == "" {
-		return true, fn() // 没配锁（测试里常见）：直接跑
+		return true, fn() // no lock configured (common in tests): just run
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o2770); err != nil {
 		return false, err
@@ -54,7 +54,7 @@ func WithLock(path string, wait time.Duration, fn func() error) (bool, error) {
 			return false, err
 		}
 		if !time.Now().Before(deadline) {
-			return false, nil // 别人正拿着：不是错误
+			return false, nil // someone else holds it: not an error
 		}
 		time.Sleep(50 * time.Millisecond)
 	}

@@ -151,10 +151,10 @@ func (Takeover) Restore() ([]string, error) {
 // Empty string / 0 = **do not write this line** (not write an empty
 // value): codex's own default is always more right than a value we guessed.
 type want struct {
-	Model         string // 主模型走哪一档
-	ReviewModel   string // `codex review` 走哪一档
-	ContextWindow int    // 上下文窗口（0 = 不声明）
-	AutoCompact   int    // 自动压缩阈值（0 = 不声明）
+	Model         string // which tier the main model uses
+	ReviewModel   string // which tier `codex review` uses
+	ContextWindow int    // context window (0 = do not declare)
+	AutoCompact   int    // auto-compact threshold (0 = do not declare)
 }
 
 // values is "key -> literal to write". **Only the ones to write**.
@@ -251,7 +251,7 @@ func rewrite(src string, port int, w want) (string, []string) {
 		}
 		seen[k] = true
 		if strings.TrimSpace(ln) == k+" = "+v {
-			continue // 已经是我们写的那个值，别记一笔假账
+			continue // already the value we wrote: do not book a fake change
 		}
 		reps = append(reps, k+" -> "+v)
 		lines[i] = k + " = " + v

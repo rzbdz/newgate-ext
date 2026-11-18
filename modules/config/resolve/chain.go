@@ -27,7 +27,7 @@ func (s Step) String() string { return s.Profile + ":" + s.Binding.String() }
 // the one I thought", and without this it can only be guessed (docs/04-configuration.md).
 type Skip struct {
 	Profile string
-	Target  string // provider/model；空表示整个 profile 被跳过
+	Target  string // provider/model; empty means the whole profile was skipped
 	// Reason the sentence shown to the user, already through i18n.T.
 	Reason string
 	// Kind this skip's **category**: a machine marker, not
@@ -169,7 +169,7 @@ type chainBuilder struct {
 	provs    *domain.Providers
 	o        Opts
 	seen     map[string]bool
-	visiting map[string]bool // 正在展开的键（防引用成环）
+	visiting map[string]bool // keys being expanded right now (guards against reference cycles)
 	steps    []Step
 	skips    []Skip
 }
@@ -304,7 +304,7 @@ func OverrideChain(source string, override domain.Binding, tier string, profiles
 	out := []Step{ovStep}
 	for _, s := range steps {
 		if s.Binding.String() == override.String() {
-			continue // 已经在链头
+			continue // already at the head of the chain
 		}
 		out = append(out, s)
 	}
@@ -333,7 +333,7 @@ func orderProfiles(profiles []*domain.Profile, active string) ([]*domain.Profile
 
 	var out []*domain.Profile
 	if head != nil {
-		out = append(out, head) // 显式选中优先，excluded 挡不住链头
+		out = append(out, head) // an explicit pick wins; excluded cannot block the chain head
 		if head.Pinned {
 			for _, p := range rest {
 				// The category is "other": the display layer's category table gives pinned no

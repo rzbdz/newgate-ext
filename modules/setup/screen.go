@@ -40,7 +40,7 @@ type Screen interface {
 type pickResult struct {
 	Chosen  []string
 	Cancel  bool
-	Nothing bool // 用户一个都没选就按了回车
+	Nothing bool // the user picked nothing and just pressed enter
 }
 
 // pickAgents draws the "which clients to install" screen.
@@ -158,7 +158,7 @@ type field struct {
 	Placeholder string
 	Value       string
 	Secret      bool
-	Note        string // 灰字说明（放在标签下面）
+	Note        string // dimmed caption (drawn under the label)
 	Validate    func(string) string
 	// Suggest offers a value when Tab is pressed (a provider name derived from base, say).
 	Suggest func(current string) (string, string)

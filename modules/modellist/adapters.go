@@ -16,50 +16,55 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// 本文件是**适配器**：不同上游列模型的方式不一样，但回答要收敛成一种形状。
+// This file is the **adapter** layer: different upstreams list models differently, but the answer
+// must converge on one shape.
 //
-// 今天两类：
+// Two kinds today:
 //
-//   - `openai`：`GET {base}/v1/models`（或者 `{base}/models`，取决于 base 是否
-//     已经带 /v1），返回 `{"data":[{"id":"…","owned_by":"…"}]}`。所有 OpenAI
-//     兼容网关（DeepSeek、GLM、OpenRouter、one-api 系）都走这一条。
-//   - `anthropic`：`GET {base}/v1/models`，`x-api-key` 认证，分页字段是
-//     `has_more` / `last_id`。
+//   - `openai`: `GET {base}/v1/models` (or `{base}/models`, depending on whether base already
+//     carries /v1), returning `{"data":[{"id":"…","owned_by":"…"}]}`. Every OpenAI-compatible
+//     gateway (DeepSeek, GLM, OpenRouter, the one-api family) takes this route.
+//   - `anthropic`: `GET {base}/v1/models`, `x-api-key` auth, pagination fields are
+//     `has_more` / `last_id`.
 //
-// # 为什么两条都试
+// # Why both are tried
 //
-// provider 的 `protocol` 说的是**转发**用哪种方言，而「能不能列模型」是另一件
-// 事：有的网关标着 openai、却只在 /v1/models 上答；有的标着 anthropic、实际是
-// 个 OpenAI 兼容壳。所以按 protocol 决定**先试哪个**，另一个在「前一个明确说
-// 没有这个接口（404/405/501）」之后再试。**认证失败不换**——那说明地址找对了，
-// 换一种认证只会把「key 不对」伪装成「不支持」。
+// A provider's `protocol` says which dialect **forwarding** uses, while "can it list models" is
+// another matter: some gateways are labeled openai yet only answer on /v1/models; some labeled
+// anthropic are really an OpenAI-compatible shell. So protocol decides **which to try first**, and
+// the other is tried after "the first one explicitly says it has no such endpoint
+// (404/405/501)". **Auth failure does not switch** -- that means the address was right, and
+// switching auth would only disguise "wrong key" as "not supported".
 
-// errUnsupported 说「这条路上没有模型列表接口」：调用方可以换下一条路。
-// 它与网络错误、认证错误分开，因为只有它值得再试一个适配器。
+// errUnsupported says "there is no model-list endpoint on this route": the caller may try the next
+// route. It is kept apart from network and auth errors because only it is worth trying another
+// adapter for.
 type errUnsupported struct{ why string }
 
 func (e *errUnsupported) Error() string { return e.why }
 
-// unsupported 造一条「这条路上没有模型列表接口」的回答。文案在调用点用
-// i18n.T 求值（扫描器只认字面量，见 adapters.go 开头的规矩）。
+// unsupported builds an "there is no model-list endpoint on this route" answer. The copy is
+// evaluated with i18n.T at the call site (the scanner only sees literals, see the rule atop
+// adapters.go).
 func unsupported(msg string) error {
 	return &errUnsupported{why: msg}
 }
 
-// listResult 是适配器内部的结果（还没套上 provider / 缓存这些外层事实）。
+// listResult is the adapter's internal result (not yet wrapped in outer facts like provider and
+// cache).
 type listResult struct {
 	models   []Model
 	groups   []string
 	endpoint string
 }
 
-// attempt 是一条「适配器 × 认证方式」的路。
+// attempt is one "adapter × auth method" route.
 type attempt struct {
 	name string
 	list func(context.Context, *http.Client, domain.Provider) (*listResult, error)
 }
 
-// attemptsFor 按 provider 声明的方言决定先试哪一条。
+// attemptsFor decides which route to try first, by the dialect the provider declares.
 func attemptsFor(p domain.Provider) []attempt {
 	openaiAttempt := attempt{name: "openai", list: listOpenAI}
 	anthropicAttempt := attempt{name: "anthropic", list: listAnthropic}
@@ -72,11 +77,13 @@ func attemptsFor(p domain.Provider) []attempt {
 // ---------- HTTP ----------
 
 const (
-	// maxBody 是一份模型清单的上限。真实清单通常几十 KB；给到 4MiB 是为了
-	// 聚合网关那种一次列几百个模型的场景，同时挡住「这个地址其实是个下载站」。
+	// maxBody caps one model listing. Real listings are usually tens of KB; 4MiB is for the
+	// aggregator-gateway case of hundreds of models at once, while also blocking "this address is
+	// really a download site".
 	maxBody = 4 << 20
-	// maxErrorBody 是错误响应里带给人看的那一段上限。上游的错误页可能很长，
-	// 全塞进日志/界面没有意义；400 字节足够认出「HTML 404」还是「JSON 报错」。
+	// maxErrorBody caps the portion of an error response kept for humans. An upstream error page
+	// can be long, and stuffing it all into the log/UI means nothing; 400 bytes is enough to tell an
+	// "HTML 404" from a "JSON error".
 	maxErrorBody = 400
 )
 
@@ -85,10 +92,11 @@ type httpResult struct {
 	status int
 }
 
-// safeURL 去掉 URL 里的 userinfo 再交给界面/日志。
+// safeURL strips userinfo out of the URL before handing it to the UI/log.
 //
-// base_url 正常只写地址，但有人会把凭据写在 `https://user:pass@host` 里。那份
-// 凭据不该因为一次「问不到模型」被端到浏览器上——它不是这次探测的结果。
+// base_url normally holds only an address, but some people put credentials in
+// `https://user:pass@host`. That credential should not reach the browser because of one "could not
+// ask for models" -- it is not the result of this probe.
 func safeURL(raw string) string {
 	u, err := url.Parse(raw)
 	if err != nil {
@@ -100,7 +108,7 @@ func safeURL(raw string) string {
 	return u.String()
 }
 
-// getJSON 发一次 GET。非 2xx 也是「有回答」，由调用方按状态码解释。
+// getJSON sends one GET. A non-2xx is still "an answer", interpreted by the caller by status code.
 func getJSON(ctx context.Context, c *http.Client, url string, headers map[string]string) (*httpResult, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -115,8 +123,8 @@ func getJSON(ctx context.Context, c *http.Client, url string, headers map[string
 	}
 	resp, err := c.Do(req)
 	if err != nil {
-		// 错误里可能带完整 URL（没有凭据：key 只在头里），但登到日志/界面之前
-		// 仍然把 userinfo 摘掉。
+		// The error may carry the full URL (with no credentials: the key is only in the header), but
+		// userinfo is still stripped before it is logged/shown.
 		return nil, i18n.Ef(err, "cannot reach {url}: {err}", i18n.A{"url": safeURL(url)})
 	}
 	defer resp.Body.Close()
@@ -136,7 +144,8 @@ func getJSON(ctx context.Context, c *http.Client, url string, headers map[string
 	return &httpResult{body: raw, status: resp.StatusCode}, nil
 }
 
-// statusNote 把非 2xx 变成一句话。404/405/501 是**这条路不存在**；其余算错误。
+// statusNote turns a non-2xx into a sentence. 404/405/501 mean **this route does not exist**; the
+// rest count as errors.
 func statusNote(url string, res *httpResult) error {
 	body := strings.TrimSpace(string(res.body))
 	if len(body) > maxErrorBody {
@@ -159,17 +168,18 @@ func statusNote(url string, res *httpResult) error {
 	}
 }
 
-// modelURLs 给一个 base 生成**可能**的模型列表地址。
+// modelURLs generates the **possible** model-list addresses for one base.
 //
-// OpenAI 的 base 惯例是带 `/v1`（`https://api.openai.com/v1`），而 DeepSeek 那种
-// 是 `https://api.deepseek.com`。两种写法在真实世界里都常见，所以两种都试；
-// 已经带 /v1 的不再重复拼。
+// OpenAI's base convention carries `/v1` (`https://api.openai.com/v1`), while DeepSeek-style ones
+// are `https://api.deepseek.com`. Both spellings are common in the real world, so both are tried;
+// one that already has /v1 is not joined again.
 func modelURLs(base string) []string {
 	b := strings.TrimRight(strings.TrimSpace(base), "/")
 	if b == "" {
 		return nil
 	}
-	// 有人会把完整的模型端点贴进 base_url。认它，别拼成 `/models/models`。
+	// Some people paste the full model endpoint into base_url. Recognize it; do not build
+	// `/models/models`.
 	if strings.HasSuffix(b, "/models") {
 		return []string{b}
 	}
@@ -179,8 +189,9 @@ func modelURLs(base string) []string {
 	return []string{b + "/v1/models", b + "/models"}
 }
 
-// openAIHeaders 是 OpenAI 兼容接口的认证。没有 key 也照样发——本机/内网的
-// 兼容服务常常不校验（而「没有 key」不该在客户端就被判成不支持）。
+// openAIHeaders is the OpenAI-compatible endpoint's auth. Sent even without a key -- local/intranet
+// compatible services often do not check (and "no key" should not be judged unsupported on the
+// client side).
 func openAIHeaders(p domain.Provider) map[string]string {
 	return map[string]string{"Authorization": "Bearer " + p.Key()}
 }
@@ -248,13 +259,14 @@ func listAnthropic(ctx context.Context, c *http.Client, p domain.Provider) (*lis
 	return nil, unsupported(i18n.T("{provider} has no base URL to ask for models", i18n.A{"provider": base}))
 }
 
-// anthropicPages 走完分页。Anthropic 用 `has_more` + `last_id`，下一页的查询参数
-// 是 `after_id`。
+// anthropicPages walks the pagination. Anthropic uses `has_more` + `last_id`, and the next page's
+// query parameter is `after_id`.
 func anthropicPages(ctx context.Context, c *http.Client, p domain.Provider, endpoint string) ([]Model, []string, string, error) {
 	var all []Model
 	var groups []string
 	after := ""
-	// 十条上限：真实清单一页一千个，十页足够任何一家；再多的形态我们也不认识。
+	// Ten pages max: a real listing is a thousand per page, ten pages is enough for anyone; any more
+	// shapes we would not recognize anyway.
 	for page := 0; page < 10; page++ {
 		u := endpoint
 		if after == "" {
@@ -282,7 +294,7 @@ func anthropicPages(ctx context.Context, c *http.Client, p domain.Provider, endp
 	return all, groups, endpoint, nil
 }
 
-// ---------- 解析 ----------
+// ---------- parsing ----------
 
 type wireModel struct {
 	ID          string   `json:"id"`
@@ -295,15 +307,15 @@ type wireModel struct {
 	Groups      []string `json:"groups"`
 }
 
-// parseModels 从一份上游回答里取出模型。返回 hasMore/lastID 供分页用。
+// parseModels pulls models out of one upstream answer. Returns hasMore/lastID for pagination.
 //
-// 它认三种常见外壳（都是实测见过的）：
+// It recognizes three common envelopes (all seen in practice):
 //
 //	{"data":[…]}                 OpenAI / Anthropic
-//	{"models":[…]}               一些兼容网关
-//	[…]                          少数自建服务直接回数组
+//	{"models":[…]}               some compatible gateways
+//	[…]                          a few self-hosted services return a bare array
 //
-// 元素可以是对象，也可以是裸字符串（`{"data":["gpt-4"]}`）。
+// Elements can be objects or bare strings (`{"data":["gpt-4"]}`).
 func parseModels(raw []byte) ([]Model, []string, bool, string, error) {
 	arr, more, lastID, err := modelArray(raw)
 	if err != nil {
@@ -319,7 +331,8 @@ func parseModels(raw []byte) ([]Model, []string, bool, string, error) {
 		}
 		var w wireModel
 		if err := json.Unmarshal(item, &w); err != nil {
-			// 一条认不出的元素不该让整份清单失败：跳过它，其余照常（fail-open）。
+			// One unrecognizable element must not fail the whole listing: skip it, the rest carry on
+			// (fail-open).
 			continue
 		}
 		m := Model{ID: firstNonEmpty(w.ID, w.Slug), Name: firstNonEmpty(w.Name, w.DisplayName)}
@@ -365,7 +378,7 @@ func modelArray(raw []byte) ([]json.RawMessage, bool, string, error) {
 		if err := json.Unmarshal(field, &arr); err == nil {
 			return arr, root.HasMore, root.LastID, nil
 		}
-		// `{"data":{"models":[…]}}` 这种再套一层的形态。
+		// The extra-nested shape `{"data":{"models":[…]}}`.
 		var nested struct {
 			Models []json.RawMessage `json:"models"`
 		}
@@ -385,10 +398,11 @@ func firstNonEmpty(vals ...string) string {
 	return ""
 }
 
-// groupOf 取上游给的分组。优先级：group > groups[0] > provider > owned_by。
+// groupOf takes the grouping the upstream gives. Priority: group > groups[0] > provider > owned_by.
 //
-// 都没有时，id 里带 `/` 的按第一段分组（OpenRouter 那种 `anthropic/…`）。
-// 不做更花哨的推断：`gpt-5.6-sol` 按 `-` 切出来的 `gpt` 不是分组，是噪音。
+// When none is present, an id containing `/` is grouped by its first segment (OpenRouter-style
+// `anthropic/…`). No fancier inference: the `gpt` that `gpt-5.6-sol` yields by splitting on `-` is
+// noise, not a group.
 func groupOf(w wireModel) string {
 	if g := strings.TrimSpace(w.Group); g != "" {
 		return g
@@ -408,10 +422,11 @@ func groupOf(w wireModel) string {
 	return ""
 }
 
-// mergeModels 把一页并进累积结果：按 id 去重，分组按第一次出现排序。
+// mergeModels merges one page into the accumulated result: dedupe by id, groups ordered by first
+// appearance.
 //
-// 去重不是洁癖：分页边界上同一页可能被重复返回（上游 bug），而去重之后界面
-// 不会出现两个一模一样的选项。
+// Dedupe is not fussiness: at page boundaries the same page can be returned twice (an upstream
+// bug), and after deduping the UI will not show two identical options.
 func mergeModels(dst, add []Model, dstGroups, addGroups []string) ([]Model, []string) {
 	seen := make(map[string]bool, len(dst)+len(add))
 	for _, m := range dst {
@@ -435,7 +450,8 @@ func mergeModels(dst, add []Model, dstGroups, addGroups []string) ([]Model, []st
 			groups = append(groups, g)
 		}
 	}
-	// 模型自己带的分组也算「出现过」，否则前端分组标题的顺序会缺。
+	// A model's own group also counts as "seen", otherwise the front end's group headings would be
+	// missing some.
 	for _, m := range dst {
 		if m.Group != "" && !has[m.Group] {
 			has[m.Group] = true
@@ -445,10 +461,11 @@ func mergeModels(dst, add []Model, dstGroups, addGroups []string) ([]Model, []st
 	return dst, groups
 }
 
-// cacheKey 把「这一份 provider 定义」压成一个键。
+// cacheKey squeezes "this provider definition" into one key.
 //
-// 它包含 key 的哈希而**不是 key 本身**：缓存表住在内存里，没有理由让它拿着一
-// 份明文；而换了 key 之后清单可能完全不同，所以 key 必须参与。
+// It includes a hash of the key and **not the key itself**: the cache table lives in memory, and
+// there is no reason for it to hold cleartext; and since the listing after a key change may be
+// completely different, the key must take part.
 func cacheKey(name string, p domain.Provider) string {
 	sum := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%s\x00%s\x00%s\x00%s\x00%s",
 		name, p.Protocol, p.BaseURL, p.AnthropicURL, p.APIKeyEnv, p.Key())))

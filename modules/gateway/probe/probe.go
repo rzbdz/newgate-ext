@@ -19,8 +19,9 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// Result 同时保存主探活结论和附加方言能力；
-// Latency 与 Total 分开，避免附加检查污染路由使用的首要健康评分。
+// Result holds the main probe conclusion and the auxiliary dialect capabilities together;
+// Latency and Total are kept apart so auxiliary checks do not pollute the primary health
+// score that routing uses.
 type Result struct {
 	Profile  string        `json:"profile"`
 	Role     string        `json:"role"`
@@ -28,82 +29,91 @@ type Result struct {
 	Model    string        `json:"model"`
 	OK       bool          `json:"ok"`
 	Status   int           `json:"status"`
-	Latency  time.Duration `json:"latency_ms"`       // 主探活耗时，健康评分只用它
-	Total    time.Duration `json:"total_latency_ms"` // 含方言/quirk 附加探测
+	Latency  time.Duration `json:"latency_ms"`       // main probe latency; health scoring uses this
+	Total    time.Duration `json:"total_latency_ms"` // includes the extra dialect/quirk probes
 	Err      string        `json:"error,omitempty"`
-	Cached   bool          `json:"-"` // 同一个 provider/model 只真打一次
-	// Dialects 探明支持的方言（"openai+anthropic"），空 = 主探活没过、没探。
+	Cached   bool          `json:"-"` // each provider/model is really hit only once
+	// Dialects are the dialects found supported ("openai+anthropic"); empty = the main
+	// probe failed, nothing was probed.
 	Dialects string `json:"dialects,omitempty"`
-	// CountTokens anthropic 私有端点 /messages/count_tokens 是否可用。
-	// nil = 没探到（主探活失败或连接错误）。
+	// CountTokens says whether the anthropic-private endpoint /messages/count_tokens works.
+	// nil = not probed (the main probe failed or the connection errored).
 	CountTokens *bool `json:"count_tokens,omitempty"`
 }
 
-// Light 把探活结论压缩为终端状态灯，不参与实际路由决策。
+// Light condenses a probe conclusion into a terminal status lamp; it takes no part in
+// routing decisions.
 func (r Result) Light() string {
 	switch {
 	case r.OK && r.Latency < 3*time.Second:
 		return "🟢"
 	case r.OK:
-		return "🟡" // 通但慢
+		return "🟡" // reachable but slow
 	default:
 		return "🔴"
 	}
 }
 
-// Target 是去重探活的最小身份；profile/role 只是引用它的配置视图。
+// Target is the minimal identity a probe is deduplicated by; profile/role are only config
+// views that reference it.
 //
-// 类型本体住在 config/targets：`newgate verify` 也要同一份「profile 解析成
-// 哪些上游」的名单，而它不该 import 探针的实现包（见那边的包注释）。
+// The type itself lives in config/targets: `newgate verify` needs the same list of "which
+// upstreams a profile resolves to", and it must not import the probe's implementation
+// package (see the package comment there).
 type Target = targets.Target
 
-// Options 控制一次探测。回调让调用方能实时渲染进展。
+// Options controls one probing run. Callbacks let the caller render progress live.
 type Options struct {
 	Only        string
 	Timeout     time.Duration
 	SlowAfter   time.Duration
 	Concurrency int
 
-	// OnlyTarget 只打**这一条** binding（provider/model），空 = 按 Only/全部 profile 走。
+	// OnlyTarget hits **this one** binding (provider/model) only; empty = follow Only/all
+	// profiles.
 	//
-	// 与 Only 的区别是「按什么找」：Only 是一个 profile 名（那下面是整条链的
-	// 几个候选），而这个是某一条具体的 binding。它的用例是「这一条现在到底通不通」
-	// ——健康表上的一行、一次手动的单点复验。走 profile 那条路给不出这个答案：
-	// 同一个 provider/model 可能挂在好几个 profile 下，而用户问的是那一条。
+	// The difference from Only is "what you look by": Only is a profile name (under it are
+	// the chain's several candidates), while this is one specific binding. Its use case is
+	// "does this one work right now" - one row of the health table, one manual single-point
+	// recheck. The profile route cannot answer that: the same provider/model may hang under
+	// several profiles, and the user is asking about that one.
 	//
-	// 设了它就**不看 profile**：目标已经点名了，再去遍历配置只会让「点一下这条」
-	// 顺带打一串别的。
+	// Set it and it **ignores profiles**: the target is named, and walking the config anyway
+	// would make "click this one" hit a bunch of others on the side.
 	OnlyTarget *Target
 
-	// OnPlan 在开始探测前调用一次，告知总共要打几个目标。
+	// OnPlan is called once before probing starts, saying how many targets will be hit in total.
 	OnPlan func(targets []Target)
-	// OnDone 每个目标一完成就立刻调用（完成顺序，非固定顺序）。
+	// OnDone is called the moment each target finishes (completion order, not a fixed order).
 	OnDone func(t Target, status int, lat, totalLat time.Duration, err error)
-	// OnWaiting 定期告知还卡在哪些目标上，以及各自已等了多久。
+	// OnWaiting periodically reports which targets are still stuck, and how long each has waited.
 	OnWaiting func(inflight map[Target]time.Duration)
-	// WaitTick OnWaiting 的间隔，0 表示不启用。
+	// WaitTick is the interval of OnWaiting; 0 disables it.
 	WaitTick time.Duration
 
-	// OnNote 报告一次「探到了，但不算失败」的事：这次探活了什么新毛病、缓存
-	// 读不出来、缓存写不回去。
+	// OnNote reports a "probed, but not a failure" event: what new quirk this probe found,
+	// the cache cannot be read, the cache cannot be written back.
 	//
-	// 为什么单独开一个口子而不是并进 OnDone 的 err：这些事都不改变本次结论
-	// （这一发是通的），但它们决定**下一次**的行为——缓存读不出来，下次还要
-	// 再花一轮 token；学到的新毛病没说出来，敲 probe 的人不知道自己刚发现了
-	// 什么（被动路径是打日志的，主动路径以前什么都不说）。
+	// Why a separate channel instead of folding into OnDone's err: none of these change this
+	// conclusion (this shot works), but they decide the **next** one - if the cache cannot be
+	// read, the next run spends another round of tokens; if a newly learned quirk is not
+	// mentioned, whoever ran probe does not know what they just found (the passive path logs
+	// it; the active path used to say nothing at all).
 	OnNote func(string)
 }
 
-// note 报告一句不改变结论的话。没装 OnNote 就丢弃——它只是展示，不是结论。
+// note reports one line that does not change the conclusion. Dropped when OnNote is not
+// installed - it is display only, not a conclusion.
 func (o *Options) note(format string, args ...interface{}) {
 	if o.OnNote != nil {
 		o.OnNote(fmt.Sprintf(format, args...))
 	}
 }
 
-// Run 把指定 profile（空 = 全部）的每个档位都打一遍。
-// 同一个 (provider, model) 只真打一次，结果复用——省时间也省额度。
-// 也会附带打一发 CheckQuirks 探上游毛病。
+// Run hits every tier of the given profile (empty = all).
+// The same (provider, model) is really hit only once and the result reused - saves time and
+// quota.
+// It also sends one CheckQuirks shot to probe for upstream quirks.
 func Run(o Options) ([]Result, error) {
 	if o.Concurrency <= 0 {
 		o.Concurrency = 8
@@ -113,18 +123,20 @@ func Run(o Options) ([]Result, error) {
 	}
 	cache, cacheErr := loadCapabilityCache()
 	if cacheErr != nil {
-		// 读不出来 = 这一轮要重新探（花 token）。继续跑，但说出来。
+		// Unreadable = this round probes again (spending tokens). Keep going, but say so.
 		o.note("%s", i18n.T("capability cache could not be read; every target is probed again this round: {err}",
 			i18n.A{"err": cacheErr}))
 	}
 
-	// 配置视图与去重目标都由 config/targets 给：`newgate verify` 用的是同一份
-	// （见那个包的注释）。这里只把它的 Row 翻译成 Result 的字段。
+	// Both the config view and the deduplicated targets come from config/targets: `newgate
+	// verify` uses the same copy (see that package's comment). Here we only translate its Row
+	// into Result's fields.
 	rows, uniq, err := targets.Enumerate(targets.Options{Only: o.Only, OnlyTarget: o.OnlyTarget})
 	if err != nil {
 		return nil, err
 	}
-	// targets 只回答「哪些上游」；发请求还要 provider 的定义（base、key）。
+	// targets only answers "which upstreams"; sending requests also needs the provider
+	// definition (base, key).
 	provs, err := store.LoadProviders()
 	if err != nil {
 		return nil, err
@@ -149,7 +161,8 @@ func Run(o Options) ([]Result, error) {
 	got := map[Target]outcome{}
 	inflight := map[Target]time.Time{}
 
-	// 定期汇报还卡在谁身上——claude 家族动辄 40s+，没这个用户会以为死了
+	// Report periodically who is still stuck - the claude family takes 40s+ easily, and
+	// without this the user thinks it died
 	stopTick := make(chan struct{})
 	if o.OnWaiting != nil && o.WaitTick > 0 {
 		go func() {
@@ -198,11 +211,13 @@ func Run(o Options) ([]Result, error) {
 			}
 
 			if err == nil && st < 400 {
-				// 方言/quirk 已学过就直接恢复缓存，不再重复花 token。
+				// If dialect/quirks were already learned, restore from cache instead of spending
+				// tokens again.
 				if !cache.apply(t) {
-					// 这两条探测的**返回值**以前被丢掉：CheckQuirks 学到的新毛病
-					// 只在被动路径（转发撞 400）才打日志，主动敲 probe 的人反而
-					// 不知道自己刚发现了什么。现在都经 OnNote 说出来。
+					// The **return values** of these two probes used to be dropped: a new quirk
+					// CheckQuirks learned was logged only on the passive path (a forward hitting
+					// 400), so whoever ran probe did not know what they had just found. Now both
+					// are spoken via OnNote.
 					if learned := CheckQuirks(t.Provider, p, t.Model, o.Timeout); len(learned) > 0 {
 						o.note("%s", i18n.T("{target} learned upstream quirks: {quirks}",
 							i18n.A{"target": t, "quirks": strings.Join(learned, ", ")}))
@@ -225,15 +240,16 @@ func Run(o Options) ([]Result, error) {
 	}
 	wg.Wait()
 	close(stopTick)
-	// 落盘不改变本次结论，但决定下一轮要不要重新花 token。save() 里五步
-	// （Marshal/MkdirAll/WriteFile/Chmod/Rename）每一步都在报错，以前调用点
-	// `_ =` 掉了——那五步检查一次都没用上。
+	// Persisting does not change this conclusion, but decides whether the next round spends
+	// tokens again. The five steps in save() (Marshal/MkdirAll/WriteFile/Chmod/Rename) each
+	// report errors, and the call site used to `_ =` the result - so none of those five
+	// checks ever applied.
 	if err := cache.save(); err != nil {
 		o.note("%s", i18n.T("capability cache could not be saved; the next probe spends tokens again: {err}",
 			i18n.A{"err": err}))
 	}
 
-	// 回填
+	// Write back
 	seen := map[Target]bool{}
 	for i := range results {
 		r := &results[i]
@@ -251,7 +267,8 @@ func Run(o Options) ([]Result, error) {
 			r.Cached = true
 		}
 		seen[t] = true
-		// 方言能力：注册表里探明的（同一个 provider/model 只探一次，行间共享）
+		// Dialect capabilities: those found in the registry (one provider/model is probed
+		// once and shared across rows)
 		if ok, _ := dialect.Supports(r.Provider, r.Model, dialect.CapOpenAI); ok {
 			r.Dialects = "openai"
 		}
@@ -267,7 +284,7 @@ func Run(o Options) ([]Result, error) {
 		}
 	}
 
-	// Rows 已经按（profile, 档位顺序）排好；结果沿用同一顺序。
+	// Rows are already ordered by (profile, tier order); results keep the same order.
 	return results, nil
 }
 
@@ -276,12 +293,13 @@ func timeoutRetry(attempt func() (int, time.Duration, error)) (int, time.Duratio
 	if networkErr, ok := err.(net.Error); !ok || !networkErr.Timeout() {
 		return status, latency, err
 	}
-	// 主延迟表示最终这次探测请求本身；第一次超时属于命令总耗时，
-	// 不能叠到成功重试上把健康评分凭空翻倍。
+	// The primary latency is the final probe request itself; a first timeout belongs to the
+	// command's total time, and must not be stacked onto a successful retry to double the
+	// health score out of thin air.
 	return attempt()
 }
 
-// Light 给一次探测结果配灯。
+// Light gives one probe result its lamp.
 func Light(ok bool, lat time.Duration) string {
 	switch {
 	case ok && lat < 3*time.Second:
@@ -292,7 +310,7 @@ func Light(ok bool, lat time.Duration) string {
 	return "🔴"
 }
 
-// One 对一个 (provider, model) 打一次最小请求。
+// One sends one minimal request to a (provider, model).
 func One(p domain.Provider, model string, timeout time.Duration) (int, time.Duration, error) {
 	body, _ := json.Marshal(map[string]interface{}{
 		"model":      model,
@@ -303,8 +321,9 @@ func One(p domain.Provider, model string, timeout time.Duration) (int, time.Dura
 	if p.Protocol == "anthropic" {
 		suffix = "/messages"
 	}
-	// 按方言挑 base：两种方言分家的上游（provider.anthropic_url）只有走对
-	// base 才通，探错 base 会得到一个和真实流量无关的结论。
+	// Pick base by dialect: an upstream splitting the two dialects (provider.anthropic_url)
+	// only works on the right base, and probing the wrong base yields a conclusion unrelated
+	// to real traffic.
 	url := p.URL(suffix)
 
 	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
@@ -349,7 +368,7 @@ func extractErr(raw []byte) string {
 	return s
 }
 
-// Summary 按 profile 汇总，用于给出「该切哪个」的建议。
+// Summary aggregates per profile, to advise on "which one to switch to".
 type Summary struct {
 	Profile string
 	OK      int
@@ -427,23 +446,25 @@ func FailedCount(rs []Result) int {
 	return failed
 }
 
-// CheckDialects 探「这个 (provider, model) 听得懂哪些方言」——包括
-// anthropic 私有的 count_tokens（Claude Code 的水位条靠它，本地只有
-// 粗估）。主探活通过后才该调。结果记进 dialect 注册表。
+// CheckDialects probes "which dialects this (provider, model) understands" - including the
+// anthropic-private count_tokens (Claude Code's context meter relies on it, and locally it
+// only has a rough estimate). Call it only after the main probe passes. Results go into the
+// dialect registry.
 //
-// 注意：本函数在 `newgate probe` 的进程里跑，学到的随进程消失；daemon
-// 会在自己遇到第一个 count_tokens 时补学（gate 层面的 lazy probe），
-// 最终状态一致——见 dialect 包注释。
+// Note: this function runs in the `newgate probe` process and what it learns dies with the
+// process; the daemon learns it on its own when it first sees a count_tokens (a lazy probe at
+// the gate layer), and the final state matches - see the dialect package comment.
 func CheckDialects(provName string, p domain.Provider, model string, timeout time.Duration) {
 	declared, other := dialect.CapOpenAI, dialect.CapAnthropic
 	if p.Protocol == "anthropic" {
 		declared, other = dialect.CapAnthropic, dialect.CapOpenAI
 	}
-	dialect.Mark(provName, model, declared) // 声明的协议是配置事实，不用探
+	dialect.Mark(provName, model, declared) // the declared protocol is a config fact, no probe needed
 
 	learnDialect(provName, p, model, other, timeout)
 
-	// count_tokens 是 anthropic 方言的端点：/messages 都不通就不用试了
+	// count_tokens is a dialect-of-anthropic endpoint: if /messages does not work, no point
+	// trying
 	if anthOK, _ := dialect.Supports(provName, model, dialect.CapAnthropic); !anthOK {
 		dialect.MarkUnsupported(provName, model, dialect.CapCountTokens)
 		return
@@ -451,9 +472,9 @@ func CheckDialects(provName string, p domain.Provider, model string, timeout tim
 	learnDialect(provName, p, model, dialect.CapCountTokens, timeout)
 }
 
-// learnDialect 打一发最小请求，按结果记「支持/明确不支持」。
-// 连接失败和 401/429 这类**不学**——那是「现在不行」，不是「没有」，
-// 猜错了会让 gate 永久放弃一个本来存在的端点。
+// learnDialect sends one minimal request and records "supported / explicitly unsupported".
+// Connection failures and 401/429 are **not learned** - those mean "not now", not "absent",
+// and a wrong guess makes gate abandon an endpoint that actually exists, for good.
 func learnDialect(provName string, p domain.Provider, model string, c dialect.Cap, timeout time.Duration) {
 	st, err := oneDialect(p, model, c, timeout)
 	switch {
@@ -464,8 +485,9 @@ func learnDialect(provName string, p domain.Provider, model string, c dialect.Ca
 	}
 }
 
-// oneDialect 打一发最小请求探某个方言的端点。auth 跟 provider 声明的
-// protocol 走——与 gate 的 setAuth 一致，探的就是 gate 将来会发的那条。
+// oneDialect sends one minimal request to probe a dialect's endpoint. auth follows the
+// provider's declared protocol - same as setAuth in gate, so what is probed is the shot gate
+// will send later.
 func oneDialect(p domain.Provider, model string, c dialect.Cap, timeout time.Duration) (int, error) {
 	suffix := "/chat/completions"
 	switch c {
@@ -486,8 +508,9 @@ func oneDialect(p domain.Provider, model string, c dialect.Cap, timeout time.Dur
 		return 0, err
 	}
 
-	// URL 构造统一走 provider 自己那份：两种方言分家的上游（anthropic_url）
-	// 靠它选对 base——探的路径必须和 gate 将来发的一模一样。
+	// URL construction goes through the provider's own: an upstream splitting the two dialects
+	// (anthropic_url) relies on it to pick the right base - the probed path must be exactly
+	// what gate will send.
 	req, err := http.NewRequest("POST", p.URL(suffix),
 		bytes.NewReader(body))
 	if err != nil {
@@ -506,23 +529,25 @@ func oneDialect(p domain.Provider, model string, c dialect.Cap, timeout time.Dur
 		return 0, err
 	}
 	defer resp.Body.Close()
-	_, _ = ioutil.ReadAll(resp.Body) // 排空以复用连接；错误体不需要
-	// 4xx 不算错误：404/405 正是「没有这个端点」的答案，调用方按状态码学
+	_, _ = ioutil.ReadAll(resp.Body) // drain to reuse the connection; the error body is not needed
+	// A 4xx is not an error: 404/405 is exactly the answer "no such endpoint", and the
+	// caller learns from the status code
 	return resp.StatusCode, nil
 }
 
-// CheckQuirks 主动探一发「带 tools 的请求」，把上游的毛病提前学出来。
+// CheckQuirks actively sends one "request with tools" to learn upstream quirks in advance.
 //
-// 为什么必须单独探这一发：普通探活发的是一句 "hi"，**不带 tools**。而
-// glm-5.3 那个 400 恰恰只在带 tools 时出现——聚合器看见 tools 才会替我们
-// 塞「关闭思考」。于是 `newgate probe` 一片全绿，真实流量却每条都 400，
-// 探活比现实乐观是最坏的一种探活。
+// Why this shot must be separate: an ordinary probe sends "hi", **without tools**. And the
+// glm-5.3 400 appears precisely only with tools - the aggregator injects "disable thinking"
+// for us only when it sees tools. So `newgate probe` shows all green while real traffic 400s
+// on every request; a probe more optimistic than reality is the worst kind of probe.
 //
-// 只在普通探活通过后再打，且一个 (provider, model) 只打一次：多打一发就多
-// 一次额度和一次撞限流的机会。
+// It is sent only after an ordinary probe passes, and only once per (provider, model): one
+// more shot is one more quota unit and one more chance to hit a rate limit.
 //
-// 返回学到的毛病（人话）。什么都没学到就返回 nil——包括请求本身失败的情况：
-// 探测失败不代表模型有毛病，不能凭猜往注册表里写。
+// It returns the quirks learned (plain language). nil if nothing was learned - including the
+// case where the request itself failed: a failed probe does not mean the model is quirky, and
+// we must not write guesses into the registry.
 func CheckQuirks(provName string, p domain.Provider, model string, timeout time.Duration) []string {
 	payload := map[string]interface{}{
 		"model":      model,
@@ -541,7 +566,7 @@ func CheckQuirks(provName string, p domain.Provider, model string, timeout time.
 	}
 	suffix := "/chat/completions"
 	if p.Protocol == "anthropic" {
-		// Anthropic 方言的 tools 是平铺的，没有 function 包一层
+		// Anthropic-dialect tools are flat, with no function wrapper
 		payload["tools"] = []map[string]interface{}{{
 			"name": "newgate_probe", "description": "probe",
 			"input_schema": map[string]interface{}{
@@ -555,8 +580,9 @@ func CheckQuirks(provName string, p domain.Provider, model string, timeout time.
 		return nil
 	}
 
-	// URL 构造统一走 provider 自己那份：两种方言分家的上游（anthropic_url）
-	// 靠它选对 base——探的路径必须和 gate 将来发的一模一样。
+	// URL construction always goes through the provider's own copy: for upstreams whose two
+	// dialects split (anthropic_url) that is what picks the right base -- the probe path
+	// must be exactly the one the gate will send later.
 	req, err := http.NewRequest("POST", p.URL(suffix),
 		bytes.NewReader(body))
 	if err != nil {

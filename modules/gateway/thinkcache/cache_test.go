@@ -8,8 +8,9 @@ import (
 
 const reasoning = "look at \"main.go\"\nthen look at src\\a"
 
-// SSE 的事件边界和 TCP 的读边界毫无关系：一段推理完全可能被切在
-// `reasoning_` 和 `content` 之间。逐字节喂是最狠的边界测试。
+// SSE event boundaries have nothing to do with TCP read boundaries: a piece of reasoning can
+// be split right between `reasoning_` and `content`. Feeding byte by byte is the harshest
+// boundary test.
 func TestObserverSurvivesArbitraryChunking(t *testing.T) {
 	stream := `data: {"choices":[{"delta":{"reasoning_content":"look at \"main.go\"\n"}}]}` + "\n\n" +
 		`data: {"choices":[{"delta":{"reasoning_content":"then look at src\\a"}}]}` + "\n\n" +
@@ -36,7 +37,7 @@ func TestObserverSurvivesArbitraryChunking(t *testing.T) {
 	}
 }
 
-// Anthropic 方言：thinking_delta / content_block_start(tool_use)
+// Anthropic dialect: thinking_delta / content_block_start(tool_use)
 func TestObserverAnthropicDialect(t *testing.T) {
 	o := NewObserver()
 	for _, ev := range []string{
@@ -55,7 +56,8 @@ func TestObserverAnthropicDialect(t *testing.T) {
 	}
 }
 
-// 响应侧挂的 key 和请求侧找的 key 必须严格对应，改一边就得改另一边。
+// The keys attached on the response side and the keys looked up on the request side must
+// correspond exactly; change one and you must change the other.
 func TestKeysMirrorBetweenResponseAndRequest(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -96,7 +98,8 @@ func TestKeysMirrorBetweenResponseAndRequest(t *testing.T) {
 	}
 }
 
-// 一轮多个 tool_call：认出任意一个 id 都要能找回同一段推理。
+// Several tool_calls in one turn: recognizing any one id must find back the same piece of
+// reasoning.
 func TestAnyToolIDFindsTheSameReasoning(t *testing.T) {
 	c := New(1<<20, time.Hour)
 	c.Put([]string{ToolKey("a"), ToolKey("b"), ToolKey("c")}, []byte(reasoning))
@@ -119,7 +122,8 @@ func TestTTLAndByteCap(t *testing.T) {
 		t.Fatal("still there past the TTL")
 	}
 
-	// 字节封顶：塞超量后总字节数不许越界，最早的被淘汰
+	// Byte cap: after overfilling, the total byte count must not exceed the bound; the oldest
+	// is evicted
 	small := New(300, time.Hour)
 	blob := []byte(strings.Repeat("x", 100))
 	for _, k := range []string{"a", "b", "c", "d", "e"} {
@@ -137,7 +141,8 @@ func TestTTLAndByteCap(t *testing.T) {
 	}
 }
 
-// 没有能对上号的 key 就别存——存了也永远找不回来，白占地方。
+// Without a key that will match later, do not store -- it would never be found again, just
+// wasting space.
 func TestNoKeysNoStore(t *testing.T) {
 	c := New(1<<20, time.Hour)
 	o := NewObserver()
@@ -179,10 +184,10 @@ func TestContinuationOriginOnlyWhileToolLoopIsOpen(t *testing.T) {
 		t.Fatal("a new plain user turn must not keep pinning the old provider")
 	}
 
-	// Responses 方言（Codex 走的那条）：对话在顶层 input[]，工具输出是
-	// function_call_output 项。少了这一支的话，Codex 的 tool loop 在这条判据
-	// 眼里根本不算未闭合——跨上游迁移永远不触发，而 DeepSeek 接手别家未闭合的
-	// reasoning/tool 状态是要 400 的。
+	// Responses dialect (the one Codex uses): the conversation sits in top-level input[], and
+	// tool output is a function_call_output item. Without this branch, Codex's tool loop does
+	// not count as unclosed by this criterion -- cross-upstream migration never fires, and
+	// DeepSeek answers 400 when it takes over another vendor's unclosed reasoning/tool state.
 	responses := []byte(`{"model":"normal","input":[
 			{"type":"function_call","call_id":"call_b","name":"exec","arguments":"{}"},
 			{"type":"function_call_output","call_id":"call_b","output":"ok"}
@@ -191,7 +196,7 @@ func TestContinuationOriginOnlyWhileToolLoopIsOpen(t *testing.T) {
 		t.Fatalf("wrong Responses tool loop origin: ok=%v got=%+v", ok, got)
 	}
 
-	// 并行调用：末尾连着两条输出，两条都算这一轮。
+	// Parallel calls: two outputs in a row at the end; both count for this turn.
 	parallel := []byte(`{"input":[
 			{"type":"function_call_output","call_id":"call_a","output":"1"},
 			{"type":"function_call_output","call_id":"call_b","output":"2"}
@@ -200,7 +205,8 @@ func TestContinuationOriginOnlyWhileToolLoopIsOpen(t *testing.T) {
 		t.Fatal("two function_call_output in a row is still an unclosed turn")
 	}
 
-	// 尾部已经不是 function_call_output → 这一轮闭合了（客户端在等新指令）。
+	// The tail is no longer function_call_output → this turn is closed (the client is waiting
+	// for new instructions).
 	responsesClosed := []byte(`{"input":[
 			{"type":"function_call_output","call_id":"call_b","output":"ok"},
 			{"type":"message","role":"user","content":[{"type":"input_text","text":"keep going"}]}
@@ -210,7 +216,7 @@ func TestContinuationOriginOnlyWhileToolLoopIsOpen(t *testing.T) {
 	}
 }
 
-// 非流式响应也要能观测到。
+// Non-streaming responses must be observable too.
 func TestObserveBody(t *testing.T) {
 	o := NewObserver()
 	o.ObserveBody([]byte(`{"choices":[{"message":{"role":"assistant",` +
@@ -224,15 +230,16 @@ func TestObserveBody(t *testing.T) {
 	}
 }
 
-// Responses 方言（Codex 走的那条）也要能被观测到。
+// The Responses dialect (the one Codex uses) must be observable too.
 //
-// 这条链上曾经有一处静默的断点（2026-09-23）：sseChunk 的 `delta` 声明成了对象，
-// 而 `response.reasoning_text.delta` 的 delta 是**字符串**——每一个推理增量事件都
-// 让整个 chunk 反序列化失败，于是 Codex 那一路一个推理字节都记不下。它的表现与
-// 「上游真没给推理」完全一样（推理 0 字节），只有 Wire 那行的坏块计数能分辨。
+// This chain once had a silent break point (2026-09-23): sseChunk's `delta` was declared as
+// an object, while the delta of `response.reasoning_text.delta` is a **string** -- every
+// reasoning delta event made the whole chunk fail to unmarshal, so the Codex path recorded
+// not a single reasoning byte. Its behavior is identical to "the upstream really sent no
+// reasoning" (0 reasoning bytes); only the bad-chunk count in the Wire line tells them apart.
 //
-// 顺带钉住去重：同一段推理在增量事件与 output_item.done 里各出现一次，收两遍
-// 下一轮补回去的就是重复内容。
+// Also pins down dedup: the same reasoning appears once in the delta events and once in
+// output_item.done; collecting both makes the next round's backfill duplicated content.
 func TestObserverResponsesDialect(t *testing.T) {
 	stream := `event: response.created` + "\n" + `data: {"type":"response.created"}` + "\n\n" +
 		`event: response.output_item.added` + "\n" +
@@ -241,14 +248,15 @@ func TestObserverResponsesDialect(t *testing.T) {
 		`data: {"type":"response.reasoning_text.delta","output_index":0,"item_id":"rs_1","delta":"look at \"main.go\"\n"}` + "\n\n" +
 		`event: response.reasoning_text.delta` + "\n" +
 		`data: {"type":"response.reasoning_text.delta","output_index":0,"item_id":"rs_1","delta":"then look at src\\a"}` + "\n\n" +
-		// 收尾那条带着**同一份**完整原文：不能重复计入。
+		// The closing event carries the **same** full text: it must not be counted twice.
 		`event: response.output_item.done` + "\n" +
 		`data: {"type":"response.output_item.done","output_index":0,"item":{"type":"reasoning","id":"rs_1","content":[{"type":"reasoning_text","text":"look at \"main.go\"\nthen look at src\\a"}]}}` + "\n\n" +
 		`event: response.output_item.done` + "\n" +
 		`data: {"type":"response.output_item.done","output_index":1,"item":{"type":"function_call","id":"item_1","call_id":"call_00_abc","name":"exec","arguments":"{}"}}` + "\n\n"
 
 	o := NewObserver()
-	// 分块喂：事件边界与读边界无关这条约束对方言一视同仁。
+	// Feed in chunks: the rule that event boundaries are unrelated to read boundaries applies
+	// to every dialect alike.
 	for i := 0; i < len(stream); i += 7 {
 		j := i + 7
 		if j > len(stream) {
@@ -271,7 +279,7 @@ func TestObserverResponsesDialect(t *testing.T) {
 	}
 }
 
-// 非流式的 Responses 响应（一个 response 对象，与流式收尾同形状）。
+// A non-streaming Responses response (one response object, same shape as the streaming close).
 func TestObserveResponsesBody(t *testing.T) {
 	o := NewObserver()
 	o.ObserveBody([]byte(`{"id":"resp_1","object":"response","output":[` +
@@ -285,10 +293,13 @@ func TestObserveResponsesBody(t *testing.T) {
 	}
 }
 
-// Responses 的 summary 不是「要求回传的那份原文」，一个字节都不该收。
+// The Responses summary is not "the original text required back"; not a byte of it may be
+// kept.
 //
-// 现场：上游的 reasoning 项同时带 content[]（原文）与 summary[]（给人看的摘要）。
-// 拿摘要当原文补回去就是编内容——正是 st-reasoning.go 那条「不编」要防的事。
+// Field evidence: the upstream's reasoning item carries both content[] (the original text)
+// and summary[] (a summary for humans). Backfilling the summary as if it were the original is
+// fabricating content -- exactly what the "never fabricate" rule in st-reasoning.go guards
+// against.
 func TestObserverResponsesIgnoresSummary(t *testing.T) {
 	o := NewObserver()
 	o.ObserveBody([]byte(`{"output":[{"type":"reasoning","id":"rs_1",` +
@@ -298,13 +309,16 @@ func TestObserverResponsesIgnoresSummary(t *testing.T) {
 	}
 }
 
-// TestObserverNotesStreamFailure 钉住「上游把失败塞在流里」这件事被抓到了。
+// TestObserverNotesStreamFailure pins down that "the upstream stuffed the failure into the
+// stream" is caught.
 //
-// 为什么它必须存在：Responses 方言在 stream:true 时先 200 开流，再把失败塞进
-// 事件流（response.failed）。这条流只有 Observer 在读，所以「上游拒了这一发」
-// 这个事实**只能**从这里问出来——它接不上，数据面那条 learnQuirks（只看
-// status>=400）就永远学不到，用户看到的是「必现、过一会儿自己好」。2026-09-22
-// 报的那句「stream disconnected before completion」正是这个形态。
+// Why it must exist: with stream:true the Responses dialect opens the stream with 200 first,
+// then pushes the failure into the event stream (response.failed). Only the Observer reads
+// this stream, so the fact "the upstream rejected this request" can **only** be asked here --
+// if this link does not connect, the data plane's learnQuirks (which looks only at
+// status>=400) never learns it, and what the user sees is "always reproduces, then fixes
+// itself after a while". The line "stream disconnected before completion" reported on
+// 2026-09-22 is exactly this shape.
 func TestObserverNotesStreamFailure(t *testing.T) {
 	o := NewObserver()
 	if _, failed := o.StreamFailure(); failed {
@@ -319,18 +333,18 @@ func TestObserverNotesStreamFailure(t *testing.T) {
 	if !failed {
 		t.Fatal("the response.failed in the stream was not recorded")
 	}
-	// 原文一字不改：它是 quirk 签名的**匹配输入**（judged by bytes.Contains），
-	// 改一个字节就等于这条签名永远匹配不上。
+	// The original text stays byte for byte: it is the **match input** of the quirk signature
+	// (judged by bytes.Contains); changing one byte means the signature never matches again.
 	if !strings.Contains(msg, "始终思考") {
 		t.Fatalf("the original text was lost: %q", msg)
 	}
 }
 
-// TestObserverStreamFailureTakesTheFirstOnly 只记**第一条**。
+// TestObserverStreamFailureTakesTheFirstOnly records **only the first**.
 //
-// 一条流里报两次失败时，第一次那句才是失败的原因，后面那些是它的回声（上游
-// 有时会补一条 aborted/错误摘要）。取第一条也意味着这件事不会被后面的正常
-// 事件覆盖掉。
+// When one stream reports two failures, the first sentence is the cause and the later ones
+// are its echo (the upstream sometimes adds an aborted/error summary). Taking the first also
+// means later normal events cannot overwrite it.
 func TestObserverStreamFailureTakesTheFirstOnly(t *testing.T) {
 	o := NewObserver()
 	for _, m := range []string{"the first reason", "a later echo"} {
@@ -341,11 +355,12 @@ func TestObserverStreamFailureTakesTheFirstOnly(t *testing.T) {
 	}
 }
 
-// TestObserverStreamFailureWithoutResponseObject 认另一种信封。
+// TestObserverStreamFailureWithoutResponseObject recognizes the other envelope.
 //
-// 实测见过两种：失败那句话有的在 `response.error.message` 里，有的只带一个
-// 顶层的 `error` 对象。**「上游拒了这一发」这件事本身**比那句话重要——取不到
-// 原文时留一句兜底的，但不能当没发生。
+// Measured two kinds: sometimes the failure sentence is in `response.error.message`, sometimes
+// there is only a top-level `error` object. **The fact that the upstream rejected this
+// request** matters more than the sentence -- when the original text is unavailable, keep a
+// fallback line, but do not treat it as if nothing happened.
 func TestObserverStreamFailureWithoutResponseObject(t *testing.T) {
 	o := NewObserver()
 	o.Write([]byte(`data: {"type":"response.failed","error":{"code":"server_error","message":"upstream exploded"}}` + "\n\n"))

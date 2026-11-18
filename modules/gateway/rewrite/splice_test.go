@@ -5,8 +5,9 @@ import (
 	"testing"
 )
 
-// 真实形状：奇怪的缩进、非字母序的 key、嵌套 tools 里也有 "model" 键、
-// 大整数、科学计数、null、空数组、转义引号、Unicode、cache_control。
+// A real shape: odd indentation, non-alphabetical keys, a nested "model" key inside tools
+// too, big integers, scientific notation, null, empty arrays, escaped quotes, Unicode,
+// cache_control.
 const raw = `{
   "stream": true,
   "model": "heavy",
@@ -34,7 +35,8 @@ func TestSpliceOnlyTouchesTopLevelModel(t *testing.T) {
 		t.Fatalf("splice failed: %v", err)
 	}
 
-	// 期望：把原文里那一处 `"heavy"` 换成 `"model-large"`，别的字节全不变
+	// Expected: replace that one `"heavy"` in the source with `"model-large"`; every other
+	// byte unchanged
 	want := strings.Replace(raw, `"model": "heavy"`, `"model": "model-large"`, 1)
 	if string(out) != want {
 		t.Errorf("not a byte-exact change of model only\n--- want ---\n%s\n--- got ---\n%s", want, out)
@@ -46,7 +48,8 @@ func TestSplicePreservesEverythingElseByteForByte(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 逐字节核对：除了 model 值那一段，前后缀必须完全一致
+	// Byte-for-byte check: apart from the model value span, prefix and suffix must match
+	// exactly
 	pre := raw[:strings.Index(raw, `"heavy"`)]
 	post := raw[strings.Index(raw, `"heavy"`)+len(`"heavy"`):]
 	if !strings.HasPrefix(string(out), pre) {
@@ -55,7 +58,7 @@ func TestSplicePreservesEverythingElseByteForByte(t *testing.T) {
 	if !strings.HasSuffix(string(out), post) {
 		t.Error("bytes after model were changed")
 	}
-	// 嵌套的同名键必须原封不动
+	// A nested key of the same name must stay untouched
 	for _, must := range []string{
 		`"model":{"type":"string","description":"a nested model key, must never be touched"}`,
 		`"big": 9007199254740993`,
@@ -72,7 +75,7 @@ func TestSplicePreservesEverythingElseByteForByte(t *testing.T) {
 
 func TestSpliceKeyOrderAndWhitespaceIntact(t *testing.T) {
 	out, _ := ReplaceTopLevelString([]byte(raw), "model", "m")
-	// 顶层第一个键仍是 stream（Marshal 会把它排到 a_last_key 后面）
+	// The first top-level key is still stream (Marshal would sort it after a_last_key)
 	i0 := strings.Index(string(out), `"stream"`)
 	i1 := strings.Index(string(out), `"a_last_key"`)
 	if i0 < 0 || i1 < 0 || i0 > i1 {
@@ -93,7 +96,7 @@ func TestTopLevelReaders(t *testing.T) {
 	if TopLevelBool([]byte(raw), "nope") {
 		t.Error("a missing key should be false")
 	}
-	// 嵌套的 model 不该被读到顶层
+	// The nested model must not be read as top-level
 	nested := `{"tools":[{"model":"inner"}],"model":"outer"}`
 	if m, _ := TopLevelString([]byte(nested), "model"); m != "outer" {
 		t.Errorf("read a nested model: %q", m)

@@ -13,35 +13,42 @@ import (
 	"github.com/rzbdz/newgate/lib/i18n"
 )
 
-// 本文件是接管的**第二道闸**：写盘之前，让 hermes 自己的 YAML 解析器确认这次手术
-// 没有改坏任何东西。
+// This file is takeover's **second gate**: before writing to disk, let hermes' own YAML parser
+// confirm this surgery broke nothing.
 //
-// # 为什么要有它（2026-11-04 用户：「直接手术我担心会不会有兼容性问题」）
+// # Why it must exist (the user, 2026-11-04: "surgery directly makes me worry about
+// compatibility")
 //
-// 字节手术的好处是只碰该碰的行；它的风险是**我们对 YAML 的理解**与 hermes 的
-// 解析器不一致——一处缩进算错，改的就是另一个键，而文件看起来完全正常。所以不靠
-// 「我们觉得对」，而是问**唯一有发言权的那一方**：
+// The upside of byte surgery is that only the intended lines are touched; its risk is that
+// **our understanding of YAML** differs from hermes' parser -- one mis-counted indent and we
+// edit a different key, while the file looks perfectly normal. So instead of trusting "we think
+// it is right", ask **the only party entitled to an opinion**:
 //
-//	load(原文件) + 这次的改动（按路径套上去）  ==  load(手术后的文件)
+//	load(original file) + this round's edits (applied by path)  ==  load(file after surgery)
 //
-// 两边逐值相等，才写盘。这一句同时钉住两件事：我们**想改的**确实改成了（右边有），
-// 我们**没想改的**一个都没动（左边其余部分原样）。不相等就整个放弃，文件不动，
-// 报出第一处不同在哪个路径。
+// Only when both sides are value-for-value equal do we write. That one sentence pins two things
+// at once: what we **meant to change** really did change (present on the right), and what we
+// **did not mean to change** is untouched (the rest on the left is as it was). If they differ,
+// abandon the whole thing, leave the file alone, and report the path of the first difference.
 //
-// # 解析器从哪来
+// # Where the parser comes from
 //
-// hermes 是 Python 程序，它读 config.yaml 用的是它 venv 里的 PyYAML（safe_load）。
-// 这台机器上只要装着 hermes，那个解释器就在：它就是 `hermes` 这个入口脚本的
-// shebang。所以这里不引入任何新依赖，也不假设系统 Python 有 PyYAML。
+// hermes is a Python program, and it reads config.yaml with the PyYAML in its venv
+// (safe_load). As long as hermes is installed on this machine, that interpreter is there: it is
+// the shebang of the `hermes` entry script. So no new dependency is introduced here, and no
+// assumption is made that the system Python has PyYAML.
 //
-// 找不到解释器（入口不是 Python 脚本、venv 被挪了）时**不放行也不卡死**：退回到
-// 本包自己的读回校验（每个写进去的键都要读得回来），并在报告里写明「没有经过
-// hermes 的解析器确认」——降级是看得见的。
+// When no interpreter can be found (the entry is not a Python script, the venv moved), it
+// **neither lets it through nor gets stuck**: it falls back to this package's own read-back
+// check (every key written must read back) and says so in the report -- the degradation is
+// visible.
 
-// verifyScript 读两份文件与一串改动，打印第一处不一致（一致则什么都不打印）。
+// verifyScript reads two files and a list of edits, and prints the first mismatch (nothing if
+// they agree).
 //
-// 用 safe_load 而不是 hermes 的 load_config：后者会合并缺省值、迁移旧键，比的就不再
-// 是「文件里写了什么」。我们关心的正是文件本身。
+// It uses safe_load rather than hermes' load_config: the latter merges defaults and migrates
+// old keys, so what is compared is no longer "what the file says". What we care about is
+// precisely the file itself.
 const verifyScript = `
 import json, sys, yaml
 base_path, new_path, edits_path, orig_path = sys.argv[1:5]
@@ -89,21 +96,25 @@ d = diff(want, new, [])
 if d: print(".".join(d[0]) + ": " + d[1])
 `
 
-// verified 是一次校验的结论：Parser 说明是谁确认的（空 = 没有外部解析器确认）。
+// verified is one check's conclusion: Parser says who confirmed it (empty = no external parser
+// confirmed).
 type verified struct {
 	Parser string
 }
 
-// verifyEdits 校验 out 是不是「src + edits」。不一致返回错误（文件不该写）。
+// verifyEdits checks that out is "src + edits". A mismatch returns an error (the file must not
+// be written).
 //
-// orig 是 FromOrig 那类改动取值的来源（还原时 = 接管前的原件；接管时用不到，传空串）。
+// orig is where FromOrig-style edits take their values (restore: the pre-takeover original;
+// takeover: unused, pass an empty string).
 func verifyEdits(src, out string, edits []edit, orig string) (verified, error) {
-	// 第一道：本包自己读回。每个写进去的标量都要读得回来，删掉的都要不在——这一道
-	// 不依赖任何外部程序，所以永远跑。
+	// First gate: this package's own read-back. Every scalar written must read back, and every
+	// one removed must be gone -- this gate depends on no external program, so it always runs.
 	d := parseDoc(out)
 	for _, e := range edits {
 		if e.FromOrig {
-			continue // 取值在原件里，本包读回比不了它的块；交给下面的解析器比
+			continue // the value lives in the original; can't compare on read-back, so
+			// leave it to the parser below
 		}
 		if e.Value == nil {
 			if _, ok := d.lookup(e.Path...); ok {
@@ -150,15 +161,17 @@ func verifyEdits(src, out string, edits []edit, orig string) (verified, error) {
 			return verified{}, nil
 		}
 	}
-	// -I：隔离模式，不读当前目录、不读用户 site——这一步只该用到 PyYAML。
+	// -I: isolated mode, reads neither the current directory nor the user site -- this step
+	// should use nothing but PyYAML.
 	cmd := exec.Command(py, "-I", "-c", verifyScript,
 		filepath.Join(dir, "base.yaml"), filepath.Join(dir, "new.yaml"),
 		filepath.Join(dir, "edits.json"), filepath.Join(dir, "orig.yaml"))
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	// stdin 显式接到 /dev/null：上面的判断已经保证这里是个 python，但**任何**
-	// 子进程都不该从继承来的终端读（2026-11-17 那次卡住就是 shell 在读 stdin，
-	// 连着一条真实终端）。这道是第二层，代价为零。
+	// stdin is explicitly wired to /dev/null: the check above already guarantees this is a
+	// python, but **no** child process should read from the inherited terminal (the stuck
+	// incident of 2026-11-17 was a shell reading stdin, attached to a real terminal). This is
+	// the second layer, at zero cost.
 	cmd.Stdin = nil
 	done := make(chan error, 1)
 	if err := cmd.Start(); err != nil {
@@ -172,8 +185,10 @@ func verifyEdits(src, out string, edits []edit, orig string) (verified, error) {
 		return verified{}, nil
 	}
 	if err != nil {
-		// 解析器自己起不来（PyYAML 缺失这类）≠ 文件坏了：降级成本包的读回校验。
-		// 但**原文件**解析失败是另一回事——那说明它本来就是坏的，手术更不该做。
+		// The parser itself failing to start (PyYAML missing, say) != the file being broken:
+		// degrade to this package's read-back check. But the **original file** failing to parse
+		// is another matter -- it means it was already broken, and surgery should happen even
+		// less.
 		msg := strings.TrimSpace(stderr.String())
 		if strings.Contains(msg, "yaml.") && strings.Contains(msg, "Error") {
 			return verified{}, i18n.E("hermes' YAML parser rejects the result: {err}",
@@ -196,18 +211,20 @@ func lastLine(s string) string {
 	return s
 }
 
-// hermesPython 是 hermes 自己那个解释器：`hermes` 入口脚本的 shebang。
+// hermesPython is hermes' own interpreter: the shebang of the `hermes` entry script.
 //
-// 找的顺序：真实入口（跳过 shim，见 Agent().FindReal 的同一条判据）→ 解析链接 →
-// 读第一行。任何一步不成立返回空串（调用方降级，见文件头）。
+// Lookup order: the real entry (skipping the shim, the same criterion as Agent().FindReal) →
+// resolve the link → read the first line. If any step fails, return an empty string (the
+// caller degrades, see the file header).
 func hermesPython() string { return pythonFor(realHermes()) }
 
-// pythonFor 是上面那条判断的**函数形态**（入口路径进来，解释器出去）。
+// pythonFor is the same decision in **function form** (entry path in, interpreter out).
 //
-// 拆出来是为了可测：hermesPython 的第一判据是「PATH 上真正的 hermes」（
-// Agent().FindReal），而在一台装着 hermes 的开发机上那条路永远先命中真实的
-// 入口——测试沙箱里的假入口根本轮不到。判断本身（shebang → 解释器）与「从哪
-// 找到入口」是两件事，分开之后那条判据可以被直接钉住。
+// Split out to be testable: hermesPython's first criterion is "the real hermes on PATH"
+// (Agent().FindReal), and on a development machine with hermes installed that path always hits
+// the real entry first -- a fake entry in a test sandbox never gets a turn. The decision itself
+// (shebang → interpreter) and "where the entry is found" are two things; split apart, that
+// criterion can be pinned directly.
 func pythonFor(bin string) string {
 	if bin == "" {
 		return ""
@@ -231,7 +248,7 @@ func pythonFor(bin string) string {
 		return ""
 	}
 	py := fields[0]
-	// `#!/usr/bin/env python3` 这种：取 env 后面那个名字，在 PATH 上找。
+	// `#!/usr/bin/env python3` style: take the name after env and look it up on PATH.
 	if filepath.Base(py) == "env" && len(fields) > 1 {
 		p, err := exec.LookPath(fields[1])
 		if err != nil {
@@ -239,20 +256,21 @@ func pythonFor(bin string) string {
 		}
 		py = p
 	}
-	// **shebang 必须真的指向一个 python。**
+	// **The shebang must really point at a python.**
 	//
-	// 2026-11-17 现场：hermes 的官方安装器在 `~/.local/bin/hermes` 放的是一个
-	// `#!/bin/sh` + `exec …/.hermes/bin/hermes` 的**壳**，而它不是 PATH 上第一个
-	// 命中的那个；这里于是拿到 `/bin/sh`，紧接着跑的是
-	// `/bin/sh -I -c '<整段 python>' base new edits orig`——`sh -c` 把后四个
-	// 参数当成位置参数，脚本从 stdin 读，而 stdin 是继承来的真实终端。
-	// 症状：一次接管/同步**卡住**（20s 超时之后还要等那个子进程），后台同步那条
-	// goroutine 再也走不到下一个 tick，于是「新 profile 十秒内同步进来」变成
-	// 永远不同步。它一声不响，因为超时分支是 fail-open 的。
+	// 2026-11-17 field evidence: hermes' official installer puts a **shell wrapper** at
+	// `~/.local/bin/hermes` -- `#!/bin/sh` + `exec …/.hermes/bin/hermes` -- and it is not the
+	// first hit on PATH; so this got `/bin/sh`, and what ran next was
+	// `/bin/sh -I -c '<the whole python>' base new edits orig` -- `sh -c` treats the last four
+	// as positional parameters, the script reads from stdin, and stdin is the inherited real
+	// terminal.
+	// Symptom: one takeover/sync **hangs** (after the 20s timeout it still waits for that child),
+	// the background sync goroutine never reaches its next tick, and "new profiles sync within
+	// ten seconds" becomes "never syncs". Silently, because the timeout branch is fail-open.
 	//
-	// 判据用**名字**而不是「跑一下试试」：跑一下就是我们要避免的那件事（真的
-	// 起了一个 shell）。叫 python / python3 / python3.12 的才算；`venv/bin/python3`
-	// 与 `env python3` 两条路都落在这条判断之内。
+	// The criterion uses the **name** rather than "run it and see": running it is the very thing
+	// to avoid (it really starts a shell). Only something called python / python3 / python3.12
+	// counts; both `venv/bin/python3` and `env python3` fall inside this rule.
 	base := filepath.Base(py)
 	if !strings.HasPrefix(base, "python") {
 		return ""

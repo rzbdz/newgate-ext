@@ -52,7 +52,7 @@ func newManager(p *pool, loaded func() Loaded) *manager {
 func (m *manager) Serve() (func(), error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancel = cancel
-	m.sync() // 先把配置里要的端口都起上（用户重启 daemon 时期望它们马上在）
+	m.sync() // bring up every configured port first: users expect them after a daemon restart
 	go m.loop(ctx)
 
 	var once sync.Once

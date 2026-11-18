@@ -10,7 +10,7 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// --- 桩 -------------------------------------------------------------------
+// --- Stubs ---------------------------------------------------------------
 
 type named struct {
 	name string
@@ -41,8 +41,8 @@ func (a *admitter) Rank(string, string, int) int { return a.rank }
 
 type adjudicator struct {
 	named
-	outcomes  []Outcome // Judge 收到的（要判的）
-	observeds []Outcome // Observe 收到的（成功观测量）
+	outcomes  []Outcome // what Judge received (the ones to judge)
+	observeds []Outcome // what Observe received (success observations)
 	verdict   func(Outcome) Verdict
 }
 
@@ -83,13 +83,13 @@ func (f *flusher) Flush() error {
 	return f.flush()
 }
 
-// namer 只认自己那个键——真实实现（breaker）就是这么写的：认领别人的计数器
-// 会把别人的说明顶掉。
+// namer recognizes only its own key - the real implementation (breaker) is written the same
+// way: claiming someone else's counter would displace their description.
 type namer struct {
 	named
 	prefix string
-	group  string // 身份：ASCII 稳定标识（排序/去重用）
-	label  string // 说法：给人看的锚点
+	group  string // identity: a stable ASCII token (for sorting/dedup)
+	label  string // wording: the anchor shown to people
 	hint   string
 }
 
@@ -125,13 +125,15 @@ type binder struct {
 
 func (b *binder) BindEnv(env Env) { b.got = env }
 
-// --- 最小系统 --------------------------------------------------------------
+// --- The minimal system --------------------------------------------------
 
-// TestEmptyRegistryIsTheMinimalSystem 锁住**没有贡献者时**四个口的默认值。
+// TestEmptyRegistryIsTheMinimalSystem pins the defaults of all four ports **with no
+// contributors**.
 //
-// 这是整套倒置的兜底方向：gateway 必须能在「一个策略都没装」的情况下独立工作。
-// 任何一处默认写反了（比如准入默认 false），网关就退化成「必须装熔断器才转发
-// 得出去」，而那是比熔断器坏掉严重得多的故障。
+// This is the fallback direction of the whole inversion: gateway must work on its own with
+// "not a single policy installed". Get one default backwards (say admission defaults to
+// false) and the gateway degrades into "you must install a breaker to forward at all" -
+// a far worse failure than a broken breaker.
 func TestEmptyRegistryIsTheMinimalSystem(t *testing.T) {
 	r := New()
 	if !r.Empty() {
@@ -159,17 +161,18 @@ func TestEmptyRegistryIsTheMinimalSystem(t *testing.T) {
 	if h := r.MetricHint("anything"); h != "" {
 		t.Errorf("minimal system: gives no note, got %q", h)
 	}
-	r.Flush(nil) // 没有 Flusher，不该 panic
+	r.Flush(nil) // no Flusher: must not panic
 	r.BindEnv(&envrec{})
 	r.Observe(Outcome{Kind: Succeeded})
 }
 
-// --- 注册期的拒绝 ----------------------------------------------------------
+// --- Rejection at registration time --------------------------------------
 
-// TestRegisterRejectsAnonymousAndDuplicate 锁住注册期的两类拒绝。
+// TestRegisterRejectsAnonymousAndDuplicate pins the two kinds of rejection at registration.
 //
-// 「先到先得」是这个功能最不该有的行为：那样「谁占了这个名字」在清单里看不出来，
-// 而查重一旦推迟到读侧（分派/上报的时候），错误就变成了运行期的静默覆盖。
+// "First come, first served" is the worst behavior this feature could have: "who took this
+// name" would be invisible in the listing, and once the duplicate check is deferred to the
+// read side (dispatch/report time) the error turns into a silent overwrite at runtime.
 func TestRegisterRejectsAnonymousAndDuplicate(t *testing.T) {
 	r := New()
 	if _, err := r.Register(named{}); err == nil {
@@ -187,12 +190,14 @@ func TestRegisterRejectsAnonymousAndDuplicate(t *testing.T) {
 	}
 }
 
-// TestRegisterRejectsSecondAdmitter 锁住「准入只能有一个贡献者」。
+// TestRegisterRejectsSecondAdmitter pins "admission has at most one contributor".
 //
-// 理由不是保守，是 Admit **不是查询**：健康表在冷却期满时发放「半开试探名额」，
-// 一个名额只放行一次真实请求，而 resolve 对每个候选恰好问一次。多个 Admitter
-// 求 AND 会让「名额发不发」取决于**另一个不相关贡献者**的返回值：前者发了名额、
-// 后者否决，那条 binding 就在 TTL 内既进不了链也没人在试。
+// The reason is not conservatism: Admit **is not a query**. When the cooldown expires, the
+// health table issues a "half-open trial slot", one slot lets exactly one real request
+// through, and resolve asks each candidate exactly once. Multiple Admitters ANDed together
+// would make "is a slot issued" depend on **another unrelated contributor**'s return value:
+// the first issues the slot, the second denies, and that binding can neither enter the chain
+// nor is anyone trying it, for the whole TTL.
 func TestRegisterRejectsSecondAdmitter(t *testing.T) {
 	r := New()
 	if _, err := r.Register(&admitter{named: named{name: "first"}}); err != nil {
@@ -202,17 +207,18 @@ func TestRegisterRejectsSecondAdmitter(t *testing.T) {
 	if err == nil || i18n.ID(err) != "policy: only one contributor may be an admitter; {name} is already taken by {holder} (it carries side effects, see the Admitter docs)" {
 		t.Fatalf("the second admission should be rejected, got %v", err)
 	}
-	// 拒绝之后账本得干净：不能被半个注册留下痕迹。
+	// The ledger must be clean after a rejection: a half registration must leave no trace.
 	if len(r.Filters()) != 1 {
 		t.Errorf("contributors after the rejection = %d, want 1", len(r.Filters()))
 	}
 }
 
-// TestRegisterRejectsDocKeyCollision 锁住状态文档的字段归属。
+// TestRegisterRejectsDocKeyCollision pins field ownership in the status document.
 //
-// 两个贡献者报同一个顶层字段，唯一可能的结果是其中一个被静默覆盖——而字段名是
-// 跨版本 wire 契约（老 CLI 就按这些键读），静默覆盖等于让升级窗口里的表现取决于
-// 注册顺序。所以撞车必须在**注册期**当场报错。
+// Two contributors reporting the same top-level field can only end one way: one of them is
+// silently overwritten - and the field name is a cross-version wire contract (old CLIs read
+// exactly these keys), so a silent overwrite makes the upgrade window depend on registration
+// order. So a collision must fail right there, at **registration time**.
 func TestRegisterRejectsDocKeyCollision(t *testing.T) {
 	r := New()
 	first := &controller{named: named{name: "a"}, doc: map[string]json.RawMessage{
@@ -226,7 +232,7 @@ func TestRegisterRejectsDocKeyCollision(t *testing.T) {
 	if err == nil || i18n.ID(err) != "policy: state document field {key} is already taken by {owner}" {
 		t.Fatalf("the same state field claimed by two contributors should be rejected, got %v", err)
 	}
-	// 不撞车的能进来。
+	// Non-colliding ones get in.
 	third := &controller{named: named{name: "c"}, doc: map[string]json.RawMessage{
 		"quotas": json.RawMessage(`{}`)}}
 	if _, err := r.Register(third); err != nil {
@@ -234,8 +240,9 @@ func TestRegisterRejectsDocKeyCollision(t *testing.T) {
 	}
 }
 
-// TestReleaseIsScopedAndIdempotent 锁住注销的语义：拿到的句柄只撤自己那一次注册，
-// 且重复调用无害（Stop 必须幂等）。
+// TestReleaseIsScopedAndIdempotent pins the semantics of release: the handle you got
+// withdraws only your own registration, and calling it twice is harmless (Stop must be
+// idempotent).
 func TestReleaseIsScopedAndIdempotent(t *testing.T) {
 	r := New()
 	first := &admitter{named: named{name: "a"}, ok: true}
@@ -253,8 +260,9 @@ func TestReleaseIsScopedAndIdempotent(t *testing.T) {
 		t.Errorf("a repeated unregister must be harmless (Stop must be idempotent), got %v", err)
 	}
 
-	// 注销 → 再注册同名：那个旧句柄不该把新注册删掉。
-	// （后半段用普通贡献者而不是准入者——准入只能有一个，那是另一条规矩。）
+	// Release → register the same name again: the old handle must not remove the new
+	// registration. (The second half uses a plain contributor rather than an admitter -
+	// admission allows only one, which is a separate rule.)
 	if _, err := r.Register(named{name: "a"}); err != nil {
 		t.Fatal(err)
 	}
@@ -271,13 +279,14 @@ func TestReleaseIsScopedAndIdempotent(t *testing.T) {
 	_ = stale
 }
 
-// --- 各阶段的合成 ----------------------------------------------------------
+// --- Composition per phase -----------------------------------------------
 
-// TestAdmitAsksExactlyOncePerCandidate 锁住「每个候选恰好问一次」。
+// TestAdmitAsksExactlyOncePerCandidate pins "each candidate is asked exactly once".
 //
-// 这个次数不是风格问题：它是半开试探名额能成立的前提（发一次名额 = 放行一次
-// 真实请求）。集成侧由 resolve 保证（它对每个候选调一次），这里锁的是账本自己
-// 不会额外多问——比如为了「合成多个来源」而重复调用。
+// The count is not a style question: it is the premise that makes half-open trial slots work
+// (issue one slot = let one real request through). resolve guarantees it on the integration
+// side (it calls once per candidate); what is pinned here is that the ledger itself never
+// asks extra - say calling twice in order to "compose several sources".
 func TestAdmitAsksExactlyOncePerCandidate(t *testing.T) {
 	r := New()
 	a := &admitter{named: named{name: "a"}, ok: true}
@@ -295,11 +304,11 @@ func TestAdmitAsksExactlyOncePerCandidate(t *testing.T) {
 	}
 }
 
-// TestJudgeMergesVerdictsAndToleratesPanic 锁住 B 阶段的合成规则与 fail-open。
+// TestJudgeMergesVerdictsAndToleratesPanic pins phase B's merge rules and fail-open.
 //
-// 合成写死在一处（merge）而不是留给调用方，是因为「谁的判决赢」这种规则一旦
-// 各写一遍必然漂移。fail-open 的方向与内核默认一致：一个坏插件绝不能把整条链
-// 的判断夺走。
+// Composition is hardcoded in one place (merge) instead of left to callers, because a rule
+// like "whose verdict wins" inevitably drifts once it is written twice. fail-open points the
+// same way as the kernel default: one bad plugin must never take the whole chain's judgment.
 func TestJudgeMergesVerdictsAndToleratesPanic(t *testing.T) {
 	r := New()
 	stops := &adjudicator{named: named{name: "stops"}, verdict: func(Outcome) Verdict {
@@ -335,7 +344,8 @@ func TestJudgeMergesVerdictsAndToleratesPanic(t *testing.T) {
 	}
 }
 
-// TestObserveDeliversToEveryAdjudicator 锁住成功观测的分发（延迟样本按它选桶）。
+// TestObserveDeliversToEveryAdjudicator pins the fan-out of successful observations
+// (latency samples pick their bucket from it).
 func TestObserveDeliversToEveryAdjudicator(t *testing.T) {
 	r := New()
 	a, b := &adjudicator{named: named{name: "a"}}, &adjudicator{named: named{name: "b"}}
@@ -353,8 +363,8 @@ func TestObserveDeliversToEveryAdjudicator(t *testing.T) {
 	}
 }
 
-// TestDocMergesTopLevelKeys 锁住 C 阶段的合并：每个人的字段并进**顶层**，
-// 而不是塞进一个 extra 对象（老 CLI 读的就是顶层那些键）。
+// TestDocMergesTopLevelKeys pins phase C's merge: everyone's fields go into the **top
+// level** rather than into an extra object (the old CLI reads exactly those top-level keys).
 func TestDocMergesTopLevelKeys(t *testing.T) {
 	r := New()
 	for _, c := range []*controller{
@@ -374,7 +384,7 @@ func TestDocMergesTopLevelKeys(t *testing.T) {
 	}
 }
 
-// TestObserveProbesFansOut 锁住探活结论的分发与 ack 收集。
+// TestObserveProbesFansOut pins the fan-out of probe conclusions and the collection of acks.
 func TestObserveProbesFansOut(t *testing.T) {
 	r := New()
 	a := &controller{named: named{name: "a"}, acks: []ProbeAck{{Opened: true, Note: "on"}}}
@@ -394,8 +404,9 @@ func TestObserveProbesFansOut(t *testing.T) {
 	}
 }
 
-// TestMetricNamingTakesTheFirstClaim 锁住观测面命名的「认领」语义：第一位说认识
-// 的赢，没人认识给空串（由调用方兜底到内核默认）。
+// TestMetricNamingTakesTheFirstClaim pins the "claim" semantics of observability naming:
+// the first to say it recognizes the counter wins, and when nobody does the result is an
+// empty string (the caller falls back to the kernel default).
 func TestMetricNamingTakesTheFirstClaim(t *testing.T) {
 	r := New()
 	for _, n := range []namer{
@@ -406,8 +417,9 @@ func TestMetricNamingTakesTheFirstClaim(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// 断言**身份**：它是语言无关的那一半，也是排序用的那一半。说法跟着语言走，
-	// 在这里钉住它只会让翻译一改测试就红。
+	// Assert on **identity**: it is the language-independent half, and the half sorting
+	// uses. The rendering follows the language; pinning it here would only turn red when a
+	// translation changes.
 	if id, label := r.MetricGroup("breaker.opened"); id != "breaker" || label != "breaker" {
 		t.Errorf("the group takes the first claimant, got (%q, %q)", id, label)
 	}
@@ -422,8 +434,8 @@ func TestMetricNamingTakesTheFirstClaim(t *testing.T) {
 	}
 }
 
-// TestFlushReportsFailuresWithoutBlocking 锁住 D 阶段：落盘失败要说出来（不静默），
-// 但绝不阻断停机。
+// TestFlushReportsFailuresWithoutBlocking pins phase D: a persist failure must be spoken
+// out (never silent) but must never block shutdown.
 func TestFlushReportsFailuresWithoutBlocking(t *testing.T) {
 	r := New()
 	boom := errors.New("disk full")
@@ -446,8 +458,9 @@ func TestFlushReportsFailuresWithoutBlocking(t *testing.T) {
 	}
 }
 
-// TestBindEnvReachesOnlyBinders 锁住运行期能力的交付面：只给实现了 EnvBinder 的人，
-// 而且能力是**数据面在 Serve 期**递过来的（见包注释里的三段法则）。
+// TestBindEnvReachesOnlyBinders pins the delivery surface of runtime capabilities: only to
+// those implementing EnvBinder, and the capability is handed over **by the data plane at
+// Serve time** (see the three-phase rule in the package comment).
 func TestBindEnvReachesOnlyBinders(t *testing.T) {
 	r := New()
 	b := &binder{named: named{name: "binder"}}

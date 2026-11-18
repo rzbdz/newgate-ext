@@ -359,7 +359,7 @@ func (glossary) Glossary() []cliapi.GlossaryLine {
 	var keys []string
 	for _, r := range domain.ExtraRoles() {
 		if r.Source == "builtin" {
-			continue // 内置别名（normal→mid）是向下兼容，不是「槽位键」的例子
+			continue // a builtin alias (normal→mid) is backwards compatibility, not a "role key"
 		}
 		keys = append(keys, r.Key)
 	}

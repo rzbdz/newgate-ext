@@ -15,12 +15,14 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// 本文件是模块的实现：读 providers.json、挑适配器、缓存、把请求翻译成一次探测。
+// This file is the module's implementation: read providers.json, pick an adapter, cache, turn a
+// request into one probe.
 //
-// 缓存为什么在内存里而不是落盘：它回答的是「**这个进程**此刻看到的上游清单」，
-// 与 README 里那条「部署出去的机器上没有源码不是故障」同一个态度——进程重启后
-// 再问一次是很便宜的，而落盘会引入「文件是谁写的、什么时候过期」这套额外的
-// 真相。键里带着 provider 定义的哈希，所以改了 providers.json 不会读到旧清单。
+// Why the cache is in memory rather than on disk: it answers "the upstream listing **this process**
+// sees right now", the same attitude as the README's "not having the source on a deployed machine
+// is not a failure" -- asking again after a restart is cheap, while persisting would introduce the
+// extra truth of "who wrote the file, when does it expire". The key carries the provider
+// definition's hash, so changing providers.json will not read a stale listing.
 
 type service struct {
 	mu     sync.Mutex
@@ -42,17 +44,19 @@ func newService() *service {
 		cache: map[string]cacheEntry{},
 		now:   time.Now,
 		client: &http.Client{
-			// 一次下拉不该让页面转十分钟。真实上游列模型通常 <1s；10s 足够跨洋
-			// 的慢连接，也足够在对方挂住时把答案还给界面（它会回落到声明清单）。
+			// One dropdown must not spin the page for ten minutes. A real upstream lists models in
+			// usually <1s; 10s is enough for a slow transoceanic link, and enough to give the answer back
+			// to the UI when the other side hangs (it falls back to the declared list).
 			Timeout: 10 * time.Second,
 		},
 		positiveTTL: 10 * time.Minute,
-		// 不支持/出错的那一份短很多：用户可能刚把 key 改对，下一次点开就该重问。
+		// The unsupported/error one is much shorter: the user may have just fixed the key, and the next
+		// open should ask again.
 		negativeTTL: time.Minute,
 	}
 }
 
-// List 实现 Service。
+// List implements Service.
 func (s *service) List(ctx context.Context, provider string, opts Options) (*Catalog, error) {
 	provider = strings.TrimSpace(provider)
 	if provider == "" {
@@ -92,8 +96,8 @@ func (s *service) cached(key string) (*Catalog, bool) {
 	}
 	cat := e.cat
 	cat.Cached = true
-	// 切片是共享的；调用方只读，但复制一份边界更清楚（也避免将来有人 append 到
-	// 缓存里的那一份）。
+	// The slice is shared; callers only read it, but copying makes the boundary clearer (and keeps
+	// someone from appending to the cached one later).
 	cat.Models = append([]Model(nil), e.cat.Models...)
 	cat.Groups = append([]string(nil), e.cat.Groups...)
 	return &cat, true
@@ -102,7 +106,8 @@ func (s *service) cached(key string) (*Catalog, bool) {
 func (s *service) put(key string, cat Catalog) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	// 顺手清掉过期的：这张表的规模就是 providers 的数量，几十条而已。
+	// Clear the expired ones while at it: this table's size is the number of providers, a few
+	// dozen.
 	now := s.now()
 	for k, e := range s.cache {
 		if now.Sub(e.at) >= s.ttlFor(e.cat) {
@@ -119,10 +124,10 @@ func (s *service) ttlFor(cat Catalog) time.Duration {
 	return s.negativeTTL
 }
 
-// probe 依次试适配器，把一个「上游的回答」收敛成 Catalog。
+// probe tries the adapters in turn, converging "one upstream's answer" into a Catalog.
 //
-// 失败（网络/认证/解析）也回一份 Catalog：Supported=false + Note。那条路不是
-// HTTP 错误——界面要的是「能不能列、为什么不能」，而不是一个 500。
+// A failure (network/auth/parse) also returns a Catalog: Supported=false + Note. That route is not
+// an HTTP error -- the UI wants "can it list, and why not", not a 500.
 func (s *service) probe(ctx context.Context, provider string, p domain.Provider) *Catalog {
 	cat := &Catalog{
 		Provider:  provider,
@@ -141,9 +146,9 @@ func (s *service) probe(ctx context.Context, provider string, p domain.Provider)
 			cat.Models = res.models
 			cat.Groups = res.groups
 			if len(res.models) == 0 {
-				// 接口在、但一个模型都没列：对界面来说这与「不支持」是同一件事
-				// ——它得回落到 providers.json 声明的那份。保留 adapter/endpoint，
-				// 因为那句原因里要有「问过哪儿」。
+				// The endpoint is there, but not one model was listed: to the UI this is the same thing as
+				// "not supported" -- it has to fall back to what providers.json declares. adapter/endpoint
+				// are kept because that reason sentence needs "where we asked".
 				cat.Supported = false
 				cat.Note = i18n.T("the provider answered with an empty model list", nil)
 				return cat
@@ -157,14 +162,15 @@ func (s *service) probe(ctx context.Context, provider string, p domain.Provider)
 			continue
 		}
 		if i > 0 {
-			// 备用适配器上的失败（多半是认证方式不对）不是「这个上游坏了」的
-			// 证据：真正的主路已经明确说过它没有这个接口。把它记进原因，继续
-			// 收尾，而不是把一个 401 当成结论摆到界面上。
+			// A failure on the backup adapter (mostly the wrong auth method) is not evidence that "this
+			// upstream is broken": the real main route has already said clearly that it has no such
+			// endpoint. Record it in the reason and carry on to the close-out, rather than putting a 401
+			// on the UI as the conclusion.
 			unsupportedNotes = append(unsupportedNotes, err.Error())
 			continue
 		}
-		// 主路真的坏了（DNS、401、解析失败）：不再换适配器——那只会把同一个失败
-		// 用另一种认证再试一遍，并把真正的错藏起来。
+		// The main route really failed (DNS, 401, parse failure): do not switch adapters -- that only
+		// retries the same failure with another auth method and hides the real error.
 		cat.Note = err.Error()
 		return cat
 	}
@@ -177,10 +183,10 @@ func (s *service) probe(ctx context.Context, provider string, p domain.Provider)
 	return cat
 }
 
-// handle 是 BFF 扩展端点的入口：`POST /ui/api/ext/modellist`。
+// handle is the BFF extension endpoint's entrance: `POST /ui/api/ext/modellist`.
 //
-// 请求体只有两个字段：`{"provider":"…","refresh":false}`。形状由本模块定义，
-// BFF 原样转交（见 web-dashboard 的 ExtensionService）。
+// The request body has only two fields: `{"provider":"…","refresh":false}`. The shape is defined by
+// this module, and the BFF passes it through as is (see web-dashboard's ExtensionService).
 func (s *service) handle(r webapi.ExtensionRequest) (any, error) {
 	var req struct {
 		Provider string `json:"provider"`

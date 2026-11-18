@@ -9,21 +9,21 @@ import (
 	"github.com/rzbdz/newgate/lib/i18n"
 )
 
-// command 把语言接到界面上：`newgate lang` 看，`newgate lang <tag>` 改。
+// command wires the language into the UI: `newgate lang` shows it, `newgate lang <tag>` changes it.
 //
-// 它同时是 Status / Diagnostics / Glossary 的提供者（一个对象注册四处）——
-// 「谁的知识谁自己报」，与 plugin-manager 的命令同一形状。
+// It is also the provider for Status / Diagnostics / Glossary (one object registered in four
+// places) -- "whoever owns the knowledge reports it", the same shape as plugin-manager's command.
 type command struct{ svc *service }
 
 var _ cliapi.Documented = (*command)(nil)
 
 func (c *command) Names() []string { return []string{"lang", "language"} }
 
-// Help 让 `newgate lang` 出现在 --help 里。
+// Help makes `newgate lang` appear in --help.
 //
-// 它以前只注册了命令、没声明 HelpLine，于是命令能用、帮助屏里一行都没有
-// ——用户不会去猜一个看不见的动词（2026-10-28 审计所有注册命令时发现，同时
-// 补上的还有 omo）。
+// It used to register the command without declaring a HelpLine, so the command worked and the help
+// screen had not one line on it -- and a user will not guess an invisible verb (found on
+// 2026-10-28 while auditing every registered command; omo was filled in at the same time).
 func (*command) Help() cliapi.HelpLine {
 	return cliapi.HelpLine{
 		Section: cliapi.SectionUI, Rank: 40,
@@ -41,7 +41,8 @@ func (c *command) Run(host cliapi.Host, args []string) int {
 	return c.set(host, want)
 }
 
-// show 打印当前语言、它是从哪来的、以及可选语言各翻了多少。
+// show prints the current language, where it came from, and how much each selectable language
+// has translated.
 func (c *command) show() {
 	fmt.Println(style.Field(i18n.T("Language", nil), c.svc.lang+"  "+style.Dim("("+c.sourceWord()+")")))
 	avail := i18n.Available()
@@ -55,7 +56,7 @@ func (c *command) show() {
 	}
 }
 
-// set 改语言：写进 state.json，并把「谁在压着它」说清楚。
+// set changes the language: writes it into state.json, and says clearly "who is overriding it".
 func (c *command) set(host cliapi.Host, want string) int {
 	tag := i18n.Normalize(want)
 	if tag == "" {
@@ -74,14 +75,16 @@ func (c *command) set(host cliapi.Host, want string) int {
 		return host.Die(70, i18n.T("Cannot write the language to state.json: {err}", i18n.A{"err": err.Error()}))
 	}
 	fmt.Println(style.Item(style.OK, i18n.T("Saved to state.json: {tag}", i18n.A{"tag": match})))
-	// 保存成功不等于**这个 shell 里**立刻生效：压得过配置的只有两样东西——环境变量
-	// 与系统 locale（见 resolve.go 的次序）。这两种要说，否则用户会以为没保存上，
-	// 而那是最难查的一类「我明明设了」。
+	// A successful save does not mean it is in effect **in this shell** right away: only two
+	// things override the config -- the environment variable and the system locale (see the order
+	// in resolve.go). Both must be said, or the user thinks it was not saved -- and that is the
+	// hardest kind of "I clearly set it" to track down.
 	//
-	// `default`（谁都没说）与 `config`（读到的就是配置）**都不是覆盖**：前者被配置
-	// 压过，后者下次读到的就是刚写的这个。2026-09-20 之前这里写的是「来源不是
-	// config 就警告」，于是「本来谁都没设、现在设上了」会被说成「未生效」——
-	// 一句彻头彻尾的假话，实测踩到（见 commit 说明）。
+	// `default` (nobody said anything) and `config` (what was read is the config) are **neither of
+	// them an override**: the former is overridden by the config, the latter is what the next read
+	// gets, i.e. exactly what was just written. Before 2026-09-20 this said "warn if the source is
+	// not config", so "nobody had set it, now it is set" came out as "not in effect" -- a flat-out
+	// lie, hit for real (see the commit message).
 	switch c.svc.source {
 	case SourceEnvOverride:
 		fmt.Println(style.Item(style.Warn, i18n.T(
@@ -95,7 +98,7 @@ func (c *command) set(host cliapi.Host, want string) int {
 	return 0
 }
 
-// sourceWord 把来源讲成人话。
+// sourceWord says the source in plain words.
 func (c *command) sourceWord() string {
 	switch c.svc.source {
 	case SourceEnvOverride:
@@ -108,7 +111,8 @@ func (c *command) sourceWord() string {
 	return i18n.T("default", nil)
 }
 
-// coverageLine 把一份体检结果排成一行：语言、覆盖率、以及该说的坏消息。
+// coverageLine lays one checkup result out into a line: language, coverage, and the bad news
+// that needs saying.
 func coverageLine(info i18n.Info, current string) (string, string) {
 	name := info.Language
 	if info.Language == current {
@@ -118,7 +122,8 @@ func coverageLine(info i18n.Info, current string) (string, string) {
 	if info.Total > 0 {
 		pct = info.Translated * 100 / info.Total
 	}
-	// 补齐按**显示宽度**算（style.Pad）：语言名里有中文时 %-14s 会歪。
+	// Padding is computed by **display width** (style.Pad): `%-14s` goes crooked when the
+	// language name has Chinese in it.
 	parts := []string{fmt.Sprintf("%s %3d%%  %d/%d", style.Pad(name, 14), pct, info.Translated, info.Total)}
 	var notes []string
 	if info.Language == i18n.SourceLang {

@@ -36,7 +36,7 @@ func TestLookupMatchesPrefixOnSegmentBoundary(t *testing.T) {
 		"/ui/":       "ui",
 		"/ui/api/x":  "ui",
 		"/ui/deep/x": "ui",
-		"/uix":       "", // 按字节前缀匹配会在这里多认一个 service
+		"/uix":       "", // byte-prefix matching would wrongly claim a service here
 		"/u":         "",
 		"/":          "",
 		"/v1/models": "",
@@ -108,7 +108,7 @@ func TestReleaseRemovesTheMount(t *testing.T) {
 	if got := hit(t, r, "/ui"); got != "" {
 		t.Errorf("must not match after Release, actually %q", got)
 	}
-	rel() // 幂等
+	rel() // idempotent
 	// After release the same prefix can be mounted by someone else.
 	if _, err := r.Mount("/ui", "other", body("other")); err != nil {
 		t.Fatalf("must remount after release: %v", err)
@@ -126,11 +126,11 @@ func TestReleaseDoesNotStealSomeoneElsesMount(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	first() // 撤掉自己
+	first() // release itself
 	if _, err := r.Mount("/ui", "second", body("second")); err != nil {
 		t.Fatal(err)
 	}
-	first() // 再撤一次（幂等，且不许误删 second 那条）
+	first() // release again (idempotent, and must not delete second's)
 	if got := hit(t, r, "/ui"); got != "second" {
 		t.Errorf("the latecomer's mount was deleted by mistake: %q", got)
 	}
@@ -178,7 +178,7 @@ func TestRootIsThePortsDispatch(t *testing.T) {
 	}
 	cases := map[string]string{
 		"/ui/x":        "web",
-		"/v1/messages": "datapath", // 没挂过 → 兜底
+		"/v1/messages": "datapath", // nothing mounted: fallback
 		"/":            "datapath",
 	}
 	for path, want := range cases {

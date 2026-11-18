@@ -4,11 +4,12 @@ import (
 	"testing"
 )
 
-// claimer 是一个只认领不干活的插件，用来验 ClaimEgress 的挑选规则。
+// claimer is a plugin that claims but does nothing, used to verify ClaimEgress's selection
+// rules.
 type claimer struct {
 	name    string
 	egress  Egress
-	claimed bool // 记下 Egress() 有没有被问过
+	claimed bool // records whether Egress() was ever asked
 }
 
 func (c *claimer) Name() string        { return c.name }
@@ -22,14 +23,14 @@ func (c *claimer) Egress(*Request, []byte) Egress {
 	return c.egress
 }
 
-// noopEgress 是认领下来的改写者：一条都不改。
+// noopEgress is a claimed rewriter: it changes nothing.
 type noopEgress struct{}
 
 func (noopEgress) Egress([]byte) []byte { return nil }
 
-// 没人认领时 ClaimEgress 回 nil——调用方据此走原来那条逐字节直通的转发
-// （forward 里 egressOn 那一条）。这是「没有补丁时转发就是转发」那条承诺的
-// 机器可验形式。
+// With nobody claiming, ClaimEgress returns nil - the caller takes the original byte-for-byte
+// pass-through forwarding (the egressOn path in forward). That is the machine-checkable form
+// of the promise "forwarding is forwarding when there is no patch".
 func TestClaimEgressReturnsNilWhenNobodyClaims(t *testing.T) {
 	saved := currentRegistry()
 	defer SetDefault(saved)
@@ -40,8 +41,8 @@ func TestClaimEgressReturnsNilWhenNobodyClaims(t *testing.T) {
 	}
 }
 
-// 第一个认领的赢，后面的**连问都不问**：响应只有一个出口，两家各改各的拼出来
-// 的是谁都没写过的东西。
+// The first claim wins and the rest are **not even asked**: a response has one outlet, and
+// two parties each rewriting would splice together something neither of them wrote.
 func TestClaimEgressTakesTheFirstClaimantOnly(t *testing.T) {
 	saved := currentRegistry()
 	defer SetDefault(saved)
@@ -67,7 +68,7 @@ func TestClaimEgressTakesTheFirstClaimantOnly(t *testing.T) {
 	}
 }
 
-// 不认领的（回 nil）不挡住后面的人。
+// One that does not claim (returns nil) does not block the ones after it.
 func TestClaimEgressSkipsNonClaimers(t *testing.T) {
 	saved := currentRegistry()
 	defer SetDefault(saved)
@@ -86,7 +87,8 @@ func TestClaimEgressSkipsNonClaimers(t *testing.T) {
 	}
 }
 
-// 运行期关掉的插件不参与认领（`newgate plugin <path> off` 那条路）。
+// A plugin turned off at runtime does not take part in claiming (the `newgate plugin <path>
+// off` path).
 func TestClaimEgressHonoursTheOffSwitch(t *testing.T) {
 	saved := currentRegistry()
 	defer SetDefault(saved)
@@ -112,7 +114,7 @@ func TestClaimEgressHonoursTheOffSwitch(t *testing.T) {
 	}
 }
 
-// 认领器 panic 当它没认领（fail-open，与 Apply 同一条规矩）。
+// A panicking claimer counts as not claiming (fail-open, the same rule as Apply).
 type panickyClaimer struct{ claimer }
 
 func (p *panickyClaimer) Egress(*Request, []byte) Egress { panic("boom") }
@@ -138,7 +140,8 @@ func TestClaimEgressIsFailOpen(t *testing.T) {
 	}
 }
 
-// 改写者 panic 或返回空 slice 都当没改——转发照常，字节照原样。
+// A rewriter that panics or returns an empty slice counts as not rewriting - forwarding goes
+// on, bytes stay as they were.
 func TestRewriteEventIsFailOpen(t *testing.T) {
 	if got := RewriteEvent(nil, []byte("data: {}")); got != nil {
 		t.Fatalf("a nil rewriter must change nothing, got %q", got)

@@ -75,14 +75,14 @@ func (t thinking) Apply(body []byte, r *special.Request) ([]byte, []string, erro
 		return body, nil, nil
 	}
 	if _, has := rewrite.TopLevelRaw(body, "thinking"); has {
-		return body, nil, nil // 客户端写了：尊重，一个字节不动
+		return body, nil, nil // the client set it: respect that, not one byte changed
 	}
 
 	if _, effort := rewrite.TopLevelRaw(body, "reasoning_effort"); effort {
-		return body, nil, nil // 设了推理强度 = 明确要思考
+		return body, nil, nil // reasoning effort given = the client explicitly wants thinking
 	}
 	if _, has := rewrite.TopLevelRaw(body, "messages"); !has {
-		return body, nil, nil // /v1/models 之类，没东西可补
+		return body, nil, nil // /v1/models and friends: nothing to backfill
 	}
 	nb, err := rewrite.InsertTopLevelRaw(body, "thinking",
 		[]byte(`{"type":"disabled"}`))

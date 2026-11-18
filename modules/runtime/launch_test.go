@@ -100,7 +100,7 @@ func TestLaunchFamilyClaimsExactlyOneHelpLine(t *testing.T) {
 		}
 		line := doc.Help()
 		if line.Usage == "" {
-			continue // 按约定不占行
+			continue // by convention it takes no line
 		}
 		claimed = append(claimed, line.Usage)
 		if line.Usage == "run <agent> [args…]" && line.Section != cliapi.SectionRunOnce {

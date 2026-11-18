@@ -90,7 +90,7 @@ func Sandbox(t *testing.T) *Env {
 
 // Env is one sandbox's path set.
 type Env struct {
-	Root    string // 临时根，所有东西都在它下面
+	Root    string // temp root, everything lives under it
 	Home    string // NEWGATE_HOME
 	Targets string // NEWGATE_TARGET_DIR
 }

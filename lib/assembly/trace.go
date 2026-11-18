@@ -250,9 +250,9 @@ func assemblyFingerprint(lines []string) string {
 type assemblyRecord struct {
 	mu    sync.Mutex
 	out   io.Writer
-	prev  string   // 上一次记下的指纹（空 = 这份日志里没有记录过）
-	lines []string // 带时间戳的原文：整段写出去时用
-	plain []string // 去时间戳去耗时：算指纹用
+	prev  string   // the fingerprint recorded last time (empty = no record in this log)
+	lines []string // timestamped raw text: used when writing the whole block out
+	plain []string // timestamps and durations stripped: used to compute the fingerprint
 }
 
 func newAssemblyRecord(out io.Writer, prev string) *assemblyRecord {

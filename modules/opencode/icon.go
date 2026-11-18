@@ -1,18 +1,21 @@
 package opencode
 
-// 这个客户端在界面上的图标：SVG path 的 `d` 那一串，`24 24` 视口。
+// This client's icon in the UI: the `d` string of an SVG path, `24 24` viewport.
 //
-// # 它从哪来
+// # Where it comes from
 //
-// LobeHub 的图标集（`github.com/lobehub/lobe-icons`，MIT，取自
-// `@lobehub/icons-static-svg@1.95.1` 的 `icons/opencode.svg`）。**只取那一串路径**：
-// 外层的 `<svg>` 由界面自己拼（它要决定多大、用什么颜色），所以这里不搬那一层。
+// LobeHub's icon set (`github.com/lobehub/lobe-icons`, MIT, taken from
+// `@lobehub/icons-static-svg@1.95.1`'s `icons/opencode.svg`). **Only that path string**: the
+// outer `<svg>` is assembled by the UI itself (it decides how big and what color), so that layer
+// is not copied here.
 //
-// # 为什么它住在这个模块里，而不是界面那边
+// # Why it lives in this module and not on the UI side
 //
-// 图标是**这个客户端的知识**（与 agent.go 里那串 `ContextWindowEnv` 同一条）：
-// 换一家客户端就换一个图标，而界面不该认识任何一家。前端按 ID 查表是这一格的
-// 反面——加一家客户端要改前端，那等于这一格从来没被设计过。
+// The icon is **this client's knowledge** (the same rule as the `ContextWindowEnv` string in
+// agent.go): a different client means a different icon, and the UI should not know any client. The
+// front end looking icons up by ID is the reverse of this cell -- adding a client would mean
+// changing the front end, which equals this cell never having been designed.
 //
-// 颜色不在这里定：界面用 `currentColor` 填，于是同一套图标在四套皮肤下都对。
+// The color is not set here: the UI fills with `currentColor`, so the same icon set works under all
+// four skins.
 const iconPath = "M16 6H8v12h8V6zm4 16H4V2h16v20z"

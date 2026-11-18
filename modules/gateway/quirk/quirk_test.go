@@ -4,7 +4,8 @@ import (
 	"testing"
 )
 
-// 认不出的一律不猜：宁可让用户看到原始报错，也不能瞎给请求加字段。
+// Unrecognized is never guessed at: better to show the user the raw error than to blindly
+// add fields to the request.
 func TestLearnNeverGuesses(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -35,10 +36,12 @@ func TestLearnNeverGuesses(t *testing.T) {
 	}
 }
 
-// 记账是按 (provider, model) 分的：给 A 记的东西不能漏给 B，也不能串到 B。
+// Accounting is per (provider, model): what is recorded for A must not leak to B, or cross
+// over into B.
 //
-// 用 Mark 而不是 Learn：**签名表现在是空的**（判据由拥有补丁的模块注册，见
-// modules/thinking/signatures.go），所以这里考的是这张表的记账粒度，与签名无关。
+// Mark rather than Learn: **the signature table is empty now** (criteria are registered by
+// the module owning the patch, see modules/thinking/signatures.go), so what is tested here
+// is this table's accounting granularity, unrelated to signatures.
 func TestFlagsAreScopedToProviderAndModel(t *testing.T) {
 	table := NewTable()
 	table.Mark("kimi", "kimi-k2.7-code", NoThinkingDisable)
@@ -50,11 +53,12 @@ func TestFlagsAreScopedToProviderAndModel(t *testing.T) {
 	}
 }
 
-// Snapshot 要能看见已经学到的 flag（CLI/诊断读它）。
+// Snapshot must show the flags already learned (the CLI/diagnostics read it).
 //
-// 它用 Mark 直接记，不再走 Learn：**签名表现在是空的**（判据由拥有补丁的模块注册，
-// 见 modules/thinking/signatures.go），所以 Learn 在一张新表上什么也学不到。这条测
-// 的是「记下来的东西在快照里看得见」，与签名内容无关。
+// It records via Mark directly instead of going through Learn: **the signature table is
+// empty now** (criteria are registered by the module owning the patch, see
+// modules/thinking/signatures.go), so Learn would learn nothing on a fresh table. This
+// tests "what was recorded shows up in the snapshot", unrelated to signature content.
 func TestSnapshotShowsLearnedFlags(t *testing.T) {
 	table := NewTable()
 	table.Mark("kimi", "kimi-k2.7-code", NoThinkingDisable)

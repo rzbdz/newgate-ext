@@ -53,14 +53,14 @@ func TestNextDelayAndJitter(t *testing.T) {
 		fails    int
 		want     time.Duration
 	}{
-		{30 * time.Second, 0, 30 * time.Second}, // 正常节奏 = interval
-		{10 * time.Second, 0, 10 * time.Second}, // 间隔与退避是两件事
-		{30 * time.Second, 1, 30 * time.Second}, // 退避从基准起
+		{30 * time.Second, 0, 30 * time.Second}, // normal pace = interval
+		{10 * time.Second, 0, 10 * time.Second}, // interval and backoff are two things
+		{30 * time.Second, 1, 30 * time.Second}, // backoff starts from the base
 		{30 * time.Second, 2, 60 * time.Second},
 		{30 * time.Second, 3, 120 * time.Second},
 		{30 * time.Second, 4, 240 * time.Second},
-		{30 * time.Second, 5, 300 * time.Second},  // 封顶
-		{30 * time.Second, 20, 300 * time.Second}, // 一直封顶
+		{30 * time.Second, 5, 300 * time.Second},  // capped
+		{30 * time.Second, 20, 300 * time.Second}, // stays capped
 	}
 	for _, tc := range tests {
 		if got := nextDelay(tc.interval, tc.fails, 0.5); got != tc.want {
@@ -183,12 +183,12 @@ func TestPollerStopCancelsInFlightPull(t *testing.T) {
 		var once sync.Once
 		pl := pullerFunc(func(ctx context.Context, force bool) (Outcome, error) {
 			once.Do(func() { close(started) })
-			<-ctx.Done() // 模拟一个卡住的对端
+			<-ctx.Done() // simulate a peer that hangs
 			return Outcome{}, ctx.Err()
 		})
 		p := runLoop(context.Background(), pl, time.Minute, discardLogger(), nil)
 		<-started
-		p.Stop() // 必须返回：不能因为对端不响应而卡住 shutdown
+		p.Stop() // must return: shutdown must not hang on an unresponsive peer
 	})
 }
 

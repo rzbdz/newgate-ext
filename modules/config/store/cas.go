@@ -60,9 +60,9 @@ var ErrStale = errors.New("store: the file changed on disk since it was loaded")
 // completely different. Replying with just "it is stale" leaves that to the user's guess.
 type StaleError struct {
 	Path    string
-	Base    string // 你加载时那份
-	Current string // 磁盘上现在这份
-	Disk    []byte // 磁盘现状的原文（给人看，也给 diff）
+	Base    string // the copy you loaded
+	Current string // the copy now on disk
+	Disk    []byte // the raw on-disk content (for showing the user, and for diffing)
 }
 
 func (e *StaleError) Error() string {
@@ -111,7 +111,7 @@ func WriteIfUnchanged(path, base string, data []byte) (string, error) {
 		switch {
 		case err == nil:
 		case os.IsNotExist(err):
-			disk = nil // 文件不存在：基线必须是空串，否则算冲突
+			disk = nil // file absent: the baseline must be the empty string, or it counts as a conflict
 		default:
 			return err
 		}
@@ -147,7 +147,7 @@ func RemoveIfUnchanged(path, base string) error {
 		case err == nil:
 		case os.IsNotExist(err):
 			if base == "" {
-				return nil // 本来就预期它不存在：删成
+				return nil // we expected it to be absent: the delete succeeds
 			}
 			return &StaleError{Path: path, Base: base}
 		default:

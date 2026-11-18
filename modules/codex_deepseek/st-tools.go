@@ -266,7 +266,7 @@ func (e *egressTools) Egress(event []byte) []byte {
 	}
 	var ev map[string]any
 	if json.Unmarshal(payload, &ev) != nil {
-		return nil // 不是 JSON（注释行、[DONE]）：不归我管
+		return nil // not JSON (comment line, [DONE]): not ours to handle
 	}
 	idx := indexOf(ev["output_index"])
 	switch ev["type"] {

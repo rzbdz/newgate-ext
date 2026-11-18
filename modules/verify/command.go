@@ -248,7 +248,7 @@ func profileArg(args []string) string {
 			return ""
 		}
 		if takesValue[a] {
-			i++ // 跳过它的值，值本身不是位置参数
+			i++ // skip its value: the value isn't a positional argument
 			continue
 		}
 		if len(a) > 1 && a[0] == '-' {

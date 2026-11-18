@@ -100,7 +100,7 @@ type Snapshot struct {
 	// With it, an authority change is recognized and the replica resets its baseline.
 	HostID     string            `json:"host_id"`
 	Generation int               `json:"generation"`
-	Version    string            `json:"version,omitempty"` // 内容哈希，审计与"变了没有"用
+	Version    string            `json:"version,omitempty"` // content hash; audit and change detection
 	Files      map[string][]byte `json:"files"`
 }
 
@@ -112,5 +112,5 @@ type Snapshot struct {
 type Secrets struct {
 	HostID     string            `json:"host_id"`
 	Generation int               `json:"generation"`
-	Keys       map[string]string `json:"keys"` // provider 名 → 明文 key
+	Keys       map[string]string `json:"keys"` // provider name → plaintext key
 }

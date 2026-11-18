@@ -7,9 +7,9 @@ import (
 	"testing"
 )
 
-// 带身份前缀的 /models 必须与裸路径给出同一份列表。opencode 的 baseURL 从
-// 2026-10-29 起带 `/a/opencode`（之前漏了，见发行版 opencodeomo 的
-// buildNewgateProvider），它的 GET /models 就不再命中 mux 上的 "/v1/models"。
+// The identity-prefixed /models must give the same list as the bare path. opencode's baseURL
+// carries `/a/opencode` since 2026-10-29 (it was missing before; see buildNewgateProvider in
+// the distribution's opencodeomo), so its GET /models no longer matches "/v1/models" on the mux.
 func TestModelsUnderAgentPrefix(t *testing.T) {
 	isolate(t)
 	s := newTestServer()

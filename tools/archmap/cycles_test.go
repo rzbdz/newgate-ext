@@ -39,7 +39,8 @@ func TestReportCycles(t *testing.T) {
 	}
 
 	// which modules' **root packages** each package imports (same ruler as the undeclared probe).
-	rootImports := map[string]map[string]bool{} // 模块 → 被它 import 根包的模块集合
+	// module -> the set of modules whose root packages it imports
+	rootImports := map[string]map[string]bool{}
 	for _, dir := range []string{root, root + "/core"} {
 		for _, p := range listPackages(t, dir) {
 			from, ok := moduleOf(p.path)

@@ -1,8 +1,8 @@
-// Package opencode 描述 OpenCode 客户端家族。
+// Package opencode describes the OpenCode client family.
 //
-// 本模块只注册 OpenCode 的 Agent 描述符和家族身份。具体配置文件如何接管、
-// OMO 有哪些额外槽位，属于 opencodeomo；这种边界使基础客户端不会反向依赖
-// 某个可选插件。
+// This module registers only OpenCode's Agent descriptor and family identity. How the concrete
+// config file is taken over, and which extra slots OMO has, belongs to opencodeomo; this boundary
+// keeps the base client from depending backwards on an optional plugin.
 package opencode
 
 import (
@@ -14,7 +14,8 @@ import (
 	confighookapi "github.com/rzbdz/newgate-ext/modules/confighook"
 )
 
-// New 声明 OpenCode 客户端组件：提供家族身份，并在生命周期内注册客户端描述符。
+// New declares the OpenCode client component: it provides the family identity, and registers the
+// client descriptor for its lifetime.
 func New() modules.Component {
 	var releases []modules.Release
 	return modules.Component{
@@ -35,8 +36,8 @@ func New() modules.Component {
 				return err
 			}
 			releases = append(releases, release)
-			// 安装方式：`newgate config` 在没装的机器上走的就是它（与 codex /
-			// claude / hermes 同一条口子，见内核 confighook.AgentInstaller）。
+			// Install method: what `newgate config` uses on a machine without it (the same opening as
+			// codex / claude / hermes, see the kernel's confighook.AgentInstaller).
 			release, err = hooks.RegisterAgentInstaller(ID, confighookapi.ExecInstaller(
 				"npm", "install", "--global", NpmPackage))
 			if err != nil {

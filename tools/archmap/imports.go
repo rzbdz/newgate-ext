@@ -57,7 +57,7 @@ func ImportGraph(root string) (Graph, error) {
 	pkgs = append(pkgs, core...)
 
 	// First pin down "which packages are ours", then fold them into directories.
-	members := map[string][]string{} // 节点 id → 目录里的包
+	members := map[string][]string{} // node id -> packages in the directory
 	for _, p := range pkgs {
 		if !isOurs(p.ImportPath) {
 			continue
@@ -109,7 +109,7 @@ func ImportGraph(root string) (Graph, error) {
 			seen[key] = true
 			style := "solid"
 			if repoOfID(from) != repoOfID(to) {
-				style = "cross" // 跨仓库：内核 ←→ 发行版之间那道 replace
+				style = "cross" // cross-repo: the replace seam between kernel and distribution
 			}
 			g.Edges = append(g.Edges, Edge{From: from, To: to, Style: style})
 		}
@@ -134,7 +134,8 @@ func goList(dir, pattern string) ([]listedPkg, error) {
 	for dec.More() {
 		var p listedPkg
 		if err := dec.Decode(&p); err != nil {
-			break // 半截 JSON（被 -e 放过的坏包）不值得把整张图扔掉
+			break // half-baked JSON (-e let a bad package through): drop the package,
+			// not the whole graph
 		}
 		pkgs = append(pkgs, p)
 	}

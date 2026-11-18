@@ -22,7 +22,7 @@ func (onlyEntry) Load() ([]modules.Component, error) {
 // ordinary function call - **the return for putting composition-root logic in the kernel**:
 // the distribution's main takes the same path, so exit codes cannot drift apart.
 func TestMainExitsWhenNoEntryClaims(t *testing.T) {
-	t.Setenv("NEWGATE_HOME", t.TempDir()) // 装配留痕要往配置目录写日志
+	t.Setenv("NEWGATE_HOME", t.TempDir()) // assembly traces write logs into the config dir
 
 	if code := app.Main(context.Background(), app.Options{Loader: onlyEntry{}}); code != 69 {
 		t.Errorf("exit code when only the entry ledger exists and nobody claims it = %d, want 69", code)

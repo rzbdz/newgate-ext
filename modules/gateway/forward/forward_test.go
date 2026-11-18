@@ -24,7 +24,7 @@ import (
 	"github.com/rzbdz/newgate-ext/modules/gateway/policy"
 )
 
-// 一段有代表性的 SSE：含 tool_call 分片、Unicode、空 data、大整数。
+// A representative slice of SSE: with tool_call fragments, Unicode, empty data, big integers.
 var sseChunks = []string{
 	`data: {"choices":[{"delta":{"role":"assistant"}}]}` + "\n\n",
 	`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"background_cancel","arguments":""}}]}}]}` + "\n\n",
@@ -33,7 +33,7 @@ var sseChunks = []string{
 	"data: [DONE]\n\n",
 }
 
-// fakeUpstream 逐块吐 SSE，块之间有间隔——用来验证代理没有缓冲。
+// fakeUpstream emits SSE chunk by chunk with gaps -- to verify the proxy does not buffer.
 func fakeUpstream(t *testing.T, gap time.Duration) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -43,7 +43,7 @@ func fakeUpstream(t *testing.T, gap time.Duration) *httptest.Server {
 			w.WriteHeader(400)
 			return
 		}
-		// 断言收到的是真实模型名，不是档位名
+		// assert that what arrives is the real model name, not the tier name
 		var got string
 		_ = json.Unmarshal(m["model"], &got)
 		if got != "real-model-1" {
@@ -65,7 +65,7 @@ func fakeUpstream(t *testing.T, gap time.Duration) *httptest.Server {
 	}))
 }
 
-// TestStreamByteFaithful 断言：响应体逐字节等于上游发出的内容。
+// TestStreamByteFaithful asserts: the response body equals, byte for byte, what the upstream sent.
 func TestStreamByteFaithful(t *testing.T) {
 	up := fakeUpstream(t, 0)
 	defer up.Close()
@@ -80,8 +80,9 @@ func TestStreamByteFaithful(t *testing.T) {
 	}
 }
 
-// TestStreamNotBuffered 断言：块是陆续到的，不是最后一次性倒出来。
-// 这是流式体验的命门——缓冲了内容测试照样过，但用户看起来像���死。
+// TestStreamNotBuffered asserts: chunks arrive one after another, not all dumped at the end.
+// This is the lifeblood of the streaming experience -- with buffering the content test still
+// passes, yet to the user it looks frozen.
 func TestStreamNotBuffered(t *testing.T) {
 	gap := 60 * time.Millisecond
 	up := fakeUpstream(t, gap)
@@ -93,8 +94,8 @@ func TestStreamNotBuffered(t *testing.T) {
 	}
 	first, last := arrivals[0], arrivals[len(arrivals)-1]
 	spread := last - first
-	// 上游总共铺开了 len(sseChunks)*gap，客户端观测到的时间跨度
-	// 应该同量级；若被缓冲，spread 会接近 0
+	// the upstream spread len(sseChunks)*gap in total, and the time span the client observes
+	// should be of the same order; if buffered, spread would be near 0
 	if spread < gap {
 		t.Errorf("looks buffered: the gap between the first and last chunk is only %v (upstream gap %v, %d chunks)",
 			spread, gap, len(sseChunks))
@@ -103,16 +104,16 @@ func TestStreamNotBuffered(t *testing.T) {
 		first, spread, len(arrivals))
 }
 
-// streamThroughProxy 起一个真实的代理实例，发一个流式请求，
-// 返回完整响应体和每次读到数据的相对时刻。
+// streamThroughProxy starts a real proxy instance, sends one streaming request, and returns the
+// full response body plus the relative moment each read got data.
 func streamThroughProxy(t *testing.T, upstreamURL string, _ time.Duration) (string, []time.Duration) {
 	t.Helper()
 
 	srv := newTestServer()
 	handler := http.HandlerFunc(srv.handleProxy)
 
-	// 用一个只认 real-model-1 的解析器替代真实配置：
-	// 直接构造 route，绕过 config 读盘
+	// Substitute a parser that only knows real-model-1 for the real config:
+	// build the route directly, bypassing the config disk read
 	testChain = func(role string) []resolve.Step {
 		if role != "heavy" {
 			return nil
@@ -165,8 +166,9 @@ func testProvider(baseURL string) domain.Provider {
 	return domain.Provider{BaseURL: baseURL + "/v1", APIKey: "sk-real", Protocol: "openai"}
 }
 
-// TestClientCancelAbortsUpstream 断言：客户端中途断开时，上游请求也被取消。
-// 没这个的话，用户在 opencode 里按 ESC，上游还会把整个响应跑完并照样计费。
+// TestClientCancelAbortsUpstream asserts: when the client disconnects mid-way, the upstream
+// request is cancelled too. Without this, a user pressing ESC in opencode still has the
+// upstream run the whole response out and bill for it.
 func TestClientCancelAbortsUpstream(t *testing.T) {
 	upstreamDone := make(chan error, 1)
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -183,12 +185,12 @@ func TestClientCancelAbortsUpstream(t *testing.T) {
 			}
 			select {
 			case <-r.Context().Done():
-				upstreamDone <- r.Context().Err() // 上游观测到取消
+				upstreamDone <- r.Context().Err() // the upstream observed the cancellation
 				return
 			case <-time.After(20 * time.Millisecond):
 			}
 		}
-		upstreamDone <- nil // 跑完了 = 取消没传播过去
+		upstreamDone <- nil // ran to completion = the cancellation never propagated
 	}))
 	defer up.Close()
 
@@ -213,7 +215,7 @@ func TestClientCancelAbortsUpstream(t *testing.T) {
 		t.Fatalf("request failed: %v", err)
 	}
 
-	// 读到前几块就断开
+	// read a few chunks then disconnect
 	buf := make([]byte, 256)
 	if _, err := resp.Body.Read(buf); err != nil {
 		t.Fatalf("could not even read the first chunk: %v", err)
@@ -232,10 +234,10 @@ func TestClientCancelAbortsUpstream(t *testing.T) {
 	}
 }
 
-// TestNonStreamResponseByteFaithful 非流式响应也必须逐字节原样返回，
-// 且不能漏掉/篡改上游的头。
+// TestNonStreamResponseByteFaithful a non-streaming response must also be returned byte for
+// byte, and must not drop or alter the upstream's headers.
 func TestNonStreamResponseByteFaithful(t *testing.T) {
-	// 故意用奇怪的 key 顺序、大整数、Unicode、非紧凑空白
+	// deliberately odd key order, big integers, Unicode, non-compact whitespace
 	upBody := "{\n  \"z\": 1e10,\n  \"a\": 9007199254740993,\n" +
 		"  \"txt\": \"café \\\"quotes\\\" and \\\\ backslashes\",\n  \"nil\": null\n}"
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -269,21 +271,22 @@ func TestNonStreamResponseByteFaithful(t *testing.T) {
 	if string(got) != upBody {
 		t.Errorf("the response body was changed\n want: %q\n got:  %q", upBody, got)
 	}
-	// 上游的业务头必须透传
+	// the upstream's business headers must pass through
 	if resp.Header.Get("X-Upstream-Trace") != "abc-123" {
 		t.Error("a custom upstream header was lost")
 	}
 	if resp.Header.Get("Eo-Cache-Status") != "MISS" {
 		t.Error("an upstream cache-status header was lost")
 	}
-	// 我们自己的诊断头应该在
+	// our own diagnostic header should be there
 	if resp.Header.Get("X-Newgate-Route") == "" {
 		t.Error("missing X-Newgate-Route")
 	}
 }
 
-// TestErrorResponseByteFaithful 上游报错时，错误原文必须一字不改地送到客户端
-// ——吞掉上游错误信息是排查噩梦的主要来源。
+// TestErrorResponseByteFaithful when the upstream reports an error, its error text must reach
+// the client unchanged -- swallowing upstream error messages is the main source of debug
+// nightmares.
 func TestErrorResponseByteFaithful(t *testing.T) {
 	errBody := `{"error":{"message":"Invalid schema for function 'background_cancel': null is not of type \"array\"","type":"invalid_request_error"}}`
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -323,23 +326,27 @@ func TestErrorResponseByteFaithful(t *testing.T) {
 	}
 }
 
-// shapeTestFilter 是 forward 这一层的测试策略：认「点名了 reasoning_content
-// 又要求逐字回传」的 400，并给它留一份现场。
+// shapeTestFilter is forward's own layer of test policy: it recognizes the 400 that "names
+// reasoning_content and wants it passed back verbatim", and keeps a scene for it.
 //
-// 为什么在 forward 的测试里自己写一条，而不是 import modules/breaker 或
-// modules/deepseek：转发路径**不认识任何一位策略**（这正是 2026-09-18 倒置
-// 成立的理由——判据由知道那件事的模块注册进策略账本，core 只读 Verdict.Evidence
-// 里那几个不透明字符串）。在单测里 import deepseek 等于把刚拆掉的耦合从测试里
-// 接回去：真判据改了文案，这里会跟着红，而它红的原因跟 forward 的行为毫无关系。
+// Why write one here in forward's tests instead of importing modules/breaker or
+// modules/deepseek: the forwarding path **knows no policy at all** (exactly why the
+// 2026-09-18 inversion works -- the criterion is registered into the policy ledger by the
+// module that knows the thing, and core only reads the opaque strings in Verdict.Evidence).
+// Importing deepseek in a unit test would plug the just-removed coupling back in through the
+// tests: change the real criterion's wording and this goes red, for a reason unrelated to
+// forward's behavior.
 //
-// 分工是「测试跟着谁知道这件事走」：真判据的真值表在 modules/deepseek/shape_test.go，
-// breaker 把形状 400 翻成判决的真值表在 modules/breaker/plane_test.go，判据从
-// 模块 Start 一路接到转发路径的**接线**在 testing/system（真组件图 + 假上游）；
-// 这里只锁 forward 与账本的契约——Evidence 非空时它该做什么。
-// advance 表达的是这条策略对「认领之后要不要换站」的回答：零值（false）=
-// 「不换站」（链尾那一发，锁终局路径），true = 「继续沿链」（breaker 对形状
-// 400 的真实判决就是这一条：同一份 body 换谁发都一样错，但换一家校验更松的
-// 上游是唯一可能成功的路）。两条收场都必须留痕，用例各锁一边。
+// The split is "tests follow whoever knows the thing": the real criterion's truth table is in
+// modules/deepseek/shape_test.go, breaker's table turning a shape 400 into a verdict is in
+// modules/breaker/plane_test.go, and the **wiring** from a module's Start all the way to the
+// forwarding path is in testing/system (real component graph + fake upstream); here we lock
+// only forward's contract with the ledger -- what it must do when Evidence is non-empty.
+// advance expresses this policy's answer to "swap after a claim or not": zero (false) = "no
+// swap" (the chain-end shot, locking the final path), true = "keep along the chain" (breaker's
+// real verdict for a shape 400 is exactly this: the same body is wrong no matter who sends it,
+// but a laxer upstream is the only path that can succeed). Both endings must leave a trail,
+// and the cases lock one side each.
 type shapeTestFilter struct{ advance bool }
 
 func (shapeTestFilter) Name() string { return "shape-test" }
@@ -355,7 +362,7 @@ func (f shapeTestFilter) Judge(o policy.Outcome) policy.Verdict {
 		!bytes.Contains(o.Body, []byte("must be passed back")) {
 		return policy.Verdict{}
 	}
-	// 形状错误：不记账，但留痕。
+	// shape error: no accounting, but a trail.
 	return policy.Verdict{
 		Stop:     !f.advance,
 		Evidence: &policy.Evidence{Tag: "shape-400", Subject: "test-shape", Archive: true},
@@ -364,21 +371,24 @@ func (f shapeTestFilter) Judge(o policy.Outcome) policy.Verdict {
 
 func (shapeTestFilter) Observe(policy.Outcome) {}
 
-// TestShapeErrorIsCountedThenLoggedWithEvidence 锁住转发路径对「要留痕的结局」
-// 的全部义务。策略给出 Evidence 之后，forward 要：
+// TestShapeErrorIsCountedThenLoggedWithEvidence locks all of forward's obligations for an
+// "outcome that needs a trail". Once policy gives Evidence, forward must:
 //
-//  1. 原样透传上游原文（不静默，客户端看到的就是上游说的）；
-//  2. 日志里打出**标记**（`[shape-400]`）与**是谁认领的**；
-//  3. 外加一行「现场已存档」；
-//  4. 现场落进 dump/<标记>-<判据>/（专用目录，不参与 req-*/err-* 的滚动清理）。
+//  1. pass the upstream's raw text through as-is (not silent: the client sees what it said);
+//  2. print the **tag** (`[shape-400]`) and **who claimed it** in the log;
+//  3. add a "scene archived" line;
+//  4. archive the scene into dump/<tag>-<criterion>/ (a dedicated directory, exempt from the
+//     req-*/err-* rolling cleanup).
 //
-// 现场动机（2026-09-17，health.json + 日志）：deepseek-flash 的这条 400 被当成
-// 可用性失败记进熔断器，连续两发就把一条本来能用的 binding 摘掉；而 probe 一直
-// 绿——探活发的是最小请求，触发不到「思考模式要求逐字回传」。摘要写得明确：
-// 「同一份 body 换哪个 provider 都一样错」的问题不该记在任何一家的账上。
+// Field (2026-09-17, health.json + logs): deepseek-flash's 400 was recorded into the
+// breaker as an availability failure, and two shots in a row pulled a perfectly usable
+// binding, while probe stayed green -- a probe sends a minimal request and never triggers
+// "thinking mode requires reasoning passed back". The summary put it plainly: a problem where
+// "the same body is equally wrong on any provider" must not be charged to anyone's account.
 //
-// 记账那半边（形状 400 不进可用性账本）现在是 breaker 的判决，在
-// modules/breaker/plane_test.go 与 testing/system 里验；这里只验数据面的义务。
+// The accounting half (shape 400 stays out of the availability ledger) is now breaker's
+// verdict, verified in modules/breaker/plane_test.go and testing/system; here we verify the
+// data plane's obligations only.
 func TestShapeErrorIsCountedThenLoggedWithEvidence(t *testing.T) {
 	sandboxState(t, `{"port": 0}`)
 	metrics.Default.Reset()
@@ -395,8 +405,8 @@ func TestShapeErrorIsCountedThenLoggedWithEvidence(t *testing.T) {
 	}))
 	defer up.Close()
 
-	// 单站链（IsLast）：只有链尾那一发才走「定案」分支，也就是打专属日志、
-	// 存实地证据的那条路径。多站链测不到它。
+	// Single-stop chain (IsLast): only the chain-end shot takes the "settled" branch, i.e. the
+	// path that prints the dedicated log and stores the field evidence. A multi-stop chain misses it.
 	testChain = func(role string) []resolve.Step {
 		return []resolve.Step{{Profile: "ds",
 			Binding:  domain.Binding{Provider: "ds-shape", Model: "deepseek-flash"},
@@ -411,7 +421,7 @@ func TestShapeErrorIsCountedThenLoggedWithEvidence(t *testing.T) {
 	front := httptest.NewServer(http.HandlerFunc(srv.handleProxy))
 	defer front.Close()
 
-	// 连发 3 次：判决恒定，所以每一发都该留下同一份现场。
+	// three shots in a row: the verdict is constant, so each must leave the same scene.
 	for i := 0; i < 3; i++ {
 		resp, err := http.Post(front.URL+"/v1/chat/completions", "application/json",
 			strings.NewReader(`{"model":"newgate/heavy"}`))
@@ -430,26 +440,27 @@ func TestShapeErrorIsCountedThenLoggedWithEvidence(t *testing.T) {
 	if hits != 3 {
 		t.Fatalf("upstream was hit %d times, want 3", hits)
 	}
-	// 不算在任何一条 binding 头上：判决没给 Attribute，计数就不该动。
+	// Not charged to any binding: the verdict gave no Attribute, so the counter must not move.
 	if n := atomic.LoadUint64(&srv.failures); n != 0 {
 		t.Errorf("an outcome that leaves a trace but is not booked added failures %d times", n)
 	}
 
-	// 标记与判据名必须进日志：形状判据是多家上游各自的，只说「命中了形状错误」
-	// 在有两家同时报 400 时毫无用处。转发路径不认识那些字符串，名字是它唯一的
-	// 线索——所以它只能原样打出来。
+	// Tag and criterion name must reach the log: shape criteria belong to each upstream
+	// separately, and saying only "a shape error was hit" is useless when two upstreams both
+	// return 400. The forwarding path knows none of those strings; names are its only clue --
+	// which is why it can only print them as-is.
 	logs := logBuf.String()
 	if !strings.Contains(logs, "[shape-400]") || !strings.Contains(logs, "test-shape") {
 		t.Errorf("the log does not say which criterion claimed it:\n%s", logs)
 	}
-	// 存档那一行的机器标记是证据目录名 `shape-400-<判据>`：文案会跟着语言走，
-	// 目录名不会（这才是排障时 grep 得动的东西）。
+	// The machine tag on the archive line is the evidence directory name `shape-400-<criterion>`:
+	// wording follows the language, a directory name does not (that is what stays greppable).
 	if !strings.Contains(logs, "shape-400-") {
 		t.Errorf("evidence was not written (these 400s are rare and fatal; once lost they cannot be reproduced):\n%s", logs)
 	}
 
-	// 证据落进专用目录，名字取自标记 + 判据 → 换一位策略自动多一个目录，
-	// 转发路径不改。
+	// Evidence lands in a dedicated directory named tag + criterion → a different policy
+	// automatically adds a directory, with no change to the forwarding path.
 	dir := filepath.Join(os.Getenv("NEWGATE_HOME"), "dump", "shape-400-test-shape")
 	ents, err := ioutil.ReadDir(dir)
 	if err != nil {
@@ -465,19 +476,22 @@ func TestShapeErrorIsCountedThenLoggedWithEvidence(t *testing.T) {
 	}
 }
 
-// TestShapeAdvanceKeepsClaimedEvidence 锁住**沿链转移**那一发的留痕：当裁决
-// 说「继续走」（fallback_on_400=true 那条路；形状判决本来就该换一家再试），
-// 而判据又认了这一发 400 时，`[shape-400]` 那行日志与专用目录归档**都必须
-// 发生**——哪怕这一发最终由下一站回了 200。
+// TestShapeAdvanceKeepsClaimedEvidence locks the trail of **the advance-along-chain shot**:
+// when the verdict says "keep going" (the fallback_on_400=true path; a shape verdict should
+// try another upstream anyway) and a criterion claimed this 400, the `[shape-400]` log line
+// and the dedicated-directory archive **must both happen** -- even if the next stop ends up
+// answering 200.
 //
-// 现场（2026-09-17，见 docs/11-troubleshooting.md）：形状 400 悄悄降级到别家、
-// 客户端拿到 200、日志里看不出来。旧实现把留痕留在终局分支里，而转移恰恰是
-// 它最常见的收场——于是既不归档也不打那行，docs 承诺的「不参与滚动清理、
-// 永不丢」就成了一句空话。
+// Field (2026-09-17, see docs/11-troubleshooting.md): a shape 400 silently downgraded to
+// another provider, the client got a 200, and the log could not show it. The old
+// implementation kept the trail in the final branch, and the advance is precisely its most
+// common ending -- so it neither archived nor logged, and the "exempt from rolling cleanup,
+// never lost" docs promise became an empty phrase.
 //
-// 同时锁住「尽量少影响」那半边：转移路径**不落**通用 err-* 证据（整包 body
-// dump 会让每次 fallback 多几 MB 落盘/日志），所以这里断言 dump 里没有
-// err-400-*，也证明这次修复只动了日志与归档、没动裁决。
+// It also locks the "affect as little as possible" half: the advance path writes **no**
+// generic err-* evidence (a whole-body dump would add a few MB per fallback to disk/logs),
+// so this asserts no err-400-* in the dump, proving the fix touched only logging and
+// archiving, not the verdict.
 func TestShapeAdvanceKeepsClaimedEvidence(t *testing.T) {
 	sandboxState(t, `{"port": 0, "chain": {"fallback_on_400": true}}`)
 	t.Cleanup(func() { testChain = nil })
@@ -499,7 +513,8 @@ func TestShapeAdvanceKeepsClaimedEvidence(t *testing.T) {
 	}))
 	defer okUp.Close()
 
-	// 两站链：第一站挑食（形状 400）→ 裁决为继续走 → 第二站收下。
+	// two-stop chain: the first stop is picky (shape 400) → verdict: keep going → the
+	// second takes it.
 	testChain = func(role string) []resolve.Step {
 		return []resolve.Step{
 			{Profile: "ds", Binding: domain.Binding{Provider: "ds-shape", Model: "deepseek-flash"},
@@ -514,7 +529,8 @@ func TestShapeAdvanceKeepsClaimedEvidence(t *testing.T) {
 	if _, err := srv.Filters.Register(shapeTestFilter{advance: true}); err != nil {
 		t.Fatalf("registering the policy: %v", err)
 	}
-	// 旁观者只记录事实，用来证明这一发确实走在 fallback_on_400 打开的链上。
+	// The bystander only records facts, proving this shot really ran on the chain that
+	// fallback_on_400 opened.
 	watcher := newScriptedFilter()
 	if _, err := srv.Filters.Register(watcher); err != nil {
 		t.Fatalf("registering the observer policy: %v", err)
@@ -545,14 +561,15 @@ func TestShapeAdvanceKeepsClaimedEvidence(t *testing.T) {
 		t.Fatal("this request did not go over a chain with fallback_on_400=true - the fixture had no effect, so the case cannot lock the failover path")
 	}
 
-	// 标记与判据名必须进日志：形状判据是多家上游各自的，转发路径不认识那些
-	// 字符串，名字是它唯一的线索，所以只能原样打出来。
+	// Tag and criterion name must reach the log: shape criteria belong to each upstream
+	// separately, the forwarding path knows none of those strings, names are its only clue,
+	// so it can only print them as-is.
 	logs := logBuf.String()
 	if !strings.Contains(logs, "[shape-400]") || !strings.Contains(logs, "test-shape") {
 		t.Errorf("the failover path did not say which criterion claimed it (that is the shape of a 'silent downgrade'):\n%s", logs)
 	}
-	// 存档那一行的机器标记是证据目录名 `shape-400-<判据>`：文案跟语言走，
-	// 目录名不跟——这才是排障时 grep 得动的东西。
+	// The machine tag on the archive line is the evidence directory name `shape-400-<criterion>`:
+	// wording follows the language, a directory name does not -- that is what stays greppable.
 	if !strings.Contains(logs, "shape-400-test-shape") {
 		t.Errorf("the failover path did not archive the scene (these 400s are rare and fatal; once lost they cannot be reproduced):\n%s", logs)
 	}
@@ -569,7 +586,8 @@ func TestShapeAdvanceKeepsClaimedEvidence(t *testing.T) {
 			t.Errorf("the evidence directory is missing %s: %v", want, err)
 		}
 	}
-	// 「尽量少影响」那半边：转移路径不落通用 err-* 整包 body dump。
+	// The "affect as little as possible" half: the advance path writes no generic err-*
+	// whole-body dump.
 	dumpDir := filepath.Join(os.Getenv("NEWGATE_HOME"), "dump")
 	if all, err := ioutil.ReadDir(dumpDir); err == nil {
 		for _, e := range all {
@@ -580,13 +598,14 @@ func TestShapeAdvanceKeepsClaimedEvidence(t *testing.T) {
 	}
 }
 
-// TestShapeAdvanceWithoutClaimLeavesNoArchive 是反向用例：链上第一站回了一个
-// **没命中**形状判据的 400，裁决照样是「继续走」（fallback_on_400=true），
-// 但没人认领这一发——于是什么都不归档，`[shape-400]` 那行也不该出现。
+// TestShapeAdvanceWithoutClaimLeavesNoArchive is the reverse case: the first stop returned a
+// 400 that **did not match** the shape criterion, the verdict is still "keep going"
+// (fallback_on_400=true), but nobody claimed this shot -- so nothing is archived and the
+// `[shape-400]` line must not appear either.
 //
-// 它守着留痕的边界：证据是「判据认领」的结果，不是「看见 400」的结果。判据一
-// 宽，专用目录就会被普通校验错误塞满，docs/11-troubleshooting.md 承诺的那份
-// 「永不丢」的证据反而被淹没。
+// It guards the boundary of the trail: evidence is the result of a **criterion claiming**, not
+// of "seeing a 400". Loosen the criterion and the dedicated directory fills with ordinary
+// validation errors, drowning the "never lost" evidence docs/11-troubleshooting.md promises.
 func TestShapeAdvanceWithoutClaimLeavesNoArchive(t *testing.T) {
 	sandboxState(t, `{"port": 0, "chain": {"fallback_on_400": true}}`)
 	t.Cleanup(func() { testChain = nil })
@@ -617,7 +636,7 @@ func TestShapeAdvanceWithoutClaimLeavesNoArchive(t *testing.T) {
 	defer func() { testChain = nil }()
 
 	srv, logBuf := newLoggingTestServer()
-	// 判据在册，只是这一份 body 不命中它——正是要锁的边界。
+	// The criterion is registered, this body just does not match it -- exactly the boundary to lock.
 	if _, err := srv.Filters.Register(shapeTestFilter{advance: true}); err != nil {
 		t.Fatalf("registering the policy: %v", err)
 	}
@@ -650,8 +669,9 @@ func TestShapeAdvanceWithoutClaimLeavesNoArchive(t *testing.T) {
 	}
 }
 
-// TestShapeDirNameIsPathSafe：标记与判据名都会进文件路径，而它们都来自**别的
-// 模块**注册进来的策略——不设防就等于让一个注册项决定往哪写文件。
+// TestShapeDirNameIsPathSafe: both tag and criterion name enter a file path, and both come
+// from policy **other modules** registered -- without a guard, a registration entry decides
+// where files get written.
 func TestShapeDirNameIsPathSafe(t *testing.T) {
 	tests := []struct{ tag, subject, want string }{
 		{"shape-400", "deepseek", "shape-400-deepseek"},
@@ -668,7 +688,8 @@ func TestShapeDirNameIsPathSafe(t *testing.T) {
 			t.Errorf("shapeDirName(%q, %q) = %q, want %q", tt.tag, tt.subject, got, tt.want)
 		}
 	}
-	// 结果里绝不能出现分隔符：路径拼接的反面教材是「策略说了算的字符串」。
+	// The result must never contain a separator: the anti-pattern for path joining is
+	// "a string policy controls".
 	for _, name := range []string{"../x", "a/b", "a\\b"} {
 		for _, got := range []string{shapeDirName(name, "d"), shapeDirName("shape-400", name)} {
 			if strings.ContainsAny(got, `/\`) {
@@ -678,23 +699,26 @@ func TestShapeDirNameIsPathSafe(t *testing.T) {
 	}
 }
 
-// TestOtherClientErrorDoesNotBlameTheProvider 锁住**最小系统**那一侧：账本上
-// 一张纸条都没有时，数据面对 400 的全部动作就是**原样转达**——不换站、不记账、
-// 不留痕、不写证据。
+// TestOtherClientErrorDoesNotBlameTheProvider locks the **minimal system** side: with not one
+// note on the ledger, the data plane's whole action for a 400 is **pass it through** -- no
+// swap, no accounting, no trail, no evidence.
 //
-// 这条测试 2026-09-17 的方向是反的（当时断言「非形状 400 连发两次必须开闸」，
-// 理由是「schema 真坏的 provider 否则永远摘不掉」）。翻转它的理由：
+// On 2026-09-17 this test pointed the other way (asserting "a non-shape 400 must open the gate
+// after two shots", reasoning "otherwise a genuinely schema-broken provider never gets pulled").
+// Why it flipped:
 //
-//   - 400 的含义就是「你这份请求不对」，而这到底是上游的错还是请求的错，**不是
-//     数据面能下的结论**；按 400 摘牌等于让一个补丁的盲区决定摘谁，正好是
-//     2026-09-17 那次 reasoning 回传 400 事故的形状；
-//   - 「这家上游根本不通」不是被动路径能下的结论，`newgate probe` 才是权威
-//     手段：探活发的是最小合法请求，base 错/版本错的 provider 会当场被 probe
-//     摘掉，而它永远不会因为用户某一轮的对话形状被误判。
+//   - A 400 means "your request is wrong", and whether the upstream or the request is at fault
+//     is **not a conclusion the data plane can draw**; pulling on a 400 lets one patch's blind
+//     spot decide who gets pulled -- exactly the shape of the 2026-09-17 reasoning-passback
+//     incident;
+//   - "this upstream is simply unreachable" is not a conclusion the passive path can draw;
+//     `newgate probe` is the authority: a probe sends a minimal valid request, a provider with
+//     a wrong base or version gets pulled by probe on the spot, and it never misjudges because
+//     of the shape of one round of the user's conversation.
 //
-// 判断这条 400 算谁的账、要不要留痕，是**策略**的事（今天那一份在
-// modules/breaker/plane.go 的 Judge 里，真值表在同目录的 plane_test.go）。
-// 数据面的义务只有一条：把事实如实报出去，然后照判决执行。
+// Deciding whose account this 400 goes on and whether to leave a trail is **policy's** job
+// (today's copy is breaker/plane.go's Judge, truth table in plane_test.go next to it). The
+// data plane has exactly one obligation: report the facts faithfully, then execute the verdict.
 func TestOtherClientErrorDoesNotBlameTheProvider(t *testing.T) {
 	schemaErr := `{"error":{"message":"Invalid schema: missing required field 'name'"}}`
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -730,20 +754,23 @@ func TestOtherClientErrorDoesNotBlameTheProvider(t *testing.T) {
 	if n := atomic.LoadUint64(&srv.failures); n != 0 {
 		t.Errorf("the minimal system booked %d of the 400s as upstream failures - no policy means no verdict, the kernel books nothing by default", n)
 	}
-	// 没人要现场，存档那一行就不该出现。断言的是**源语言原文**（源语言在运行时
-	// 是恒等路径，CI 上 LANG=C 稳定），不是译文。
+	// Nobody wants the scene, so the archive line must not appear. The assertion is on the **source
+	// language text** (source is the identity path at runtime, stable on CI with LANG=C),
+	// not a translation.
 	if logs := logBuf.String(); strings.Contains(logs, "scene archived to") {
 		t.Errorf("nobody asked for a scene, yet the data plane stored one:\n%s", logs)
 	}
 }
 
-// TestMinimalSystemForwardsEveryOutcomeToNobody 断言「最小系统」是可用的：
-// 策略账本为空时，成功的转发照常发生（可用性全放行、按机制换站、不记账）。
+// TestMinimalSystemForwardsEveryOutcomeToNobody asserts the "minimal system" is usable: with
+// an empty policy ledger, successful forwarding still happens (everything admitted, swap by
+// mechanism, no accounting).
 //
-// 这条守着 policy 的兜底方向。四个决策点的内核默认分别是「全部候选可用」
-// 「响应没开始写且还有下一站就继续」「控制面少一节」「无事可做」——任何一处
-// 写反了（比如默认不让候选进链），网关就变成了「没装熔断器就一个请求都发不出去」，
-// 而那是比熔断器坏掉严重得多的故障。
+// It guards policy's fallback direction. The four decision points' kernel defaults are "all
+// candidates usable", "keep going if the response has not started and there is a next stop",
+// "one section less on the control plane" and "nothing to do" -- write any one of them
+// backwards (say, by default keeping candidates out of the chain) and the gateway becomes
+// "with no breaker installed not one request gets out", a far worse failure than a broken breaker.
 func TestMinimalSystemForwardsEveryOutcomeToNobody(t *testing.T) {
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -777,21 +804,24 @@ func TestMinimalSystemForwardsEveryOutcomeToNobody(t *testing.T) {
 	}
 }
 
-// TestClientCancelDuringConnectDoesNotBurnTheChain 断言：客户端在**连接阶段**
-// 就取消时，不沿链重试、不记失败、**也不把这一发交给任何策略**。
+// TestClientCancelDuringConnectDoesNotBurnTheChain asserts: when the client cancels at the
+// **connect stage**, do not retry along the chain, do not record a failure, **and do not hand
+// this shot to any policy**.
 //
-// 现场是这么坏的（10.0.50.11 的日志）：一次取消被当成 smt-claude 连接失败，
-// 沿链换 smt-deepseek——可 context 已经死了，于是每个候选都瞬间失败，一次
-// ESC 把整条链上三个 provider 的熔断器全打开。之后真正的请求没候选可用，
-// 回 502，用户根本查不到源头。
+// This is how it used to break (logs from 10.0.50.11): one cancellation taken as an smt-claude
+// connect failure, the chain swapped to smt-deepseek -- but the context was already dead, so
+// every candidate failed instantly and one ESC opened all three providers' breakers along the
+// chain. Real requests then had no candidate and got a 502, with no way to trace the source.
 //
-// 「不交给策略」是这轮倒置之后新加的一层保险：旧实现里数据面自己判断
-// 「这不是上游的错」，于是取消**压根不会**走到记账那一步。倒置之后判断权在
-// 策略手里，万一哪个策略把 ConnectionFailed 一律算账，取消就又能烧链了——
-// 所以数据面干脆不报：对面已经没人接了，这一发没有任何人需要知道。
+// "Do not hand it to policy" is the extra safety this inversion added: in the old
+// implementation the data plane judged "this is not the upstream's fault", so a cancellation
+// **never** reached the accounting step. After the inversion the call belongs to policy, and
+// a policy charging every ConnectionFailed would burn the chain again -- so the data plane
+// simply does not report it: nobody is on the other side any more, and no one needs to know.
 func TestClientCancelDuringConnectDoesNotBurnTheChain(t *testing.T) {
 	hit := make(chan string, 8)
-	// 上游装死：收到请求就挂住。上限兜底，免得断言失败时整个测试卡死。
+	// The upstream plays dead: it hangs on receiving a request. A cap as backstop, so a
+	// failed assertion does not hang the whole test.
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hit <- r.URL.Path
 		select {
@@ -817,7 +847,7 @@ func TestClientCancelDuringConnectDoesNotBurnTheChain(t *testing.T) {
 
 	srv := newTestServer()
 	watcher := newScriptedFilter()
-	// 一律算账——模拟「最贪心」的策略。数据面必须连问都不问它。
+	// Charge everything -- simulate the "greediest" policy. The data plane must not even ask it.
 	watcher.verdict = func(policy.Outcome) policy.Verdict {
 		return policy.Verdict{Attribute: true}
 	}
@@ -843,15 +873,15 @@ func TestClientCancelDuringConnectDoesNotBurnTheChain(t *testing.T) {
 	}()
 
 	select {
-	case <-hit: // 第一个候选已经打上去了
+	case <-hit: // the first candidate has been hit
 	case <-time.After(3 * time.Second):
 		t.Fatal("the upstream received no request")
 	}
 	cancel()
 	<-done
-	time.Sleep(150 * time.Millisecond) // 等 handler 收尾
+	time.Sleep(150 * time.Millisecond) // let the handler finish
 
-	// 链上后面的候选一个都不该被打
+	// not one candidate further down the chain should be hit
 	select {
 	case p := <-hit:
 		t.Fatalf("the client already cancelled, yet the chain retried the next candidate (%s)", p)
@@ -860,7 +890,7 @@ func TestClientCancelDuringConnectDoesNotBurnTheChain(t *testing.T) {
 	if n := atomic.LoadUint64(&srv.failures); n != 0 {
 		t.Errorf("a client cancellation was booked as %d upstream failures", n)
 	}
-	// 关键：取消压根不该出现在任何策略的输入里。
+	// The point: a cancellation must not appear in any policy's input at all.
 	for _, o := range watcher.seen() {
 		t.Errorf("a client cancellation was reported to the policy as %q (%s) - nobody is on the other end anymore,"+
 			"nobody needs to know about this request; reporting it would turn 'one ESC burns the whole chain' into"+

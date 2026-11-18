@@ -1,27 +1,34 @@
-// Package home 把「一屏看到我这些链」做成一节，并声明自己是界面的落点。
+// Package home turns "see all my chains on one screen" into a section, and declares itself the
+// UI's landing.
 //
-// # 它为什么是一个模块，而不是 config 那张卡的一部分
+// # Why it is a module, not part of config's card
 //
-// 这一节的素材全部来自 config（见 configapi.Config.AllChains 的注释），但它不是
-// config 自己的展示面——两者回答的是**两个不同的问题**：
+// All of this section's material comes from config (see the comment on
+// configapi.Config.AllChains), but it is not config's own presentation surface -- the two
+// answer **two different questions**:
 //
-//	config 那一节   「怎么改」：档位绑定编辑器、源文件、全局开关；
-//	这一节          「现在是什么」：这一档此刻解析成谁、谁被跳过、为什么。
+//	config's section   "how to change it": the tier binding editor, source files, global
+//	                   switches;
+//	this section       "what it is now": who this tier resolves to right now, who is skipped,
+//	                   and why.
 //
-// 同一份数据摆在两个问题底下，用户打开界面时找的地方不一样，所以是两张卡。
+// The same data under two questions, the user looks in a different place when opening the UI,
+// so there are two cards.
 //
-// 更要紧的是**位置**：首屏落在哪一栏此前是 Source 的字母序（`breaker` 排最前，
-// 于是它成了默认），而那是巧合——见 lib/view 的 Section.Default。内核为此只提供
-// 一个「谁可以被声明为落点」的口子，**谁是落点由模块自己说**；而内核对「哪一屏
-// 最该先看」一无所知（core/CLAUDE.md §0），所以这条消息只能由发行版发出，落在
-// 这里。
+// What matters more is **position**: which section the landing fell on used to be Source's
+// alphabetical order (`breaker` came first, so it became the default), and that was a
+// coincidence -- see Section.Default in lib/view. For this the kernel provides only a door for
+// "who may declare itself the landing"; **who the landing is, the module says itself**; and the
+// kernel knows nothing about "which screen should be seen first" (core/CLAUDE.md §0), so this
+// message can only come from the distribution, and it lands here.
 //
-// # 它不认识任何别的模块
+// # It knows no other module
 //
-// 依赖只有两条：config 的读端口（强依赖——这一屏的全部素材来自它，拿不到就什么
-// 都画不出来）与 web 界面（弱依赖——界面不在就跳过，本模块没有别的功能会因此
-// 少掉，与所有业务模块同一条规矩）。所以它装在哪一份规格书里都不牵连别人，
-// 摘掉它只是首屏换个落点。
+// There are only two dependencies: config's read port (hard -- all of this screen's material
+// comes from it, nothing can be drawn without it) and the web UI (weak -- skip it if the UI is
+// absent, this module loses no other function because of that, the same rule as all business
+// modules). So wherever it is installed in a spec it entangles nobody, and removing it only
+// moves the landing.
 package home
 
 import (
@@ -36,13 +43,14 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// Name 是这个模块在装配表与 `newgate plugin` 里的名字。
+// Name is this module's name in the assembly table and in `newgate plugin`.
 //
-// 它同时是界面上那一节的 Source（机器标记，见 view.Service.Register）：URL、
-// 落点、行动作的回传都按它走，所以它不跟着标题的措辞变。
+// It is also the Source of that section in the UI (a machine marker, see
+// view.Service.Register): URLs, the landing, and the return trip of actions all follow it, so
+// it does not change with the wording of the title.
 const Name = "home"
 
-// New 声明这一节。
+// New declares this section.
 func New() modules.Component {
 	var releases []modules.Release
 	return modules.Component{
@@ -50,32 +58,36 @@ func New() modules.Component {
 		Desc: func() string {
 			return i18n.T("the landing screen: every chain this machine resolves right now, in one view", nil)
 		},
-		// 「其它」：它不是内核、网关、界面、客户端、模型，也不是它们之间的桥。
-		// 与 arch-diagram 同一类——一个不拥有任何机制的展示面，硬塞进上面任何
-		// 一类都会让 `newgate plugin` 的分组说谎。
+		// "other": it is not the kernel, gateway, UI, client or model, nor a bridge between them.
+		// The same kind as arch-diagram -- a presentation surface that owns no mechanism, and
+		// forcing it into any category above would make `newgate plugin`'s grouping lie.
 		//
-		// 注意它**不是** "cli"（那是 web-dashboard / tui / simple-cli 的取值）：
-		// 那一位是「界面壳」本身，而这里是被界面展示的一节。判据与内核 UI 那条
-		// 规矩同源——把它删掉，界面照样成立，只是少了一节。
+		// Note it is **not** "cli" (that is the value for web-dashboard / tui / simple-cli):
+		// that one is the "UI shell" itself, while this is a section shown by the UI. The
+		// criterion comes from the same source as the kernel UI rule -- delete it and the UI
+		// still stands, with one section fewer.
 		Type: "others",
 		Requires: []modules.Requirement{
-			// 强依赖：链的结论只有 config 算得出来（见 configapi.Config 的注释：
-			// 消费者要那份结论就来拿端口，别自己 import store/resolve 去拼）。
-			// 这里**没有 fail-open 的余地**：拿不到它，这一屏一张卡都画不出来，
-			// 而静默地画一屏空的会让用户以为自己的配置丢了。
+			// Hard dependency: the chain's conclusion can only be computed by config (see the
+			// comment on configapi.Config: consumers who want that conclusion come and take the
+			// port, do not import store/resolve and assemble it yourself). There is **no room
+			// for fail-open** here: without it this screen cannot draw a single card, and
+			// silently drawing an empty screen would make the user think the config is lost.
 			modules.Need(configapi.Capability),
-			// 弱依赖：界面在就登记进去，不在就跳过。这条模块被装进任何一份
-			// 规格书（包括没装任何界面的）都不会装不起来。
+			// Weak dependency: register if the UI is there, skip if not. Installed in any spec
+			// (including one with no UI at all), it never fails to install.
 			modules.Optional(viewapi.Capability),
-			// 下面三条是首屏那张卡**多出来的两件事**要用的（见 overview.go 的文件头：
-			// 链之外的「健康」与「就用它」）。它们都是弱依赖，判据是同一条——**没有
-			// 它们，这一屏还能不能说真话**：健康表不在就没有延迟那一格、网关不在就
-			// 没有探活按钮、客户端目录不在就没有上面那排标签，而链照常列出来、
-			// 「全部客户端」那一档照常能把链换掉。
+			// The three below are for the **two extra things** of the first screen's card (see the file
+			// header of overview.go: "health" and "use it", beyond chains). All weak
+			// dependencies, on the same criterion -- **without them, can this screen still tell
+			// the truth**: no health table, no latency cell; no gateway, no probe button; no
+			// client catalog, no row of tabs above; while the chains are listed as usual and the
+			// "all clients" tier can still switch the chain as usual.
 			//
-			// 为什么不让它们变成强依赖：那样一来这一节只在「装了网关 + 装了健康表 +
-			// 装了某个客户端」的装配里才存在——而「这台机器上装了哪些模块」是发行版
-			// 的事（core/CLAUDE.md §0），一张首页不该给规格书加约束。
+			// Why not make them hard: then this section would exist only in an assembly with
+			// "gateway + health table + some client" -- and "which modules are installed on this
+			// machine" is the distribution's business (core/CLAUDE.md §0); a home page should
+			// not constrain the spec.
 			modules.Optional(breakerapi.Capability),
 			modules.Optional(agentapi.AgentCatalogCapability),
 			modules.Optional(gatewayapi.Capability),
@@ -85,8 +97,8 @@ func New() modules.Component {
 			if !ok {
 				return nil
 			}
-			// 三个 Optional 都用手写取（modules.Get 返回 ok），**不用 MustGet**：
-			// 弱依赖缺席是常态，MustGet 会 panic。
+			// All three Optionals use a hand-written fetch (modules.Get returns ok), **not
+			// MustGet**: a weak dependency being absent is the norm, and MustGet would panic.
 			agents, _ := modules.Get(ctx, agentapi.AgentCatalogCapability)
 			health, _ := modules.Get(ctx, breakerapi.Capability)
 			gateway, _ := modules.Get(ctx, gatewayapi.Capability)

@@ -51,7 +51,7 @@ func TestInfer(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
-	if os.Geteuid() != 0 { // root 不受权限位约束，测不出这一条
+	if os.Geteuid() != 0 { // root ignores permission bits, so this case can't be tested
 		if s, sure := infer(filepath.Join(locked, "src"), "dist.json"); !sure || s.Mode != modeRelease {
 			t.Fatalf("unreadable source: %+v sure=%v, want a recorded release decision", s, sure)
 		}
@@ -62,7 +62,7 @@ func TestInfer(t *testing.T) {
 }
 
 func TestInferDistrustsTempDirs(t *testing.T) {
-	repo := t.TempDir() // 在 TMPDIR 下
+	repo := t.TempDir() // under TMPDIR
 	fakeRepo(t, repo)
 	if _, sure := infer(repo, "dist.json"); sure {
 		t.Fatal("a checkout under TMPDIR is an upgrade@<ref> clone; it must not be recorded")
@@ -104,7 +104,7 @@ func TestEnsureSettingsDoesNotCreateState(t *testing.T) {
 		t.Fatal(err)
 	}
 	old := sourceDir
-	sourceDir = func() string { return "/nonexistent/ci/checkout" } // 有把握的推断：release
+	sourceDir = func() string { return "/nonexistent/ci/checkout" } // the confident inference: release
 	t.Cleanup(func() { sourceDir = old })
 
 	if _, saved := ensureSettings(); saved {

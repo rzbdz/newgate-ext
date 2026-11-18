@@ -8,24 +8,26 @@ import (
 	"github.com/rzbdz/newgate/lib/i18n"
 )
 
-// printThinkCache 展示推理内容缓存的命中情况（`newgate st` 末尾那几行）。
+// printThinkCache shows how the reasoning-content cache is doing (the last few lines of
+// `newgate st`).
 //
-// **为什么住在这里**（2026-09-18 从 modules/cli 搬来）：推理缓存是数据面的
-// 一部分（modules/gateway/thinkcache），「哪些计数值得看、命中和未命中分别意味
-// 着什么」全是本模块的知识。它留在界面时，界面得在 Host 上开一个叫
-// PrintThinkCache 的口子——那等于界面**按名字认识了一个模块的概念**，正是
-// `probe` / `metrics` / `st` 这几个命令搬回来时要拆掉的东西。搬回来之后
-// cliapi.Host 不再有一条以某个模块命名的方法。
+// **Why it lives here** (moved out of modules/cli on 2026-09-18): the reasoning cache is part
+// of the data plane (modules/gateway/thinkcache), and "which counters are worth looking at,
+// what a hit and a miss each mean" is all this module's knowledge. While it stayed in the UI,
+// the UI had to open a hole on Host called PrintThinkCache -- which meant the UI **knew a
+// module's concept by name**, exactly what moving the `probe` / `metrics` / `st` commands back
+// was meant to tear out. After the move, cliapi.Host has no method named after any module.
 //
-// 数字从**跑着的守护进程**取：缓存在它内存里，命令跑在另一个进程，读本进程的
-// thinkcache.Default 只会看到空缓存——那比不显示更误导人。取数走控制面叶子
-// （controlplane.State()），与界面无关，任何模块都能读。
+// The numbers come from the **running daemon**: the cache lives in its memory, the command
+// runs in another process, and reading this process's thinkcache.Default would show an empty
+// cache -- more misleading than showing nothing. The fetch goes through the control-plane leaf
+// (controlplane.State()), which has nothing to do with the UI and any module can read.
 //
-// 只报计数，永远不报内容。
+// Only counters, never content.
 func printThinkCache() {
 	info, ps := controlplane.State()
 	if info == nil || ps == nil {
-		return // 守护进程没在跑：没有缓存可报
+		return // the daemon is not running: no cache to report
 	}
 	t := ps.Think
 	fmt.Println()
@@ -38,9 +40,10 @@ func printThinkCache() {
 	if t.Misses > 0 {
 		fmt.Println(style.Hint(i18n.T("A miss can only be filled with an empty string (for those turns the model cannot see its own previous reasoning); every case is logged", nil)))
 	}
-	// 解析不出来的那些和「未命中」在结果上一样（都补空串），但处置完全不同：
-	// 前者是客户端发来的 JSON 形态我们不认识，后者是缓存里真没有。混在一起报
-	// 会把人引到错的地方，所以单独一行。
+	// The unparsable ones and the "misses" look the same in outcome (both backfill an empty
+	// string) but are handled completely differently: the former is a JSON shape sent by the
+	// client that we do not know, the latter is genuinely absent from the cache. Reporting them
+	// together sends people the wrong way, so they get their own line.
 	if t.Unparsable > 0 {
 		fmt.Println(style.Item(style.Warn, i18n.N(
 			"Of these, {n} is an assistant message in the request that could not be parsed (not a cache problem, the shape the client sends has changed)",
@@ -50,7 +53,7 @@ func printThinkCache() {
 	fmt.Println(style.Hint(i18n.T("Memory + the thinkcache.bin cold layer; restored automatically after a restart, counts only, never content", nil)))
 }
 
-// humanBytes 把字节数写成 KB/MB。
+// humanBytes renders a byte count as KB/MB.
 func humanBytes(n int64) string {
 	switch {
 	case n >= 1<<20:

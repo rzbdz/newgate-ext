@@ -77,7 +77,7 @@ func New() modules.Component {
 	return modules.Component{
 		Name: Name,
 		Desc: func() string { return i18n.T("the web configuration interface: a BFF and the front-end bundle", nil) },
-		Type: "cli", // 「界面壳」这一类的既有取值（tui / simple-cli 也是它）
+		Type: "cli", // the established value for this "UI shell" kind (tui / simple-cli use it too)
 		Requires: []modules.Requirement{
 			// Shared port (the norm).
 			modules.Optional(porthubapi.Capability),

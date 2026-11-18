@@ -148,7 +148,7 @@ func AliasFor(key string) string {
 	d := strings.TrimSpace(r.Default)
 	d = strings.TrimPrefix(d, "@")
 	if d == "" || strings.Contains(d, "/") {
-		return "" // 具体绑定（provider/模型）不是键的等价
+		return "" // a concrete binding (provider/model) is not equivalent to a key
 	}
 	return d
 }

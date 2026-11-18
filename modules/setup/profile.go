@@ -286,7 +286,7 @@ func SuggestedProvider(base string, taken map[string]bool) string {
 	if i := strings.IndexByte(host, '@'); i >= 0 {
 		host = host[i+1:]
 	}
-	if i := strings.IndexByte(host, ':'); i >= 0 { // 端口
+	if i := strings.IndexByte(host, ':'); i >= 0 { // port
 		host = host[:i]
 	}
 	parts := strings.Split(host, ".")

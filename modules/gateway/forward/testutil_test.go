@@ -12,11 +12,13 @@ import (
 	"github.com/rzbdz/newgate-ext/modules/gateway/thinkcache"
 )
 
-// isolate 把配置目录指到临时目录，免得测试读到（或写坏）真实的 ~/.config/newgate。
+// isolate points the config directory at a temp directory, so tests do not read (or corrupt)
+// the real ~/.config/newgate.
 //
-// 2026-09-20 从 thinkcache_test.go 搬到这里：那三个用例断的是**发行版模块**
-// （DeepSeek 的逐字回填 / 跨 agent 迁移）的策略，跟着拥有者搬去发行版仓库了，
-// 而这个 helper 留下来的用例（compact_test.go）还要用。
+// Moved here from thinkcache_test.go on 2026-09-20: those three cases asserted **distribution
+// module** policy (DeepSeek's verbatim put-back / cross-agent migration), and followed their
+// owner to the distribution repo, while the cases this helper still has (compact_test.go)
+// need it.
 func isolate(t *testing.T) {
 	t.Helper()
 	dir := t.TempDir()
@@ -26,41 +28,46 @@ func isolate(t *testing.T) {
 	if _, err := store.Init(false); err != nil {
 		t.Fatalf("initializing the temp config failed: %v", err)
 	}
-	thinkcache.Default = thinkcache.New(32<<20, 0) // 每个测试从空缓存开始
+	thinkcache.Default = thinkcache.New(32<<20, 0) // every test starts from an empty cache
 }
 
-// newTestServer 造一个**最小系统**的测试用 Server：策略账本上一张纸条都没有。
+// newTestServer builds a **minimal system** test Server: not one note on the policy ledger.
 //
-// 这个默认是刻意的。数据面自己该做的事——转发、字节保真、换站、日志、证据
-// 落盘——在这个面上全能测完，而**策略语义一条都不在**：形状 400 算不算这家
-// 的账、阈值是几、指标叫什么名字，全是 modules/breaker 的事，它自己测
-// （见 breaker/plane_test.go）。
+// That default is deliberate. Everything the data plane itself should do -- forwarding, byte
+// fidelity, swapping, logging, evidence persistence -- is fully testable on this surface, with
+// **not a single piece of policy semantics**: whether a shape 400 counts against this
+// provider, what the threshold is, what the metric is called, are all modules/breaker's
+// business and it tests them itself (see breaker/plane_test.go).
 //
-// 2026-09-18 之前这里注入的是一张真健康表（`breaker.NewTable()`），于是
-// forward 的单测里躺着「什么算形状错误」「阈值 2」这类判据——转发路径并不知道
-// 这些，它只是恰好拿到了唯一一位策略。倒置之后策略是**账本上的一格**，默认
-// 那格是空的。
+// Before 2026-09-18 this injected a real health table (`breaker.NewTable()`), so forward's unit
+// tests sat on criteria like "what counts as a shape error" and "threshold 2" -- the
+// forwarding path knows none of that, it just happened to hold the only policy there was.
+// After the inversion a policy is **one cell on the ledger**, and the default cell is empty.
 //
-// 注意它**不带 Watch**，所以 handler 会退化成 `store.Load()` 直接读盘——
-// 配置从哪来由包级 TestMain（modules_test.go）铺的沙箱决定，见那里的注释。
+// Note it ships **no Watch**, so the handler degrades to `store.Load()` reading the disk
+// directly -- where the config comes from is decided by the package-level TestMain
+// (modules_test.go) sandbox; see the comment there.
 //
-// 走 forward.New（而不是拼一个字面量）是必须的：它把 stopCh/drainCh 这两个
-// 停机信号通道建起来，而控制停机那条测试正是要断言「令牌验过之后通道被关掉」。
-// 曾经这里写成 `&Server{Port: 0, Health: ...}`，靠那会儿恰好没有这类断言才没炸。
+// Going through forward.New (instead of building a literal) is required: it creates the
+// stopCh/drainCh shutdown channels, and the control-stop test asserts exactly "the channel is
+// closed after the token is verified". This once read `&Server{Port: 0, Health: ...}`, and
+// only survived because no such assertion existed at that moment.
 func newTestServer() *Server {
 	return New("", 0, nil, nil, policy.New())
 }
 
-// newLoggingTestServer 同 newTestServer，但把代理日志收进返回的 buffer——
-// 「不静默是硬要求」那一类断言（改写了什么、判据是谁认的、证据存哪了）只能
-// 在日志上验，不能只看响应和状态。
+// newLoggingTestServer is newTestServer plus proxy logs collected into the returned buffer --
+// "not silent is a hard requirement" assertions (what was rewritten, who claimed the
+// criterion, where evidence was stored) can only be verified on the log, not from the
+// response and status alone.
 //
-// 返回的是**带锁的** buffer，不是 bytes.Buffer：日志由 HTTP handler 那个
-// goroutine 写，断言由测试 goroutine 读，而「响应体读完」不等于 handler 已经
-// 退出——它后面还要打收尾那几行（stream ended normally 之类）。裸 bytes.Buffer
-// 在这里是一场必然会撞上的数据竞争（2026-09-23 `go test -race ./...` 实测：
-// `bytes.(*Buffer).String()` 撞 `log.(*Logger).output()`），而它红得还很有迷惑性
-// ——报的是**某一个**用到了新日志行的测试，看着像那行日志有问题。
+// The buffer returned is **locked**, not a bytes.Buffer: logs are written by the HTTP handler
+// goroutine while assertions read from the test goroutine, and "the response body is fully
+// read" does not mean the handler has exited -- it still prints those closing lines (like
+// stream ended normally) afterwards. A bare bytes.Buffer here is a data race bound to happen
+// (measured 2026-09-23 with `go test -race ./...`: `bytes.(*Buffer).String()` against
+// `log.(*Logger).output()`), and its red is deceptive too -- it names **one** test that used
+// the new log line, looking like that line is at fault.
 type syncBuffer struct {
 	mu  sync.Mutex
 	buf bytes.Buffer
@@ -85,14 +92,15 @@ func newLoggingTestServer() (*Server, *syncBuffer) {
 	return s, buf
 }
 
-// scriptedFilter 是 forward 侧的测试策略：它**记下数据面交给它的每一个结局**
-// 并按脚本回答。
+// scriptedFilter is forward's test policy: it **records every outcome the data plane hands it**
+// and answers from a script.
 //
-// 为什么测试里自己写一条而不是 import modules/breaker 用它那条：import 会成环
-// （breaker → gateway → forward），而且更重要的——forward 的单测要锁的是
-// **数据面报的事实对不对、判决执行得对不对**，不是 breaker 的账本语义。判据
-// 的真值表在 breaker 自己的测试里，接线在 testing/system。这与「判据别硬编码
-// 上游字符串」是同一条分层规矩（见 forward_test.go 里 shapeTestDetector 的说明）。
+// Why write one in tests instead of importing modules/breaker and using its: the import would
+// be a cycle (breaker → gateway → forward), and more importantly -- forward's unit tests must
+// lock **whether the facts reported by the data plane are right and the verdict executed
+// right**, not breaker's ledger semantics. The criterion's truth table lives in breaker's own
+// tests, the wiring in testing/system. It is the same layering rule as "do not hardcode
+// upstream strings in criteria" (see the shapeTestDetector note in forward_test.go).
 type scriptedFilter struct {
 	mu       sync.Mutex
 	outcomes []policy.Outcome
@@ -117,10 +125,12 @@ func (f *scriptedFilter) Judge(o policy.Outcome) policy.Verdict {
 	return f.verdict(o)
 }
 
-// Observe 收下成功那一发；数据面走的是同一条 Judge 路径，这里不另记。
+// Observe takes the successful shot; the data plane walks the same Judge path, so nothing
+// extra here.
 func (f *scriptedFilter) Observe(policy.Outcome) {}
 
-// Doc 让状态文档里多一节，用来锁「贡献者的字段并进顶层」这件事。
+// Doc adds one section to the status document, to lock "a contributor's fields merge into
+// the top level".
 func (f *scriptedFilter) Doc() map[string]json.RawMessage {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -134,14 +144,14 @@ func (f *scriptedFilter) Doc() map[string]json.RawMessage {
 	return out
 }
 
-// seen 返回数据面交给策略的全部结局（副本）。
+// seen returns every outcome the data plane handed to policy (a copy).
 func (f *scriptedFilter) seen() []policy.Outcome {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]policy.Outcome(nil), f.outcomes...)
 }
 
-// seenOf 只挑某个 provider 的结局。
+// seenOf picks only one provider's outcomes.
 func (f *scriptedFilter) seenOf(provider string) []policy.Outcome {
 	var out []policy.Outcome
 	for _, o := range f.seen() {
@@ -152,7 +162,8 @@ func (f *scriptedFilter) seenOf(provider string) []policy.Outcome {
 	return out
 }
 
-// probeFilter 只实现 C 阶段：把探活结论收下，用来锁「数据面只负责收发与翻译」。
+// probeFilter implements stage C only: it takes the probe conclusions, locking "the data plane
+// only does I/O and translation".
 type probeFilter struct {
 	mu   sync.Mutex
 	got  []policy.ProbeObservation

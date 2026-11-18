@@ -136,7 +136,7 @@ func collectLeaves(items [][]byte) [][]byte {
 		if kind == "namespace" {
 			nested, ok := rw.TopLevelRaw(item, "tools")
 			if !ok {
-				out = append(out, item) // 形状不认识就当叶子
+				out = append(out, item) // unrecognized shape: treat it as a leaf
 				continue
 			}
 			nestedItems, ok := rw.ArrayItems(nested)

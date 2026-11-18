@@ -2,22 +2,24 @@ package locale
 
 import "github.com/rzbdz/newgate/lib/i18n"
 
-// 语言从哪来——优先级从高到低，第一条「有意见」的说了算：
+// Where the language comes from -- highest priority first, the first one with an opinion wins:
 //
-//  1. NEWGATE_LANG                      会话级显式覆盖（测试、脚本、临时切换）
-//  2. state.json 的 locale.lang         持久化选择（`newgate lang zh-Hans`）
-//  3. LC_ALL → LC_MESSAGES → LANG       跟随系统（POSIX 的惯例）
-//  4. 源语言                            谁都没说
+//  1. NEWGATE_LANG                      session-level explicit override (tests, scripts, temporary)
+//  2. locale.lang in state.json         persisted choice (`newgate lang zh-Hans`)
+//  3. LC_ALL → LC_MESSAGES → LANG       follow the system (POSIX convention)
+//  4. source language                   nobody said anything
 //
-// **为什么配置排在系统 locale 之上**（这是一个取舍，不是随手排的）：很多开发者
-// 用英文系统、但想读中文，反过来也有。POSIX 的 `LANG` 表达的是「这台机器的
-// 默认语言」，「配置」表达的是「**我要**读什么」——后者更明确，所以后者赢。
-// 代价是 `newgate lang` 在 `LANG=en_US.UTF-8` 的 shell 里可能看不出效果，
-// 所以那条命令**必须把来源打出来**（见 command.go），让人知道是谁在说话。
+// **Why the config sits above the system locale** (this is a trade-off, not a casual ordering):
+// many developers run an English system yet want to read Chinese, and the reverse happens too.
+// POSIX's `LANG` expresses "this machine's default language", "the config" expresses "what **I**
+// want to read" -- the latter is more explicit, so the latter wins. The cost is that
+// `newgate lang` may show no visible effect in a shell with `LANG=en_US.UTF-8`, so that command
+// **must print the source** (see command.go), so people know who is talking.
 //
-// 想反过来（环境优先）就调换这两条的次序——只此一处，有测试钉着。
+// To have it the other way (environment first), swap these two entries -- one place only, and a
+// test pins it.
 type request struct {
-	Tag    string // 原始要求，可能是空串或 `zh_CN.UTF-8` 这种写法
+	Tag    string // the raw request, maybe empty or spelled like `zh_CN.UTF-8`
 	Source Source
 }
 
@@ -30,7 +32,7 @@ func resolve(getenv func(string) string, configured string) request {
 	}
 	for _, key := range []string{"LC_ALL", "LC_MESSAGES", "LANG"} {
 		if v := getenv(key); v != "" {
-			if tag := i18n.Normalize(v); tag != "" { // `C` / `POSIX` = 没意见
+			if tag := i18n.Normalize(v); tag != "" { // `C` / `POSIX` = no opinion
 				return request{Tag: tag, Source: SourceSystem}
 			}
 		}

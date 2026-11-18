@@ -248,7 +248,7 @@ func switchHead(profile, key, file, target string) (string, error) {
 			i18n.A{"tier": key, "profile": profile, "target": target})
 	}
 	if moved == 0 {
-		return "", nil // 已经是链头。界面上那个按钮本该已经被这一条挡住（chainActions 跳过了第一个）
+		return "", nil // already the head; the UI should have blocked it (chainActions skips it)
 	}
 
 	next := make(domain.Candidates, 0, len(own))

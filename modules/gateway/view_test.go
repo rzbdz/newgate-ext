@@ -13,9 +13,10 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// 日志那条概念的取材部分（tailLines / redactLine）是纯函数，所以它在叶子里就能
-// 测：起一个真文件，读它的尾巴。这条路径的错误都不吵——读多了、读少了、把凭据
-// 发出去了，界面上看起来都只是「日志」。所以它值得几条断言。
+// The data-gathering part of the log concept (tailLines / redactLine) is pure, so it can be
+// tested in the leaf: create a real file, read its tail. Errors on this path make no noise --
+// reading too much, too little, or shipping a credential all just look like "the log" in the
+// UI. So it deserves a few assertions.
 
 func writeLog(t *testing.T, body string) string {
 	t.Helper()
@@ -28,7 +29,7 @@ func writeLog(t *testing.T, body string) string {
 
 func TestTailLinesReturnsTheLastOnesOldestFirst(t *testing.T) {
 	p := writeLog(t, "a\nb\nc\nd\ne\n")
-	// 从旧到新：最新的一行在最下面（见 logData.Lines 的说明）。
+	// Oldest first: the newest line is at the bottom (see the note on logData.Lines).
 	lines, truncated, err := tailLines(p, 10, 1<<20)
 	if err != nil {
 		t.Fatal(err)
@@ -40,8 +41,9 @@ func TestTailLinesReturnsTheLastOnesOldestFirst(t *testing.T) {
 		t.Error("nothing was dropped, so it must not say truncated")
 	}
 
-	// 只要最后 3 行：上面那两行**确实**没给出去，所以 truncated 该是 true——
-	// 「你看的不是全部」这件事不说是会骗人的（读的人会以为日志从这里开始）。
+	// Only the last 3 lines: the two above **really** were not sent out, so truncated must be
+	// true -- not saying "you are not seeing everything" would deceive (the reader would think
+	// the log starts here).
 	lines, truncated, err = tailLines(p, 3, 1<<20)
 	if err != nil {
 		t.Fatal(err)
@@ -54,9 +56,10 @@ func TestTailLinesReturnsTheLastOnesOldestFirst(t *testing.T) {
 	}
 }
 
-// TestTailLinesStopsAtTheByteLimit：日志按 16MB×4 轮转，而浏览器每隔几秒就刷新
-// 一次这个视图。所以读取必须是**有上界的**——按行回溯会把整个文件读一遍，那个
-// 成本随日志增长，而界面看起来只是「有点慢」。
+// TestTailLinesStopsAtTheByteLimit: the log rotates at 16MB×4, and the browser refreshes
+// this view every few seconds. So reading must be **bounded** -- walking back line by line
+// would read the whole file, a cost that grows with the log while the UI just looks "a bit
+// slow".
 func TestTailLinesStopsAtTheByteLimit(t *testing.T) {
 	var b strings.Builder
 	for i := 0; i < 500; i++ {
@@ -76,8 +79,8 @@ func TestTailLinesStopsAtTheByteLimit(t *testing.T) {
 	if len(lines) == 0 || lines[len(lines)-1] != "last line" {
 		t.Errorf("the last line of the tail should be the newest one, got %q", lines[len(lines)-1:])
 	}
-	// 第一行多半是半截的（被 limit 切开），必须丢掉——留下它，读的人会拿一段
-	// 没有开头的输出当证据。
+	// The first line is likely half a line (cut by limit) and must be dropped -- keep it and
+	// the reader takes output with no beginning as evidence.
 	if strings.Contains(lines[0], "x") && len(lines[0]) != 100 {
 		t.Errorf("the first line is cut in half: %q", lines[0])
 	}
@@ -90,9 +93,10 @@ func TestTailLinesOnMissingFile(t *testing.T) {
 	}
 }
 
-// TestRedactLine：日志本来不该出现凭据，但它是**别人写进来的**（provider 的 URL、
-// 某个模块打出来的请求头、将来某个插件记的 body），而这个视图会把日志发到浏览器。
-// 兜底判据宁可误杀。
+// TestRedactLine: credentials should never appear in logs, but the log is **written by
+// others** (a provider URL, request headers printed by some module, the body a future plugin
+// records), and this view ships the log to the browser. The catch-all criterion prefers
+// over-killing.
 func TestRedactLine(t *testing.T) {
 	cases := map[string]string{
 		"using key sk-abcdefghijklmnopqrst for demo": "using key *** for demo",
@@ -107,9 +111,9 @@ func TestRedactLine(t *testing.T) {
 	}
 }
 
-// fakePlugin 是这条断言用的假插件：真的插件住在发行版里（deepseek / glm /
-// claudecode_*），内核自带的装配一个都没有——不装假的，这条棘轮在 CI 里就只会
-// 走 t.Skip，等于没写。
+// fakePlugin is the fake plugin used by this assertion: the real plugins live in the
+// distribution (deepseek / glm / claudecode_*), and a kernel-native assembly has none -- with
+// no fake, this ratchet would only hit t.Skip in CI, which is as good as unwritten.
 type fakePlugin struct{ name, why string }
 
 func (f fakePlugin) Name() string                { return f.name }
@@ -119,11 +123,12 @@ func (f fakePlugin) Apply(b []byte, _ *special.Request) ([]byte, []string, error
 	return b, nil, nil
 }
 
-// installFakePlugins 换上一本只有这几枚插件的注册表，跑完还原。
+// installFakePlugins swaps in a registry holding only these few plugins, and restores it
+// afterwards.
 //
-// 注册表是**进程级**的（插件在模块 Start 里注册进来），所以这里用带所有权的
-// InstallDefault——与 modules/gateway/module.go 里那条同一个口子，用完必须还回去，
-// 否则别的测试会看见这几枚假插件。
+// The registry is **process-level** (plugins are registered in the module's Start), so this
+// uses the ownership-carrying InstallDefault -- the same hole as in modules/gateway/module.go;
+// it must be handed back when done, or other tests will see these fake plugins.
 func installFakePlugins(t *testing.T, ps ...special.Plugin) {
 	t.Helper()
 	reg := special.NewRegistry()
@@ -135,12 +140,14 @@ func installFakePlugins(t *testing.T, ps ...special.Plugin) {
 	t.Cleanup(special.InstallDefault(reg))
 }
 
-// TestEverythingGatewayShowsDeclaresItselfLive：这三张卡的数据都会自己变
-// （计数器在涨、日志在写、补丁开关可能在终端被拨），所以它们都声明了 Live。
+// TestEverythingGatewayShowsDeclaresItselfLive: the data behind all three cards changes on
+// its own (counters climb, the log is written, patch switches may be flipped in a terminal),
+// so all of them declare Live.
 //
-// 为什么值得一条断言：Live 掉掉之后**什么都不会报错**——界面只是不再每几秒问
-// 一次，卡片安静地停在打开页面那一刻。那正是这张卡最不该有的样子（一张说着
-// 「现在哪些补丁在动你的请求」的表，答的却是十分钟前的）。
+// Why it deserves an assertion: once Live is dropped **nothing errors** -- the UI simply stops
+// asking every few seconds and the card sits quietly at the moment the page was opened. That
+// is the one thing this card must never look like (a table claiming to say "which patches are
+// touching your request now" but answering with ten minutes ago).
 func TestEverythingGatewayShowsDeclaresItselfLive(t *testing.T) {
 	cs, err := gatewayConcepts()
 	if err != nil {
@@ -156,8 +163,9 @@ func TestEverythingGatewayShowsDeclaresItselfLive(t *testing.T) {
 	}
 }
 
-// specialTableOf 取出那张卡的数据。断言放在**数据**上而不是渲染出来的 HTML 上
-// （与 archmap 那边同一条）：数据是结论，渲染只是它的一种画法。
+// specialTableOf pulls out the card's data. The assertions sit on the **data**, not on the
+// rendered HTML (the same rule as on the archmap side): the data is the conclusion, rendering
+// is just one way to draw it.
 func specialTableOf(t *testing.T) view.Table {
 	t.Helper()
 	c := specialConcept()
@@ -171,15 +179,17 @@ func specialTableOf(t *testing.T) view.Table {
 	return tb
 }
 
-// TestTheSpecialTableListsEveryPluginAndItsState 是这张卡的棘轮。
+// TestTheSpecialTableListsEveryPluginAndItsState is this card's ratchet.
 //
-// 它存在的理由：special_treatment 会**改用户的请求**，而 `newgate st` 是回答
-// 「是不是 newgate 把我的请求改坏了」的地方。只装 dashboard 的装配里那条命令
-// 不存在（dist-dashboard 关掉了 cli），这张卡就是唯一的答案——所以它必须真的
-// 列出**每一个**插件、并且把层开关与单插件开关都反映在状态上。
+// Why it exists: special_treatment **modifies the user's request**, and `newgate st` is where
+// "is newgate breaking my request" is answered. In an assembly with only dashboard that
+// command does not exist (dist-dashboard has no cli), so this card is the only answer -- so it
+// must really list **every** plugin, and reflect both the layer switch and the per-plugin
+// switch in the state.
 //
-// 状态的说法与 CLI 同源（specialState 一处判据），这里钉的是「它确实被用上了」：
-// 漏掉层开关的话，界面会把整层关掉画成「全部生效」——比不显示更坏。
+// The state's wording shares a source with the CLI (one criterion, specialState); what is
+// pinned here is "it really is used": miss the layer switch and the UI draws a whole layer
+// turned off as "all in effect" -- worse than not showing it.
 func TestTheSpecialTableListsEveryPluginAndItsState(t *testing.T) {
 	testkit.Sandbox(t)
 	installFakePlugins(t,
@@ -202,7 +212,7 @@ func TestTheSpecialTableListsEveryPluginAndItsState(t *testing.T) {
 		return view.Cell{}
 	}
 
-	// —— 默认：层开着、没有单独关掉的 → 每一行都生效 ——
+	// -- Default: layer on, nothing individually off → every row in effect --
 	tb := specialTableOf(t)
 	if len(tb.Rows) != len(ps) {
 		t.Errorf("the table has %d rows for %d registered plugins - the missing ones are invisible in the UI",
@@ -216,18 +226,21 @@ func TestTheSpecialTableListsEveryPluginAndItsState(t *testing.T) {
 			if r.Cells["plugin"].Text != p.Name() {
 				continue
 			}
-			// Why 只给第一行：完整说明有好几行，铺进表里会把表淹掉。
+			// Why only the first line: the full explanation is several lines; spreading it into
+			// the table drowns it.
 			if w := r.Cells["why"].Text; w == "" || strings.Contains(w, "\n") {
 				t.Errorf("the why of %q should be a non-empty single line, got %q", p.Name(), w)
 			}
 		}
 	}
 
-	// —— 单独关掉一个：只有它那一行变，而且要说清是**哪一种**关 ——
+	// -- Turn one off individually: only its row changes, and it must say **which kind** of
+	// off --
 	//
-	// 断言钉的是**具体那句话与那个颜色**，不是「不是 active 就行」：两种关掉各有
-	// 各的说法（「整层关了」/「单独关掉」），把两个标签写反——界面对着一个被关掉的
-	// 插件说「整层都关了」——只断言「变了」的测试照样绿。
+	// The assertion pins the **exact wording and exact color**, not "anything but active": each
+	// kind of off has its own wording ("whole layer off" / "turned off individually"), and
+	// swapping the two labels -- the UI telling a turned-off plugin "the whole layer is off" --
+	// would still be green in a test that only asserts "it changed".
 	off := ps[0].Name()
 	if err := gatewaystate.SetSpecialPlugin(off, false); err != nil {
 		t.Fatal(err)
@@ -242,7 +255,7 @@ func TestTheSpecialTableListsEveryPluginAndItsState(t *testing.T) {
 		}
 	}
 
-	// —— 整层关掉：每一行都要说这件事，而且说的是「整层」 ——
+	// -- Whole layer off: every row must say so, and say it is the **whole layer** --
 	if err := gatewaystate.SetSpecialTreatment(false); err != nil {
 		t.Fatal(err)
 	}

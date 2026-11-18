@@ -14,7 +14,7 @@ import (
 )
 
 func TestCompactKeepsExplicitThinking(t *testing.T) {
-	isolate(t) // 不隔离就会读到线上 state.json：裸奔一开这里必红
+	isolate(t) // without isolation it reads the live state.json: turns red as soon as naked mode is on
 	var sent []byte
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sent, _ = ioutil.ReadAll(r.Body)

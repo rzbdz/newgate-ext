@@ -53,7 +53,7 @@ func ManagedPath(rel string) (string, bool) {
 	}
 	name := strings.TrimPrefix(clean, MappingsDir+"/")
 	if name == "" || strings.Contains(name, "/") {
-		return "", false // mappings 下不再有子目录
+		return "", false // no nested directories under mappings
 	}
 	// Leading dots are temp/hidden files (our atomic writes make `.<name>.tmp`).
 	if strings.HasPrefix(name, ".") {
@@ -78,7 +78,7 @@ func cleanRel(rel string) (string, bool) {
 		return "", false
 	}
 	if strings.Contains(rel, `\`) {
-		return "", false // 反斜杠在 Linux 上不是分隔符，出现就是有人在试探
+		return "", false // a backslash is not a separator on Linux; one showing up means probing
 	}
 	if path.IsAbs(rel) {
 		return "", false

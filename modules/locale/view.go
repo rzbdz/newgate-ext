@@ -14,35 +14,39 @@ import (
 	"github.com/rzbdz/newgate/lib/i18n"
 )
 
-// 本文件是「这门进程说哪门语言」交给 web 界面的那一面（`newgate lang` 的等价物）。
+// This file is the face of "which language this process speaks" handed to the web UI (the
+// equivalent of `newgate lang`).
 //
-// 与 CLI 那边（command.go）是**同一份知识的两个入口**：语言住哪、怎么解析、改了
-// 之后谁压着它，都是本模块的事；界面只是把这张卡画出来、把用户挑的值递回来。
+// With the CLI side (command.go) they are **two entry points to the same knowledge**: where the
+// language lives, how it resolves, and who overrides it after a change are all this module's
+// business; the UI only draws this card and hands the user's pick back.
 //
-// 它挂在**语言模块自己**身上而不是让 web-dashboard 特判一个「语言」：界面一旦
-// 认识「语言」这件事，它就同时认识了「语言住在 state.json 的 module_config.locale」
-// 与「换语言要让进程重新装表」——那两件事都只有本模块知道（见 docs/09 的那条
-// 「谁的状态谁自己报」）。
+// It hangs on the **language module itself** rather than making web-dashboard special-case a
+// "language": once the UI knows the thing "language", it also knows "language lives in state.json's
+// module_config.locale" and "switching languages makes the process reinstall the tables" -- both of
+// which only this module knows (see the "whoever owns the state reports it" rule in docs/09).
 
-// registerView 挂上语言卡。没有 web 界面时什么都不做（`newgate lang` 照常）。
+// registerView hangs the language card up. Nothing without a web UI (`newgate lang` carries on).
 func registerView(v view.Service) (modules.Release, error) {
 	return v.Register("locale",
 		view.Title(func() string { return i18n.T("Language", nil) }).Of(view.FieldSettings),
 		concepts)
 }
 
-// concepts 是**有人来问的时候**才算的（见 lib/view 的包注释）：登记那一刻一个
-// 文件都不读。
+// concepts is computed **when someone comes to ask** (see the package comment in lib/view):
+// registration reads not one file.
 func concepts() ([]view.Concept, error) {
 	return []view.Concept{languageConcept()}, nil
 }
 
-// languageConcept 是那张卡。
+// languageConcept is that card.
 //
-// 它和 config 的「全局设置」卡**写的是同一份文件**（state.json），但各报各的字段
-// ——那一份文件里住着好几个模块的段，整份端上去让用户改，等于让界面替所有模块做
-// 决定（与 config 那边同一条规矩）。所以两张卡都带 File=state.json：界面按「这份
-// 概念说的是哪份文件」把控件与原文两半配成一对并排（见前端 nav.ts 的 fileOf）。
+// It and config's "global settings" card **write the same file** (state.json), but each reports
+// its own fields -- that file holds several modules' sections, and serving the whole thing up for
+// the user to edit would be letting the UI make decisions for every module (the same rule as on
+// config's side). So both cards carry File=state.json: by "which file this concept is about" the UI
+// pairs the control half with the raw-text half, side by side (see fileOf in the front end's
+// nav.ts).
 func languageConcept() view.Concept {
 	file := paths.StateFile()
 	return view.Concept{
@@ -64,7 +68,7 @@ func languageConcept() view.Concept {
 	}
 }
 
-// tags 是可选语言（`newgate lang` 那份名单的机器取值）。
+// tags are the selectable languages (the machine values from `newgate lang`'s list).
 func tags() []string {
 	avail := i18n.Available()
 	out := make([]string, 0, len(avail))
@@ -74,14 +78,16 @@ func tags() []string {
 	return out
 }
 
-// applyLanguage 写进 state.json，并**当场生效**。
+// applyLanguage writes into state.json, and **takes effect on the spot**.
 //
-// 两步缺一不可，而第二步正是这张卡存在的理由：CLI 那边写完就结束（下一次进程自己
-// 会读到），而 daemon 是长命的——只写盘不换表的话，用户挑完中文，界面会一直停在
-// 原来那门语言上，直到某次重启。那看起来只像「保存没生效」。
+// Both steps are needed, and the second is exactly why this card exists: on the CLI side writing
+// ends it (the next process reads it itself), while the daemon is long-lived -- writing to disk
+// without switching tables would leave the UI on the old language after the user picks Chinese,
+// until some restart. That looks just like "saving did not take effect".
 //
-// 换表走 `i18n.Use`（不重装目录表），不是 `i18n.Install`：发行版的译文是装配期
-// Extend 进来的，重装会把它们冲掉（见 Use 的注释）。
+// Switching tables goes through `i18n.Use` (no reinstalling the catalogs), not `i18n.Install`: the
+// distribution's translations were Extend-ed in at assembly time, and a reinstall would wipe them
+// (see the comment on Use).
 func applyLanguage(edit json.RawMessage, base string) (string, error) {
 	var patch struct {
 		Lang *string `json:"lang"`
@@ -103,9 +109,9 @@ func applyLanguage(edit json.RawMessage, base string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// 只动 module_config.locale 那一格：state.json 里住着好几个模块各自的段，
-	// 整份重写会拿这一处的知识覆盖别人的（与 config 的 applyStateDefaultProfile
-	// 同一个理由）。
+	// Touch only the module_config.locale cell: state.json holds several modules' own sections, and
+	// rewriting the whole thing would overwrite someone else's with this one's knowledge (the same
+	// reason as config's applyStateDefaultProfile).
 	var doc map[string]json.RawMessage
 	if err := json.Unmarshal(b, &doc); err != nil {
 		return "", i18n.Ef(err, "{file} is not valid JSON", i18n.A{"file": filepath.Base(file)})
@@ -138,17 +144,21 @@ func applyLanguage(edit json.RawMessage, base string) (string, error) {
 	if err != nil {
 		return "", conflict("locale.language", file, err, out)
 	}
-	// 落盘成功之后才换表：反过来（先换表后写盘）会让写盘失败时**这一次进程**的
-	// 语言与文件里记的不一致，而用户看到的界面已经变了——那种不一致最难归因。
+	// Switch tables only after the disk write succeeds: the other way round (switch first, write
+	// after) would, when the write fails, leave **this process's** language disagreeing with what is
+	// recorded in the file, while the UI the user sees has already changed -- that kind of
+	// disagreement is the hardest to attribute.
 	i18n.Use(match)
 	return rev, nil
 }
 
-// conflict 把「基线对不上」翻成界面认识的那种冲突（带两边的原文）。
+// conflict turns "the baseline does not match" into the conflict shape the UI knows (carrying both
+// sides' original text).
 //
-// 这六行与 modules/config/view.go、modules/pluginmanager/view.go 里那两段是同一件
-// 事，抄三份是**刻意**的（理由写在 pluginmanager 那一份上：另一个选择是让 store
-// 认识 view 契约，那更糟）。判据是 `Conflict` 加字段时三处都要跟。
+// These six lines are the same thing as the two passages in modules/config/view.go and
+// modules/pluginmanager/view.go, and the three copies are **deliberate** (the reason is written on
+// pluginmanager's copy: the alternative is teaching store about the view contract, which is worse).
+// The criterion: when `Conflict` gains a field, all three follow.
 func conflict(conceptID, file string, err error, yours []byte) error {
 	var stale *store.StaleError
 	if errors.As(err, &stale) {

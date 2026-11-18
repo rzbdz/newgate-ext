@@ -4,16 +4,16 @@ import (
 	"testing"
 )
 
-// env 造一个查表式的 getenv。
+// env builds a table-lookup-style getenv.
 func env(kv map[string]string) func(string) string {
 	return func(k string) string { return kv[k] }
 }
 
-// TestResolveOrder 把优先级打表钉住。
+// TestResolveOrder pins the priority table down.
 //
-// 顺序是**取舍**（见 resolve.go 那段注释），所以它必须有一条测试：将来有人想
-// 「环境优先」，改的是这里的一行与被钉住的期望值——而不是在某个用户抱怨
-// 「我设了没用」的时候才发现自己改了什么。
+// The order is a **trade-off** (see the passage in resolve.go), so it must have a test: someone
+// wanting "environment first" later changes one line here and the pinned expectation -- rather
+// than discovering what they changed when a user complains "I set it and it did nothing".
 func TestResolveOrder(t *testing.T) {
 	cases := []struct {
 		name       string

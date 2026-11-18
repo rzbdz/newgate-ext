@@ -270,7 +270,7 @@ func TestViewDeclaresWhichCardsChangeOnTheirOwn(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := map[string]bool{
-		"plugin-manager.modules":  false, // 这个构建由哪些模块组成：不会自己变
+		"plugin-manager.modules":  false, // which modules make up this build: never changes by itself
 		"plugin-manager.switches": true,
 		"plugin-manager.footguns": true,
 	}

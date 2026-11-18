@@ -24,8 +24,9 @@ func raw(t *testing.T, v any) []byte {
 	return b
 }
 
-// TestParseFallsBackToFactory 没有这一段、或者 JSON 坏掉，都当出厂态。
-// 方向是 fail-open：读不出来**别关人东西**（关了会让 DeepSeek 那边开始回 400）。
+// TestParseFallsBackToFactory with no such section, or broken JSON, both count as factory
+// state. The direction is fail-open: if it cannot be read, **do not turn people's things off**
+// (off makes DeepSeek start answering 400).
 func TestParseFallsBackToFactory(t *testing.T) {
 	for _, c := range []struct {
 		name string
@@ -49,12 +50,13 @@ func TestParseFallsBackToFactory(t *testing.T) {
 	}
 }
 
-// TestFallbackDefaultsOn 没表过态 = **开**（换人照旧）。
+// TestFallbackDefaultsOn never stated = **on** (swapping as before).
 //
-// 这条守的是 fail-open 的那一半：没有这一段、JSON 坏了、老文件里根本没这个键，
-// 都必须落在「照旧换人」上。落在「关掉」上的话，一台机器升级后会**静默地不再
-// 换人**，而症状只在某个 provider 真的挂了的那天才显形——平时请求照常 200，
-// 谁也不会去查（这正是 status 里那一行存在的理由，见 modules/gateway/status.go）。
+// This guards the fail-open half: no such section, broken JSON, or a key simply absent from an
+// old file must all land on "swap as before". Landing on "off" would make a machine **silently
+// stop swapping** after an upgrade, with the symptom showing only on the day a provider really
+// dies -- requests keep returning 200 the rest of the time and nobody goes looking (exactly why
+// that line in status exists; see modules/gateway/status.go).
 func TestFallbackDefaultsOn(t *testing.T) {
 	for _, c := range []struct {
 		name string
@@ -73,14 +75,15 @@ func TestFallbackDefaultsOn(t *testing.T) {
 	}
 }
 
-// TestFallbackRoundTrip 写侧走一遍真 store：`newgate fallback off` 之后，
-// **另一个进程**（守护进程）读到的必须也是关。
+// TestFallbackRoundTrip walks the write side through a real store: after `newgate fallback off`,
+// **another process** (the daemon) must read it as off too.
 //
-// 为什么值得单独立一条：这个开关的写端与读端分居两个进程，中间只隔着这次写下的
-// JSON 原文，谁也不会当场发现两边分家了。所以这里断言两件事——解析出来的布尔，
-// 以及**那段 JSON 的形状**：字段名或嵌套写错时，前者可能被「默认开」蒙对，
-// 后者不会（`FallbackOff` 只看 `Gateway.fallback`，写在别处它照样报「关」，
-// 而真实读路径与展示层看的是同一份 Parse，谁也发现不了）。
+// Why it deserves its own case: this switch's write end and read end live in two processes,
+// with only this JSON text between them, so nobody notices the moment they diverge. So this
+// asserts two things -- the parsed boolean, and **the shape of that JSON**: with a wrong field
+// name or nesting the former can be accidentally right via "default on", the latter cannot
+// (`FallbackOff` only reads `Gateway.fallback`; written elsewhere it still reports "off", while
+// the real read path and the display layer see the same Parse and nobody can tell).
 func TestFallbackRoundTrip(t *testing.T) {
 	testkit.Sandbox(t)
 	if _, err := store.Init(false); err != nil {
@@ -106,9 +109,10 @@ func TestFallbackRoundTrip(t *testing.T) {
 	if got.Fallback == nil || *got.Fallback {
 		t.Fatalf("wrong on-disk shape: gateway section = %s, want fallback:false", after.ModuleConfig[Key])
 	}
-	// 顺带守一条：写这个开关不该碰到同一段里的别的指针字段。Config 里三个 *bool
-	// 长得一样，`c.Fallback = &on` 抄错成别人是很容易发生、且**只在下次读的时候**
-	// 才显形的那种错（症状是「我关的是 fallback，schema 修补怎么没了」）。
+	// One more guard: writing this switch must not touch the other pointer fields in the same
+	// section. Config's three *bool look alike, and `c.Fallback = &on` mistyped to another is an
+	// easy mistake that shows **only on the next read** (symptom: "I turned off fallback, why
+	// did schema repair disappear").
 	if !RepairEnabled(after) || !SpecialEnabled(after) {
 		t.Fatal("writing fallback flipped other switches in the same section")
 	}
@@ -121,18 +125,21 @@ func TestFallbackRoundTrip(t *testing.T) {
 	}
 }
 
-// TestParseReadsLegacyKeys 老文件（顶层 typed 字段）必须还能读出来。
+// TestParseReadsLegacyKeys old files (top-level typed fields) must still be readable.
 //
-// 这条守的是一次**静默的**行为反转：store 对顶层不认识的键是无损保留的，老键
-// 既不会自动消失、也不会被新读路径看到。不读它，一台显式 `special_treatment:
-// false` 过的机器升级后会自己变回全开——用户关掉的东西悄悄回来了。
+// This guards a **silent** behavior reversal: store preserves unknown top-level keys
+// losslessly, so old keys neither disappear on their own nor are seen by the new read path.
+// Without reading them, a machine that explicitly ran `special_treatment: false` goes back to
+// all-on after upgrading -- what the user turned off quietly returns.
 //
-// ⚠️ 这条测试能过有一个**前提**：那几个键必须真的不再是 `domain.State` 上的
-// typed 字段。store.LoadState 按 json tag 反射出「已知字段」表，**已知的键会被
-// 结构化解析掉、根本进不了 ModuleConfig**，于是 legacyConfig 永远读不到它。
-// 2026-09-18 实测踩过：删字段的正则漏了 debug，于是 debug 的老键迁移**静默失效**
-// （老值读不到、新值写不进旧字段，state.json 顶层留着一个看着像生效的 debug:true，
-// 而网关已经不读它了）。所以下面每加一个老键，都要确认它已经不在 domain.State 里。
+// ⚠️ This test passing has a **precondition**: those keys must really no longer be typed
+// fields on `domain.State`. store.LoadState reflects json tags into its "known fields" table,
+// and **known keys get parsed structurally and never reach ModuleConfig**, so legacyConfig
+// would never see them. Measured and hit on 2026-09-18: the field-deleting regex missed debug,
+// so debug's legacy migration **silently stopped working** (old value unreadable, new value not
+// written into the old field, state.json's top level kept a live-looking debug:true that the
+// gateway no longer read). So each legacy key added below must be confirmed absent from
+// domain.State.
 func TestParseReadsLegacyKeys(t *testing.T) {
 	off := false
 	old := st(map[string][]byte{
@@ -162,12 +169,13 @@ func TestParseReadsLegacyKeys(t *testing.T) {
 	}
 }
 
-// TestLegacyKeysAreNotTypedFields 是上面那条的**守卫**：老键必须不是
-// domain.State 上的 typed 字段。
+// TestLegacyKeysAreNotTypedFields is the **guard** for the one above: legacy keys must not be
+// typed fields on domain.State.
 //
-// 为什么值得单独立一条：字段还在的话，失败方式极其隐蔽——结构化解析把键吃掉，
-// ModuleConfig 里没有它，legacyConfig 读不到，一切「看起来正常」，只是用户的设置
-// 静默丢了。用反射直接问 struct，比靠人记得牢。
+// Why it deserves its own case: with the field still there, the failure mode is extremely
+// subtle -- structural parsing eats the key, ModuleConfig does not have it, legacyConfig cannot
+// read it, and everything "looks normal" while the user's setting is silently lost. Asking the
+// struct via reflection is more reliable than trusting memory.
 func TestLegacyKeysAreNotTypedFields(t *testing.T) {
 	typ := reflect.TypeOf(domain.State{})
 	for _, key := range []string{
@@ -185,12 +193,14 @@ func TestLegacyKeysAreNotTypedFields(t *testing.T) {
 	}
 }
 
-// TestLegacyFillsOnlyUnsetFields 逐字段回退：新段里**设过**的字段胜出，
-// 没设过的才读老键。
+// TestLegacyFillsOnlyUnsetFields per-field fallback: a field **set** in the new section wins;
+// only unset ones read the legacy key.
 //
-// 两个方向都要守：
-//   - 没设过 → 读老键。否则分两步搬（新段先建好、老键后搬）时那一步会静默丢设置。
-//   - 设过 → 不理老键。否则用户把开关拨回出厂态之后，老值会把它翻回去。
+// Both directions must be guarded:
+//   - not set → read the legacy key. Otherwise the step in a two-step move (new section built
+//     first, legacy keys moved later) silently drops the setting.
+//   - set → ignore the legacy key. Otherwise, after the user puts a switch back to factory
+//     state, the old value flips it back.
 func TestLegacyFillsOnlyUnsetFields(t *testing.T) {
 	t.Run("a field set in the new section wins", func(t *testing.T) {
 		on := true
@@ -203,7 +213,7 @@ func TestLegacyFillsOnlyUnsetFields(t *testing.T) {
 		}
 	})
 	t.Run("a field not set in the new section falls back to the old key", func(t *testing.T) {
-		// 新段只写了 schema_repair（这正是分两步搬时的真实形态）。
+		// The new section has only schema_repair written (exactly the real shape of a two-step move).
 		s := st(map[string][]byte{
 			Key:                     raw(t, Config{SchemaRepair: boolp(true)}),
 			legacy.Debug:            raw(t, true),
@@ -221,20 +231,21 @@ func TestLegacyFillsOnlyUnsetFields(t *testing.T) {
 
 func boolp(v bool) *bool { return &v }
 
-// TestUpdateWritesNewAndDropsLegacy 写侧：值落到新段、老键当场删掉。
+// TestUpdateWritesNewAndDropsLegacy write side: the value lands in the new section, legacy
+// keys go at once.
 func TestUpdateWritesNewAndDropsLegacy(t *testing.T) {
 	testkit.Sandbox(t)
 	if _, err := store.Init(false); err != nil {
 		t.Fatalf("Init: %v", err)
 	}
-	// 先造一份带老键的 state。
+	// First build a state carrying legacy keys.
 	s := store.LoadState()
 	s.ModuleConfig[legacy.SpecialTreatment] = raw(t, false)
 	s.ModuleConfig[legacy.SchemaRepair] = raw(t, true)
 	if err := store.SaveState(s); err != nil {
 		t.Fatal(err)
 	}
-	// 迁移期读得到老值。
+	// During the migration the old value is readable.
 	if SpecialEnabled(store.LoadState()) {
 		t.Fatal("before the write the old key's false should be read")
 	}
@@ -253,7 +264,7 @@ func TestUpdateWritesNewAndDropsLegacy(t *testing.T) {
 	if PluginOff(after, "deepseek") != true {
 		t.Fatal("the new section was not written")
 	}
-	// 老值被带进了新段：写的那一刻先读到了 false，所以它必须活下来。
+	// The old value came along into the new section: the write read false first, so it must survive.
 	if SpecialEnabled(after) {
 		t.Fatal("the old key's false was dropped during migration - something the user turned off came back")
 	}

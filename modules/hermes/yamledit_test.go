@@ -5,10 +5,12 @@ import (
 	"testing"
 )
 
-// 字节手术这一族测的是：该改的改对、别的逐字节不动、改两次和改一次一样。
+// The byte-surgery family tests: what should change does change correctly, everything else stays
+// byte for byte, and editing twice equals editing once.
 //
-// sampleYAML 是 hermes 0.13 自己落盘的形状（2026-11-04 本机 ~/.hermes/config.yaml
-// 的节选，密钥换成了占位）：块风格、两格缩进、空映射写成 `{}`、列表缩进在父键下。
+// sampleYAML is the shape hermes 0.13 itself dumps (an excerpt of ~/.hermes/config.yaml on this
+// machine on 2026-11-04, keys replaced with placeholders): block style, two-space indent, empty
+// mappings written as `{}`, lists indented under their parent key.
 const sampleYAML = `model:
   provider: custom
   model: claude-opus-5
@@ -77,7 +79,8 @@ func TestPutScalarTouchesOnlyThatLine(t *testing.T) {
 	}
 }
 
-// 子映射里同名的键（auxiliary.vision.model 与顶层 model.model）不许认错。
+// Same-named keys in sub-mappings (auxiliary.vision.model and top-level model.model) must not
+// be confused.
 func TestPutNestedDoesNotConfuseSameNamedKeys(t *testing.T) {
 	out := apply(t, sampleYAML, edit{Path: []string{"auxiliary", "vision", "model"}, Value: "vision"})
 	if !strings.Contains(out, "  model: claude-opus-5\n") {
@@ -91,7 +94,8 @@ func TestPutNestedDoesNotConfuseSameNamedKeys(t *testing.T) {
 	}
 }
 
-// `providers: {}` 是 hermes 写空映射的方式：往里补键要先把它变成块。
+// `providers: {}` is how hermes writes an empty mapping: adding keys inside first turns it into
+// a block.
 func TestPutIntoEmptyFlowMapping(t *testing.T) {
 	out := apply(t, sampleYAML, edit{Path: []string{"providers", "newgate"},
 		Value: omap{{"name", "newgate"}, {"base_url", "http://127.0.0.1:8899/a/hermes/v1"}}})
@@ -100,7 +104,7 @@ func TestPutIntoEmptyFlowMapping(t *testing.T) {
 	}
 }
 
-// 原来是块、现在写成标量：整块换掉，不留孤儿子行。
+// Was a block, now written as a scalar: replace the whole block, leave no orphan child lines.
 func TestPutReplacesWholeBlock(t *testing.T) {
 	out := apply(t, sampleYAML, edit{Path: []string{"smart_model_routing", "cheap_model"},
 		Value: omap{{"provider", "newgate"}, {"model", "light"}}})
@@ -139,7 +143,8 @@ func TestPutIsIdempotent(t *testing.T) {
 	}
 }
 
-// 一个非空标量不能被当成映射往里写——那是丢别人的值。
+// A non-empty scalar must not be treated as a mapping to write into -- that loses someone
+// else's values.
 func TestPutRefusesToTurnAValueIntoAMapping(t *testing.T) {
 	d := parseDoc("model: claude-opus-5\n")
 	if _, err := d.put(edit{Path: []string{"model", "default"}, Value: "normal"}); err == nil {

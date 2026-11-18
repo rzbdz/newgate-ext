@@ -13,9 +13,9 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// NetCheck 逐层探测到某个 provider 的连通性。
-// 目的是把「Bad Gateway」这种糊成一团的失败拆开：
-// 到底是 DNS 挂了、TCP 连不上、TLS 握手失败，还是鉴权被拒。
+// NetCheck probes connectivity to a provider layer by layer.
+// The purpose is to take a mushy failure like "Bad Gateway" apart:
+// is it DNS down, TCP unreachable, TLS handshake failed, or auth rejected?
 type NetCheck struct {
 	Provider string
 	Host     string
@@ -50,8 +50,8 @@ func CheckNet(name string, p domain.Provider, timeout time.Duration) NetCheck {
 		}
 	}
 
-	// 1. DNS —— 静态编译（CGO_ENABLED=0）用纯 Go 解析器，
-	//    和 glibc 的行为不同，某些机器上会在这一步挂
+	// 1. DNS -- a static build (CGO_ENABLED=0) uses the pure Go resolver,
+	//    which behaves differently from glibc and fails at this step on some machines
 	t0 := time.Now()
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	ips, err := net.DefaultResolver.LookupHost(ctx, host)
@@ -102,7 +102,7 @@ func CheckNet(name string, p domain.Provider, timeout time.Duration) NetCheck {
 		_ = conn.Close()
 	}
 
-	// 4. 鉴权 + 模型可用性
+	// 4. auth + model availability
 	if p.Key() == "" {
 		nc.Steps = append(nc.Steps, Step{i18n.T("auth", nil), false,
 			i18n.T("no api_key; the actual request is skipped", nil), 0})
@@ -111,7 +111,7 @@ func CheckNet(name string, p domain.Provider, timeout time.Duration) NetCheck {
 	return nc
 }
 
-// CheckNetAll 对所有 provider 各跑一遍分层探测。
+// CheckNetAll runs the layered probe once for every provider.
 func CheckNetAll(timeout time.Duration) ([]NetCheck, error) {
 	provs, err := store.LoadProviders()
 	if err != nil {
@@ -123,7 +123,7 @@ func CheckNetAll(timeout time.Duration) ([]NetCheck, error) {
 	}
 	sortStrings(names)
 
-	// 同一个 host 只探一次，多个 provider 共用一个网关很常见
+	// Probe each host once; several providers sharing one gateway is common
 	byHost := map[string]NetCheck{}
 	var out []NetCheck
 	for _, n := range names {

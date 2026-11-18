@@ -7,12 +7,13 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// KeysForAssistantMessage 从**请求里**一条 assistant 消息算出候选 key，
-// 顺序即优先级。这是 Observer.Keys() 的镜像：一边在响应里挂 key，一边在
-// 下一轮的请求里按同样的规则找回来，两边必须严格对应，改一边就得改另一边。
+// KeysForAssistantMessage computes the candidate keys from one assistant message **in the
+// request**; the order is the priority. This is the mirror of Observer.Keys(): one side
+// attaches keys in the response, the other finds them back by the same rules in the next
+// round's request; the two must correspond exactly, change one and you must change the other.
 //
-// 两种方言都认（newgate 不做协议转换，客户端发什么方言就原样转发什么方言，
-// 所以这里必须两边都能认）：
+// Both dialects are recognized (newgate does no protocol conversion: whatever dialect the
+// client sends is forwarded verbatim, so both must be recognized here):
 //
 //	OpenAI    {"role":"assistant","content":"…","tool_calls":[{"id":"…"}]}
 //	Anthropic {"role":"assistant","content":[{"type":"tool_use","id":"…"},…]}
@@ -21,15 +22,16 @@ func KeysForAssistantMessage(item []byte) []string {
 	return keys
 }
 
-// keysForAssistantMessage 同 KeysForAssistantMessage，但额外回答「这条消息
-// （或它的 content）解析出来了吗」。
+// keysForAssistantMessage is like KeysForAssistantMessage but also answers "was this
+// message (or its content) parsed at all".
 //
-// 为什么要区分：以前三条失败路径（整条消息解析不了、content 是字符串但解析
-// 失败、content 是块数组但解析失败）都折叠成同一个结果——空 key 列表，于是
-// 调用方看到的是**未命中**。而「未命中」这个结论会把排查引向缓存和上游，
-// 真正的原因却是客户端发来的 JSON 形态我们不认识。modules/deepseek 的
-// skipCause 存在的唯一理由就是回答「为什么没有 thinking」，它现在有第三类
-// 原因需要分辨（见 Cache.unparsable 的说明）。
+// Why the distinction: the three failure paths (the whole message won't parse, content is a
+// string that won't parse, content is a block array that won't parse) used to collapse into
+// one result -- an empty key list -- so the caller saw a **miss**. And "miss" sends
+// investigation toward the cache and the upstream, when the real cause is a JSON shape sent
+// by the client that we do not know. The sole reason modules/deepseek's skipCause exists is
+// to answer "why is there no thinking"; it now has a third kind of cause to distinguish (see
+// the note on Cache.unparsable).
 func keysForAssistantMessage(item []byte) ([]string, bool) {
 	var m struct {
 		ToolCalls []struct {
@@ -84,21 +86,23 @@ func keysForAssistantMessage(item []byte) ([]string, bool) {
 	return keys, ok
 }
 
-// Lookup 按候选 key 依次查，命中即返回。
+// Lookup tries the candidate keys in order, returning on the first hit.
 //
-// 解析不出来的那一条会记进 Stats().Unparsable 并打一行日志：它在结果上和
-// 「未命中」一样（调用方随后补空串），但原因完全不同，而日志里只看得到
-// 「补了空串」。不记的话这个分类就永远断了——排查的人会去查缓存和上游，
-// 而该看的是客户端发来的 JSON。
+// An entry that fails to parse is recorded in Stats().Unparsable and logged on one line: in
+// outcome it is the same as a "miss" (the caller then backfills an empty string), but the
+// cause is entirely different, and the log only shows "backfilled an empty string". Without
+// the counter this classification is broken forever -- the investigator goes to the cache
+// and the upstream, when what should be looked at is the JSON the client sent.
 func (c *Cache) Lookup(item []byte) ([]byte, bool) {
 	keys, parsed := keysForAssistantMessage(item)
 	if !parsed {
 		c.mu.Lock()
 		c.unparsable++
 		c.mu.Unlock()
-		// 前 200 字节仍按字节截断（%.200s），与加 i18n 之前逐字节相同。
-		// 消息必须是**单个字面量**（tools/i18n/scan 只认一个 BasicLit）——拼接
-		// 出来的句子扫不到，账本里就会少一条。
+		// The first 200 bytes are still truncated by bytes (%.200s), byte for byte as before
+		// i18n. The message must be a **single literal** (tools/i18n/scan recognizes only one
+		// BasicLit) -- a concatenated sentence is not scanned and the ledger would miss one
+		// entry.
 		c.fail(i18n.E("thinkcache: cannot parse an assistant message in the request; this round is treated as a miss (empty string filled in) — a JSON shape problem on the client side, not a cache problem (first 200 bytes: {snippet})",
 			i18n.A{"snippet": fmt.Sprintf("%.200s", item)}))
 	}
@@ -110,25 +114,28 @@ func (c *Cache) Lookup(item []byte) ([]byte, bool) {
 	return nil, false
 }
 
-// ContinuationOrigin 判断请求是否正处于未闭合的 tool loop，并找出 tool call
-// 的产生上游。只看请求尾部：普通 user 新回合即使历史里有 tool calls，也不应
-// 被永久粘住。
+// ContinuationOrigin decides whether the request is in an unclosed tool loop, and finds the
+// upstream that produced the tool call. It looks only at the request tail: a normal new user
+// turn must not stay stuck forever even if the history contains tool calls.
 //
-// 三种方言：
-//   - Anthropic：最后一条 user.content[] 含 tool_result
-//   - OpenAI：请求末尾连续的 role=tool 消息
-//   - Responses（Codex 走的那条）：顶层 input[] 末尾连续的 function_call_output
+// Three dialects:
+//   - Anthropic: the last user.content[] contains tool_result
+//   - OpenAI: consecutive role=tool messages at the end of the request
+//   - Responses (the one Codex uses): consecutive function_call_output at the end of top-level
+//     input[]
 //
-// 为什么 Responses 那一支必须补上（2026-09-23）：少了它，Codex 的 tool loop
-// 在这条判据眼里**根本不算未闭合**——于是「这一轮的 tool call 是哪家产的」
-// 无处可查，跨上游迁移（special.RebaseToolLoop）永远不被触发，而 DeepSeek
-// 接手别家未闭合的 reasoning/tool 状态是要 400 的（见 modules/deepseek/
-// st-reasoning.go 的 A/B 实测）。症状与「补丁没生效」一样，但根因在观测侧：
-// 请求里那个 call_id 我们从来没记过出身。
+// Why the Responses branch had to be added (2026-09-23): without it, Codex's tool loop does
+// **not count as unclosed** by this criterion -- so "which vendor produced this turn's tool
+// call" is unknowable, cross-upstream migration (special.RebaseToolLoop) never fires, and
+// DeepSeek answers 400 when it takes over another vendor's unclosed reasoning/tool state (see
+// the A/B measurement in modules/deepseek/st-reasoning.go). The symptom looks like "the patch
+// did not take effect", but the root cause is on the observation side: we never recorded the
+// origin of that call_id in the request.
 //
-// 形状以真实流量为准（dump/err-429-req001474.client-sent.json，2026-09-23）：
-// 顶层 input[] 里每一项都是 `{"type":"message"|"function_call"|"function_call_output", …}`，
-// 工具输出那一项带 `call_id`。
+// The shape follows real traffic (dump/err-429-req001474.client-sent.json, 2026-09-23): every
+// entry in top-level input[] is
+// `{"type":"message"|"function_call"|"function_call_output", …}`, and the tool output entry
+// carries `call_id`.
 func (c *Cache) ContinuationOrigin(body []byte) (Origin, bool) {
 	var req struct {
 		Messages []struct {
@@ -136,7 +143,7 @@ func (c *Cache) ContinuationOrigin(body []byte) (Origin, bool) {
 			Content    json.RawMessage `json:"content"`
 			ToolCallID string          `json:"tool_call_id"`
 		} `json:"messages"`
-		// Responses 方言：对话在顶层 input[]，没有 messages。
+		// Responses dialect: the conversation is in top-level input[], there are no messages.
 		Input []struct {
 			Type   string `json:"type"`
 			CallID string `json:"call_id"`
@@ -151,13 +158,13 @@ func (c *Cache) ContinuationOrigin(body []byte) (Origin, bool) {
 	case len(req.Messages) > 0:
 		last := req.Messages[len(req.Messages)-1]
 		switch last.Role {
-		case "tool": // OpenAI 方言；一次并行调用可能有多条连续 tool 消息
+		case "tool": // OpenAI dialect; one parallel call can leave several consecutive tool messages
 			for i := len(req.Messages) - 1; i >= 0 && req.Messages[i].Role == "tool"; i-- {
 				if id := req.Messages[i].ToolCallID; id != "" {
 					ids = append(ids, id)
 				}
 			}
-		case "user": // Anthropic 方言；多个 tool_result 在同一个 content[] 里
+		case "user": // Anthropic dialect; several tool_results in one content[]
 			if len(last.Content) == 0 || last.Content[0] != '[' {
 				return Origin{}, false
 			}
@@ -177,9 +184,10 @@ func (c *Cache) ContinuationOrigin(body []byte) (Origin, bool) {
 			return Origin{}, false
 		}
 	case len(req.Input) > 0:
-		// Responses 方言：末尾连续的 function_call_output。与 OpenAI 那一支同形
-		// ——一次并行调用会有连续几条，而中间夹一条别的（user 消息、function_call）
-		// 就说明这一轮已经闭合（客户端在等新指令，不是在等工具结果）。
+		// Responses dialect: consecutive function_call_output at the end. Same shape as the
+		// OpenAI branch -- a parallel call yields several in a row, and another kind in between
+		// (a user message, a function_call) means the turn is already closed (the client is
+		// waiting for new instructions, not for tool results).
 		for i := len(req.Input) - 1; i >= 0 && req.Input[i].Type == "function_call_output"; i-- {
 			if id := req.Input[i].CallID; id != "" {
 				ids = append(ids, id)
@@ -203,7 +211,7 @@ func (c *Cache) ContinuationOrigin(body []byte) (Origin, bool) {
 			continue
 		}
 		if found.Provider != origin.Provider || found.Model != origin.Model {
-			return Origin{}, false // 同一批 tool results 来源冲突：不猜
+			return Origin{}, false // same batch of tool results, conflicting origins: do not guess
 		}
 	}
 	return found, found.Provider != ""

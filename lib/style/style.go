@@ -130,24 +130,24 @@ func runeWidth(r rune) int {
 	case r == 0:
 		return 0
 	case r < 32 || (r >= 0x7f && r < 0xa0):
-		return 0 // 控制字符（含剥不干净的 ESC 残渣）
+		return 0 // control characters (including ESC residue that was not stripped cleanly)
 	case r >= 0x0300 && r <= 0x036f, r >= 0x200b && r <= 0x200f:
-		return 0 // 组合记号与零宽字符
-	case r >= 0x1100 && (r <= 0x115f || // 谚文字母
+		return 0 // combining marks and zero-width characters
+	case r >= 0x1100 && (r <= 0x115f || // Hangul jamo
 		r == 0x2329 || r == 0x232a || // 〈 〉
-		(r >= 0x2e80 && r <= 0xa4cf && r != 0x303f) || // CJK 部首 … 彝文
-		(r >= 0xac00 && r <= 0xd7a3) || // 谚文音节
-		(r >= 0xf900 && r <= 0xfaff) || // CJK 兼容
-		(r >= 0xfe30 && r <= 0xfe6f) || // CJK 兼容标点
-		(r >= 0xff00 && r <= 0xff60) || // 全角形式
-		(r >= 0xffe0 && r <= 0xffe6) || // 全角符号
-		(r >= 0x1f300 && r <= 0x1f5ff) || // 杂项符号与象形
-		(r >= 0x1f600 && r <= 0x1f64f) || // 表情
-		(r >= 0x1f680 && r <= 0x1f6ff) || // 交通与地图
-		(r >= 0x1f7e0 && r <= 0x1f7eb) || // 彩色圆/方（🟢🔴）
-		(r >= 0x1f90c && r <= 0x1f9ff) || // 补充符号与象形
-		(r >= 0x1fa70 && r <= 0x1faff) || // 扩展 A（含大量新 emoji）
-		(r >= 0x20000 && r <= 0x3fffd)): // CJK 扩展
+		(r >= 0x2e80 && r <= 0xa4cf && r != 0x303f) || // CJK radicals … Yi
+		(r >= 0xac00 && r <= 0xd7a3) || // Hangul syllables
+		(r >= 0xf900 && r <= 0xfaff) || // CJK compatibility
+		(r >= 0xfe30 && r <= 0xfe6f) || // CJK compatibility punctuation
+		(r >= 0xff00 && r <= 0xff60) || // full-width forms
+		(r >= 0xffe0 && r <= 0xffe6) || // full-width symbols
+		(r >= 0x1f300 && r <= 0x1f5ff) || // miscellaneous symbols and pictographs
+		(r >= 0x1f600 && r <= 0x1f64f) || // emoji
+		(r >= 0x1f680 && r <= 0x1f6ff) || // transport and map
+		(r >= 0x1f7e0 && r <= 0x1f7eb) || // colored circles/squares (🟢🔴)
+		(r >= 0x1f90c && r <= 0x1f9ff) || // supplemental symbols and pictographs
+		(r >= 0x1fa70 && r <= 0x1faff) || // extended A (many new emoji)
+		(r >= 0x20000 && r <= 0x3fffd)): // CJK extensions
 		return 2
 	}
 	return 1

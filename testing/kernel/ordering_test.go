@@ -106,7 +106,7 @@ func TestOrderingEdgesStayInsideTheKernel(t *testing.T) {
 	plugins := 0
 	for name, shape := range byType {
 		if !shape.methods["Name"] || !shape.methods["Match"] || !shape.methods["Apply"] {
-			continue // 不是插件，Before/After 是别人的同名方法
+			continue // not a plugin; Before/After belong to someone else's same-named methods
 		}
 		plugins++
 		for _, n := range shape.names {

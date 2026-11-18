@@ -12,13 +12,13 @@ import (
 	"github.com/rzbdz/newgate-ext/modules/config/resolve"
 )
 
-// TestDualURLRoutesByDialect 两种方言分家的上游（火山方舟：openai 方言在
-// /api/coding/v3，anthropic 方言在 /api/coding）——转发层必须按**客户端这次
-// 说的方言**选 base。
+// TestDualURLRoutesByDialect an upstream whose dialects split (Volcengine Ark: the openai
+// dialect under /api/coding/v3, the anthropic dialect under /api/coding) -- the forwarding
+// layer must pick the base by **the dialect the client speaks this time**.
 //
-// 现场（2026-09-15）：claude 的 /messages 打到了 openai 的 v3 base，方舟回
-// istio-envoy 的空 body 404，用户看到的是「ark 跑不通」，而 probe 全绿
-// （probe 只打 provider 声明协议的那条路）。
+// The field (2026-09-15): claude's /messages hit the openai v3 base, Ark answered an
+// istio-envoy empty-body 404, and the user saw "ark does not work" while probe was all green
+// (probe only hits the path the provider declares as its protocol).
 func TestDualURLRoutesByDialect(t *testing.T) {
 	var openaiHit, anthHit string
 	record := func(dst *string) http.HandlerFunc {
@@ -60,7 +60,7 @@ func TestDualURLRoutesByDialect(t *testing.T) {
 		}
 	}
 
-	// Claude Code 形态：/a/claude/ + /v1/messages
+	// Claude Code shape: /a/claude/ + /v1/messages
 	post("/a/claude/v1/messages",
 		`{"model":"heavy","max_tokens":8,"messages":[{"role":"user","content":"hi"}]}`)
 	if anthHit != "/api/coding/v1/messages" {
@@ -70,7 +70,7 @@ func TestDualURLRoutesByDialect(t *testing.T) {
 		t.Errorf("the anthropic dialect must not touch base_url: actually hit %q", openaiHit)
 	}
 
-	// count_tokens 也是 anthropic 方言的端点，同样走 anthropic_url
+	// count_tokens is an anthropic-dialect endpoint too, so it also takes anthropic_url
 	anthHit = ""
 	post("/a/claude/v1/messages/count_tokens",
 		`{"model":"heavy","max_tokens":8,"messages":[{"role":"user","content":"hi"}]}`)
@@ -78,7 +78,7 @@ func TestDualURLRoutesByDialect(t *testing.T) {
 		t.Errorf("count_tokens should use anthropic_url: actually hit %q", anthHit)
 	}
 
-	// opencode 形态：裸 /v1 + /chat/completions，一个字节都不该往 anthropic 那边去
+	// opencode shape: bare /v1 + /chat/completions, not one byte may go toward anthropic
 	anthHit = ""
 	post("/v1/chat/completions",
 		`{"model":"heavy","max_tokens":8,"messages":[{"role":"user","content":"hi"}]}`)

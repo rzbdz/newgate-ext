@@ -226,7 +226,7 @@ func TestOpenAINonStream(t *testing.T) {
 
 func TestOpenAIStream(t *testing.T) {
 	s := upstream.New(t)
-	s.SetChunkDelay(0) // 协议用例不必真等
+	s.SetChunkDelay(0) // protocol cases need not really wait
 
 	resp := send(t, s, http.MethodPost, "/v1/chat/completions",
 		`{"model":"glm-4-plus","stream":true,"messages":[{"role":"user","content":"hi"}]}`, nil)
@@ -290,7 +290,7 @@ func TestAnthropicNonStream(t *testing.T) {
 		name string
 		path string
 		body string
-		want int // 期望 content 里几块
+		want int // expected number of content chunks
 	}{
 		{"with tools: thinking + tool_use + text", "/v1/messages", withTools, 3},
 		{"prefixed paths are also accepted (before the gateway strips the prefix / when hitting the fake upstream directly)", "/a/claude/p/ds/v1/messages", withTools, 3},
@@ -382,7 +382,7 @@ func TestAnthropicStream(t *testing.T) {
 	want := []string{
 		"message_start",
 		"content_block_start", // index 0：thinking
-		"content_block_delta", // 推理原文
+		"content_block_delta", // the reasoning text
 		"content_block_start", // index 1：tool_use
 		"content_block_start", // index 2：text
 		"content_block_delta", "content_block_delta", "content_block_delta", "content_block_delta",
@@ -855,7 +855,7 @@ func TestControlPlaneHTTP(t *testing.T) {
 	if code, _ := get(t, s, "/__mock/fail?code=abc"); code != http.StatusBadRequest {
 		t.Errorf("status code for code=abc = %d, want 400", code)
 	}
-	s.FailNext(0) // 别把上面那发缺省 500 留给后面的用例
+	s.FailNext(0) // don't leave the default 500 from above for later cases
 
 	// POST /__mock/reset clears records; this shot is not recorded (handled before body)
 	if code, raw = post(t, s, "/__mock/reset", ""); code != http.StatusOK {
@@ -872,7 +872,7 @@ func TestControlPlaneHTTP(t *testing.T) {
 // and chunks arrive incrementally (a buffering proxy would hold chunk one till the end).
 func TestStreamIsIncremental(t *testing.T) {
 	s := upstream.New(t)
-	const delay = 200 * time.Millisecond // 4 个增量块 → 整条流 ~800ms
+	const delay = 200 * time.Millisecond // 4 delta chunks -> the whole stream is ~800ms
 
 	// Speed up the baseline delay first: mock_slow uses the other dial, so it should not change
 	s.SetChunkDelay(0)

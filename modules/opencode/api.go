@@ -2,11 +2,12 @@ package opencode
 
 import modules "github.com/rzbdz/newgate/component"
 
-// Client 是 OpenCode 家族暴露给交叉组件的稳定身份。
-// 交叉行为只需要 AgentID，不应依赖接管实现或配置文件结构。
+// Client is the stable identity the OpenCode family exposes to cross-cutting components.
+// Cross-cutting behavior needs only AgentID; it must not depend on the takeover implementation or
+// the config file shape.
 type Client struct {
 	AgentID string
 }
 
-// Capability 标识唯一的 OpenCode 客户端家族。
+// Capability identifies the one OpenCode client family.
 var Capability = modules.NewCapability[Client]("client-family.opencode")

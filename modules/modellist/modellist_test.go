@@ -16,11 +16,12 @@ import (
 	modules "github.com/rzbdz/newgate/component"
 )
 
-// 本文件的用例只碰 modellist 自己的知识：两种方言的地址/认证/分页、分组怎么收敛、
-// 缓存什么时候该失效，以及「问不到」为什么不是错误。
+// This file's cases touch only modellist's own knowledge: both dialects' address/auth/pagination,
+// how grouping converges, when the cache should be invalidated, and why "cannot ask" is not an
+// error.
 //
-// 它们都走 httptest（不出网，见 docs/10-testing-security.md）；providers.json 由
-// testkit.Sandbox 圈在临时目录里，不碰真实配置。
+// They all go through httptest (no network, see docs/10-testing-security.md); providers.json is
+// fenced into a temp directory by testkit.Sandbox and does not touch the real config.
 
 func useProvider(t *testing.T, name string, p domain.Provider) {
 	t.Helper()
@@ -73,7 +74,7 @@ func TestOpenAIListsModelsWithGroups(t *testing.T) {
 	if len(cat.Groups) != 2 || cat.Groups[0] != "chat" {
 		t.Errorf("groups are ordered by first appearance, got %v", cat.Groups)
 	}
-	// 声明的协议是 openai，第一条路就成功了；不该再去试 anthropic。
+	// The declared protocol is openai and the first route succeeded; anthropic should not be tried.
 	if cat.Endpoint == "" || !strings.HasSuffix(cat.Endpoint, "/models") {
 		t.Errorf("Endpoint should be the address actually queried, got %q", cat.Endpoint)
 	}
@@ -295,7 +296,7 @@ func TestHandleReadsTheExtensionRequest(t *testing.T) {
 	}
 }
 
-// fakeWeb 是 web-dashboard 那个端口的替身：只记住谁登记了什么。
+// fakeWeb is the stand-in for web-dashboard's port: it only remembers who registered what.
 type fakeWeb struct {
 	registered map[string]webapi.ExtensionHandler
 	released   int
@@ -324,7 +325,7 @@ func TestModuleRegistersAndReleasesTheEndpoint(t *testing.T) {
 	if _, ok := fake.registered[Endpoint]; !ok {
 		t.Fatalf("with the UI installed it should register %q, got %v", Endpoint, fake.registered)
 	}
-	// Service 端口本身也要在：没装界面时功能仍然可用。
+	// The Service port itself must be there too: the feature still works without the UI installed.
 	if _, ok := testkit.Maybe(g, Capability); !ok {
 		t.Fatal("the Service port should be provided unconditionally - a missing UI just means no entry point")
 	}

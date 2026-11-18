@@ -1,15 +1,18 @@
-// Package hello 是**发行版模块**的最小样例，也是骨架发行版（`dist-hello.json`）
-// 的全部内容：整个 newgate 框架起来之后，`newgate` 这个入口就跑一句 hello world。
+// Package hello is the smallest sample of a **distribution module**, and the entire content of
+// the skeleton distribution (`dist-hello.json`): once the whole newgate framework is up, the
+// `newgate` entry point prints one hello world.
 //
-// 它做两件事，正好是「一个模块能对进程做的两件事」：
+// It does two things, exactly "the two things a module can do to a process":
 //
-//   - Start 时往装配日志打一行 hello —— 证明它被装进来了；
-//   - 往**入口账本**申报自己（见 component/entry）—— 没有别的入口认领这次调用时
-//     归它，于是「框架 + hello」这个发行版跑起来就是一句 hello world。
+//   - at Start, print one hello line to the assembly log -- proving it was installed;
+//   - declare itself to the **entry ledger** (see component/entry) -- when no other entry
+//     claims the invocation it goes to this one, so the "framework + hello" distribution runs
+//     as one hello world.
 //
-// 第二件事才是这个样例的价值所在：入口不是组合根写死的分发（`app` 不认识任何
-// 模块），而是模块自己申报的。`newgate plugin` 会把它列在 `example` 那一类里，
-// 而 `newgate`（没有别的入口时）会走到它这里。
+// The second is where this sample's value lies: entries are not a dispatch hard-coded in the
+// composition root (`app` knows no module), they are declared by the modules themselves.
+// `newgate plugin` lists it in the `example` category, and `newgate` (with no other entry)
+// arrives here.
 package hello
 
 import (
@@ -22,31 +25,38 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// TypeExample 是分类标签。词汇表归产品层（见 component.Type 的注释），
-// 这里给出取值：`newgate plugin` 会按它分组显示，装不认识的值也不会报错。
+// TypeExample is the classification tag. The vocabulary belongs to the product layer (see the
+// comment on component.Type); the values are given here: `newgate plugin` groups by it, and an
+// unknown value does not error.
 const TypeExample = "example"
 
-// 这个样例只有两句话，但两句话都**走目录表**——因为翻译这件事最贵的不是工具，
-// 是习惯：一个模块第一次写文案时抄了哪一行，决定它以后长什么样。骨架发行版
-// （`dist-hello.json`）跑的就是这个模块，所以它也是「一句话该怎么写」的样板。
+// This sample has only two sentences, but both **go through the catalog** -- because the most
+// expensive part of translation is not the tooling, it is the habit: whichever line a module
+// copies the first time it writes copy decides how it looks from then on. The skeleton
+// distribution (`dist-hello.json`) runs this very module, so it is also the template for "how
+// to write one sentence".
 //
-// 规矩（内核 `docs/13-i18n.md` 是权威原文）：源码里写**英文**（源语言），
-// `i18n.T("那条英文", i18n.A{...})`，中文活在 `modules/i18n/catalogs/zh-Hans.json`。
-// 键就是那句英文本身，所以没有「键写错」这回事；代价是改措辞会让旧译文变孤儿，
-// `tools/i18n check` 会报出来。
+// The rule (the kernel's `docs/13-i18n.md` is the authoritative text): write **English** (the
+// source language) in source, `i18n.T("the English sentence", i18n.A{...})`, and Chinese lives in
+// `modules/i18n/catalogs/zh-Hans.json`. The key is the English sentence itself, so there is no
+// such thing as a "wrong key"; the price is that rewording orphans the old translation, which
+// `tools/i18n check` reports.
 //
-// **不能把消息放进常量再 `i18n.T(常量)`**：扫描器只认调用点上的字符串字面量，
-// 引用常量不算——那条规矩是为了让「这句话长什么样」在调用点一眼可见。
+// **Do not put the message in a constant and call `i18n.T(constant)`**: the scanner recognizes
+// only string literals at the call site; a constant reference does not count -- that rule is
+// there so "what the sentence looks like" is visible at the call site at a glance.
 
-// New 声明这个组件：启动时登记一行日志 + 申报一个兜底的进程入口。
+// New declares this component: log one line at start + declare a fallback process entry.
 //
-// 依赖是**硬依赖**入口账本（`Need`）：没有账本就没人可申报，这个模块的意义也就
-// 没了。声明出来（而不是在 Start 里悄悄 MustGet）才能让「摘掉 entry」在构图期
-// 就失败并点名缺的那个端口。
+// The dependency is a **hard** one on the entry ledger (`Need`): with no ledger there is no
+// one to declare to, and this module loses its point. Declaring it (rather than quietly
+// MustGet-ing in Start) is what makes "remove entry" fail at graph time and name the missing
+// port.
 func New() modules.Component {
-	// 申报句柄：Start 拿到的贡献必须在 Stop 里撤销（见 component.Release 的注释）。
-	// 拿它做闭包变量而不是包级变量——同一个模块被装两次（测试里很常见）时，
-	// 包级变量会让第二张图撤掉第一张图的登记。
+	// Declaration handle: a contribution taken in Start must be withdrawn in Stop (see the
+	// comment on component.Release). Keep it as a closure variable rather than a package-level
+	// one -- when the same module is installed twice (common in tests), a package-level
+	// variable would make the second graph withdraw the first graph's registration.
 	var release modules.Release
 
 	return modules.Component{
@@ -74,21 +84,24 @@ func New() modules.Component {
 	}
 }
 
-// entry 是这次入口申报：**兜底**（entry.DefaultRank）——它永远认领。
+// entry is this invocation's entry declaration: a **fallback** (entry.DefaultRank) -- it
+// always claims.
 //
-// 同一个 rank 上只能有一个申报者，而内核的 `cli` 也在这一档（它也是兜底：谁都没
-// 认领就是它）。两者**不该装进同一张图**：谁被 Resolve 选中会退化成「目录名字母序
-// 决定进程行为」（cli 排在 hello 前面，于是 cli 赢），而那正是这套机制想避免的
-// 那类隐式判据。发行版的规格书级测试守着这条（testing/graph_test.go）。
+// Only one declarer can exist per rank, and the kernel's `cli` is also at this rank (it is
+// a fallback too: whoever claims nothing gets it). The two **must not be installed into the
+// same graph**: which one Resolve picks would degrade to "the process behavior is decided by
+// directory-name alphabetical order" (cli sorts before hello, so cli wins), and that is
+// exactly the kind of implicit criterion this mechanism exists to avoid. The distribution's
+// spec-level test guards this (testing/graph_test.go).
 type entry struct{}
 
 func (entry) Name() string { return "hello" }
 
-// Claims 永远为真：兜底入口的条件就是「没有人认领」。
+// Claims is always true: the fallback entry's condition is "nobody claimed it".
 func (entry) Claims(entryapi.Process) bool { return true }
 
-// Handle 是骨架发行版的全部行为。带上 argv0 与版本号：调试「我跑的是哪一份产物」
-// 时，这两样是最先要看的东西。
+// Handle is the skeleton distribution's entire behavior. It carries argv0 and the version:
+// when debugging "which build am I running", these two are the first things to look at.
 func (entry) Handle(p entryapi.Process) int {
 	fmt.Println(i18n.T("hello world — {argv0} ({version})",
 		i18n.A{"argv0": p.Argv0, "version": p.Version}))

@@ -89,10 +89,10 @@ type Server struct {
 	http *httptest.Server
 
 	mu        sync.Mutex
-	records   []Record      // 收到过的请求，按时间顺序
-	failCode  int           // 非 0 = 武装了「下一发失败」（python 的 NEXT_FAIL）
-	delay     time.Duration // 流式块间隔
-	slowDelay time.Duration // mock_slow 时的块间隔
+	records   []Record      // requests received, in time order
+	failCode  int           // non-zero = "fail the next one" is armed (python's NEXT_FAIL)
+	delay     time.Duration // interval between streaming chunks
+	slowDelay time.Duration // chunk interval under mock_slow
 }
 
 // New starts a fake upstream and closes it when the test ends.

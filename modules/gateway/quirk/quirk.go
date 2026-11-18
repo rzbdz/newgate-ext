@@ -1,32 +1,36 @@
-// Package quirk 记「这个上游有什么毛病」，从它自己的报错现场学。
+// Package quirk records "what is wrong with this upstream", learned from its own error site.
 //
-// 为什么需要它
+// # Why it is needed
 //
-// special_treatment 的插件靠 Match 认领请求，而 Match 只能看模型名、provider
-// 名、URL 这些**静态**信息。有些毛病是静态看不出来的：
+// special_treatment plugins claim requests via Match, and Match only sees **static**
+// information: model name, provider name, URL. Some quirks cannot be seen statically:
 //
-//	[1210][该模型始终思考，不支持关闭思考；请使用 low、high 或 max。]
+//	[1210][this model always thinks and cannot disable thinking; use low, high or max.]
 //
-// 这句话是 glm-5.3 在**带 tools** 的请求上回的。实测（api.rvcompute.com 聚合
-// 器 + glm-5.3）：
+// That sentence came back from glm-5.3 on a request **with tools**. Measured (the
+// api.rvcompute.com aggregator + glm-5.3):
 //
-//	tools + 不给 reasoning_effort        → 400 / 1210
+//	tools + no reasoning_effort          → 400 / 1210
 //	tools + reasoning_effort=low|high    → 200
-//	同样带 tools 的 glm-5.2 / glm-4.7    → 200
+//	glm-5.2 / glm-4.7 with the same tools → 200
 //
-// 成因基本可以确定：聚合器看见 tools 就自己给上游塞了「关闭思考」（很多模型
-// 不支持思考+工具同时用），而 glm-5.3 是始终思考的模型，于是拒掉。我们改不了
-// 聚合器，但给一个**显式**的 reasoning_effort 就能盖过它塞的那个值。
+// The cause is basically certain: the aggregator sees tools and stuffs "disable thinking"
+// in for the upstream itself (many models cannot do thinking and tools together), and
+// glm-5.3 always thinks, so it refuses. We cannot change the aggregator, but one
+// **explicit** reasoning_effort overrides the value it stuffed in.
 //
-// 光看模型名猜不出来哪个模型「始终思考」——那是模型版本的属性，会变，也没有
-// 任何接口能查。所以这里的策略是：**认签名、记下来、下次带上补丁**。
-// 来源有两个，都往同一个注册表里写：
+// The model name alone cannot tell which model "always thinks" - that is a property of the
+// model version, it changes, and no interface exposes it. So the strategy here is:
+// **recognize the signature, write it down, carry the patch next time**. Two sources, both
+// writing into the same registry:
 //
-//	Learn()  转发时撞上 4xx，认出签名就记一笔（一次失败换永久免疫）
-//	Probe()  newgate probe 主动打一发探出来，省掉那一次失败
+//	Learn()  a forward hit a 4xx and the signature matched, so record it (one failure buys
+//	         permanent immunity)
+//	Probe()  newgate probe actively sends one shot and finds it, skipping that failure
 //
-// 只在内存里。进程重启就忘了，重新学一次的代价是一个请求。要它更持久就该
-// 落到 providers.json 里，但那是用户的配置文件，我们不该悄悄往里写东西。
+// Memory only. A restart forgets it, and learning again costs one request. To make it more
+// durable it should go into providers.json - but that is the user's config file, and we
+// should not quietly write into it.
 package quirk
 
 import (
@@ -38,11 +42,12 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// Flag 一个已知毛病。用位掩码，一个 (provider, model) 可以同时有好几个。
+// Flag is one known quirk. A bitmask, so one (provider, model) can have several at once.
 type Flag uint32
 
 const (
-	// NoThinkingDisable 这个模型不接受「关闭思考」，必须给显式的思考强度。
+	// NoThinkingDisable: this model does not accept "disable thinking"; it needs an explicit
+	// thinking effort.
 	NoThinkingDisable Flag = 1 << iota
 )
 
@@ -53,61 +58,66 @@ func (f Flag) String() string {
 	return i18n.T("unknown", nil)
 }
 
-// AllFlags 全部已知的毛病位，按定义顺序。
+// AllFlags is every known quirk bit, in definition order.
 //
-// **加一个新的 Flag 常量时必须同时加到这里。** 它有两个消费者，两边都会因为
-// 漏掉而静默出错：
+// **A new Flag constant must be added here at the same time.** There are two consumers, and
+// both go wrong silently when one is missing:
 //
-//   - probe 的能力缓存（cache.go 的 capture）逐位问「这个上游有没有这一条」
-//     再落盘。而恢复侧（apply）读的是整张位掩码，是通用的——所以漏一位的
-//     症状不是报错，而是**那一位永远存不进去**：重启/重新探活后上游的毛病
-//     又得靠撞一次 400 才学回来。
-//   - `Flag.String()` 的展示（哪几位要写成人话）。
+//   - probe's capability cache (capture in cache.go) asks bit by bit "does this upstream
+//     have this one" and persists it. The restore side (apply) reads the whole bitmask and
+//     is generic - so a missing bit does not error, it means **that bit can never be
+//     stored**: after a restart/reprobe the upstream quirk must be learned again by hitting
+//     a 400.
+//   - `Flag.String()`'s rendering (which bits get plain language).
 //
-// 2026-09-18 之前 capture 把 NoThinkingDisable 硬编码在一行 if 里，就是这个
-// 形状：加第二位的那天，落盘会静默少一位。
+// Before 2026-09-18 capture hardcoded NoThinkingDisable in one if line, which is exactly
+// this shape: the day a second bit was added, persisting would silently lose one bit.
 func AllFlags() []Flag {
 	return []Flag{NoThinkingDisable}
 }
 
-// Table 是这张「上游毛病」表。
+// Table is this "upstream quirks" table.
 //
-// **它是一个实例，不是包级变量**（2026-09-18 改）：包级 map 是典型的 service
-// locator——别的模块（thinking 的 st-always）直接调 `quirk.Has(...)` 就依赖上了
-// gateway 数据面写进去的状态，而那条依赖在 `Requires`、依赖图、棘轮测试里都看
-// 不见。docs/03-architecture.md §5 明写「不得新增 service locator」，本仓库也为
-// breaker 修过一模一样的问题（见 modules/breaker/shape.go 的说明：健康表做成
-// table 实例，就是因为它要在测试里起很多份而不互相污染）。
+// **It is an instance, not a package-level variable** (changed 2026-09-18): a package-level
+// map is the classic service locator - another module (thinking's st-always) calling
+// `quirk.Has(...)` directly would depend on state the gateway data plane wrote in, and that
+// dependency is invisible in `Requires`, in the dependency graph and in the ratchet tests.
+// docs/03-architecture.md §5 says outright "no new service locators", and this repo fixed
+// exactly the same problem for breaker (see the note in modules/breaker/shape.go: the health
+// table became a table instance precisely because tests need many, without polluting each
+// other).
 //
-// 现在由 gateway 持有唯一的 Default，并**随每次请求交给插件**（见
-// modules/gateway/special 的 `Request.Quirks`）——想要它的模块读的是手里那个
-// 请求上的字段，也就是网关自己交出来的东西，而不是一个它可以绕过去的全局。
+// Now gateway owns the single Default and **hands it over with each request** (see
+// `Request.Quirks` in modules/gateway/special) - a module that wants it reads the field on
+// the request in hand, i.e. what the gateway itself handed out, not a global it could route
+// around.
 type Table struct {
 	mu         sync.RWMutex
 	flags      map[string]Flag
 	signatures []Signature
 }
 
-// Default 是 gateway 自己的那一份（probe / forward / Request 的填充都用它）。
+// Default is gateway's own copy (probe / forward / filling Request all use it).
 //
-// **它是 gateway 的内部约定，不是给别的模块用的**。别的模块要读这张表，走
-// `special.Request.Quirks`（网关在每次请求上带过去的那一个）——那是一条**声明过**
-// 的依赖（消费方必然已经 Need 了 gateway 的端口），而这里写 `quirk.Default.Has(...)`
-// 会重新引入一条依赖图上看不见的 service locator。
+// **It is gateway's internal convention, not for other modules**. To read this table from
+// elsewhere, go through `special.Request.Quirks` (the one the gateway carries on each
+// request) - that is a **declared** dependency (the consumer must already Need gateway's
+// port), whereas writing `quirk.Default.Has(...)` here would reintroduce a service locator
+// invisible in the dependency graph.
 //
-// 为什么不把它设成不导出：probe 与 forward 是本模块的**兄弟包**，它们要的是同一
-// 份状态，而 Go 的 internal/ 会把 gopher 挡在外面却也挡住它们命名这个类型；真正
-// 要防的是「别的模块直接调」，那一条由 `special.Request.Quirks` 这条正路 + 下面
-// 这段注释管着。
+// Why not make it unexported: probe and forward are **sibling packages** of this module and
+// want the same state, and Go's internal/ keeps gophers out while also keeping them from
+// naming this type; what really must be prevented is "another module calling it directly",
+// and that is handled by the proper route `special.Request.Quirks` plus the note below.
 var Default = NewTable()
 
-// NewTable 建一张空表（测试里要隔离时用）。
+// NewTable builds an empty table (for isolation in tests).
 func NewTable() *Table { return &Table{flags: map[string]Flag{}} }
 
 func key(provider, model string) string { return provider + "/" + model }
 
-// Mark 记一笔。返回 true 表示这是**新学到的**——调用方据此决定要不要打日志，
-// 免得同一件事每个请求都刷一行。
+// Mark records one entry. Returning true means this is **newly learned** - the caller logs
+// on that, so the same fact does not print a line per request.
 func (t *Table) Mark(provider, model string, f Flag) bool {
 	k := key(provider, model)
 	t.mu.Lock()
@@ -119,8 +129,9 @@ func (t *Table) Mark(provider, model string, f Flag) bool {
 	return true
 }
 
-// RegisterSignature 注册一条判据。撞名（同一个 Label）当场报错，不静默先到先得
-// ——与 gateway/special、breaker 的注册口同一个形状。
+// RegisterSignature registers one criterion. A name collision (same Label) fails right there
+// rather than silently going first-come-first-served - the same shape as the registration
+// ports in gateway/special and breaker.
 func (t *Table) RegisterSignature(sig Signature) (modules.Release, error) {
 	if sig.Label == "" {
 		return nil, fmt.Errorf("quirk: signature label is required")
@@ -139,7 +150,8 @@ func (t *Table) RegisterSignature(sig Signature) (modules.Release, error) {
 	return func() error {
 		t.mu.Lock()
 		defer t.mu.Unlock()
-		// 按 label 找回来删（下标会随别人的注销变化，索引不可靠）。
+		// Find it by label and delete (indices shift as others unregister, so they are
+		// unreliable).
 		for i, existing := range t.signatures {
 			if existing.Label == sig.Label {
 				t.signatures = append(t.signatures[:i], t.signatures[i+1:]...)
@@ -150,14 +162,14 @@ func (t *Table) RegisterSignature(sig Signature) (modules.Release, error) {
 	}, nil
 }
 
-// Has 查这个 (provider, model) 有没有某个毛病。
+// Has asks whether this (provider, model) has a certain quirk.
 func (t *Table) Has(provider, model string, f Flag) bool {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	return t.flags[key(provider, model)]&f != 0
 }
 
-// Entry 给 newgate status / doctor 展示。
+// Entry is for newgate status / doctor display.
 type Entry struct {
 	Provider string
 	Model    string
@@ -178,42 +190,49 @@ func (t *Table) Snapshot() []Entry {
 	return out
 }
 
-// Reset 清空（测试隔离用；生产代码不该调它——这张表是「一次失败换永久免疫」，
-// 跨装配保留是**预期语义**，不是污染）。
+// Reset clears the table (test isolation; production code should not call it - this table is
+// "one failure buys permanent immunity", and surviving across assemblies is **intended
+// semantics**, not pollution).
 func (t *Table) Reset() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.flags = map[string]Flag{}
 }
 
-// Signature 一条「报错长这样 → 说明有这个毛病」的规则。
+// Signature is one rule: "the error reads like this → it means this quirk".
 //
-// **它由拥有那个补丁的模块注册进来**（`RegisterSignature`），quirk 自己一条都
-// 不认识（2026-09-18 改）。这一条与 `gateway/special` 的 st-<上游>.go、以及
-// `breaker.RegisterShapeDetector` 是同一条规矩，理由写在 modules/deepseek/shape.go：
+// **It is registered by the module owning that patch** (`RegisterSignature`), and quirk
+// itself knows not one of them (changed 2026-09-18). This is the same rule as
+// `gateway/special`'s st-<upstream>.go and `breaker.RegisterShapeDetector`, with the reason
+// written in modules/deepseek/shape.go:
 //
-//	「判据待在知道真相的模块里，它才能被这个模块自己测试、自己演进，而 core 里
-//	 不再出现任何上游专有字符串。」
+//	"Criteria stay in the module that knows the truth, so that module can test and evolve
+//	 them, and no upstream-proprietary string ever appears in core."
 //
-// 这里原本硬编码着 GLM / DeepSeek / Kimi 三家的报错原文，于是「加一家新上游」
-// 的唯一办法是改 gateway 的文件——而代价已经付过一次：kimi 那句措辞在补进来之前
-// 「一条签名都不匹配，quirk 永远学不到它」，每一次后台调用都重新撞一遍 400。
+// This used to hardcode the error text of GLM / DeepSeek / Kimi, so the only way to "add a
+// new upstream" was to edit a gateway file - and that cost was paid once: before kimi's
+// wording was added, "no signature matched, quirk could never learn it", and every
+// background call hit the 400 again.
 //
-// 加新规则的门槛（写给注册方）：必须是**实测复现过**的报错原文，而且补丁得是
-// 语义上说得过去的。猜的规则会让我们给一堆无关请求乱加字段，比不修更糟。
+// The bar for a new rule (for the registering side): it must be **reproduced live** error
+// text, and the patch must make semantic sense. Guessed rules add fields to a pile of
+// unrelated requests - worse than no fix.
 type Signature struct {
-	// Flag 命中之后要记的毛病位（位定义在 quirk，语义由注册方解释）。
+	// Flag is the quirk bit to record on a match (bits are defined in quirk, the registering
+	// side explains their meaning).
 	Flag Flag
-	// Any 报错原文里出现任意一条即命中（小写比较）。
+	// Any matches when any one of these appears in the error text (lowercase comparison).
 	Any []string
-	// Label 学到之后写进日志的人话。
+	// Label is the plain language written to the log once learned.
 	Label string
 }
 
-// Learn 从一次失败的转发里学。只看 4xx——5xx 是上游自己挂了，跟请求形状无关。
+// Learn learns from one failed forward. It only looks at 4xx - a 5xx is the upstream itself
+// failing, unrelated to request shape.
 //
-// 返回学到的东西（人话，可以直接写日志）；什么都没学到就返回 nil。
-// 认不出的报错一律不猜：宁可让用户看到原始报错，也不能瞎加字段。
+// It returns what was learned (plain language, ready for the log); nil when nothing was
+// learned. An unrecognized error is never guessed at: better to show the user the raw error
+// than to add fields blindly.
 func (t *Table) Learn(provider, model string, status int, body []byte) []string {
 	if status < 400 || status >= 500 || len(body) == 0 {
 		return nil

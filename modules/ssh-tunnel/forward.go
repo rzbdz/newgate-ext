@@ -197,7 +197,7 @@ func (f *forwarder) close(ctx context.Context) error {
 		return nil
 	}
 	if f.ln == nil {
-		return nil // 本来就没起来
+		return nil // it was never up
 	}
 	err := f.ln.Close()
 

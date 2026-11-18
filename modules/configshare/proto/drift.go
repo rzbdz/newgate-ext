@@ -96,7 +96,7 @@ func DetectDrift(dir string, applied map[string]string, incoming map[string][]by
 	paths := make([]string, 0, len(applied))
 	for rel := range applied {
 		if _, ok := ManagedPath(rel); !ok {
-			continue // 老版本写下的、现已不在托管集合里的记录：忽略
+			continue // a record written by an old version, no longer in the managed set: ignore
 		}
 		ours[rel] = true
 		paths = append(paths, rel)
@@ -119,10 +119,10 @@ func DetectDrift(dir string, applied map[string]string, incoming map[string][]by
 			continue
 		}
 		if hashBytes(live) == applied[rel] {
-			continue // 这就是我们写下去的样子
+			continue // this is exactly what we wrote
 		}
 		if want, ok := incoming[rel]; ok && hashBytes(live) == hashBytes(want) {
-			continue // 手改的结果与远端一致，写下去等于没变
+			continue // a hand edit that matches the remote: writing it changes nothing
 		}
 		rep.Modified = append(rep.Modified, rel)
 	}
@@ -136,7 +136,7 @@ func DetectDrift(dir string, applied map[string]string, incoming map[string][]by
 	for _, rel := range incomingPaths {
 		sh := shadowOf(rel)
 		if sh == "" || ours[sh] {
-			continue // 两边都是托管的：宿主自己管着这个优先级，不是漂移
+			continue // both are managed: the host owns that precedence, so it is not drift
 		}
 		if fileExists(filepath.Join(dir, sh)) {
 			rep.Shadowed = append(rep.Shadowed, rel)
@@ -150,7 +150,7 @@ func DetectDrift(dir string, applied map[string]string, incoming map[string][]by
 				continue
 			}
 			if _, inSnapshot := incoming[rel]; inSnapshot {
-				continue // 远端要开始管它了（首次接管），不算本地层
+				continue // the remote is about to manage it (first takeover), not a local layer
 			}
 			rep.Extra = append(rep.Extra, rel)
 		}

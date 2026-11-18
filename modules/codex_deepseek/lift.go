@@ -98,12 +98,12 @@ func degradeLevel(arr []byte, degraded map[string]bool) (out []byte, changed boo
 			}
 			inner, innerChanged := degradeLevel(nested, degraded)
 			if !innerChanged {
-				buf.Write(item) // 里面没东西要改 → 这一条逐字不动
+				buf.Write(item) // nothing inside to change -> this entry stays byte-identical
 				continue
 			}
 			rewritten, err := rewrite.ReplaceTopLevelRaw(item, "tools", inner)
 			if err != nil {
-				buf.Write(item) // fail-open：改不动就发原文，让上游去报错
+				buf.Write(item) // fail-open: if it cannot be rewritten, send the original as-is
 				continue
 			}
 			touched = true
@@ -194,7 +194,7 @@ func liftInto(dst [][]byte, arr []byte, degraded map[string]bool) [][]byte {
 		case "custom":
 			name, _ := rewrite.TopLevelString(item, "name")
 			if name == "" || name == ApplyPatch {
-				dst = append(dst, item) // 上游原生认这一条，别动它
+				dst = append(dst, item) // upstream natively understands this one, leave it alone
 				continue
 			}
 			conv, err := toFunction(item)

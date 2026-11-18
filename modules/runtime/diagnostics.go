@@ -127,7 +127,8 @@ func (r runtimeReporter) Status() []cliapi.StatusLine {
 			// the machine does not have it at all. Mixed in, users think they need `newgate
 			// on` once (before 2026-09-21 machines without opencode showed ✓).
 			missing = append(missing, s.Agent)
-			continue // 没装的东西不计入 wanted：它接不上管，也不该触发下面那句提醒
+			continue // not installed: can't be taken over, so it doesn't count as wanted
+			// (nor should it trigger the reminder below)
 		default:
 			off = append(off, s.Agent)
 		}

@@ -54,12 +54,12 @@ func strictReasoningViolation(body map[string]any) bool {
 	}
 	blocks, ok := lastUser["content"].([]any)
 	if !ok || len(blocks) == 0 {
-		return false // content 是字符串 = 本来就有文字，放行
+		return false // content is a string = it already has text, let it through
 	}
 	for _, entry := range blocks {
 		block, ok := entry.(map[string]any)
 		if !ok || block["type"] != "tool_result" {
-			return false // 除 tool_result 之外的任何块都算「有指令」
+			return false // any block other than tool_result counts as "has instructions"
 		}
 	}
 	return true
@@ -160,10 +160,10 @@ func (s *Server) stream(w http.ResponseWriter, r *http.Request, model string, an
 			return false
 		}
 		if _, err := w.Write(append(append([]byte("data: "), payload...), '\n', '\n')); err != nil {
-			return false // 客户端跑了（在途流被掐、测试结束）——安静收摊
+			return false // the client is gone (stream cut mid-flight, test over) -- pack up quietly
 		}
 		if flusher != nil {
-			flusher.Flush() // 不 Flush 就不是流式：net/http 会攒到缓冲满才发
+			flusher.Flush() // without Flush it isn't streaming: net/http buffers until full
 		}
 		return true
 	}

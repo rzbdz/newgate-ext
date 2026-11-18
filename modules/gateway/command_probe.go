@@ -63,7 +63,7 @@ func (probeCommand) Run(host cliapi.Host, args []string) int {
 // capabilities / summary. Progress and results used to be mixed into stdout,
 // so a redirect produced a pile of progress lines interleaved with the table.
 func runProbe(host cliapi.Host, only string, asJSON bool) int {
-	quiet := asJSON // JSON 模式不打进度，免得污染输出
+	quiet := asJSON // JSON mode prints no progress, so it cannot pollute the output
 	started := time.Now()
 	st := store.LoadState()
 

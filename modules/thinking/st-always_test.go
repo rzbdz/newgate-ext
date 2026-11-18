@@ -381,7 +381,7 @@ func TestBestEffortDisableThinkDumbLightConfig(t *testing.T) {
 	r := req("glm-5.3", "smt-glm", "https://x/v1")
 	r.Agent, r.Stream, r.Tier = "claude", false, "light"
 
-	res := special.Apply(body, r, nil) // 走全注册表：claude-bg → always-thinks
+	res := special.Apply(body, r, nil) // full registry: claude-bg -> always-thinks
 	var m map[string]interface{}
 	if err := json.Unmarshal(res.Body, &m); err != nil {
 		t.Fatalf("after the change it is not valid JSON: %v\n%s", err, res.Body)

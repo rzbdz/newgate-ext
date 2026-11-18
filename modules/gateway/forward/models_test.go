@@ -10,7 +10,8 @@ import (
 	"github.com/rzbdz/newgate-ext/modules/gateway/special"
 )
 
-// listerFixture 替 `fixture` 这个客户端答 /models：钉住 profile 时多列一个具体模型。
+// listerFixture answers /models for the `fixture` client: when a profile is pinned it lists
+// one extra concrete model.
 type listerFixture struct{}
 
 func (listerFixture) Name() string                { return "lister-fixture" }
@@ -53,8 +54,9 @@ func modelIDs(t *testing.T, url string) []string {
 	return out
 }
 
-// TestModelListerAnswersForItsOwnClient 客户端模块替自己的 URL 答 /models（钉住
-// profile 时列那份 profile 的具体模型）；别的客户端、裸路径仍拿缺省清单。
+// TestModelListerAnswersForItsOwnClient a client module answers /models for its own URL (it
+// lists the profile's concrete models when one is pinned); other clients and the bare path
+// still get the default list.
 func TestModelListerAnswersForItsOwnClient(t *testing.T) {
 	restore := special.InstallDefault(special.NewRegistry())
 	defer restore()

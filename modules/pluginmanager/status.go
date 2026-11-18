@@ -28,7 +28,7 @@ func (c *command) Status() []cliapi.StatusLine {
 		for _, sw := range mod.Switches {
 			enabled := switchEnabled(st, sw)
 			if enabled == sw.Default {
-				continue // 还是出厂态，不占版面
+				continue // still the factory state: takes no room
 			}
 			word := "=on"
 			if !enabled {

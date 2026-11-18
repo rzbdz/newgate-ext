@@ -14,18 +14,23 @@ import (
 	"github.com/rzbdz/newgate-ext/testing/testkit"
 )
 
-// 这一族的判据从**两处**来，各自有各自的理由。
+// This family's criteria come from **two places**, each with its own reason.
 //
-// 一处在 configapi / lib/view 的注释里（行 ID 必须是 `profile/tier`、动作由 config
-// 构造好了要原样透传、链卡上的行 ID 全概念唯一），一处在 product 那一边（首屏要
-// 落在这一节上、空链要说得出话）。所以下面既有「照着端口给的结论摆」这种形状断言，
-// 也有「挂进账本之后还成立吗」这种走界面那条路的断言。
+// One in the comments of configapi / lib/view (row IDs must be `profile/tier`, actions are
+// built by config and must be passed through verbatim, row IDs on a chain card are unique
+// across the concept), the other on the product side (the first screen must land on this section,
+// an empty chain must have something to say). So below there are both shape assertions like
+// "lay out what the port gave you" and assertions that go through the UI path like "does it
+// still hold after being hooked into the ledger".
 //
-// 所有测试都起一张**真的**小图（本模块 + config）：素材不是手搓的 configapi 结构体，
-// 是沙箱里几份配置文件**解析出来的**。手搓的话，这里断言的是「我以为 config 会那么
-// 给」，而真正的契约（Actions 的构造、Skips 的类目、Steps 的来源）一条都没被碰到。
+// Every test starts a **real** small graph (this module + config): the material is not
+// hand-built configapi structs but what **parsed out** of a few config files in a sandbox.
+// Hand-built, what is asserted here is "I think config would give that", and not one of the
+// real contracts (how Actions are built, the Skips categories, where Steps come from) is
+// touched.
 
-// fixture 是一次测试的全部设施：沙箱里一份可用的配置根、一张真图、一个账本。
+// fixture is all the apparatus of one test: a usable config root in a sandbox, one real graph,
+// one ledger.
 type fixture struct {
 	t       *testing.T
 	reg     *view.Registry
@@ -33,15 +38,18 @@ type fixture struct {
 	concept view.Concept
 }
 
-// newFixture 开沙箱、起图、把这一节挂进账本，并**问一遍快照**。
+// newFixture opens the sandbox, starts the graph, hooks this section into the ledger, and
+// **asks the snapshot once**.
 //
-// 走 Snapshot 而不是直接调 concepts()：账本那一跳是这一节的契约之一（身份不能空、
-// Kind 必须给、同一个 ID 不能有第二个人报），而它在界面上真的会发生。
+// Going through Snapshot rather than calling concepts() directly: that hop through the ledger
+// is one of this section's contracts (the identity cannot be empty, Kind must be given, no
+// second party may report the same ID), and it really happens in the UI.
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
 	testkit.Sandbox(t)
-	// 配置根本身要立起来：一份 profile 都没有与「连目录都没有」是两件事——
-	// 前者是全新安装，后者是 ListProfiles 读不出来（那是错误，不是空配置）。
+	// The config root itself must stand up: having no profile and "not even the directory" are
+	// two different things -- the former is a fresh install, the latter is ListProfiles failing
+	// (an error, not an empty config).
 	if err := os.MkdirAll(paths.Mappings(), 0o770); err != nil {
 		t.Fatal(err)
 	}
@@ -50,15 +58,18 @@ func newFixture(t *testing.T) *fixture {
 		"zhipu":{"base_url":"https://zhipu.example","api_key":"k"}
 	}}`)
 
-	// 只装被测的东西：本模块 + 真的 config（链的结论只有它算得出来）。
+	// Install only what is under test: this module + the real config (it alone can compute the
+	// chain conclusion).
 	g := testkit.Start(t, New(), configmod.New())
 	cfg := testkit.Get(g, configapi.Capability)
 
 	f := &fixture{t: t, reg: view.NewRegistry(), cfg: cfg}
-	// overviewDeps{} 是**全部缺席**那一档：这张图里只装了本模块与 config，健康表、
-	// 客户端目录、网关都不在。那正是这一节必须成立的一种装配（见 module.go 那三条
-	// Optional）——首屏照常出卡，只是没有延迟那一格、没有探活按钮、上面只有一档
-	// 「全部客户端」。真装齐的那几条路由 overview_test.go 起一张大一点的图去验。
+	// overviewDeps{} is the **all absent** tier: this graph installs only this module and
+	// config, so the health table, client catalog and gateway are all missing. That is exactly
+	// one assembly this section must hold in (see the three Optionals in module.go) -- the
+	// first screen still produces cards, just without the latency cell, without the probe button,
+	// and with only the "all clients" tab above. The fully-installed routes are verified by
+	// overview_test.go with a bigger graph.
 	if _, err := registerView(f.reg, cfg, overviewDeps{}); err != nil {
 		t.Fatalf("registering this section into the ledger failed: %v", err)
 	}
@@ -66,11 +77,12 @@ func newFixture(t *testing.T) *fixture {
 	return f
 }
 
-// snapshot 重问一遍快照并取出首屏那一张卡（每次调都是新的结论——产出函数每次重算）。
+// snapshot asks the snapshot again and pulls out the first screen's card (a new conclusion every
+// call -- the producer recomputes each time).
 //
-// 按 `overviewID` 取，不是「取第一张」：这一节今天是**只有一张**卡（`home.chains`
-// 2026-09-29 删了），所以两者此刻等价——而按 ID 取这件事，在下一张卡加回来时仍然
-// 是对的。
+// By `overviewID`, not "take the first": this section has **only one** card today
+// (`home.chains` was deleted 2026-09-29), so the two are equivalent right now -- and taking it
+// by ID is still right when the next card is added back.
 func (f *fixture) snapshot() view.Concept {
 	f.t.Helper()
 	list, err := f.reg.Snapshot()
@@ -95,7 +107,8 @@ func (f *fixture) setDefault(name string) {
 	}
 }
 
-// seedProviders 落一份 providers.json（**不重复开沙箱**：见 seedFile 的注释）。
+// seedProviders writes a providers.json (**without opening the sandbox again**: see the
+// comment on seedFile).
 func seedProviders(t *testing.T, body string) {
 	t.Helper()
 	if err := os.MkdirAll(paths.Root(), 0o770); err != nil {
@@ -106,11 +119,11 @@ func seedProviders(t *testing.T, body string) {
 	}
 }
 
-// seedFile 落一份档位文件。与内核那几条测试同一套（复用 kernel 的布局：名字就是
-// 文件名，扩展名决定格式）。
+// seedFile writes a tier file. The same set as the kernel's tests (reusing the kernel layout:
+// the name is the file name, the extension decides the format).
 //
-// **一个测试只开一次沙箱**（testkit.Sandbox 每次调用都换一个新的临时目录）——
-// 所以它由 newFixture 开一次，这一层只往里写文件。
+// **One sandbox per test** (testkit.Sandbox makes a new temp directory on every call) -- so
+// newFixture opens it once and this layer only writes files into it.
 func seedFile(t *testing.T, rel, body string) string {
 	t.Helper()
 	if err := os.MkdirAll(paths.Mappings(), 0o770); err != nil {
@@ -123,8 +136,9 @@ func seedFile(t *testing.T, rel, body string) string {
 	return abs
 }
 
-// cardOf / rowIn 按名字取一张卡、一行。找不到即 Fatal——那说明这一屏少了东西，
-// 而这一屏上「少一行」看起来只像「这台机器没这么配」。
+// cardOf / rowIn pull out a card, a row by name. Not finding it is Fatal -- it means this
+// screen is missing something, and "one row missing" on this screen merely looks like "this
+// machine is not configured like that".
 func cardOf(t *testing.T, ch view.Chains, profile string) view.ChainCard {
 	t.Helper()
 	for _, c := range ch.Cards {
@@ -147,17 +161,19 @@ func rowIn(t *testing.T, card view.ChainCard, tier string) view.ChainRow {
 	return view.ChainRow{}
 }
 
-// ---------- 首屏落在它上 ----------
+// ---------- the first screen lands on it ----------
 
-// TestTheSectionIsTheLanding：这一节声明自己是落点，而且栏名/分组真的报到了界面上。
+// TestTheSectionIsTheLanding: this section declares itself the landing, and the section name /
+// group really reach the UI.
 //
-// 这条测试防的是一个**没有别的东西会红**的失效：Landing 是链在 Title 后面的一个
-// 方法（见 view.Landing），掉了它编译照过、界面照开，只是首屏安静地回到「Source
-// 字母序最前的那一栏」——那看起来只像「排版不合我意」。
+// This test guards a failure **nothing else goes red for**: Landing is a method chained after
+// Title (see view.Landing); drop it and it still compiles, the UI still opens, only the
+// first screen quietly falls back to "the section first in Source alphabetical order" -- which
+// merely looks like "the layout does not suit me".
 //
-// Group 那一格同理：`.In` 掉了的话这一栏会排到侧栏最上面（不分组的那几栏在最前，
-// 见 Sidebar.svelte），而它自己就是首屏落点，于是「为什么它在第一位」在界面上
-// 无从解释。
+// Group is the same: drop `.In` and this section sorts to the very top of the sidebar (the
+// ungrouped sections come first, see Sidebar.svelte), and since it is the first screen's
+// landing point, "why is it first" becomes unexplainable in the UI.
 func TestTheSectionIsTheLanding(t *testing.T) {
 	f := newFixture(t)
 	sections := f.reg.Sections()
@@ -174,51 +190,61 @@ func TestTheSectionIsTheLanding(t *testing.T) {
 	if s.Title == "" {
 		t.Error("the column name must not be empty (the UI would show a column of buttons with no title)")
 	}
-	// **不归组**：侧栏把声明了落点的那一栏排在目录第一位、且不给它画分组标题
-	// （见 Sidebar.svelte 的 rows）。归了组就会连标题一起被卷到中间去，而
-	// 「凭什么它最上面」这个问题就答不上来了——它自己在第一位时位置本身就是那句话。
+	// **Not grouped**: the sidebar puts the section that declared the landing first in the
+	// directory and draws no group heading for it (see rows in Sidebar.svelte). Grouped, it would
+	// be swept into the middle together with a heading, and "why is it on top" could no longer be
+	// answered -- being first is itself the statement.
 	if s.Group != "" {
 		t.Errorf("the landing column should not be grouped (it would get rolled into the middle), actual grouped into %q", s.Group)
 	}
 }
 
-// ---------- 空配置 ----------
+// ---------- empty config ----------
 
-// TestNoProfilesIsAnEmptyScreen：一份 profile 都没有时**不 panic**、卡片列表为空。
+// TestNoProfilesIsAnEmptyScreen: with no profile at all it **does not panic** and the card
+// list is empty.
 //
-// 这是全新安装的样子（providers.json 刚建、还没写过任何档位文件），而它是这一节
-// 最常见的第一次运行——一个 nil 解引用会在这里白屏，而不是在别的什么地方。
+// This is what a fresh install looks like (providers.json just created, no tier file written
+// yet), and it is this section's most common first run -- a nil dereference would blank the
+// screen here rather than anywhere else.
 
-// ---------- 一屏：链头、空链、次序 ----------
+// ---------- one screen: chain head, empty chain, order ----------
 
-// TestRowsCarryTheHeadOfEachTier：一档一行，链头是**第一站**，空链没有链头。
+// TestRowsCarryTheHeadOfEachTier: one row per tier, the chain head is the **first stop**, an
+// empty chain has none.
 //
-// 「一档一行」的第一行是这条测试唯一能锁住的东西里最容易错的那个：链**不截断**
-// （maxAttempts 是执行上限，不是 membership），所以 heavy 那一行后面还得跟着
-// ark/deepseek-lite——只画链头的话，那一站就从屏幕上消失了，而它明明在链上。
+// The first row of "one row per tier" is the most easily wrong of the few things this test can
+// pin: a chain is **not truncated** (maxAttempts is an execution bound, not membership), so the
+// heavy row must still be followed by ark/deepseek-lite -- drawing only the chain head would
+// make that stop disappear from the screen even though it is on the chain.
 
-// TestAnEmptyChainIsRedAndSaysWhy：所有候选都被跳过时，这一行是空链——没有链头、
-// 语气是 bad、链尾说得清为什么。
+// TestAnEmptyChainIsRedAndSaysWhy: when every candidate is skipped this row is an empty chain
+// -- no chain head, a bad tone, and an end line that says clearly why.
 //
-// 这三种「空」在界面上的样子完全不同：没链头是一句 dim 的 `no steps`、bad 让它
-// 着色、Note 是唯一能告诉用户「去加个 api_key」的东西。少了 Note，用户看到的就是
-// 一条**红的空链**，而不知道该动哪里（这正是 config 那边「跳过只给汇总、但必须给」
-// 的那条取舍在这张卡上的落点）。
+// These three kinds of "empty" look completely different in the UI: no chain head is a dim
+// `no steps`, bad colors it, and Note is the only thing that can tell the user "go add an
+// api_key". Without Note, the user sees a **red empty chain** and does not know what to
+// touch (this is where config's trade-off "skips are summarized only, but must be given" lands
+// on this card).
 
-// TestSkipCategoriesAreAllNamed 是那张类目表的棘轮。
+// TestSkipCategoriesAreAllNamed is the ratchet for that category table.
 //
-// skipKindOrder / skipLabel 认的是 resolve 打在 Skip.Kind 上的**机器标记**，而那几个
-// 字符串在本包是**重写了一遍的字面量**（理由见 chains.go：链的结论一律走 configapi，
-// 发行版不 import resolve）。重写的代价是「内核改了标记名」这种漂移不会被编译器
-// 发现——症状是一整类跳过**静默消失**（数量不报、名字不画），而链卡上少了几个数字
-// 看起来完全正常。
+// skipKindOrder / skipLabel recognize the **machine markers** resolve stamps onto Skip.Kind,
+// and those strings are **rewritten literals** in this package (the reason is in chains.go:
+// chain conclusions always go through configapi, the distribution does not import resolve).
+// The price of rewriting is that drift like "the kernel renamed a marker" is not caught by the
+// compiler -- the symptom is a whole category of skips **vanishing in silence** (count not
+// reported, name not drawn), while a few missing numbers on the chain card look perfectly
+// normal.
 //
-// 所以这里拿沙箱里**真的解析出来的** skips 过一遍：每一个出现过的 Kind 都必须落进
-// 那张表里被认出来（否则 skipLabel 会把它归进「other」，数量对不上）。
+// So here the **really resolved** skips from the sandbox are passed through: every Kind that
+// appeared must be recognized by that table (otherwise skipLabel files it under "other" and
+// the counts no longer add up).
 func TestSkipCategoriesAreAllNamed(t *testing.T) {
 	f := newFixture(t)
-	// 一次凑出多种类目：undefined（provider 不存在）、no-key（没有凭据）、
-	// duplicate（同一个候选写了两遍）、excluded（被排除的另一份 profile）。
+	// Several categories in one go: undefined (provider does not exist), no-key (no
+	// credential), duplicate (the same candidate written twice), excluded (another profile
+	// excluded).
 	seedProviders(t, `{"providers":{
 		"nokey":{"base_url":"https://nokey.example"},
 		"ark":{"base_url":"https://ark.example/v3","api_key":"k"}
@@ -257,7 +283,8 @@ func TestSkipCategoriesAreAllNamed(t *testing.T) {
 				"did resolve change the marker names?", kind, skipOther)
 		}
 	}
-	// 换一个方向：表里认得出的类目，措辞不能把它写成兜底那句。
+	// The other direction: for a category the table recognizes, the wording must not be the
+	// fallback sentence.
 	for _, kind := range skipKindOrder {
 		if kind == skipOther {
 			continue
@@ -268,31 +295,37 @@ func TestSkipCategoriesAreAllNamed(t *testing.T) {
 	}
 }
 
-// ---------- 行 ID ----------
+// ---------- row IDs ----------
 
-// TestRowIDsAreProfileSlashTier：行 ID 是 `profile/tier`，而且在**整个概念里唯一**。
+// TestRowIDsAreProfileSlashTier: the row ID is `profile/tier`, and **unique across the whole
+// concept**.
 //
-// 档位名单独一个不够用：`heavy` 在十份 profile 里出现十次，而「把这一档换成 X」
-// 要动的是某一份文件里的某一行（见 view.ChainRow.ID）。两份 profile 各有 heavy 时
-// 两个 ID 必须分得开——分不开的那个后果不是显示错，是**点了一个按钮改了另一份文件**。
+// A tier name alone is not enough: `heavy` appears ten times across ten profiles, and "switch
+// this tier to X" must touch one line in one file (see view.ChainRow.ID). When two profiles
+// both have heavy, the two IDs must be separable -- the consequence of not separating them is
+// not a display error, it is **clicking one button and editing another file**.
 
-// ---------- 动作：原样透传，且真的跑得起来 ----------
+// ---------- actions: passed through verbatim, and they really run ----------
 
-// TestRowActionsArePassedThroughUntouched：config 构造好的动作**原样**出现在对应行上
-// （数量与 ID 都一致），而且跑一下真的改到盘上。
+// TestRowActionsArePassedThroughUntouched: the actions config built appear **verbatim** on the
+// matching rows (same count and IDs), and running one really writes to disk.
 //
-// 为什么不是「形状对了就行」：那些闭包捕获的是**这一份文件的这一档**（文件路径、
-// 此刻的基线、换成谁），它们是 config 的知识，这一层只是搬运。搬运错了的两种方式
-// 都很安静——挂错了行（点了改别的档）、或者重造了一份动作（写盘的知识在发行版里
-// 长出了第二份）。所以这里与端口逐条比 ID，并且真的 `Run()` 一次看盘。
+// Why not "the shape is right and that is enough": those closures capture **this tier of this
+// file** (file path, the baseline right now, who to switch to); they are config's knowledge and
+// this layer only carries them. Both ways of carrying them wrong are quiet -- hung on the wrong
+// row (click to change another tier), or rebuilt from scratch (the write-to-disk knowledge
+// growing a second copy in the distribution). So here the IDs are compared one by one against
+// the port, and `Run()` is really called once to look at the disk.
 //
-// 跑那一下走的是 view 给行准备的入口（RunRowAction）：那正是界面点按钮时走的路，
-// 而它按 `(概念 ID, 行 ID, 动作 ID)` 三步定位——行 ID 那一步错了，这里就会报
-// 「这一行没有这个动作」。
+// That run goes through the entry view prepares for rows (RunRowAction): exactly the path the
+// UI takes when the button is clicked, and it locates by three steps `(concept ID, row ID,
+// action ID)` -- with a wrong row ID step this reports "this row has no such action".
 
-// TestRowActionsStayOnTheirOwnCard：另一份 profile 的行上**没有**这一份的动作。
+// TestRowActionsStayOnTheirOwnCard: another profile's rows have **none** of this one's
+// actions.
 //
-// 行 ID 是跨卡唯一的（上面那条），而动作是挂在行上的——两件事合起来的失效方式很安静：
-// 构造某张卡时用了**另一份** profile 的结论，用户点 alt 那一行的按钮，改的是 demo
-// 的文件。所以这里既断言「没有可换的人时不给按钮」，也断言那一次点击**碰不到别的
-// 文件**（界面手里那份快照旧了时，它会拿着一个不存在的动作来问）。
+// Row IDs are unique across cards (the test above), and actions hang on rows -- the two
+// combined fail quietly: building one card from **another** profile's conclusion, and the user
+// clicks the button on alt's row only to edit demo's file. So here it asserts both "no button
+// when there is nobody to switch to" and that the click **cannot touch another file** (when
+// the UI's snapshot is stale, it asks with an action that does not exist).

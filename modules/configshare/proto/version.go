@@ -26,7 +26,7 @@ type Meta struct {
 	MinNewgateVersion string `json:"min_newgate_version,omitempty"`
 
 	UpdatedAt string `json:"updated_at,omitempty"`
-	UpdatedBy string `json:"updated_by,omitempty"` // 哪台宿主/哪个人发布的
+	UpdatedBy string `json:"updated_by,omitempty"` // which host / which person published it
 }
 
 // GateInput is the two external facts the decision needs.

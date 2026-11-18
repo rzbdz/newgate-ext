@@ -21,9 +21,10 @@ func (switchTestPlugin) Apply(body []byte, _ *Request) ([]byte, []string, error)
 
 func init() { Register(switchTestPlugin{}) }
 
-// req 一条不带 agent 身份的请求上下文（裸 /v1，认不出是谁）。
-// 测「按上游认领」的 Match/Apply 用它；要区分发起方的（deepseek 的关思考、
-// claude-bg）用 claudeReq——接管时只有 claude 的 base URL 带 /a/claude。
+// req is a request context with no agent identity (a bare /v1, nobody recognizable).
+// Match/Apply tests for "claim by upstream" use it; those that need to tell the initiator
+// apart (deepseek's disable-thinking, claude-bg) use claudeReq - after takeover only claude's
+// base URL carries /a/claude.
 func req(model, provider, baseURL string) *Request {
 	return &Request{
 		InModel: "heavy", Tier: "heavy",
@@ -32,7 +33,7 @@ func req(model, provider, baseURL string) *Request {
 	}
 }
 
-// ---- 框架本身 ----
+// ---- The framework itself ----
 
 func TestApply_SkipsNonMatching(t *testing.T) {
 	body := []byte(`{"model":"claude-sonnet-4","messages":[{"role":"assistant","content":"a"}]}`)
@@ -59,7 +60,8 @@ func TestApply_HonorsOffSwitch(t *testing.T) {
 	}
 }
 
-// TestApply_FailOpen 插件报错时请求必须原样发出去，而且要留下痕迹。
+// TestApply_FailOpen: when a plugin errors the request must go out as it was, and a trace must
+// be left.
 func TestApply_FailOpen(t *testing.T) {
 	saved := currentRegistry()
 	defer SetDefault(saved)
@@ -86,7 +88,7 @@ func (boom) Apply(b []byte, r *Request) ([]byte, []string, error) {
 	return []byte(`{"ruined":true}`), []string{"changed"}, errFake
 }
 
-// fakePlugin 测试里临时拼注册表用的小插件。
+// fakePlugin is a small plugin assembled ad hoc into a registry in tests.
 type fakePlugin struct {
 	name  string
 	match func(*Request) bool
@@ -106,11 +108,12 @@ type fakeErr struct{}
 
 func (*fakeErr) Error() string { return "fail on purpose" }
 
-// TestApply_SyncsContextModel 锁死装饰器链的上下文语义：插件改了 body 的
-// model，框架负责让 r.Model 跟上——下一个插件（Match 和 Apply 都拿 r）
-// 看到的必须是改过的最新值。这不再是插件自己的义务：忘了维护就失真
-// （2026-09-09 实抓：分类器被切到 light 后，还是按 mid 模型的 quirk 被翻
-// 了 thinking）。用两个假插件直接验证机制本身。
+// TestApply_SyncsContextModel pins the decorator chain's context semantics: a plugin changes
+// the body's model and the framework is responsible for keeping r.Model in step - the next
+// plugin (Match and Apply both take r) must see the latest rewritten value. This is no longer
+// the plugin's own obligation: forgetting it means distortion (captured 2026-09-09: after the
+// classifier was switched to light, its thinking was still flipped per the mid model's quirk).
+// Two fake plugins verify the mechanism itself directly.
 func TestApply_SyncsContextModel(t *testing.T) {
 	saved := currentRegistry()
 	defer SetDefault(saved)
@@ -154,8 +157,8 @@ func TestApply_SyncsContextModel(t *testing.T) {
 	}
 }
 
-// TestPluginsHaveWhy 每个插件都必须能说清自己为什么存在——将来判断
-// 「上游修好了没、这段还要不要」全靠这句话。
+// TestPluginsHaveWhy: every plugin must be able to say clearly why it exists - deciding
+// "has the upstream fixed it, is this still needed" later rests entirely on that sentence.
 func TestPluginsHaveWhy(t *testing.T) {
 	ps := Plugins()
 	if len(ps) == 0 {

@@ -70,12 +70,12 @@ func TestListManagedFiles(t *testing.T) {
 	// Make a batch of files, half should be listed, half not.
 	for _, rel := range []string{
 		"providers.json",
-		"state.json",     // 不该
-		"omo-slots.json", // 不该
+		"state.json",     // must not be
+		"omo-slots.json", // must not be
 		"mappings/prod.json",
-		"mappings/prod.json.bak", // 不该
+		"mappings/prod.json.bak", // must not be
 		"mappings/other.kv",
-		"mappings/.tmp.json", // 不该
+		"mappings/.tmp.json", // must not be
 	} {
 		writeLive(t, rel, []byte("{}"))
 	}

@@ -190,7 +190,7 @@ func PruneDirBy(dir, prefix string, keep int) {
 	sort.SliceStable(groups, func(i, j int) bool {
 		a, b := groups[i], groups[j]
 		if a.hasMtime != b.hasMtime {
-			return !a.hasMtime // 年龄未知的排最新
+			return !a.hasMtime // unknown age sorts as newest
 		}
 		if a.hasMtime && !a.mtime.Equal(b.mtime) {
 			return a.mtime.After(b.mtime)

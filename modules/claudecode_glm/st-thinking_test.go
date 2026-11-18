@@ -35,7 +35,7 @@ func TestGlmMatch(t *testing.T) {
 		{"model name glm-5.3", req("glm-5.3", "smt-glm", "https://gw.example.com/v1"), true},
 		{"model name glm-4.5-air", req("glm-4.5-air", "gw", "https://gw.example.com/v1"), true},
 		{"provider name", req("v5", "smt-glm", "https://gw.example.com/v1"), true},
-		{"endpoint", req("v5", "gw", "https://open.bigmodel.cn/v1"), false}, // 无 "glm" 串
+		{"endpoint", req("v5", "gw", "https://open.bigmodel.cn/v1"), false}, // no "glm" substring
 		{"deepseek is not mine", req("deepseek-chat", "smt-deepseek", "https://gw.example.com/v1"), false},
 		{"leave the official endpoint alone", req("glm-5.3", "anth", "https://api.anthropic.com/v1"), false},
 		{"nil", nil, false},

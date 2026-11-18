@@ -1,31 +1,33 @@
-// Package thinkcache 帮客户端兜住它自己丢掉的推理内容。
+// Package thinkcache helps clients hold on to reasoning they dropped themselves.
 //
-// 为什么必须有这一层
+// # Why this layer must exist
 //
-// DeepSeek 的思考模式把推理内容当**对话状态**：请求一旦带了 tools，
-// 历史里每条 assistant 消息都必须把当轮的推理内容原样带回来，哪怕那一轮
-// 没做 tool call，否则 400。而且文档写明**必须逐字**——截断或摘要在某些
-// 版本上同样被拒。
+// DeepSeek's thinking mode treats reasoning as **conversation state**: once a request carries
+// tools, every assistant message in the history must bring that round's reasoning back
+// verbatim, even for a round with no tool call, or it is a 400. The docs also say **verbatim**
+// - truncation or summarizing is rejected on some versions too.
 //
-// 问题是客户端做不到。Claude Code 这类客户端对非官方端点会主动剥掉
-// thinking 块（它假定只有官方签名的块能回传），opencode 那边则是把
-// assistant 消息序列化进上下文时丢掉了 reasoning_content 这个它不认识的
-// 字段。两边都不是配置能改的。
+// The problem is clients cannot do it. Clients like Claude Code actively strip thinking blocks
+// on non-official endpoints (they assume only officially signed blocks can be sent back), and
+// opencode drops the reasoning_content field it does not recognize when serializing assistant
+// messages into the context. Neither is fixable by configuration.
 //
-// 补空串能骗过「字段在不在」的检查，但那是**更坏**的结果：模型下一轮读到
-// 自己上一轮「什么都没想」，推理质量直接塌掉。所以唯一正确的做法是网关
-// 自己把上游吐出来的推理内容记住，下一轮原样插回去。
+// Filling an empty string fooled the "is the field there" check, but that is the **worse**
+// outcome: next round the model reads that it "thought nothing" last round, and the reasoning
+// quality collapses. So the only correct approach is for the gateway to remember the reasoning
+// the upstream produced and insert it back verbatim next round.
 //
-// 边界
+// Boundaries
 //
-//	只在内存里。推理内容就是对话内容，落盘是隐私决策，不该由我们静默替
-//	用户做。进程重启就没了，那时调用方只能退回自己的占位策略（见
-//	modules/deepseek/st-reasoning.go 的 reasoningFallback）——那一轮的推理
-//	确实丢了，调用方必须在日志里说清楚，不能装作补上了。
+//	Memory only. Reasoning is conversation content, and persisting it is a privacy decision we
+//	should not quietly make for the user. A restart loses it, and at that point the caller can
+//	only fall back to its own placeholder strategy (see reasoningFallback in
+//	modules/deepseek/st-reasoning.go) - that round's reasoning really is lost, and the caller
+//	must say so in the log rather than pretend it was filled in.
 //
-//	不打日志。任何路径都不打内容本身，只打字节数和 key 的前缀。
+//	No logging. No path logs the content itself, only byte counts and the key's prefix.
 //
-//	有上限。按总字节封顶 + TTL 双重淘汰，绝不让它无限长。
+//	Bounded. Double eviction by total bytes plus TTL, so it can never grow without limit.
 package thinkcache
 
 import (
@@ -38,26 +40,29 @@ import (
 	"time"
 )
 
-// Cache 一个按字节数封顶、带 TTL 的 LRU。可选挂一个落盘冷层（disk），
-// 热层 miss 时到冷层找、命中再提升回热层——这就是「三级缓存」的二级：
-// 客户端自己带回的 thinking 块是第一级（见 st-deepseek 的 pickReasoning），
-// 内存是第二级，落盘是第三级。
+// Cache is an LRU capped by bytes with a TTL. Optionally attaches a disk cold tier (disk):
+// on a hot-tier miss it looks in the cold tier, and on a hit promotes back into the hot tier -
+// this is level two of the "three-level cache": the thinking block the client itself brings
+// back is level one (see pickReasoning in st-deepseek), memory is level two, disk is level
+// three.
 type Cache struct {
 	mu       sync.Mutex
-	ll       *list.List // 队头 = 最近用过
+	ll       *list.List // head of the list = most recently used
 	items    map[string]*list.Element
 	bytes    int64
 	maxBytes int64
 	ttl      time.Duration
-	disk     *DiskStore  // 可选落盘冷层（nil = 纯内存）
-	onErr    func(error) // 冷层/解析失败的出口，见 SetErrorHandler
+	disk     *DiskStore  // optional on-disk cold tier (nil = memory only)
+	onErr    func(error) // exit for cold-tier/parse failures, see SetErrorHandler
 
 	hits, misses, puts, evictions uint64
-	// unparsable 记「请求里那条 assistant 消息 / 它的 content 解析不出来」的次数
-	// （见 KeysForAssistantMessage）。它和 misses 在当前实现里结果一样（都没
-	// 命中），但**原因和处置完全不同**：miss 是缓存里真没有（去看上游与本进程
-	// 的生命周期），unparsable 是客户端发来的 JSON 形态我们不认识（去看客户端）。
-	// 两者在日志里都只能看到「补了空串」，所以要分开计数，否则那条线索是断的。
+	// unparsable counts "the assistant message in the request / its content cannot be parsed"
+	// (see KeysForAssistantMessage). In the current implementation it ends up the same as
+	// misses (neither hits), but the **cause and the handling differ completely**: a miss means
+	// the cache really does not have it (look at the upstream and this process's lifecycle),
+	// while unparsable means the JSON shape the client sent is one we do not recognize (look at
+	// the client). Both only show as "an empty string was filled in" in the log, so they must be
+	// counted apart, or that clue is cut.
 	unparsable uint64
 }
 
@@ -67,12 +72,14 @@ type entry struct {
 	at   time.Time
 }
 
-// Default 全局实例。64MB / 8 小时：实测一个整天长会话的推理内容量级是
-// 1~2MB（见 dump 抽样：thinking 块 4~11KB/条），64MB 能并排放几十个会话；
-// 8h 覆盖一个工作日，重启前的会话在当天内都能找回。
+// Default is the global instance. 64MB / 8 hours: measured, a full day-long session's
+// reasoning is on the order of 1~2MB (see the dump sample: thinking blocks 4~11KB each), so
+// 64MB holds dozens of sessions side by side; 8h covers a workday, and sessions from before a
+// restart are recoverable within the same day.
 var Default = New(64<<20, 8*time.Hour)
 
-// New 创建独立内存缓存；测试和非默认实例可据此选择自己的容量与 TTL。
+// New creates an independent in-memory cache; tests and non-default instances pick their own
+// capacity and TTL with it.
 func New(maxBytes int64, ttl time.Duration) *Cache {
 	return &Cache{
 		ll:       list.New(),
@@ -82,8 +89,9 @@ func New(maxBytes int64, ttl time.Duration) *Cache {
 	}
 }
 
-// fail 报告一次「不改变这次请求的结果，但会改变下一次行为」的失败（冷层写不
-// 进去、请求里的消息解析不出来）。没装出口就丢弃——这一层是 best-effort 的。
+// fail reports a failure that "does not change this request's result but changes the next
+// one's behavior" (the cold tier cannot be written, a message in the request cannot be parsed).
+// Dropped when no outlet is installed - this layer is best-effort.
 func (c *Cache) fail(err error) {
 	if c == nil || err == nil {
 		return
@@ -96,15 +104,19 @@ func (c *Cache) fail(err error) {
 	}
 }
 
-// SetErrorHandler 注入落盘/解析失败的出口（照 breaker.SetErrorHandler 的形状）。
+// SetErrorHandler injects the outlet for persist/parse failures (the same shape as
+// breaker.SetErrorHandler).
 //
-// 为什么需要它：这一层是 best-effort 的，失败不影响正确性——但它决定
-// 「重启之后还能不能找回上一进程的推理内容」，而那正是用户会来问的事
-// （CLAUDE.md §3.1：冷层坏掉时重启后第一发大请求会因为思维链补不上被上游
-// 400 「must be passed back」）。2026-09-18 之前压实的每一步失败都是
-// `return` / `continue`，一次都没留下痕迹，唯一的现象是「重启后推理全没了」。
+// Why it is needed: this layer is best-effort and failure does not affect correctness - but
+// it decides "can the previous process's reasoning still be found after a restart", which is
+// exactly what users come to ask about (CLAUDE.md §3.1: when the cold tier is broken, the
+// first big request after a restart gets a 400 "must be passed back" because the chain of
+// thought cannot be filled in). Before 2026-09-18 every compaction step's failure was a
+// `return` / `continue` that left no trace, and the only symptom was "all reasoning gone after
+// a restart".
 //
-// daemon 在 AttachDisk 之后调它（serve.go）；不装就等于丢弃，与以前一致。
+// The daemon calls it after AttachDisk (serve.go); not installing it means dropping, as
+// before.
 func SetErrorHandler(fn func(error)) {
 	Default.mu.Lock()
 	Default.onErr = fn
@@ -117,12 +129,14 @@ func SetErrorHandler(fn func(error)) {
 	}
 }
 
-// AttachDisk 给全局 Default 挂上落盘冷层（三级缓存的第三级），并把盘上
-// 已有的记录回灌进内存热层——这是 daemon 重启后找回上一进程推理内容的
-// 唯一入口。路径在 ~/.config/newgate/thinkcache.bin（见 paths.ThinkCacheFile）。
+// AttachDisk attaches the disk cold tier (level three of the three-level cache) to the global
+// Default and backfills the records already on disk into the hot memory tier - the only entry
+// that finds the previous process's reasoning again after a daemon restart. The path is
+// ~/.config/newgate/thinkcache.bin (see paths.ThinkCacheFile).
 //
-// 失败（没权限 / 磁盘不可写）就返回 err，调用方决定降级：继续纯内存，
-// 重启后那些轮次的推理原文就找不回来了——落盘永远不该反过来把代理搞挂。
+// On failure (no permission / disk not writable) it returns err, and the caller decides on the
+// degradation: continue memory-only, and those rounds' reasoning text is unrecoverable after a
+// restart - persisting must never be what takes the proxy down.
 func AttachDisk(path string, maxBytes int64) error {
 	d, err := openDisk(path, maxBytes, Default.ttl)
 	if err != nil {
@@ -141,16 +155,17 @@ func AttachDisk(path string, maxBytes int64) error {
 	return nil
 }
 
-// Put 把一段推理内容挂到若干个 key 上。
+// Put hangs one block of reasoning on several keys.
 //
-// 一轮回答可能同时给出多个 tool_call，客户端下一轮回传时我们只要认出**任
-// 意一个** id 就能找回这段推理，所以同一段内容挂多个 key。多挂的 key 各自
-// 计一次字节数（宁可提前淘汰，也不做复杂的引用计数）。
+// One answer may give several tool_calls at once, and when the client sends the next round
+// back we only need to recognize **any one** id to find this reasoning again, so the same
+// content hangs on several keys. Extra keys each count their bytes (evict early rather than do
+// complicated reference counting).
 func (c *Cache) Put(keys []string, blob []byte) {
 	if len(keys) == 0 || len(blob) == 0 {
 		return
 	}
-	// 拷一份：调用方的 buffer 会被复用
+	// Copy it: the caller's buffer gets reused
 	cp := make([]byte, len(blob))
 	copy(cp, blob)
 
@@ -161,7 +176,8 @@ func (c *Cache) Put(keys []string, blob []byte) {
 	}
 }
 
-// putMem 只写内存热层。回灌磁盘冷层时走这里，避免「回灌又写回磁盘」的死循环。
+// putMem writes only the hot memory tier. Backfilling the disk cold tier goes through here, to
+// avoid the "backfill writes back to disk" loop.
 func (c *Cache) putMem(keys []string, cp []byte, now time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -184,7 +200,8 @@ func (c *Cache) putMem(keys []string, cp []byte, now time.Time) {
 	c.evictLocked(now)
 }
 
-// Get 取回推理内容。过期的当没有；热层 miss 时落到冷层找，命中再提升回热层。
+// Get fetches reasoning. An expired entry counts as absent; on a hot-tier miss it looks in the
+// cold tier and promotes a hit back into the hot tier.
 func (c *Cache) Get(key string) ([]byte, bool) {
 	if key == "" {
 		return nil, false
@@ -214,13 +231,13 @@ func (c *Cache) Get(key string) ([]byte, bool) {
 	if !ok {
 		return nil, false
 	}
-	// 冷层命中：提升回热层（不再落盘——它本来就在盘上）
+	// Cold-tier hit: promote into the hot tier (without persisting - it is already on disk)
 	c.putMem([]string{key}, blob, time.Now())
 	return blob, true
 }
 
 func (c *Cache) evictLocked(now time.Time) {
-	// 先清过期的（从队尾开始，那边最旧）
+	// Clear expired ones first (from the tail, where the oldest are)
 	if c.ttl > 0 {
 		for el := c.ll.Back(); el != nil; {
 			prev := el.Prev()
@@ -249,7 +266,7 @@ func (c *Cache) removeLocked(el *list.Element) {
 	c.bytes -= int64(len(e.blob))
 }
 
-// Stats 给 newgate status / st 展示。不含内容。
+// Stats is for newgate status / st display. No content.
 type Stats struct {
 	Entries   int
 	Bytes     int64
@@ -258,8 +275,9 @@ type Stats struct {
 	Misses    uint64
 	Puts      uint64
 	Evictions uint64
-	// Unparsable 请求里解析不出来的 assistant 消息条数（见 Lookup）。与 Misses
-	// 分开报：miss 的处置是查缓存和上游，这个的处置是查客户端发来的 JSON。
+	// Unparsable is the number of unparsable assistant messages in requests (see Lookup).
+	// Reported apart from Misses: a miss is handled by checking the cache and the upstream, this
+	// one by checking the JSON the client sent.
 	Unparsable uint64
 }
 
@@ -273,11 +291,12 @@ func (c *Cache) Stats() Stats {
 	}
 }
 
-// ToolKey 按 tool_call id 做 key。
+// ToolKey keys by tool_call id.
 //
-// 这是最稳的 key：id 由上游生成，客户端**必须**逐字回传（tool_result 要靠
-// 它对上号），所以它在两次请求里必然一致。而「请求带了 tools」正是上游要求
-// 回传推理内容的唯一场景，两者刚好重合。
+// This is the most stable key: the id is generated by the upstream and the client **must**
+// send it back verbatim (tool_result needs it to match up), so it is necessarily identical
+// across two requests. And "the request carries tools" is exactly the only case where the
+// upstream demands the reasoning back - the two coincide.
 func ToolKey(id string) string {
 	if id == "" {
 		return ""
@@ -287,9 +306,10 @@ func ToolKey(id string) string {
 
 const originKeyPrefix = "origin:"
 
-// Origin 是产生某个 tool call 的实际上游。思考模式下，assistant 的 reasoning
-// 与整组 tool calls 属于同一个未闭合状态；在 tool_result 回来之前不能把它们
-// 搬给另一家上游。只存路由身份，不存请求或响应正文。
+// Origin is the actual upstream that produced a tool call. In thinking mode, the assistant's
+// reasoning and the whole group of tool calls belong to the same unclosed state; before the
+// tool_result comes back they cannot be moved to another upstream. It stores only the routing
+// identity, never request or response bodies.
 type Origin struct {
 	Profile  string `json:"profile,omitempty"`
 	Provider string `json:"provider"`
@@ -303,8 +323,9 @@ func originKey(id string) string {
 	return originKeyPrefix + id
 }
 
-// PutOrigin 把响应里的 tool call 绑定到实际产生它的上游。复用 Cache/DiskStore
-// 的 TTL、容量与落盘机制，因此 daemon 重启后未闭合 tool loop 仍能回到原上游。
+// PutOrigin binds a tool call in the response to the upstream that actually produced it. It
+// reuses Cache/DiskStore's TTL, capacity and persistence, so an unclosed tool loop can still
+// return to the original upstream after a daemon restart.
 func (c *Cache) PutOrigin(toolIDs []string, origin Origin) {
 	if c == nil || origin.Provider == "" || origin.Model == "" {
 		return
@@ -322,7 +343,7 @@ func (c *Cache) PutOrigin(toolIDs []string, origin Origin) {
 	c.Put(keys, blob)
 }
 
-// GetOrigin 取回一个 tool call 的产生上游。
+// GetOrigin returns the upstream that produced a tool call.
 func (c *Cache) GetOrigin(toolID string) (Origin, bool) {
 	var origin Origin
 	blob, ok := c.Get(originKey(toolID))
@@ -333,14 +354,16 @@ func (c *Cache) GetOrigin(toolID string) (Origin, bool) {
 	return origin, true
 }
 
-// TextKey 按 assistant 正文的哈希做 key，用于**没有** tool_call 的那些轮。
+// TextKey keys on the hash of the assistant body text, for the turns that have **no**
+// tool_call.
 //
-// 文档说得很明确：一旦请求带了 tools，历史里每条 assistant 消息都要带推理
-// 内容，哪怕那一轮没做 tool call。所以纯文本轮也得能找回来，而它身上唯一
-// 会被客户端原样带回的东西就是正文。
+// The doc is explicit: once a request carries tools, every assistant message in the history
+// must carry its reasoning content, even if that turn made no tool call. So pure-text turns
+// must be findable too, and the only thing on them the client carries back verbatim is the
+// body text.
 //
-// 弱点：客户端要是改写过正文（截断、加前缀）就 miss。接受它——主路径
-// （带 tool_call 的轮）走 ToolKey，那条是稳的。
+// Weakness: if the client rewrites the body (truncates, prefixes) it misses. Accept it -- the
+// main path (turns with tool_call) goes through ToolKey, and that one is solid.
 func TextKey(text string) string {
 	t := strings.TrimSpace(text)
 	if t == "" {

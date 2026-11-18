@@ -56,7 +56,7 @@ var release modules.Release
 func start(_ context.Context, ctx modules.Context) error {
 	port, ok := modules.Get(ctx, webapi.ThemeCapability)
 	if !ok {
-		return nil // 这次装配里没有界面：没处可登记，也不是错误。
+		return nil // no UI in this assembly: nowhere to register, and that is not an error.
 	}
 	rel, err := port.RegisterTheme(webapi.Theme{
 		ID:   ID,

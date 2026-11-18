@@ -15,54 +15,63 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// 本文件是首屏那一张卡：**让哪个客户端走哪一份档位**。
+// This file is the first screen's card: **which client uses which tier**.
 //
-// # 它和 chains.go 的分工
+// # How it divides work with chains.go
 //
-// chains.go 把 config 的链结论摆成一叠卡（纯配置，谁看都一样，`newgate tier` 要的
-// 是同一份结论）。这里多两样东西，而且两样都**只能在后端合**：
+// chains.go lays config's chain conclusion out as a stack of cards (pure configuration, the
+// same for everybody, and `newgate tier` wants that same conclusion). Here there are two more
+// things, and both **can only be combined in the backend**:
 //
-//  1. **健康**。链是哪条由 config 算（纯函数），每条 binding 快不快由 breaker 记
-//     （它自己的账本）。首屏要的是「这条链走起来会怎样」，那就得把两本账摆在一起。
-//     让前端按 `provider/model` 去 join 也确实画得出来，代价是**两件只有拥有者
-//     知道的事被抄进了浏览器**：链卡上哪一格算链头、多少毫秒算慢（阈值在
-//     breaker/status，只有一处）。两个抄件都会在各自的模块里改，而前端那份没有
-//     任何东西会红。所以 join 在这里发生。
-//  2. **动作**。「就用它」要写 state.json 里那个客户端的链头——那是核心里
-//     `confighook.AgentProfile` 的事，浏览器不该知道那个键长什么样。
+//  1. **Health**. Which chain exists is computed by config (a pure function); how fast each
+//     binding is, is recorded by breaker (its own ledger). What the first screen wants is
+//     "how this chain will go when used", which means putting the two ledgers side by side.
+//     Joining them in the frontend by `provider/model` would indeed draw something, at the
+//     price of **copying two things only the owner knows into the browser**: which cell on a
+//     chain card counts as the head, how many milliseconds count as slow (the threshold is in
+//     breaker/status, in exactly one place). Both copies get edited in their own modules, and
+//     nothing goes red on the frontend's copy. So the join happens here.
+//  2. **Actions**. "Use it" must write that client's chain head in state.json -- that is the
+//     kernel's `confighook.AgentProfile`, and the browser should not know what that key looks
+//     like.
 //
-// # 一次快照，一屏一个时刻
+// # One snapshot, one moment per screen
 //
-// 与 chains.go 同一条：AllChains 只问一次，health 只 Snapshot 一次。分开问会拼起
-// 两个时刻的配置，而界面上看不出任何异样。健康那一份先被摊成一张 map（键是
-// binding），而不是每站线性找一遍——十几份 profile × 五档 × 几站是几百次查找。
+// Same as chains.go: AllChains asked once, health Snapshotted once. Asking separately
+// assembles the config of two moments, and nothing on screen looks wrong. The health one is
+// flattened into one map first (keyed by binding), rather than a linear scan per stop -- a
+// dozen profiles × five tiers × a few stops is hundreds of lookups.
 //
-// # 依赖方向
+// # Dependency direction
 //
-// 对内核的 import 全是**公开契约**（configapi / agentapi / breakerapi / gatewayapi）
-// 与共享叶子（store）。没有一个内部实现包。四个能力里只有 config 是硬依赖（没有链
-// 就没有这张页面），其余三个都是 Optional：健康表没装就没有延迟那一格、网关没装就
-// 没有探活按钮、客户端目录没装就没有上面那排标签——**少一样都照常出页面**，
-// 而不是整张卡消失（见 module.go 的装配）。
+// Every kernel import is a **public contract** (configapi / agentapi / breakerapi / gatewayapi)
+// or a shared leaf (store). Not one internal implementation package. Of the four capabilities
+// only config is a hard dependency (no chains, no page), the other three are Optional: no
+// health table, no latency cell; no gateway, no probe button; no client catalog, no row of tabs
+// above -- **missing any one of them still produces the page**, instead of the whole card
+// disappearing (see the assembly in module.go).
 
-// overviewID 是首屏那一张卡的稳定身份。
+// overviewID is the stable identity of the first screen's card.
 const overviewID = "home.overview"
 
-// overviewDeps 是这张页面用得上的那几个**可选**端口。
+// overviewDeps is the **optional** ports this page can use.
 //
-// 零值（全 nil）是合法状态：那种装配下页面就是「一份 profile 一张卡、链照常列、
-// 没有延迟也没有按钮」。判据是「没有它，这一屏还能不能说真话」，能，就 Optional。
+// The zero value (all nil) is a valid state: the page in that assembly is "one card per
+// profile, chains listed as usual, no latency and no buttons". The criterion is "without it,
+// can this screen still tell the truth"; if it can, it is Optional.
 type overviewDeps struct {
 	agents  agentapi.AgentCatalog
 	health  breakerapi.Breaker
 	gateway gatewayapi.Gateway
 }
 
-// overviewConcept 把链结论 + 健康 + 客户端目录合成首屏那一张卡。
+// overviewConcept combines the chain conclusion + health + client catalog into the first
+// screen's card.
 //
-// all 是**调用方已经取好的那一份**：同一节里的两概念（这张与 chains）必须摆的是
-// 同一个时刻的配置。各自再问一次 AllChains 会读到两个时刻的盘，而屏幕上看不出
-// 任何异样（见 chains.go 的文件头与 view.go 的 concepts）。
+// all is **the one the caller already took**: the two concepts in the same section (this one
+// and chains) must be showing the config of the same moment. Asking AllChains again separately
+// would read the disk at two moments, and nothing on screen looks wrong (see the file header of
+// chains.go and concepts in view.go).
 func overviewConcept(all []*configapi.Chains, d overviewDeps) view.Concept {
 	health := healthByBinding(d.health)
 	agents := overviewAgents(d.agents)
@@ -76,40 +85,48 @@ func overviewConcept(all []*configapi.Chains, d overviewDeps) view.Concept {
 		Title: i18n.T("Routes", nil),
 		Data: view.Overview{
 			Agents: agents,
-			// 「默认」那一张排在网格最前面（它是这一屏的第一句：**此刻大家走的是谁**）。
-			// 它的链是从 cards 里抄的，所以必须在 cards 建好之后再建它。
+			// The "default" card sorts first in the grid (it is this screen's first sentence:
+			// **who everybody uses right now**). Its chain is copied from cards, so it must be
+			// built after cards.
 			Auto:  autoCard(agents, cards, all, d.gateway),
 			Cards: cards,
 		},
-		// Order 0：与 home.chains 同住一节，这一张排前面（它才是首屏要的那一屏，
-		// 见 view.Concept.Order）；chains 给自己一个更大的数。
+		// Order 0: lives in the same section as home.chains, and this card comes first (it is
+		// the one the first screen is about, see view.Concept.Order); chains gives itself a bigger
+		// number.
 		Order: 0,
-		// 没有 Apply：这一屏上的改动全部走**动作**（「就用它」「探一下」），
-		// 没有「整张卡交回来」这种东西——它是算出来的结论，不是一份文档。
+		// No Apply: every change on this screen goes through **actions** ("use it", "probe
+		// it"); there is no such thing as "hand the whole card back" -- it is a computed
+		// conclusion, not a document.
 		//
-		// 没有 Live：它要重读并重新解析每一份 profile（view.Concept.Live 的判据
-		// 是「读一次贵不贵」，不是「数据会不会变」）。探活的结果靠动作跑完之后
-		// 那次重读带回来，不靠轮询。
+		// No Live: it must re-read and re-parse every profile (view.Concept.Live's criterion is
+		// "is one read expensive", not "does the data change"). Probe results come back with the
+		// re-read after the action runs, not from polling.
 	}
-	// fallback 关着这件事**不在这里说**：右上角那颗状态按钮就是那句话（红 = 关着），
-	// 卡片上再挂一条红陈述是把同一件事说两遍（用户的原话：「有了红按钮之后这句是不是
-	// 重复了」——是的）。
+	// Whether fallback is off is **not said here**: the status button in the top right is that
+	// sentence (red = off), and one more red statement on the card says the same thing twice
+	// (the user's actual words: "now that there is a red button, isn't this sentence
+	// redundant" -- yes).
 	return c
 }
 
-// overviewAgents 列出这台机器认识的客户端，外加它们各自的链头。
+// overviewAgents lists the clients this machine knows, plus each one's chain head.
 //
-// 顺序按 id 排（机器标记）：标签会跳动的页面，用户每次都要重新找一遍。
+// Ordered by id (a machine marker): a page whose tabs keep jumping makes the user hunt again
+// every time.
 //
-// **末尾那一档空的「全部客户端」是必须的，哪怕目录里列着一堆客户端**：全局默认
-// （`state.default_profile`）是每个没单配过的客户端实际走的那条链，而改它的唯一
-// 手段是 `use:global:<profile>`——那一族动作按契约只在**当前这一档是全局**时画出来
-// （见 web 侧 Overview.svelte 的 actions()：它按当前档的 id 拼 `use:<who>:<profile>`）。
-// 一档空的都没有时，那个 id 永远拼不出来，于是「全局默认」在这一屏上变成只读的
-// ——而它恰恰是「所有客户端一起换链」唯一的那一下。
+// **The empty "all clients" tier at the end is required, even with a pile of clients in the
+// catalog**: the global default (`state.default_profile`) is the chain every client without its
+// own setting actually takes, and the only way to change it is `use:global:<profile>` -- that
+// family of actions is, by contract, only drawn when **the current tier is global** (see
+// actions() in Overview.svelte on the web side: it assembles `use:<who>:<profile>` from the
+// current tier's id). With no empty tier, that id can never be assembled, so "global default"
+// becomes read-only on this screen -- exactly when it is the only way to "switch the chain for
+// all clients at once".
 //
-// 排在最后而不是最前：具体客户端是这一屏的主体，全局那一档是它们的兜底，摆在
-// 末尾读起来是「还有一个总的」。默认选中的那一档也因此在**装了**的客户端里挑。
+// At the end rather than the front: the concrete clients are this screen's body, the global
+// tier is their fallback, and at the end it reads as "and there is an overall one". The
+// default-selected tier is therefore chosen among the **installed** clients.
 func overviewAgents(cat agentapi.AgentCatalog) []view.OverviewAgent {
 	st := store.LoadState()
 	var out []view.OverviewAgent
@@ -118,9 +135,9 @@ func overviewAgents(cat agentapi.AgentCatalog) []view.OverviewAgent {
 		sort.Strings(names)
 		for _, id := range names {
 			ap := agentapi.AgentProfile{AgentID: id}
-			// 图标原样从**客户端自己的声明**里带过去（见 confighook.Agent.Icon）。
-			// 这里不做任何取舍、也不认识任何一家：查得到就带，查不到就是空的，
-			// 界面那时画它自己的通用记号。
+			// The icon is carried over verbatim from **the client's own declaration** (see
+			// confighook.Agent.Icon). No trade-off is made here and no vendor is known: carried if
+			// found, empty if not, and the UI then draws its own generic mark.
 			icon := ""
 			if a, ok := cat.Get(id); ok && a != nil {
 				icon = a.Icon
@@ -128,47 +145,56 @@ func overviewAgents(cat agentapi.AgentCatalog) []view.OverviewAgent {
 			out = append(out, view.OverviewAgent{
 				Icon: icon,
 				ID:   id,
-				Name: id, // 客户端名是**机器取值**（claude / codex），它本来就是给人看的字。
-				// ActiveFor 而不是 Active[id]：没单配过时它返回全局默认，而那句才是
-				// 「这个客户端的请求落到哪条链上」的真话（confighook.AgentProfile 里
-				// Active 与 Stored 的分工见那里：界面上的**取值**用 Stored，这里说的
-				// 是它此刻实际走谁，用 Active）。
+				Name: id, // a **machine value** (claude / codex), already meant for humans
+				// ActiveFor rather than Active[id]: without its own setting it returns the global
+				// default, and that sentence is the truth of "which chain this client's requests
+				// land on" (for the division of Active and Stored in confighook.AgentProfile see
+				// there: the **value** in the UI uses Stored, while what is said here is who it
+				// actually uses right now, so Active).
 				Profile: ap.Active(),
-				// Own 说的是**这一家自己设过没有**。它与 Profile 是两码事，而界面
-				// 必须能分开：「给 claude 固定选 ds」与「claude 跟着全局、全局恰好是
-				// ds」路由结果一样，但改掉全局之后一个跟着变、一个不变。只说 Profile
-				// 等于把这件事藏起来（判据就是 confighook 的 IsOverride，不另立一套）。
+				// Own says **whether this one set it itself**. It is a different matter from
+				// Profile, and the UI must be able to separate them: "pin claude to ds" and
+				// "claude follows the global, and the global happens to be ds" route the same, but
+				// after changing the global one follows and the other does not. Saying only
+				// Profile hides this (the criterion is confighook's IsOverride, not a second
+				// one).
 				Own:   ap.IsOverride(),
 				Ready: cat.Installed(id),
 			})
 		}
 	}
-	// 末尾那一档**不是客户端，是「自动」**：它选的那一份就是「自动」最终 resolve 到
-	// 的 profile，而各个客户端标签里选「自动」= 取这一档的结果。所以它的 Own 恒 true
-	// ——「自动」不存在「它跟着谁」，它就是那个被跟的。Ready 恒 true：它永远能点。
+	// The last tier is **not a client, it is "auto"**: the profile it selects is the one "auto"
+	// finally resolves to, and picking "auto" in any client tab = taking this tier's result. So
+	// its Own is always true -- there is no "it follows someone" for "auto"; it is the one being
+	// followed. Ready is always true: it can always be clicked.
 	//
-	// 名字叫「自动」而不是「全部客户端」：它**不是**「一键把这份应用给所有人」那个
-	// 动作（那种动作确实不该住在标签栏里，见 cards 与 autoCard——改自动指向谁只在
-	// 这一档下做）。它是一件事物的名字。
+	// It is called "auto" rather than "all clients": it is **not** the "apply this to everyone in
+	// one click" action (such an action really should not live in a tab bar, see cards and
+	// autoCard -- changing what auto points at is done only under this tier). It is the name of
+	// a thing.
 	return append(out, view.OverviewAgent{
 		ID: "", Name: i18n.T("Auto", nil), Ready: true, Own: true,
 		Profile: st.ActiveFor(""),
 	})
 }
 
-// overviewCard 是一份 profile 在这一屏上的那张卡。
-// orderCards 把这一屏的卡片排成**固定**的次序：先按 profile 的 pri，再按名字。
+// overviewCard is a profile's card on this screen.
+// orderCards sorts this screen's cards into a **fixed** order: by the profile's pri, then by name.
 //
-// # 为什么不拿「此刻生效的是哪一份」参与排序
+// # Why "which one is in effect right now" does not take part in the sort
 //
-// 内核的 `orderedProfiles`（chains.go）就是那么排的——它服务的是另一个问题：
-// `newgate profiles` 与 Chains 那一屏，第一眼要找的恰恰是「此刻生效的是谁」。
+// The kernel's `orderedProfiles` (chains.go) sorts that way -- it serves another question:
+// `newgate profiles` and the Chains screen, where the first thing you look for is exactly "who
+// is in effect right now".
 //
-// 这一屏不一样：它是拿来**扫**的，而在这里点一下就会改掉「自动指向谁」。让缺省参与
-// 排序的话，用户点一张卡，整屏卡片当场换位置，他得重新找一遍刚才看的地方。实测用户
-// 的原话：「点击后重排序这个我不喜欢……很割裂的，点击之后刷新换位置了」。
+// This screen is different: it is there to be **scanned**, and one click here changes "what
+// auto points at". If the default took part in the sort, the user clicks a card and the whole
+// grid jumps on the spot, so he has to find again where he was looking. The user's actual words
+// (measured): "I don't like this re-sorting after a click ... it is very jarring, after clicking
+// it refreshes and changes position".
 //
-// 两处判据不同是**有意的**，所以这里自己排一遍，不回头改内核那一份。
+// The two criteria differing is **intentional**, so this sorts on its own and does not go back
+// to change the kernel's.
 func orderCards(all []*configapi.Chains) []*configapi.Chains {
 	out := make([]*configapi.Chains, 0, len(all))
 	for _, one := range all {
@@ -178,17 +204,19 @@ func orderCards(all []*configapi.Chains) []*configapi.Chains {
 	}
 	snap, err := store.Load()
 	if err != nil {
-		// 读不出来（配置目录整个读不了）：**保持调用方给的次序**，不报错。
-		// 这一屏照常画得出来，只是次序退化成内核那一份（缺省在最前）——比让整屏
-		// 消失好，与 lib/view 里 Concept.Broken 那条同一个取舍。
+		// Unreadable (the whole config directory cannot be read): **keep the order the caller
+		// gave**, no error. This screen is still drawn as usual, only the order degrades to the
+		// kernel's (default first) -- better than the whole screen disappearing, the same
+		// trade-off as Concept.Broken in lib/view.
 		return out
 	}
 	prio := make(map[string]int, len(snap.Profiles))
 	for _, pr := range snap.Profiles {
 		prio[pr.Name] = pr.Prio()
 	}
-	// SliceStable 而不是 Slice：pri 与名字都一样的两份（同名不可能，但 pri 相同
-	// 很常见）保持内核给的相对次序，两次渲染才落在同一个地方。
+	// SliceStable rather than Slice: two profiles with the same pri and name (same name is
+	// impossible, but the same pri is common) keep the relative order the kernel gave, so two
+	// renders land in the same place.
 	sort.SliceStable(out, func(i, j int) bool {
 		pi, pj := prio[out[i].Profile], prio[out[j].Profile]
 		if pi != pj {
@@ -203,9 +231,9 @@ func overviewCard(one *configapi.Chains, agents []view.OverviewAgent, health map
 	card := view.OverviewCard{
 		Profile: one.Profile,
 		File:    profileFile(one.Profile),
-		// **不设 Default**：那个记号现在归「自动」那张卡——它才是「全局默认」本身，
-		// 而这一张只是**恰好是它此刻指向的那一份**。两张都挂上「默认」，读的人就
-		// 分不出该看哪一张了。
+		// **No Default**: that mark now belongs to the "auto" card -- it is the "global default"
+		// itself, while this card is only **the one it happens to point at right now**. With
+		// "default" on both, the reader cannot tell which one to look at.
 		Roles:   make([]view.OverviewRow, 0, len(one.Keys)),
 		Actions: cardActions(agents, one.Profile, one.Keys, g),
 	}
@@ -215,10 +243,11 @@ func overviewCard(one *configapi.Chains, agents []view.OverviewAgent, health map
 	return card
 }
 
-// healthByBinding 把健康表摊成 `provider/model → Status`。
+// healthByBinding flattens the health table into `provider/model → Status`.
 //
-// 键的拼法与健康表自己的行 ID 同一个函数（breaker.BindingKey）：两边各拼一次就必须
-// 拼成同一个串，而拼错的症状是「延迟那一格永远空着」——不报错，只是没有数据。
+// The key is built by the same function as the health table's own row ID (breaker.BindingKey):
+// built separately on each side, they must come out as the same string, and the symptom of a
+// mismatch is "the latency cell is always empty" -- no error, just no data.
 func healthByBinding(b breakerapi.Breaker) map[string]breakerapi.Status {
 	if b == nil {
 		return nil
@@ -231,11 +260,11 @@ func healthByBinding(b breakerapi.Breaker) map[string]breakerapi.Status {
 	return out
 }
 
-// overviewRow 是这一档的链 + 每一站的健康。
+// overviewRow is this tier's chain + each stop's health.
 func overviewRow(profile string, chain configapi.Chain, health map[string]breakerapi.Status) view.OverviewRow {
 	row := view.OverviewRow{
-		// 行 ID 与链卡那边**同一个拼法**（`profile/tier`）：界面拿它做 key，跨快照
-		// 稳定（见 view.OverviewRow.ID）。
+		// The row ID uses the **same construction** as on the chain card (`profile/tier`): the UI
+		// keys on it, stable across snapshots (see view.OverviewRow.ID).
 		ID:   profile + "/" + chain.Key,
 		Tier: chain.Key,
 		Note: skipNote(chain.Skips),
@@ -243,14 +272,15 @@ func overviewRow(profile string, chain configapi.Chain, health map[string]breake
 	if len(chain.Steps) > 0 {
 		row.Head = chain.Steps[0].Binding.String()
 	} else {
-		// 空链是 bad：这一档此刻没得走（与 chains.go 的 rowOf 同一条）。
+		// An empty chain is bad: this tier has nothing to take right now (the same rule as rowOf
+		// in chains.go).
 		row.Tone = view.ToneBad
 	}
 	row.Steps = overviewSteps(chain.Steps, health)
 	return row
 }
 
-// overviewSteps 是链上的每一站，外加它在健康表里的那一格。
+// overviewSteps is every stop on the chain, plus its cell in the health table.
 func overviewSteps(list []configapi.Step, health map[string]breakerapi.Status) []view.OverviewStep {
 	if len(list) == 0 {
 		return nil
@@ -266,8 +296,9 @@ func overviewSteps(list []configapi.Step, health map[string]breakerapi.Status) [
 			if ms, tone, sampled := breakerapi.LatencySample(h); sampled {
 				step.LatencyMs, step.LatencyTone = ms, tone
 			}
-			// Grade 是机器标记（fluent / laggy / …），原样出去：它与 `newgate probe`
-			// 的输出、与健康表那一列是同一套词。翻了它，两边就对不上了。
+			// Grade is a machine marker (fluent / laggy / …), sent out as is: it is the same
+			// vocabulary as `newgate probe`'s output and that health-table column. Translate it
+			// and the two no longer line up.
 			if s := strings.TrimSpace(string(h.Grade)); s != "" {
 				step.Probe = s
 			}
@@ -277,37 +308,41 @@ func overviewSteps(list []configapi.Step, health map[string]breakerapi.Status) [
 	return out
 }
 
-// ---------- 动作 ----------
+// ---------- actions ----------
 
-// useActionPrefix 是「就用它」那一族动作 ID 的前缀。
+// useActionPrefix is the action-ID prefix of the "use it" family.
 //
-// 整个 ID 是 `use:<agent>:<profile>`：`<agent>` 是客户端机器标记（`global` 是
-// 「所有客户端都用它」那一档），`<profile>` 是这张卡说的是哪一份。
+// The whole ID is `use:<agent>:<profile>`: `<agent>` is a client machine marker (`global` being
+// the "all clients use it" tier), `<profile>` being which one this card is about.
 //
-// 两段都必要，理由写在 view.OverviewCard.Actions 上（一句话：同一个 agent 的动作在
-// 十几张卡上各有一个，而账本按 ID 找人取的是第一个匹配——不带 profile 就会点到别人
-// 身上）。界面按它挑按钮：当前那一栏是哪个 agent 就挑哪个前缀。
+// Both segments are necessary; the reason is written on view.OverviewCard.Actions (one
+// sentence: the same agent's action exists once on each of a dozen cards, and the ledger looks
+// someone up by ID taking the first match -- without the profile it hits someone else). The UI
+// picks the button by it: whichever agent the current tab is, that is the prefix it takes.
 const useActionPrefix = "use:"
 
-// useGlobal 是「所有客户端都用它」那一档的 agent 段。
+// useGlobal is the agent segment of the "all clients use it" tier.
 //
-// 它不是某个真实客户端：那个动作写的是**全局默认**（`state.json` 的
-// `default_profile`），而不是任何一行的覆盖。用 `global` 这个词而不是空串，是因为
-// 空串拼出来的 `use::production` 读起来像拼错了。
+// It is not a real client: that action writes the **global default** (`default_profile` in
+// `state.json`), not any row's override. The word `global` rather than an empty string, because
+// `use::production` assembled from an empty string reads like a typo.
 const useGlobal = "global"
 
-// useAutoPrefix 是「改回自动」那一族动作 ID 的前缀，整串是 `auto:<agent>`。
+// useAutoPrefix is the action-ID prefix of the "back to auto" family, the whole string being
+// `auto:<agent>`.
 //
-// **为什么另起一族而不是 `use:<agent>:auto`**：`<profile>` 那一段装的是磁盘上的
-// 档位名，而档位名是用户起的——`auto` 是一个完全合法的档位名。挤进同一族的话，
-// 一台真的有一份 `auto.kv` 的机器上，那个「改回自动」的按钮会和一个「固定用 auto
-// 这一份」的按钮**拼成同一个 ID**，而账本按 ID 取的是第一个匹配：用户点「固定用
-// auto」，实际执行的是松开——静默地改错东西，界面上一点异样都没有。
+// **Why a separate family instead of `use:<agent>:auto`**: the `<profile>` segment holds a tier
+// name from disk, and tier names are chosen by the user -- `auto` is a perfectly legal tier
+// name. Crammed into the same family, on a machine that really has an `auto.kv`, the "back to
+// auto" button and a "pin to the auto tier" button would **assemble the same ID**, and the
+// ledger takes the first match by ID: the user clicks "pin to auto" and what runs is release --
+// silently changing the wrong thing, with nothing looking off in the UI.
 //
-// 两个前缀也就不共用一套解析：`use:` 后面必须有**两**段，`auto:` 后面只有一段。
+// So the two prefixes do not share one parser either: `use:` must be followed by **two**
+// segments, `auto:` by one.
 const useAutoPrefix = "auto:"
 
-// cardActions 是长在这张卡头上的按钮：「就用它」+「整张卡探一遍」。
+// cardActions are the buttons on this card's header: "use it" + "probe the whole card".
 func cardActions(agents []view.OverviewAgent, profile string, chains []configapi.Chain, g gatewayapi.Gateway) []view.Action {
 	out := useActions(agents, profile)
 	if g != nil {
@@ -322,29 +357,34 @@ func cardActions(agents []view.OverviewAgent, profile string, chains []configapi
 	return out
 }
 
-// useActions 是**一份 profile 那张卡**上的「用它」。
+// useActions is the "use this" on **a profile's card**.
 //
-// # 同一张卡、同一句话，含义由**你在哪一档**决定
+// # Same card, same sentence, meaning decided by **which tier you are on**
 //
-//   - 在「自动」那一档下：`use:global:<profile>` = 把**自动**指到这一份；
-//   - 在某个客户端那一档下：`use:<agent>:<profile>` = 把**这一家固定**在它上面。
+//   - on the "auto" tier: `use:global:<profile>` = point **auto** at this profile;
+//   - on some client's tier: `use:<agent>:<profile>` = **pin this client** to it.
 //
-// 前端按当前这一档挑其中一个（见 Overview.svelte 的 actions）——所以卡片本身就是
-// 那个选择器，不需要在卡里再摆一排同名的按钮（那只是把同一件事说两遍）。
+// The front end picks one of them by the current tier (see actions in Overview.svelte) -- so
+// the card is itself that selector, and there is no need to put another row of same-named
+// buttons on it (that just says the same thing twice).
 //
-// 固定那一条的判据是「这一家**自己**设过没有」，不是「它此刻解析成哪一份」：给 claude
-// 固定选 ds 与「claude 跟着自动、自动恰好是 ds」是**两个状态**——路由结果此刻一样，
-// 但改掉自动之后一个跟着变、一个不变。拿解析结果去比，症状是「用户想固定住，界面却
-// 说它已经在用了、不给按钮」，于是他永远做不出那一步。
+// The criterion for the pin entry is "has this client **itself** set one", not "which profile
+// does it resolve to right now": pinning claude to ds and "claude follows auto and auto happens
+// to be ds" are **two states** -- routing is the same right now, but after auto changes one
+// follows and the other does not. Comparing against the resolved result shows up as "the user
+// wants to pin it, yet the UI says it is already in use and offers no button", so he can never
+// take that step.
 func useActions(agents []view.OverviewAgent, profile string) []view.Action {
 	out := make([]view.Action, 0, len(agents)+1)
-	// 「自动」指向这一份。此刻已经指着它时不出现（选它自己什么都不会变）。
+	// "Auto" points at this profile. Absent when it already points here (choosing itself
+	// changes nothing).
 	if st := store.LoadState(); st.ActiveFor("") != profile {
 		name := profile
 		out = append(out, view.Action{
 			ID: useActionID(useGlobal, name),
-			// 它只在「自动」那一档下被画出来（前端按当前这一档挑），所以这句话
-			// 说的就是那件事：把自动指到这一份上。profile 名是**机器取值**，不翻。
+			// It is drawn only on the "auto" tier (the front end picks by the current tier), so this
+			// sentence is exactly that: point auto at this profile. The profile name is a **machine
+			// value**, not translated.
 			Label: func() string { return i18n.T("set as auto", nil) },
 			Run:   func() (string, error) { return "", setAgentProfile("", name) },
 		})
@@ -353,7 +393,8 @@ func useActions(agents []view.OverviewAgent, profile string) []view.Action {
 		if a.ID == "" || !a.Ready {
 			continue
 		}
-		// 已经**固定**在这一份上的那一栏不出现（把它指给它自己是件没有意义的事）。
+		// The entry for a client already **pinned** to this profile does not appear (pointing it at
+		// itself is a meaningless thing to do).
 		if a.Own && a.Profile == profile {
 			continue
 		}
@@ -369,32 +410,38 @@ func useActions(agents []view.OverviewAgent, profile string) []view.Action {
 	return out
 }
 
-// autoCard 是网格最前面那一张**「默认」**卡——它不是一份 profile，是一条间接引用。
+// autoCard is the **"default"** card at the front of the grid -- it is not a profile, it is an
+// indirect reference.
 //
-// # 它长什么样
+// # What it looks like
 //
-// 名字是「默认」，后面括着它**此刻指向**哪一份（`{current}` 就是那个）；表里摆的是
-// **那一份此刻的链**（与那份 profile 自己那张卡一模一样的内容）；卡片头上一排是它
-// 能指向的几个成员，点一个就整张换成那一份。
+// The name is "default", followed by which profile it **points at right now** (that is what
+// `{current}` is); the table holds **that profile's chain right now** (exactly the content of
+// that profile's own card); the row across the card's head is the members it can point at, and
+// clicking one swaps the whole card for that profile.
 //
-// # 它为什么必须与 profile 卡分开
+// # Why it must be separate from the profile card
 //
-// 它与「ds 那张卡」此刻**长得一模一样**（指向 ds 时），但说的是两件事：
+// Right now it **looks exactly the same** as "the ds card" (when pointing at ds), yet the two
+// say different things:
 //
-//   - 在这一张上点「给 claude 用」= 让 claude **跟着全局默认走**；
-//   - 在 ds 那张上点同一句话 = 把 claude **固定**在 ds 上。
+//   - clicking "use for claude" on this one = make claude **follow the global default**;
+//   - clicking the same sentence on the ds card = **pin** claude to ds.
 //
-// 这两者的路由在当下完全相同，而改掉全局默认之后一个跟着变、一个不变。合成一张卡，
-// 「我就是要它固定住」这件事就没有地方表达了；分开之后，「这一栏此刻在用谁」也有了
-// 准头——高亮落在哪一张上，说的就是它到底是跟着还是固定着。
+// The two route identically at this moment, but after the global default changes one follows and
+// the other does not. Merged into one card, "I want it pinned" has nowhere to be expressed; with
+// them apart, "who is this client using right now" also has a target -- whichever card is
+// highlighted says whether it follows or is pinned.
 //
-// 不是我们发明的记法：Clash 里一个 group 的成员里既可以有节点、也可以有另一个
-// group（选中后者 = 跟随那个 group 的选择），而那个 group 自己也有成员表。差别只在
-// 于 Clash 那个是延迟测速自动挑的，我们这个是人挑的。
+// Not a notation we invented: in Clash a group's members can be nodes or another group
+// (selecting the latter = following that group's choice), and that group has a member table of
+// its own. The only difference is that Clash's is picked automatically by latency testing, while
+// ours is picked by a person.
 //
-// `cards` 是已经建好的那几张 profile 卡：这一张的链就是从里面**抄**的那一份，所以
-// 两处永远说的是同一个时刻的同一份结论（各建一次的话，两次读盘之间配置变了，同一
-// 份 profile 会在两张卡上显示两条不同的链）。
+// `cards` are the profile cards already built: this card's chain is **copied** from one of them,
+// so the two always state the same conclusion from the same moment (built separately, config
+// changing between the two disk reads would make the same profile show two different chains on
+// two cards).
 func autoCard(agents []view.OverviewAgent, cards []view.OverviewCard, all []*configapi.Chains, g gatewayapi.Gateway) *view.OverviewCard {
 	st := store.LoadState()
 	cur := st.ActiveFor("")
@@ -409,12 +456,12 @@ func autoCard(agents []view.OverviewAgent, cards []view.OverviewCard, all []*con
 		break
 	}
 
-	// **不摆成员表**：能指向哪几份由下面那几张 profile 卡自己说——在「自动」那一档
-	// 下点某一张 = 把自动指到它（见 useActions）。卡片本身就是那个选择器，多摆一排
-	// 同名的按钮只是把同一件事说两遍。
+	// **No member table**: which profiles it can point at is said by the profile cards below -- on
+	// the "auto" tier, clicking one = pointing auto at it (see useActions). The card is itself that
+	// selector; an extra row of same-named buttons just says the same thing twice.
 
-	// 「这一家跟着自动走」：只出现在**自己设过**的那几家上——没设过的本来就在跟着，
-	// 给它一个「回到自动」是没有意义的（它已经在原地了）。
+	// "This client follows auto": shown only on clients that **did set one** -- one that never did
+	// is already following, so giving it a "back to auto" is meaningless (it is already there).
 	for _, a := range agents {
 		if a.ID == "" || !a.Ready || !a.Own {
 			continue
@@ -422,9 +469,10 @@ func autoCard(agents []view.OverviewAgent, cards []view.OverviewCard, all []*con
 		id, name := a.ID, a.Name
 		card.Actions = append(card.Actions, view.Action{
 			ID: useAutoPrefix + id,
-			// 与 profile 卡上那句**是同一句话**，这是有意的：在「默认」这张卡上点它
-			// = 把默认给这一家用（它于是跟着全局走），在 ds 那张上点它 = 把 ds 固定
-			// 给这一家用。同一句动词落在不同的主语上，而主语就是那张卡本身。
+			// **The same sentence** as on the profile card, and that is on purpose: clicking it on the
+			// "default" card = give the default to this client (it then follows the global), clicking it
+			// on the ds card = pin ds for this client. The same verb lands on a different subject, and
+			// the subject is the card itself.
 			Label: func() string {
 				return i18n.T("use for {client}", i18n.A{"client": name})
 			},
@@ -432,13 +480,13 @@ func autoCard(agents []view.OverviewAgent, cards []view.OverviewCard, all []*con
 		})
 	}
 
-	// 探活：这一张摆的就是那条链，所以「它通不通、多快」在这里问得出来，与 profile 卡
-	// 上那一颗是同一件事。
+	// Probing: this card lays out exactly that chain, so "does it connect, how fast" is answerable
+	// here -- the same thing as the button on a profile card.
 	//
-	// ID 是 `probe-auto` 而不是 `probe`：账本按**动作 ID** 取第一个匹配，而每张
-	// profile 卡上都有一个 `probe`（十来个同名的），这一个会永远点不到——用户点的是
-	// 「探自动这条」，跑的却是第一张 profile 卡的探活。加一段机器标记之后它在整个
-	// 概念里唯一。
+	// The ID is `probe-auto` rather than `probe`: the ledger takes the first match by **action ID**,
+	// and every profile card has a `probe` (a dozen of the same name), so this one would never be
+	// hit -- the user clicks "probe the auto chain" and the first profile card's probe runs instead.
+	// With a machine marker it is unique within the whole concept.
 	if g != nil {
 		for _, one := range all {
 			if one == nil || one.Profile != cur {
@@ -455,28 +503,30 @@ func autoCard(agents []view.OverviewAgent, cards []view.OverviewCard, all []*con
 		}
 	}
 
-	// **只要有一份 profile，这一张就画**——哪怕它此刻一个按钮都没有。
+	// **As long as there is one profile, this card is drawn** -- even with not one button on it.
 	//
-	// 它不是「有动作才值得露面的东西」：它是这一屏回答「自动此刻是谁」的那一张，
-	// 而这件事**任何时候都有答案**（没有答案本身就是答案，见 Profile 为空那种）。
-	// 少了它，用户就只剩「每份 profile 各一张卡」这一堆，而「我到底在跟着谁」要自己
-	// 去比对——那正是当初把这两件事合成一张的那种错误。
+	// It is not "something worth showing only when it has actions": it is the card that answers
+	// "who is auto right now" on this screen, and that question **has an answer at all times** (no
+	// answer is itself an answer, see the Profile-is-empty case). Without it the user is left with
+	// the pile of "one card per profile" and has to work out "who am I following" by comparison --
+	// which is exactly the mistake of merging those two into one card.
 	if len(cards) == 0 {
 		return nil
 	}
 	return card
 }
 
-// useActionID 拼一个「用它」动作的 ID（见 useActionPrefix）。
+// useActionID builds the ID of a "use this" action (see useActionPrefix).
 func useActionID(agent, profile string) string {
 	return useActionPrefix + agent + ":" + profile
 }
 
-// setAgentProfile 改某个客户端的链头；空 agent = 改全局默认。
+// setAgentProfile changes one client's chain head; an empty agent = change the global default.
 //
-// 两条路都落在 config 的**共享叶子**（store）上，而不是自己拼 state.json：那个文件
-// 的键与校验规则（「这个 profile 真的存在」）是 config 的知识，抄一遍的代价是这个
-// 界面能写出一个打错名字的链头——而那个客户端的每一次请求都会起不来。
+// Both paths land on config's **shared leaf** (store), rather than assembling state.json itself:
+// that file's keys and validation rules ("this profile really exists") are config's knowledge,
+// and copying them buys this UI the ability to write a mistyped chain head -- and then every
+// request from that client fails to start.
 func setAgentProfile(agent, profile string) error {
 	if agent == "" {
 		return store.SetDefaultProfile(profile, false)
@@ -484,61 +534,71 @@ func setAgentProfile(agent, profile string) error {
 	return agentapi.AgentProfile{AgentID: agent}.Write(profile)
 }
 
-// probeAllAction 是右上角那一个「全都探一遍」。
+// probeAllAction is the "probe them all" in the top right.
 //
-// # 为什么它长在**节**上而不是某一张卡上
+// # Why it lives on the **section** and not on some card
 //
-// 它要探的是这一屏**所有** profile 的链站——那个集合不属于任何一张卡（卡片级的
-// 探活在 cardActions 里）。节的动作用户永远够得着，不管正看着哪一张卡。
+// What it probes is the chain stations of **all** profiles on this screen -- that set belongs to
+// no single card (card-level probing lives in cardActions). Section actions are always reachable
+// by the user, no matter which card is being viewed.
 //
-// # 为什么它要在 Run 里现读一次
+// # Why it reads afresh inside Run
 //
-// 节的动作用户登记时构造一次就定了（见 view.Section.Actions），而这里是**今天**
-// 有哪些链——登记那一刻读出来的那份到点击时早就过期了。所以闭包捕获的是 cfg 与
-// 端口，链在 Run 里现取。
-// fallbackAction 是右上角那个 fallback 链总开关。
+// A section action is fixed once when it is registered (see view.Section.Actions), and what is
+// needed here is which chains exist **today** -- what was read at registration is long stale by
+// the time of the click. So the closure captures cfg and the port, and fetches the chains inside
+// Run.
+// fallbackAction is the fallback-chain master switch in the top right.
 //
-// # 它关掉的到底是什么（说清楚，因为界面上那个词有歧义）
+// # What it actually turns off (spelled out, because that word is ambiguous in the UI)
 //
-// **整条链**，不分「本 profile 内的」与「从别的 profile 借来的」。转发侧的落地是
-// `steps = steps[:1]`，而 `steps` 是 resolve.BuildChain 展开出来的**一条平表**——
-// 它按 profile 优先级把所有 profile 的候选展开进同一个列表，每一步身上带着来源
-// （就是界面上的 `ds` / `cheap` 那些小药丸）。开关没用那个来源。
+// **The whole chain**, with no distinction between "inside this profile" and "borrowed from
+// another profile". The forwarding side lands on `steps = steps[:1]`, and `steps` is **one flat
+// table** expanded by resolve.BuildChain -- it expands every profile's candidates into the same
+// list in profile-priority order, each step carrying its origin (the `ds` / `cheap` pills in the
+// UI). The switch does not use that origin.
 //
-// 所以「只禁跨 profile、保留自己这一份里的 fallback」今天**做不到**：那要先让链在
-// 截断处认得出自己是哪一段来的（改 resolve 与 forward），是另一件事。界面按能做
-// 到的那件事写文案，不按想做到的那件写——写成「只禁跨 profile」就是在骗人。
+// So "disable only cross-profile, keep the fallback inside this profile" is **not possible**
+// today: that first needs the chain to recognize at the cut point which segment it came from
+// (changing resolve and forward), which is a separate job. The UI writes its copy for what it can
+// do, not for what it wishes it could -- writing "only cross-profile" would be lying.
 //
-// # 为什么按下的那一刻才取状态
+// # Why the state is read at the moment of the press
 //
-// `on` 是**构造这个闭包时**读到的那一刻的值（快照会重读，所以每次都是新的）。
-// 翻的是它的反面，而不是「设成某个固定值」：按钮上写的是此刻要做的那个动作。
+// `on` is the value read **when this closure is built** (the snapshot re-reads, so it is fresh
+// each time). What is flipped is its opposite, not "set to some fixed value": the button says the
+// action to take right now.
 func fallbackAction(g gatewayapi.Gateway) (view.Action, bool) {
 	if g == nil {
 		return view.Action{}, false
 	}
 	return view.Action{
 		ID: "fallback",
-		// 名字是**这件东西的名字**，不是一句祈使句（曾经是「只走链头」/「启用 fallback
-		// 链」，两句都会随状态翻）。用户要的是一颗状态按钮：名字固定、状态由**颜色**
-		// 说（原话：「直接就用 auto fallback 做个状态按钮，默认灰色就是 disable」）。
+		// The name is **the thing's name**, not an imperative sentence (it used to be "chain head
+		// only" / "enable fallback chain", both of which flipped with state). What the user wants is a
+		// state button: fixed name, state told by **color** (his words: "just make auto fallback a
+		// state button, default gray is disable").
 		//
-		// 代价说清楚：TUI 那边只画 label，于是它看到的是一个不带状态的名字。换到的是
-		// 界面这一侧不必去解析一句会翻译的话来判断「这是禁用还是启用」——见 Action.Tone。
+		// The cost, spelled out: the TUI draws only the label, so what it sees is a name with no
+		// state on it. What that buys is the UI side not having to parse a translatable sentence to
+		// decide "is this disabled or enabled" -- see Action.Tone.
 		Label: func() string { return i18n.T("auto fallback", nil) },
-		// **开着 = 绿，关着 = 红**（用户的原话：「默认应该是绿色，点击关闭是灰色/红色」）。
+		// **On = green, off = red** (the user's words: "the default should be green; clicking to turn
+		// it off is gray/red").
 		//
-		// 一开始这里是「开着不着色、关着标红」，理由是「绿是常态、不必说」。那是错的：
-		// 一颗**状态**按钮在两种状态下都该看得出是哪一种，只标异常的话，看的人得先
-		// 知道「不标 = 开」，而那正是他打开这一屏想问的问题。
+		// At first this was "on gets no color, off is marked red", on the reasoning "green is the
+		// normal case, no need to say it". That was wrong: a **state** button should look like which
+		// of the two states it is in, and if only the abnormal one is marked, the viewer must first
+		// know "unmarked = on" -- which is exactly the question he opened this screen to ask.
 		//
-		// # 两个字段都是**闭包**，不是当场取的值
+		// # Both fields are **closures**, not values taken on the spot
 		//
-		// 这一节的动作在 Start 里登记一次，而快照是**每次请求重算**的——把
-		// `g.FallbackOn()` / `!on` 在登记那一刻取出来，颜色与行为就永远停在
-		// 进程启动时那个状态上（实测踩过：`newgate fallback off` 之后按钮还是绿的、
-		// 点一下还是「关」，而那件事看起来像界面在骗人）。Tone 那条路本来就会在
-		// 每次快照时求值，所以它一改就连着对；错的是 Run 里那个捕获值。
+		// This section's actions are registered once in Start, while the snapshot is **recomputed per
+		// request** -- taking `g.FallbackOn()` / `!on` at registration time pins the color and the
+		// behavior to the state at process start forever (hit for real: after `newgate fallback off`
+		// the button was still green and clicking it still went "off", and that looked like the UI
+		// lying). The Tone path is evaluated on every snapshot anyway, so it follows any change; the
+		// captured value in Run was the wrong one.
 		Tone: func() string {
 			if g.FallbackOn() {
 				return view.ToneOK
@@ -549,36 +609,43 @@ func fallbackAction(g gatewayapi.Gateway) (view.Action, bool) {
 	}, true
 }
 
-// ---------- 探活的扇出 ----------
+// ---------- probe fan-out ----------
 
-// probeTarget 是一次探活的目标。key 是给人看的那个拼法（`provider/model`）。
+// probeTarget is one probe's target. key is the human-facing spelling (`provider/model`).
 type probeTarget struct {
 	provider, model, key string
 }
 
-// probeSet 是「一次探一批 binding」的共用实现，返回一句给用户看的话（可能为空）。
+// probeSet is the shared implementation of "probe a batch of bindings", returning a sentence for
+// the user (possibly empty).
 //
-// # 为什么只做到**批**这一层，没有单条的探活动作
+// # Why it stops at the **batch** level, with no per-item probe action
 //
-// 单条探活今天只有一处入口：健康表（`breaker.health`）每一行上那个按钮——那才是
-// 「这条 binding 现在通不通」该问的地方。首屏这一屏上的探活是**按卡**（这张 profile
-// 的链此刻怎么样）与**按屏**（全都刷一遍）的，两种都是这一批的路子。给每一站再挂
-// 一个单条按钮要两层身份（哪一张卡的哪一档），而它买到的东西与健康表那一行完全
-// 重合——多出来的是一排按钮，而这一屏上最常用的那个（「就用它」）会被它们淹掉。
+// There is only one entry point for a single probe today: the button on each row of the health
+// table (`breaker.health`) -- that is where "does this binding connect right now" should be asked.
+// The probing on this first screen is **per card** (how is this profile's chain doing right now)
+// and **per screen** (refresh them all), both of which are this batch route. Hanging a
+// per-station button on every station would need two levels of identity (which card, which tier),
+// and what it buys overlaps entirely with that row in the health table -- what is gained is a row
+// of buttons, and the most used one on this screen ("just use it") would drown in them.
 //
-// # 为什么要限并发、还要限总时长
+// # Why concurrency is capped, and total time too
 //
-// 单条探活最坏要等一个首字节超时（默认 12s，见 store 的 Timeouts）。一条一条探
-// 十几条就是几分钟——而这是**一次 HTTP 请求**，浏览器与反代都不会等那么久。所以：
-// 并发探，并且**总共只等 probeBudget**，超了就如实说「还有几条在飞」。
+// A single probe worst case waits for one first-byte timeout (12s by default, see store's
+// Timeouts). Probing a dozen one at a time is minutes -- and this is **one HTTP request**;
+// neither the browser nor a reverse proxy waits that long. So: probe concurrently, and wait at
+// most probeBudget in total, saying honestly "a few are still in flight" when it runs out.
 //
-// 超时那几条**不会白探**：它们在后台照常跑完、结论照常进策略层（ProbeBinding 自己
-// 会灌），用户下一次刷新就看见了。这也是这一屏没有 Live 却不别扭的原因。
+// The timed-out ones **are not wasted**: they finish in the background and their verdicts reach
+// the policy layer as usual (ProbeBinding feeds itself), and the user sees them on the next
+// refresh. That is also why this screen has no Live and yet does not feel wrong.
 //
-// 返回的 error 是**横幅上那句话**。走错误那条路（而不是静默成功）的理由：这一发里
-// 确实有东西没通、或者没等到，而按这个按钮的人要的答案正是这个。咽下去的话，界面上
-// 只剩「延迟那一格还是旧的」——看起来像按钮没生效。
-// probeSet 是「一次探一批 binding」的入口：收一个网关，探这一批。
+// The returned error is **the sentence on the banner**. The reason for taking the error path
+// (rather than a silent success): something in this round really did not connect, or did not
+// arrive in time, and that is exactly the answer the person pressing the button wants. Swallowed,
+// the UI would only show "the latency cell is still the old one" -- which looks like the button
+// did nothing.
+// probeSet is the entry point of "probe a batch of bindings": take one gateway, probe this batch.
 func probeSet(g gatewayapi.Gateway, targets []probeTarget) error {
 	if g == nil || len(targets) == 0 {
 		return nil
@@ -586,13 +653,14 @@ func probeSet(g gatewayapi.Gateway, targets []probeTarget) error {
 	return probeBatch(g.ProbeBinding, targets)
 }
 
-// probeBatch 是扇出的那一半，也是**可以被单测的那一半**：它只要一个「探一条」
-// 的函数，而不是整个网关端口。
+// probeBatch is the fan-out half, and the half that **can be unit tested**: all it wants is a
+// "probe one" function, not the whole gateway port.
 //
-// 为什么要这条缝：探活的扇出有它自己的坑（并发、去重、没等完的那些），而网关端口
-// 有十几个方法——为一条测试假造一整个网关，代价比被测的东西还大，而假得不像的那种
-// 替身又会让测试验的是替身的行为。收一个函数就够了：真正要问的只有「并发对不对、
-// 失败有没有说出来」。
+// Why this seam: the probe fan-out has pitfalls of its own (concurrency, dedupe, the ones not
+// finished), while the gateway port has a dozen methods -- faking a whole gateway for one test
+// costs more than the thing under test, and a stand-in that does not behave like the real thing
+// makes the test verify the stand-in's behavior. One function is enough: the only questions are
+// "is the concurrency right, are failures said out loud".
 func probeBatch(probe func(provider, model string) (gatewayapi.ProbeOutcome, error), targets []probeTarget) error {
 	type result struct {
 		target probeTarget
@@ -624,14 +692,14 @@ func probeBatch(probe func(provider, model string) (gatewayapi.ProbeOutcome, err
 				failed = append(failed, r.target.key)
 			}
 		case <-deadline:
-			// 没等完：把还没回来的算「在飞」，不再等。
+			// Out of time: count the ones that have not come back as "in flight" and wait no longer.
 			return probeReport(len(targets), failed, len(targets)-done)
 		}
 	}
 	return probeReport(len(targets), failed, 0)
 }
 
-// probeReport 是这一批探活的结果那句话；全都通了就返回 nil（横幅不出现）。
+// probeReport is the result sentence for this probe batch; nil when all connected (no banner).
 func probeReport(total int, failed []string, inFlight int) error {
 	if len(failed) == 0 && inFlight == 0 {
 		return nil
@@ -651,9 +719,10 @@ func probeReport(total int, failed []string, inFlight int) error {
 	return i18n.E("{report}", i18n.A{"report": strings.Join(parts, " · ")})
 }
 
-// joinLimit 列出前 n 条，多出来的收成「还有 N 条」。
+// joinLimit lists the first n, rolling the rest up as "and N more".
 //
-// 十几条不通时全铺出来会把横幅变成一堵墙，而用户要的第一句话是「哪几家不通」。
+// With a dozen not connecting, laying them all out turns the banner into a wall, while the first
+// sentence the user wants is "which ones do not connect".
 func joinLimit(items []string, n int) string {
 	if len(items) <= n {
 		return strings.Join(items, ", ")
@@ -663,8 +732,9 @@ func joinLimit(items []string, n int) string {
 		i18n.N("and {n} more", "and {n} more", rest, i18n.A{"n": rest})
 }
 
-// probeTargetsOf 是这几条链上的去重目标（一次探活不该把同一条 binding 打两遍——
-// 同一个 provider/model 在一条链上重复出现是常态，跨 profile 的链更是）。
+// probeTargetsOf is the deduplicated targets across these chains (one probe must not hit the same
+// binding twice -- the same provider/model repeating within a chain is normal, and cross-profile
+// chains all the more).
 func probeTargetsOf(chains []configapi.Chain) []probeTarget {
 	var out []probeTarget
 	seen := map[string]bool{}
@@ -681,13 +751,15 @@ func probeTargetsOf(chains []configapi.Chain) []probeTarget {
 	return out
 }
 
-// probeFanout 是一次最多同时探几条。8 与 `newgate probe` 那条命令同一个数：同一个
-// 上游在同一个时刻被我们打两发，没有理由在这里比命令行更凶。
+// probeFanout is how many are probed at once at most. 8 is the same number as the `newgate probe`
+// command: the same upstream hit twice by us at the same moment -- there is no reason to be
+// harsher here than the command line is.
 const probeFanout = 8
 
-// probeBudget 是一次探活动作最多等多久。
+// probeBudget is how long one probe action waits at most.
 //
-// 15s 是「几站 + 一点余量」：单条最坏 12s（首字节超时），并发 8 路时十几条通常一轮
-// 就回来了。定一个上限是为了不让一次点击变成一分钟的转圈——超时的那些在后台照常
-// 跑完，结论照样进账本。
+// 15s is "a few stations plus some margin": a single probe is 12s in the worst case (first-byte
+// timeout), and with 8 in flight a dozen usually come back in one round. The cap exists so that
+// one click does not become a minute of spinning -- the ones that time out still finish in the
+// background, their verdicts still going into the ledger.
 const probeBudget = 15 * time.Second

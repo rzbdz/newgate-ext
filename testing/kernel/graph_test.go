@@ -136,8 +136,8 @@ func TestGraphCoversEveryModule(t *testing.T) {
 // may legitimately `Need(porthub)` (no cycle; porthub has no out-edges). Do not
 // add members by shape; ask first "is this a UI layer".
 var uiCapabilities = map[string]bool{
-	"cli":  true, // 终端界面：命令、状态行、诊断项往里注册
-	"view": true, // web 界面的概念账本：各模块往里注册自己那一面
+	"cli":  true, // the terminal UI: commands, status lines and diagnostics register here
+	"view": true, // the web UI's ledger of concepts: each module registers its own face here
 }
 
 func TestUIStaysOutOfTheDependencyGraph(t *testing.T) {

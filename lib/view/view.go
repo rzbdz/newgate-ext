@@ -914,10 +914,10 @@ type Note struct {
 type Conflict struct {
 	Concept string
 	Path    string
-	Base    string // 你加载时那份
-	Current string // 磁盘上现在这份
-	Yours   string // 你这次要写进去的
-	Theirs  string // 磁盘上现在这份的原文（等于 Current 那份的内容，给人看）
+	Base    string // the copy you loaded
+	Current string // the copy now on disk
+	Yours   string // the copy you are about to write
+	Theirs  string // the text now on disk (same content as Current, shown to the user)
 }
 
 func (c *Conflict) Error() string {
@@ -1211,10 +1211,10 @@ type Registry struct {
 type source struct {
 	id     int
 	name   string
-	title  func() string // Register 拒绝 nil，所以这里一定非空
-	group  func() string // 可空：没写就是不分组
-	def    bool          // 见 Section.Default：界面的落点
-	fields string        // 见 Section.Fields：这一栏是干什么的
+	title  func() string // Register rejects nil, so this is never empty
+	group  func() string // may be nil: unset means no grouping
+	def    bool          // see Section.Default: where the UI lands it
+	fields string        // see Section.Fields: what this column is for
 	acts   []Action
 	read   Contributor
 }
@@ -1414,7 +1414,7 @@ func (r *Registry) RunConceptAction(conceptID, actionID string) (string, error) 
 	for _, read := range reads {
 		cs, err := read()
 		if err != nil {
-			continue // 这一位整个产不出来：它本来就不可能是那张卡的主人
+			continue // this contributor yielded nothing: it could never own that card
 		}
 		for _, c := range cs {
 			if c.ID != conceptID {

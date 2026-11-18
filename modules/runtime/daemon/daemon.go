@@ -88,7 +88,7 @@ func Alive(pid int) bool {
 	}
 	b, err := ioutil.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
 	if err != nil {
-		return true // 非 Linux 或读不到，退化为只看 kill(0)
+		return true // Not Linux, or unreadable: fall back to kill(0) alone
 	}
 	// An empty cmdline means one of two things, and they must be told apart:
 	//   1. the transitional exec state (a /proc read of empty during an image swap) - alive.
@@ -369,7 +369,7 @@ func Spawn(port int) (*Info, error) {
 	cmd.Stdout = logf
 	cmd.Stderr = logf
 	cmd.Stdin = nil
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true} // 脱离终端
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true} // detach from the terminal
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
@@ -427,7 +427,7 @@ func SpawnHandoff(port int, ln net.Listener) (*Info, error) {
 	cmd.Stdout = logf
 	cmd.Stderr = logf
 	cmd.Stdin = nil
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true} // 脱离终端
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true} // detach from the terminal
 	cmd.ExtraFiles = []*os.File{listenerFile, readyW}    // fd3=socket, fd4=ready
 	cmd.Env = append(os.Environ(),
 		"NEWGATE_LISTENER_FD=3", "NEWGATE_READY_FD=4")
@@ -483,7 +483,7 @@ func Stop() (int, error) {
 	if err := syscall.Kill(i.PID, syscall.SIGTERM); err == syscall.EPERM {
 		return stopViaHTTP(i)
 	}
-	for k := 0; k < 40; k++ { // 最多等 2s
+	for k := 0; k < 40; k++ { // wait at most 2s
 		if !Alive(i.PID) {
 			RemovePid()
 			RemoveLock()
@@ -526,7 +526,7 @@ func stopViaHTTP(i *Info) (int, error) {
 	if resp.StatusCode != 200 {
 		return 0, i18n.E("the proxy refused the stop request (HTTP {code})", i18n.A{"code": resp.StatusCode})
 	}
-	for k := 0; k < 40; k++ { // 最多等 2s
+	for k := 0; k < 40; k++ { // wait at most 2s
 		if !Alive(i.PID) {
 			RemovePid()
 			RemoveLock()

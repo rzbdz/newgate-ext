@@ -38,9 +38,9 @@ const (
 // Settings is this machine's role and pull parameters (the config_share key of state.json).
 type Settings struct {
 	Role            string `json:"role,omitempty"`             // host | client
-	Endpoint        string `json:"endpoint,omitempty"`         // 可拉取的 endpoint，不是"宿主的 ssh 地址"
+	Endpoint        string `json:"endpoint,omitempty"`         // pull endpoint, not the ssh address
 	IntervalSeconds int    `json:"interval_seconds,omitempty"` // 0 = DefaultInterval
-	AutoPull        *bool  `json:"auto_pull,omitempty"`        // nil = 开
+	AutoPull        *bool  `json:"auto_pull,omitempty"`        // nil = on
 }
 
 // IsClient means this machine is a replica (it pulls config).
@@ -82,7 +82,7 @@ func LoadSettings() (Settings, error) {
 	raw, err := ioutil.ReadFile(paths.StateFile())
 	if err != nil {
 		if os.IsNotExist(err) {
-			return s, nil // 还没有 state.json = 没在用
+			return s, nil // no state.json yet = not in use
 		}
 		return s, err
 	}
@@ -123,7 +123,7 @@ type State struct {
 	// The secrets channel's own ledger. The two generations are separate: merged, every
 	// provider edit would look like a secrets change and break "idle is fully silent".
 	SecretsGen     int       `json:"secrets_generation,omitempty"`
-	SecretsApplied string    `json:"secrets_applied,omitempty"` // secrets.json 的 sha256
+	SecretsApplied string    `json:"secrets_applied,omitempty"` // sha256 of secrets.json
 	SecretsAt      time.Time `json:"secrets_at,omitempty"`
 
 	// Failure bookkeeping. Used by log suppression (no flooding) and config status.
@@ -208,7 +208,7 @@ func writeFileAtomic(path string, data []byte, mode os.FileMode) error {
 	tmp := f.Name()
 	defer func() {
 		if tmp != "" {
-			_ = os.Remove(tmp) // 提前返回时别留垃圾
+			_ = os.Remove(tmp) // do not leave litter behind on an early return
 		}
 	}()
 	if _, err := f.Write(data); err != nil {
@@ -225,6 +225,6 @@ func writeFileAtomic(path string, data []byte, mode os.FileMode) error {
 	if err := os.Rename(tmp, path); err != nil {
 		return err
 	}
-	tmp = "" // rename 成功，别再删
+	tmp = "" // rename succeeded, do not delete it any more
 	return nil
 }

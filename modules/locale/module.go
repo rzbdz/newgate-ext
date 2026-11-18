@@ -12,11 +12,12 @@ import (
 	"github.com/rzbdz/newgate/lib/i18n"
 )
 
-// TypeInfra 是这个模块在图里的分类标签（内核不定义取值，产品自己填）。
+// TypeInfra is this module's classification tag in the graph (the kernel does not define the
+// values; the product fills them in).
 const TypeInfra = "infra"
 
-// service 是端口的实现：它只持有「这次解析出来的结果」，不持有目录——目录在
-// lib/i18n 那一层（谁都能查，不必拿到端口）。
+// service is the port's implementation: it holds only "the result resolved this run", not the
+// catalogs -- those live in the lib/i18n layer (anyone can look them up, no need to take the port).
 type service struct {
 	lang      string
 	requested string
@@ -28,14 +29,16 @@ func (s *service) Requested() string      { return s.requested }
 func (s *service) Source() Source         { return s.source }
 func (s *service) Available() []i18n.Info { return i18n.Available() }
 
-// New 装配语言这件事。
+// New assembles the language thing.
 //
-// 依赖方向：**只依赖 confighook**（登记 state.json 字段必须走它的端口，与
-// plugin-manager 同款），加一条对界面的弱依赖（有界面就把 `newgate lang` 与那行
-// status 挂上去，没界面就跳过——本模块最重要的工作「装目录」不依赖任何东西）。
+// Dependency direction: **only confighook** (registering a state.json field must go through its
+// port, same as plugin-manager), plus one weak dependency on the UI (with a UI, hang `newgate lang`
+// and that status line up; without one, skip -- this module's most important job, "install the
+// catalogs", depends on nothing).
 //
-// 它必须**可摘**：摘掉之后 lib/i18n 里没有目录，每句话原样输出源语言文本，
-// 进程照常（`app/matrix_test.go` 的摘除矩阵会真的摘一次）。
+// It must be **removable**: with it gone lib/i18n has no catalogs, every sentence comes out as the
+// source-language text, and the process carries on (the removal matrix in `app/matrix_test.go`
+// really does remove it once).
 func New() modules.Component {
 	svc := &service{}
 	var releases []modules.Release
@@ -47,8 +50,9 @@ func New() modules.Component {
 		Type: TypeInfra,
 		Requires: []modules.Requirement{
 			modules.Optional(cliapi.Capability),
-			// web 界面：在就把「语言」那张卡挂上去（见 view.go），不在就跳过。
-			// 与 CLI 那条同为**弱依赖**——本模块最重要的工作「装目录」谁也不依赖。
+			// Web UI: if present, hang the "language" card up (see view.go); if not, skip.
+			// Like the CLI one this is a **weak dependency** -- this module's most important job,
+			// "install the catalogs", depends on nothing.
 			modules.Optional(viewapi.Capability),
 			modules.Need(confighookapi.ConfigHooksCapability),
 		},
@@ -66,15 +70,15 @@ func New() modules.Component {
 			if err != nil {
 				return err
 			}
-			// 磁盘覆盖：`$NEWGATE_HOME/locale/<tag>.json` 能改内置译文里的任何一条，
-			// 不必重新编译（同 mappings/ 那条路子）。
+			// Disk overrides: `$NEWGATE_HOME/locale/<tag>.json` can change any built-in translation,
+			// without recompiling (the same route as mappings/).
 			eff, err := i18n.Install(req.Tag, led, cats, i18n.OverlayDir(paths.Root()))
 			if err != nil {
 				return err
 			}
 			svc.lang, svc.requested, svc.source = eff, i18n.Normalize(req.Tag), req.Source
 
-			// web 界面：登记那张语言卡（`newgate lang` 的等价物，见 view.go）。
+			// Web UI: register that language card (the equivalent of `newgate lang`, see view.go).
 			if v, ok := modules.Get(ctx, viewapi.Capability); ok {
 				rel, err := registerView(v)
 				if err != nil {
@@ -85,7 +89,7 @@ func New() modules.Component {
 
 			cli, ok := modules.Get(ctx, cliapi.Capability)
 			if !ok {
-				return nil // 没装界面：语言照常生效，只是没有入口
+				return nil // no UI installed: the language still applies, there is just no entry point
 			}
 			cmd := &command{svc: svc}
 			for _, reg := range []func() (modules.Release, error){

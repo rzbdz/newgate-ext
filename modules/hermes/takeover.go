@@ -12,24 +12,28 @@ import (
 	"github.com/rzbdz/newgate/lib/i18n"
 )
 
-// 本文件是 **hermes 的接管**：改写 `$HERMES_HOME/config.yaml`，把它指到本地代理。
+// This file is **hermes' takeover**: rewriting `$HERMES_HOME/config.yaml` to point at the local
+// proxy.
 //
-// 与 codex 同一种机制（MechConfig）：hermes 的模型与 provider 只认那份 YAML，没有
-// 环境变量入口。写什么见 plan.go；怎么写（字节手术 + hermes 自己的解析器复核）见
-// yamledit.go 与 verify.go。这里只管顺序：
+// The same mechanism as codex (MechConfig): hermes' models and providers honor only that YAML,
+// with no environment-variable entry. What to write is in plan.go; how to write it (byte
+// surgery + an agreement check by hermes' own parser) is in yamledit.go and verify.go. Here it
+// is only the order:
 //
-//	读原文 → 算改动 → 手术 → 复核 → 备份 → 写之前再读一次（没被别人改过）→ 原子写
+//	read the original → compute the edits → surgery → check → back up → read once more
+//	before writing (nobody else changed it) → atomic write
 
-// Takeover 是交给 confighook 的那份接管。没有字段：要用到的值都在 Apply 那一刻现算
-// （理由见 codex 的 Takeover）。
+// Takeover is the takeover handed to confighook. No fields: every value needed is computed at
+// the moment of Apply (same reason as codex's Takeover).
 type Takeover struct{}
 
 var _ agentapi.ConfigTakeover = Takeover{}
 
 func (Takeover) Targets() []string { return []string{ConfigPath()} }
 
-// IsTakenOver 判据是 `providers.newgate` 那一行在不在，不是「文件里出现过 newgate」：
-// 后者会被用户自己起的名字命中（理由同 codex 的 IsTakenOver）。
+// IsTakenOver's criterion is whether the `providers.newgate` line exists, not "newgate appears
+// somewhere in the file": the latter would be hit by a name the user chose themselves (same
+// reason as codex's IsTakenOver).
 func (Takeover) IsTakenOver(target string) bool {
 	b, err := ioutil.ReadFile(target)
 	if err != nil {
@@ -43,8 +47,9 @@ func hasMarker(b []byte) bool {
 	return ok
 }
 
-// Apply 完整接管一次。找不到文件时**不创建**（hermes 第一次运行时自己会写一份；
-// 没有 = 这台机器上没跑过 hermes，那是该说出来的事）。
+// Apply performs one complete takeover. When the file is missing it is **not created** (hermes
+// writes one itself on first run; missing = hermes never ran on this machine, and that is
+// something to say out loud).
 func (Takeover) Apply(port int) ([]*agentapi.TakeoverReport, error) {
 	if _, err := os.Stat(ConfigPath()); err != nil {
 		return []*agentapi.TakeoverReport{(&result{File: ConfigPath(), Missing: true}).report()}, nil
@@ -60,17 +65,19 @@ func (Takeover) Apply(port int) ([]*agentapi.TakeoverReport, error) {
 	return []*agentapi.TakeoverReport{rep.report()}, err
 }
 
-// Restore 把接管碰过的每一处放回**原件里的样子**，其余的不动。
+// Restore puts every place takeover touched back the way it was **in the original**, leaving
+// the rest alone.
 //
-// # 为什么不是整份文件换回去（codex 是）
+// # Why not swap the whole file back (codex does)
 //
-// hermes 会自己写这份文件：`/model … --global`、`hermes config set`、`hermes setup`、
-// 版本迁移都会落盘。接管之后这些改动是用户的；整份换回原件，等于把接管期间他在
-// hermes 里改过的一切都丢掉——而 `newgate off hermes` 的承诺只是「把 newgate 拿掉」。
-// 所以按路径还原：接管写过的那几处取原件的值（原件里没有就删掉），我们的
-// `providers.newgate*` 删掉，别的一个字节都不碰。同样经过 hermes 的解析器复核。
+// hermes writes this file itself: `/model … --global`, `hermes config set`, `hermes setup` and
+// version migrations all land on disk. After takeover those changes belong to the user; swapping
+// the whole file back would discard everything he changed in hermes during the takeover -- and
+// `newgate off hermes` only promises "take newgate out". So restore by path: the places takeover
+// wrote take their values from the original (removed if absent there), our `providers.newgate*`
+// is removed, and not one other byte is touched. It goes through hermes' parser check too.
 //
-// 原件不在（从没接管过）= 无事发生，不是错误。
+// No original (never taken over) = nothing happens, not an error.
 func (Takeover) Restore() ([]string, error) {
 	target := ConfigPath()
 	orig, err := ioutil.ReadFile(agentapi.OriginalPath(target))
@@ -79,7 +86,8 @@ func (Takeover) Restore() ([]string, error) {
 	}
 	cur, err := ioutil.ReadFile(target)
 	if err != nil {
-		// 文件没了（用户删了 hermes 的配置）：原件就是我们手上唯一一份，原样放回。
+		// The file is gone (the user deleted hermes' config): the original is the only copy we
+		// have, so put it back as is.
 		done, err := agentapi.RestoreFile(target)
 		if err != nil || !done {
 			return nil, err
@@ -117,15 +125,17 @@ func restoreErr(target string, err error) error {
 		i18n.A{"file": target, "err": err, "orig": agentapi.OriginalPath(target)})
 }
 
-// result 是一次改写的账：改了哪几处、谁复核的、哪些东西没能列进去。
+// result is the account of one rewrite: which places changed, who checked it, and what could
+// not be listed.
 type result struct {
 	File    string
 	Changes []string
 	Parser  string
 	Skipped []string
-	// Missing 文件不在（没跑过 hermes）。
+	// Missing the file is absent (hermes never ran).
 	Missing bool
-	// Paths 真的改了的那些路径（判断要不要重启网关用，见 gateway.go）。
+	// Paths the paths that really changed (used to decide whether the gateway needs a restart,
+	// see gateway.go).
 	Paths [][]string
 }
 
@@ -146,9 +156,9 @@ func (r *result) report() *agentapi.TakeoverReport {
 	return rep
 }
 
-// rewriteFile 是 Apply 与后台同步共用的那条写路径。backup = 这一次要不要留一份带
-// 时间戳的快照（完整接管要；后台同步不要——它可能一天跑很多次，会把有用的快照挤掉，
-// 而它只碰我们自己那几行）。
+// rewriteFile is the write path shared by Apply and background sync. backup = whether to keep a
+// timestamped snapshot this time (full takeover: yes; background sync: no -- it may run many
+// times a day and would push out the useful snapshots, and it touches only our own lines).
 func rewriteFile(target string, backup bool, plan func(*doc) ([]edit, catalog)) (*result, error) {
 	res := &result{File: target}
 	raw, err := ioutil.ReadFile(target)
@@ -176,7 +186,8 @@ func rewriteFile(target string, backup bool, plan func(*doc) ([]edit, catalog)) 
 		return res, nil
 	}
 	out := d.String()
-	// 复核的是**全部**改动而不只是变了的那些：没变的那几处也必须在结果里是想要的值。
+	// What is checked is **all** edits, not only the changed ones: the unchanged places must
+	// also hold the intended values in the result.
 	v, err := verifyEdits(string(raw), out, edits, "")
 	if err != nil {
 		return res, i18n.Ef(err, "refusing to write {file}: {err}", i18n.A{"file": target, "err": err})
@@ -190,9 +201,10 @@ func rewriteFile(target string, backup bool, plan func(*doc) ([]edit, catalog)) 
 	return res, writeIfUnchanged(target, raw, []byte(out))
 }
 
-// writeIfUnchanged 写之前再读一次：这期间 hermes 自己写过这份文件（`/model --global`
-// 就会），就**不写**——我们手上那份改动是按旧内容算的，写下去等于把它刚写的东西
-// 覆盖掉。报一句话，下一次再来（后台同步会自己重试，CLI 重敲一次即可）。
+// writeIfUnchanged reads once more before writing: if hermes wrote this file itself in the
+// meantime (`/model --global` will), **do not write** -- our edits were computed against the old
+// content, and writing would overwrite what it just wrote. Report a line and come back later
+// (background sync retries by itself; on the CLI, run the command again).
 func writeIfUnchanged(target string, base, out []byte) error {
 	now, err := ioutil.ReadFile(target)
 	if err != nil || !bytes.Equal(now, base) {
@@ -202,7 +214,8 @@ func writeIfUnchanged(target string, base, out []byte) error {
 	return agentapi.WriteAtomic(target, out, 0o600)
 }
 
-// describe 一处改动写成给人看的一行（值里的密钥不会出现：我们写的只有占位值）。
+// describe one edit written as a line for the user (secrets never appear in the value: we only
+// write the placeholder).
 func describe(e edit) string {
 	p := strings.Join(e.Path, ".")
 	switch v := e.Value.(type) {
@@ -216,11 +229,12 @@ func describe(e edit) string {
 	}
 }
 
-// currentInputs 问出这一刻该写的全部事实。
+// currentInputs asks for all the facts to write at this moment.
 //
-// newgate 自己的配置读不出来时**返回错误，不返回一份空清单**：空清单算出来的改动是
-// 「把每一份 profile 那一行都删掉」——一次手误改坏 providers.json，后台同步就会把
-// hermes 里能选的模型清空。读不出来 = 这一轮什么都不做。
+// When newgate's own config cannot be read, **return an error, not an empty list**: edits
+// computed from an empty list mean "delete the line of every profile" -- one typo corrupting
+// providers.json and background sync wipes out every model selectable in hermes. Unreadable =
+// do nothing this round.
 func currentInputs(port int) (inputs, error) {
 	in := inputs{Port: port, Tiers: map[string]string{}}
 	for _, s := range Agent().Slots {
@@ -233,8 +247,9 @@ func currentInputs(port int) (inputs, error) {
 	}
 	in.Active = snap.State.ActiveFor(ID)
 	in.Profiles = append([]*domain.Profile(nil), snap.Profiles...)
-	// store.Load 跳过读不出来的 profile（坏一份不挡别的）。对我们来说「读不出来」
-	// ≠「没有」：那一行留着别动，等它修好了再同步（见 catalogEdits）。
+	// store.Load skips unreadable profiles (one bad one does not block the rest). To us
+	// "unreadable" != "absent": leave that line alone and sync once it is fixed (see
+	// catalogEdits).
 	if names, err := store.ListProfiles(); err == nil {
 		loaded := map[string]bool{}
 		for _, p := range snap.Profiles {
@@ -249,7 +264,7 @@ func currentInputs(port int) (inputs, error) {
 	return in, nil
 }
 
-// syncCatalog 把 /model 的清单同步一次（后台、命令行、卡片三处共用）。
+// syncCatalog syncs the /model list once (shared by background, command line and the card).
 func syncCatalog() (*result, error) {
 	in, err := currentInputs(proxyPort())
 	if err != nil {
@@ -258,7 +273,8 @@ func syncCatalog() (*result, error) {
 	return rewriteFile(ConfigPath(), false, func(d *doc) ([]edit, catalog) { return catalogEdits(d, in) })
 }
 
-// proxyPort 是接管要写进 base_url 的端口，与命令行同一个来源（理由见 codex 的 proxyPort）。
+// proxyPort is the port takeover writes into base_url, from the same source as the command line
+// (same reason as codex's proxyPort).
 func proxyPort() int {
 	if st := store.LoadState(); st != nil && st.Port != 0 {
 		return st.Port

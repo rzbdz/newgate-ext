@@ -55,7 +55,7 @@ var textBodies = map[string]bool{
 	"text/css":                 true,
 	"text/javascript":          true,
 	"application/javascript":   true,
-	"application/x-javascript": true, // 老一点的服务器还在发这个
+	"application/x-javascript": true, // older servers still send this
 }
 
 // shouldRewrite says whether this response should be rewritten.

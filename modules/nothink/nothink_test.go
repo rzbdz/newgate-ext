@@ -8,11 +8,12 @@ import (
 	"github.com/rzbdz/newgate-ext/modules/gateway/special"
 )
 
-// stub 是内核那个端口的替身。
+// stub is the stand-in for the kernel's port.
 //
-// 本模块**只该委托**：「没写 thinking 就补 disabled」「模型关不掉思考就翻成
-// enabled + low」那两手的语义住内核 modules/thinking，它自己那几条测试管着。
-// 这里验的是委托发生了、以及发生在我们改写之后的 body 上。
+// This module **should only delegate**: the semantics of "add disabled when no thinking was
+// written" and "translate to enabled + low when the model cannot turn thinking off" live in the
+// kernel's modules/thinking, guarded by its own tests. What is verified here is that the delegation
+// happens, and that it happens on the body after our rewrite.
 type stub struct{ calls int }
 
 func (s *stub) BestEffortDisable(body []byte, _ *special.Request) ([]byte, []string, error) {
@@ -31,10 +32,11 @@ func request(path, config string) *special.Request {
 	return r
 }
 
-// TestParse 走的是**写进去再读出来**，不是手写 JSON：这个结构里最容易错的一处是
-// 字段标签（`expires_at` ↔ ExpiresAt），而两边各写一份字面量的话，标签错了测试
-// 照样绿——它比的是两个同样错的东西。现场那次（classifier_naked，2026-09-17）
-// 的症状就是「开关永远不生效」。
+// TestParse goes **write in, read back**, not hand-written JSON: the easiest thing to get wrong in
+// this struct is the field tag (`expires_at` ↔ ExpiresAt), and with a literal written on each side,
+// a wrong tag still leaves the test green -- it compares two things that are wrong the same way.
+// The field case's symptom (classifier_naked, 2026-09-17) was exactly "the switch never takes
+// effect".
 func TestParse(t *testing.T) {
 	marshal := func(c Config) string {
 		raw, err := Marshal(c)
@@ -67,9 +69,9 @@ func TestParse(t *testing.T) {
 	}
 }
 
-// TestApply 是本模块的全部行为：开关开着的时候，客户端的思考意图被覆盖成 disabled
-// （Claude Code 主循环发的是 adaptive，见包注释里的现场 dump），其余每一种情况
-// 都必须**一个字节都不动**。
+// TestApply is this module's entire behavior: while the switch is on, the client's thinking intent
+// is overridden to disabled (Claude Code's main loop sends adaptive, see the field dump in the
+// package comment), and every other case must **touch not one byte**.
 func TestApply(t *testing.T) {
 	const (
 		forever  = `{"mode":"forever"}`
@@ -143,7 +145,7 @@ func TestApply(t *testing.T) {
 			if got := s.calls > 0; got != c.delegate {
 				t.Errorf("the delegated kernel half = %v, want %v", got, c.delegate)
 			}
-			// 不静默：改写了就必须留下一条 note（它会被写进日志）。
+			// Not silent: a rewrite must leave a note (it goes into the log).
 			if rewritten := string(out) != c.body; rewritten && len(notes) == 0 {
 				t.Error("it rewrote the request but left no note - the user has no way to know what was done to their request")
 			}

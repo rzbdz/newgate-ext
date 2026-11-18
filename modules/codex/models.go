@@ -174,7 +174,7 @@ func effectiveModels() []modelTier {
 	out := make([]modelTier, 0, len(m.Models))
 	for _, e := range m.Models {
 		if e.Slug == "" || e.Tier == "" {
-			continue // 半截的行：界面上加了一半就保存，不该产出一个匹配不上的角色
+			continue // half-filled row: saved midway in the UI, must not yield an unmatchable role
 		}
 		out = append(out, e)
 	}

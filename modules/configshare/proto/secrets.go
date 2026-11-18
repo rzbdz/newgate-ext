@@ -24,7 +24,7 @@ const SecretsFormat = 1
 // SecretsFile is secrets.json's on-disk shape.
 type SecretsFile struct {
 	Version int               `json:"version"`
-	Keys    map[string]string `json:"keys"` // provider 名 → 明文 key
+	Keys    map[string]string `json:"keys"` // provider name → plaintext key
 }
 
 // LoadSecretsFile reads the secrets file. Missing returns an empty table (**not an

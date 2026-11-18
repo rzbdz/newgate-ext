@@ -1,36 +1,38 @@
-// Package nothink 是「全局不思考」开关：`newgate nothink on|forever|off`。
+// Package nothink is the "globally do not think" switch: `newgate nothink on|forever|off`.
 //
-// # 它是什么
+// # What it is
 //
-// 一条**用户显式打开**的产品策略：开着的时候，每一条 Anthropic 方言的请求在发往
-// 上游之前都被写上 `thinking:{"type":"disabled"}`——**包括客户端自己写着
-// adaptive / enabled 的那些**。后面这半句是这个开关成不成立的关键：Claude Code
-// 的主循环每一条请求都带 `thinking:{"type":"adaptive"}`（2026-09-29 的现场 dump
-// err-400-req000010：stream=true、28 个 tools、model=heavy），尊重客户端意图
-// （内核 claude-bg 那条规矩）在这里就等于什么都不做。
+// A product policy **the user turns on explicitly**: while on, every Anthropic-dialect request gets
+// `thinking:{"type":"disabled"}` written into it before going upstream -- **including the ones the
+// client itself wrote adaptive / enabled into**. That second half is the key to whether this switch
+// holds up: Claude Code's main loop carries `thinking:{"type":"adaptive"}` on every request (the
+// 2026-09-29 field dump err-400-req000010: stream=true, 28 tools, model=heavy), and respecting the
+// client's intent (the kernel's claude-bg rule) would here mean doing nothing at all.
 //
-// # 为什么是 best effort
+// # Why it is best effort
 //
-// 有的模型关不掉思考：GLM 1210「该模型始终思考，不支持关闭思考」、kimi
-// 「only type=enabled is allowed」。对它们，「不想思考」唯一能落地的最小形态是
-// `enabled` + `reasoning_effort:"low"`；翻不动就原样发出去。这一手的语义**只有
-// 一份**，住内核 `modules/thinking`（BestEffortDisable，连着 quirk 表与探活缓存
-// 一起）：本模块只表达「全局都别思考」这个意图，怎么翻是模型那一侧的事，
-// 所以这里一行模型知识都没有。
+// Some models cannot have thinking turned off: GLM 1210 ("this model always thinks; turning
+// thinking off is not supported"), kimi ("only type=enabled is allowed"). For them, the minimal
+// form that lands "do not want to think" is `enabled` + `reasoning_effort:"low"`; when it cannot be
+// translated, send it as is. The semantics of that move exist in **exactly one copy**, in the
+// kernel's `modules/thinking` (BestEffortDisable, together with the quirk table and the probe
+// cache): this module expresses only the intent "nobody thinks, globally", and how it is translated
+// is the model side's business -- so there is not one line of model knowledge here.
 //
-// # 为什么只认 Anthropic 方言
+// # Why only the Anthropic dialect is recognized
 //
-// `thinking` 是那一套协议里的字段。OpenAI 方言的客户端（opencode / codex）
-// **压根没有这个字段可写**——替它们补 disabled 的现场是「deepseek 不思考了」
-// （2026-09-15，见 modules/claudecode_glm 的注释）。所以这里按**方言**认领
-// （`r.Path`，判据 domain.IsAnthropicPath），不按客户端：谁说的是这套方言，
-// 谁就被这条开关覆盖。
+// `thinking` is a field in that protocol. OpenAI-dialect clients (opencode / codex) **have no such
+// field to write at all** -- filling in disabled for them is the "deepseek stopped thinking" field
+// report (2026-09-15, see the comment in modules/claudecode_glm). So this claims by **dialect**
+// (`r.Path`, criterion domain.IsAnthropicPath), not by client: whoever speaks this dialect is
+// covered by this switch.
 //
-// # 它为什么住在发行版
+// # Why it lives in the distribution
 //
-// 它不是「修上游怪癖」（那是模型模块的事），是一条**产品取舍**：用户愿意用
-// 「这轮不推理」换钱和等待。所以默认全程关、必须显式打开，开着的时候
-// `newgate status` 一直打出来（不静默），随时 `newgate nothink off` 收手。
+// It is not "fixing an upstream quirk" (that is the model module's job), it is a **product
+// trade-off**: the user is willing to trade "no reasoning this round" for money and waiting. So it
+// is off by default throughout, must be turned on explicitly, and while on, `newgate status` keeps
+// printing it (not silent), with `newgate nothink off` to stop at any time.
 package nothink
 
 import (
@@ -44,20 +46,22 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// Name 是这个模块在装配表与 `newgate plugin` 里的名字（= 目录名），
-// 也是 state.json 里那一格的键（见 StateKey）。
+// Name is this module's name in the assembly table and in `newgate plugin` (= the directory name),
+// and also the key of that cell in state.json (see StateKey).
 const Name = "nothink"
 
-// New 声明这个组件。四条依赖各自的理由：
+// New declares this component. The reason for each of the four dependencies:
 //
-//   - gateway（Need）：插件挂在 special 链上，改的是请求体；
-//   - thinking（Need）：翻译那一半住内核，本模块不重造（见包注释）；
-//   - config-hook（Need）：往 state.json 里占下 "nothink" 这一格（同
-//     classifier_naked）。两个模块抢同一个键在**注册期**就该被拒，
-//     而不是看谁后写谁赢；
-//   - cli（Optional）：`newgate nothink` 是这条策略的入口。界面不在的装配里
-//     （只有网页那一份）本模块照常装着、策略照常生效，只是没有命令能改它
-//     ——业务模块不依赖任何 ui 那条规矩在这里的意思是「不装界面也能活」。
+//   - gateway (Need): the plugin hangs on the special chain and changes the request body;
+//   - thinking (Need): the translating half lives in the kernel, and this module does not rebuild
+//     it (see the package comment);
+//   - config-hook (Need): claim the "nothink" cell in state.json (same as
+//     classifier_naked). Two modules fighting over the same key should be rejected at
+//     **registration time**, not settled by who writes last;
+//   - cli (Optional): `newgate nothink` is this policy's entrance. In an assembly without a UI
+//     (the web-only one), this module still installs and the policy still takes effect, there is
+//     just no command to change it -- "a business module depends on no ui" here means "it lives
+//     without the UI installed".
 func New() modules.Component {
 	var releases []modules.Release
 	return modules.Component{
@@ -65,7 +69,8 @@ func New() modules.Component {
 		Desc: func() string {
 			return i18n.T("a global no-reasoning switch, best effort (newgate nothink on|forever|off)", nil)
 		},
-		// 与内核的 modules/thinking 同一类：它是一条与模型家族无关的思考策略。
+		// Same class as the kernel's modules/thinking: it is a thinking policy unrelated to any model
+		// family.
 		Type: "model",
 		Requires: []modules.Requirement{
 			modules.Need(gatewayapi.Capability),

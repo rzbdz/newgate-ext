@@ -33,7 +33,7 @@ func signatures() []quirk.Signature {
 		Any: []string{
 			// Zhipu GLM, code 1210.
 			"does not support disabling thinking",
-			"始终思考",               // 同上，措辞变体
+			"始终思考",               // same as above, wording variant
 			"cannot be disabled", // deepseek: thinking options type cannot be disabled…
 			"does not support disabling thinking",
 			"thinking cannot be turned off",

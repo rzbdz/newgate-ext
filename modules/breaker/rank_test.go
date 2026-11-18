@@ -51,7 +51,7 @@ func TestRankThresholdsMatchTheScore(t *testing.T) {
 // the nearest neighbor first, instead of treating it as unknown outright.
 func TestScoreFallsBackToNearestBucket(t *testing.T) {
 	b, _ := clocked()
-	b.ObserveSuccess("relay", "m", 1024, 2*time.Second) // 档位 0
+	b.ObserveSuccess("relay", "m", 1024, 2*time.Second) // tier 0
 
 	if got := b.Score("relay", "m", 1); got != 2000 {
 		t.Fatalf("the same tier should hit directly: %d", got)

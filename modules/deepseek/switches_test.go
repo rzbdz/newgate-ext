@@ -107,7 +107,7 @@ func TestSwitchesAreIndividuallyDisableable(t *testing.T) {
 // Old callers (unit tests, code building Request directly) often have a nil State.
 func TestNilStateMeansEveryHandRuns(t *testing.T) {
 	seedCache("t1", seededReasoning)
-	r := claudeReq("deepseek-flash") // 注意：不设 State
+	r := claudeReq("deepseek-flash") // note: State deliberately left unset
 	out, _, err := reasoning{}.Apply([]byte(threeHandsBody), r)
 	if err != nil {
 		t.Fatalf("Apply errored: %v", err)

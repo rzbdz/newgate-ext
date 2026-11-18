@@ -193,7 +193,7 @@ func TestChainDedup(t *testing.T) {
 		{Name: "b", Priority: prio(20), Roles: map[string]domain.Candidates{"h": list("pA/m", "pC/m")}},
 	}
 	steps, _ := BuildChain("h", ps, mkProvs("pA", "pB", "pC"), Opts{Active: "a"})
-	eq(t, names(steps), "a:pA/m", "a:pB/m", "b:pC/m") // b:pA/m 被去重
+	eq(t, names(steps), "a:pA/m", "a:pB/m", "b:pC/m") // b:pA/m is deduplicated
 }
 
 // ---------- pinned / excluded ----------
@@ -228,7 +228,7 @@ func TestExcludedNotAutoSelected(t *testing.T) {
 	}
 	provs := mkProvs("pA", "pB")
 	steps, _ := BuildChain("h", ps, provs, Opts{Active: "normal"})
-	eq(t, names(steps), "normal:pA/m1") // pricey 优先级更高但被 excluded
+	eq(t, names(steps), "normal:pA/m1") // pricey has higher priority but is excluded
 
 	// when explicitly selected, excluded does not block the chain head
 	steps, _ = BuildChain("h", ps, provs, Opts{Active: "pricey"})
@@ -279,7 +279,7 @@ func TestMissingProviderOrKeyIsSkippedNotFatal(t *testing.T) {
 	ps := []*domain.Profile{{Name: "a", Roles: map[string]domain.Candidates{
 		"h": list("ghost/m0", "nokey/m1", "good/m2")}}}
 	provs := &domain.Providers{Providers: map[string]domain.Provider{
-		"nokey": {BaseURL: "http://x"}, // 没 key
+		"nokey": {BaseURL: "http://x"}, // no key
 		"good":  {BaseURL: "http://x", APIKey: "sk-ok"},
 	}}
 	steps, skips := BuildChain("h", ps, provs, Opts{Active: "a"})

@@ -44,7 +44,7 @@ func usageText(service *service) string {
 		for _, c := range service.commands.All() {
 			doc, ok := c.(Documented)
 			if !ok {
-				continue // 可选接口：没声明就不占一行，但仍然能用
+				continue // optional interface: undeclared means no line, but it still works
 			}
 			line := doc.Help()
 			if line.Usage == "" {

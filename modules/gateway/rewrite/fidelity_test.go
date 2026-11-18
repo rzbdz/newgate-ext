@@ -6,9 +6,9 @@ import (
 	"testing"
 )
 
-// compact 去掉无意义空白，便于做语义比对。
-// RawMessage 保留原始字节但 Marshal 会压缩空白——空白不影响语义，
-// 数字字面量和 key 顺序才影响，而那两样是我们要守住的。
+// compact strips meaningless whitespace to make semantic comparison easy.
+// RawMessage keeps the raw bytes but Marshal compresses whitespace - whitespace does not
+// affect semantics; number literals and key order do, and those two are what we must hold.
 func compact(b []byte) string {
 	var buf bytes.Buffer
 	if err := json.Compact(&buf, b); err != nil {
@@ -17,7 +17,8 @@ func compact(b []byte) string {
 	return buf.String()
 }
 
-// rewriteModel 复现代理对请求体做的唯一改动，用于断言忠实性。
+// rewriteModel reproduces the only change the proxy makes to a request body, to assert
+// fidelity.
 func rewriteModel(body []byte, newModel string) ([]byte, error) {
 	var payload map[string]json.RawMessage
 	if err := json.Unmarshal(body, &payload); err != nil {
@@ -31,8 +32,8 @@ func rewriteModel(body []byte, newModel string) ([]byte, error) {
 	return json.Marshal(payload)
 }
 
-// 真实的 opencode 请求形状：深层嵌套 tool schema、大整数、空数组、null、
-// 转义字符、Unicode。这些都是 interface{} 往返会破坏的东西。
+// A real opencode request shape: deeply nested tool schemas, big integers, empty arrays,
+// nulls, escapes, Unicode. These are exactly what an interface{} round trip destroys.
 const realistic = `{
   "model": "heavy",
   "max_tokens": 1000000,
@@ -95,15 +96,16 @@ func TestOnlyModelChanges(t *testing.T) {
 			}
 			continue
 		}
-		// 其余每个顶层值必须语义完全相同（含数字字面量与 key 顺序）
+		// Every other top-level value must be semantically identical (including number literals
+		// and key order)
 		if compact(v) != compact(g) {
 			t.Errorf("key %q was changed:\n original: %s\n now: %s", k, v, g)
 		}
 	}
 }
 
-// 明确记录：如果用 map[string]interface{} 往返，上面那些值会被破坏。
-// 这个测试证明我们没走那条路。
+// Recorded explicitly: a map[string]interface{} round trip would destroy those values.
+// This test proves we did not take that road.
 func TestInterfaceRoundTripWouldCorrupt(t *testing.T) {
 	var viaIface map[string]interface{}
 	if err := json.Unmarshal([]byte(realistic), &viaIface); err != nil {

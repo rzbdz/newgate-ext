@@ -39,7 +39,7 @@ const (
 // the global default. `profile` is the one actually used after resolution. That difference
 // is the whole reason for this screen: "who runs now" and "does it follow the default".
 type scope struct {
-	id      string // "" = 全局
+	id      string // "" = global
 	label   string
 	profile string
 	stored  string
@@ -51,7 +51,7 @@ type model struct {
 	names   []string
 	scopes  []scope
 
-	focus      int // 0 = 左栏（客户端/全局），1 = 右栏（profile）
+	focus      int // 0 = left column (client/global), 1 = right column (profile)
 	scopeCur   int
 	profileCur int
 	msg        string

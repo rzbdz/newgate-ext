@@ -11,25 +11,28 @@ import (
 	"github.com/rzbdz/newgate/lib/i18n"
 )
 
-// switchStatus 把本模块的开关（schema 修补、special 层、fallback 链、debug）
-// 报给 `newgate status`。
+// switchStatus reports this module's switches (schema repair, special layer, fallback chain,
+// debug) to `newgate status`.
 //
-// **为什么由 gateway 自己报、而不是让 cli 读 state**：这些键现在住在
-// state.json 的 ModuleConfig["gateway"] 里（见 gatewaystate 的包说明），
-// 是 gateway 自己的词汇；cli 若为了这一行去解析它们，就等于换了个地方
-// 继续认识 gateway 的内部结构。谁的状态谁自己报——与 plugin-manager 报
-// 它那份开关账本是同一个口（RegisterStatus）。
+// **Why gateway reports it itself instead of letting the cli read state**: these keys now live
+// in state.json's ModuleConfig["gateway"] (see the gatewaystate package comment) and are
+// gateway's own vocabulary; if the cli parsed them for this row it would just be getting to
+// know gateway's internals somewhere else. Whoever owns the state reports it - the same port
+// as plugin-manager reporting its switch ledger (RegisterStatus).
 //
-// 只列**离开出厂态**的：补丁、special 层、fallback 默认都开，debug 默认关，
-// 一行「和出厂一样」不占版面也没信息量，与 status 那一屏「一眼看有没有被
-// 关掉东西」的定位一致。
+// Only those **off the factory state** are listed: patches, the special layer and fallback are
+// on by default and debug is off by default, so a line saying "same as factory" takes space
+// and carries no information, consistent with the status screen's purpose of "seeing at a
+// glance whether anything was turned off".
 //
-// **fallback=off 尤其要报**：它关掉的是「换人」这件事，症状只在**上游挂了**
-// 的时候才显形（平时请求照常 200）。用户如果忘了自己拨过这个开关，会把
-// 「没有 fallback」误读成「链上没人可换」——所以这一行是他唯一的线索。
-// status 行的位置（Rank 小的在前）。这几行在 status 那一屏上排在接管/配置之前
-// ——代理挂了所有走 newgate 的工具一起挂，所以它第一。
-const rankStatusPatch = 40 // 排在代理（10）之后
+// **fallback=off especially must be reported**: what it turns off is "changing parties", and
+// the symptom only shows **when an upstream is down** (normally requests are 200 as usual). A
+// user who forgets they flipped this switch would misread "no fallback" as "nobody on the
+// chain to switch to" - so this row is their only clue.
+// The status row's position (smaller Rank first). These rows come before takeover/config on
+// the status screen - if the proxy is down, every tool going through newgate is down with it,
+// so it comes first.
+const rankStatusPatch = 40 // sits after the proxy row (10)
 
 type switchStatus struct{}
 
@@ -38,12 +41,13 @@ var (
 	_ cliapi.Verbose        = switchStatus{}
 )
 
-// Status 见类型说明。st 为 nil 时什么都不报（快照还没装上）。
+// Status see the type note. When st is nil nothing is reported (no snapshot installed yet).
 //
-// 除了本模块自己的三个开关，这里还**代转**插件层自报的状态项
-// （special.StatusProvider）：那一层的注册表归本模块，插件是它的一部分，
-// 所以由本模块把它们端给 cli。cli 因此不必 import gateway/special 就能显示
-// 「插件说它现在是什么状态」——谁的状态谁自己报，这一层由 owner 代收。
+// Besides this module's own three switches, this also **relays** the status items plugins
+// report themselves (special.StatusProvider): that layer's registry belongs to this module and
+// plugins are part of it, so this module serves them to the cli. The cli therefore need not
+// import gateway/special to display "what a plugin says it is right now" - whoever owns the
+// state reports it, and this layer is collected by its owner.
 func (switchStatus) Status() []cliapi.StatusLine {
 	st := store.LoadState()
 	var out []cliapi.StatusLine
@@ -52,9 +56,10 @@ func (switchStatus) Status() []cliapi.StatusLine {
 	}
 
 	var parts []string
-	// 解析失败先说：那意味着**下面所有开关都是回退出来的**，不是用户当前的选择。
-	// 不报的话，用户关掉的补丁可能正被静默打开，而这一屏看起来一切正常
-	// （它读的是同一个 Parse）——见 gatewaystate.Parse 的说明。
+	// Report a parse failure first: it means **every switch below is a fallback**, not the
+	// user's current choice. Left unsaid, a patch the user turned off might be silently on
+	// while this screen looks perfectly normal (it reads the same Parse) - see the note on
+	// gatewaystate.Parse.
 	if cfg := gatewaystate.Parse(st); cfg.ParseErr != nil {
 		parts = append(parts, style.Red(i18n.T("Failed to parse the gateway section of state.json; every switch fell back to its default (the change may not have taken effect): {err}",
 			i18n.A{"err": cfg.ParseErr.Error()})))
@@ -92,10 +97,12 @@ func (switchStatus) Status() []cliapi.StatusLine {
 	return out
 }
 
-// Verbose 上报「全量请求日志开着」。
+// Verbose reports "the full request log is on".
 //
-// 界面拿它决定要不要对自己的输出做版式自检（见 cliapi.Verbose 与 modules/cli 的
-// layout_audit）：debug 开着的时候用户正在盯细节，输出对齐就是细节的一部分。
+// The UI uses it to decide whether to run a layout self-check on its own output (see
+// cliapi.Verbose and layout_audit in modules/cli): with debug on the user is watching details,
+// and output alignment is part of those details.
 //
-// 以前这个判断是界面直接读 gateway 的 state 段做的——界面认识别人的配置结构。
+// This check used to be the UI reading gateway's state section directly - the UI knowing
+// someone else's config structure.
 func (switchStatus) Verbose() bool { return gatewaystate.DebugActive(store.LoadState()) }

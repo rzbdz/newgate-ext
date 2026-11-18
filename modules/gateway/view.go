@@ -15,15 +15,15 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// 网关贡献给 web 界面的东西：**计数器**。
+// What the gateway contributes to the web UI: **counters**.
 //
-// 为什么是网关报而不是界面自己读 metrics.Default：那些计数器的名字、分组、
-// 以及每一行「这个数意味着什么」的说法，全是数据面的语义（见 metrics/hints.go）。
-// 界面自己去读那张全局表的话，它就得认识 `[shape-400]` 这类**机器标记**——
-// 那是 grep 的锚点，不是给人看的文案。
+// Why the gateway reports them instead of the UI reading metrics.Default: those counters'
+// names, groupings, and the wording of each line's "what this number means" are all data-plane
+// semantics (see metrics/hints.go). If the UI read that global table itself, it would have to
+// know **machine markers** like `[shape-400]` -- those are grep anchors, not copy for humans.
 //
-// 这里与 CLI 那边同源：`newgate metrics` 用的也是这份分组与说法（同一个
-// metrics.Group / metrics.Hint），所以两个界面上看到的东西不会各说各话。
+// This and the CLI side share a source: `newgate metrics` uses the same groupings and wording
+// (the same metrics.Group / metrics.Hint), so the two UIs cannot tell different stories.
 
 type seriesEntry struct {
 	Name  string `json:"name"`
@@ -42,23 +42,24 @@ type seriesData struct {
 	Total  uint64        `json:"total"`
 }
 
-// gatewayConcepts 是网关这一刻的展示面：计数器、代理日志的尾巴，以及
-// special_treatment 插件层的清单。
+// gatewayConcepts is the gateway's presentation surface at this moment: counters, the tail of
+// the proxy log, and the roster of the special_treatment plugin layer.
 //
-// 它被调用的时机是**有人来看界面**，不是装配——所以计数器是「现在」的，日志尾巴
-// 也是「现在」的，而不是这个进程起来那一刻的（见 lib/view 的包注释）。
+// It is called when **someone comes to look at the UI**, not at assembly -- so the counters
+// are "now", and so is the log tail, rather than what they were when this process started
+// (see the package comment in lib/view).
 //
-// 日志为什么由网关报而不是让界面自己去 tail 那个文件：日志的**行是什么**是数据面
-// 的语义（`-> provider/model`、`X-Newgate-Route`、上游原文那几行）。界面自己去读
-// 文件的话，它就得认识那些行——而它们是 grep 的锚点，不是给人看的文案（与
-// metrics 那边同一条理由）。
+// Why the gateway reports the log instead of letting the UI tail the file itself: **what the
+// lines are** is data-plane semantics (`-> provider/model`, `X-Newgate-Route`, the upstream's
+// original text lines). If the UI read the file itself, it would have to know those lines --
+// and they are grep anchors, not copy for humans (the same reason as on the metrics side).
 func gatewayConcepts() ([]view.Concept, error) {
 	return []view.Concept{
 		{
 			ID: "gateway.metrics", Kind: view.KindSeries, Title: i18n.T("Counters", nil),
 			Data: seriesGroups(),
-			// 三张都是内存里读一把（计数器快照、日志尾巴、插件表 + state.json），
-			// 所以都声明 Live：界面每隔几秒问一次，看到的就是「现在」。
+			// All three are a read from memory (counter snapshot, log tail, plugin table +
+			// state.json), so all declare Live: the UI asks every few seconds and sees "now".
 			Live: true,
 		},
 		logConcept(),
@@ -66,25 +67,28 @@ func gatewayConcepts() ([]view.Concept, error) {
 	}, nil
 }
 
-// specialConcept 是 special_treatment 插件层：哪些补丁在动请求、为什么存在、
-// 此刻是否生效。
+// specialConcept is the special_treatment plugin layer: which patches are touching requests,
+// why they exist, and whether they are in effect right now.
 //
-// **为什么它必须在 cli 那段 return 之前注册**：这一层会**改用户的请求**，而
-// `newgate st` 就是为回答「是不是 newgate 把我的请求改坏了」而存在的（见
-// command_special.go 的注释）。只装 dashboard 的装配（dist-dashboard 关掉了 cli）
-// 里那条命令根本不存在——没有这张卡，那个问题在那份发行版里没有任何答案。
+// **Why it must be registered before the cli block returns**: this layer **modifies the
+// user's request**, and `newgate st` exists precisely to answer "is newgate breaking my
+// request" (see the comment in command_special.go). In an assembly with only dashboard
+// (dist-dashboard has no cli) that command does not exist at all -- without this card, that
+// question has no answer whatsoever in that distribution.
 //
-// **它只读，这是有意的，但要说清代价**：在装了 cli 的装配里，开与关是
-// `newgate st on|off` 的事，这里只负责「看清楚」。而在**没有 cli 的那份装配里
-// 那条命令同样不存在**——那里要改只有一个办法：`config.file.state.json` 那张
-// code 卡上手工改 `ModuleConfig["gateway"]`。这个缺口是真的：可写需要一个 CAS
-// 写（store.WriteIfUnchanged + 把 StaleError 翻成 view.Conflict），那与
-// pluginmanager 把 footgun 留成只读是同一条取舍（见那边的注释），先按只读发，
-// 但别把「只读」说成「别处能改」——在那一份发行版里别处没有。
+// **It is read-only on purpose, but the price must be spelled out**: in an assembly with cli,
+// turning things on and off is `newgate st on|off`; here the job is only "see clearly". And in
+// **the assembly without cli that command does not exist either** -- the only way to change
+// anything there is to edit `ModuleConfig["gateway"]` by hand on the code card of
+// `config.file.state.json`. That gap is real: writability needs a CAS write
+// (store.WriteIfUnchanged + mapping StaleError to view.Conflict), the same trade-off as
+// pluginmanager keeping the footgun read-only (see the comment there); ship read-only first,
+// but do not say "read-only" as if it could be "changed elsewhere" -- in that distribution
+// elsewhere does not exist.
 //
-// 数据全是内存里的（插件表 + state.json），所以它跟计数器一样便宜，可以跟着
-// 界面的几秒一次刷新一起被问——与 config 那位要重读并重解析每一份 profile 的
-// 贡献者不同（见 web-dashboard 的按源刷新）。
+// The data is all in memory (plugin table + state.json), so it is as cheap as the counters and
+// can be asked along with the UI's few-second refresh -- unlike the config contributor, which
+// must re-read and re-parse every profile (see the per-source refresh in web-dashboard).
 func specialConcept() view.Concept {
 	st := store.LoadState()
 	rows := []view.Row{}
@@ -93,16 +97,18 @@ func specialConcept() view.Concept {
 		rows = append(rows, view.Row{Cells: map[string]view.Cell{
 			"state":  {Text: word, Tone: specialTone(mark)},
 			"plugin": {Text: p.Name()},
-			// 只取 Why 的第一行：完整说明常常好几行，铺进表里会把表淹掉——CLI 那边
-			// 是同一条取舍（`newgate st <插件>` 才是读全文的地方）。
+			// Take only the first line of Why: the full explanation is often several lines, and
+			// spreading it into the table drowns it -- the CLI makes the same trade-off
+			// (`newgate st <plugin>` is where the full text lives).
 			"why": {Text: strings.SplitN(p.Why(), "\n", 2)[0]},
 		}})
 	}
 	return view.Concept{
 		ID: "gateway.special", Kind: view.KindTable,
 		Title: i18n.T("Upstream quirk patches", nil),
-		// Live：开关可能在别处被拨动（`newgate st off`、改 state.json），而这张卡
-		// 的价值正是「现在哪些补丁在动我的请求」——停在打开页面那一刻不算回答。
+		// Live: the switches can be flipped elsewhere (`newgate st off`, editing state.json),
+		// and this card's value is exactly "which patches are touching my request now" --
+		// freezing at the moment the page was opened is not an answer.
 		Live: true,
 		Data: view.Table{
 			Columns: []view.Column{
@@ -117,46 +123,52 @@ func specialConcept() view.Concept {
 
 type logData struct {
 	Path string `json:"path"`
-	// Lines 是**从新到旧**还是从旧到新？从旧到新（打完的最后一行在最下面）：
-	// 日志是往下读的，把最新一行放顶上会让每次刷新都像跳了一下。
+	// Are Lines **newest first** or oldest first? Oldest first (the last line written is at
+	// the bottom): a log is read downward, and putting the newest line on top makes every
+	// refresh look like a jump.
 	Lines     []string `json:"lines"`
 	Truncated bool     `json:"truncated,omitempty"`
 	Missing   bool     `json:"missing,omitempty"`
 }
 
-// logTail 是读多少行。几百行足够看清「刚刚发生了什么」，而这个视图每隔几秒就会
-// 被重新问一次——报一整个 16MB 的日志过去，是让浏览器每次刷新都背一遍历史。
+// logTail is how many lines to read. A few hundred is enough to see "what just happened",
+// and this view is asked again every few seconds -- shipping a whole 16MB log over is making
+// the browser carry the entire history on every refresh.
 const logTail = 400
 
-// logRead 是一次最多读多少字节（从文件尾部倒着读）。
+// logRead is the maximum number of bytes to read at a time (reading backwards from the end of
+// the file).
 //
-// 不按行数 seek：行的长度没有上界（一条上游报错原文可以很长），按行回溯就得把
-// 整个文件读一遍。256KB 对「最后 400 行」是绰绰有余的余量，而它是个**上界**——
-// 这个函数不会因为日志涨到 16MB 而变慢。
+// No seeking by line count: line length has no upper bound (one upstream error quote can be
+// very long), and walking back line by line would mean reading the whole file. 256KB is ample
+// headroom for "the last 400 lines", and it is an **upper bound** -- this function does not get
+// slower when the log grows to 16MB.
 const logRead = 256 << 10
 
 func logConcept() view.Concept {
 	path := paths.LogFile()
 	lines, truncated, err := tailLines(path, logTail, logRead)
 	data := logData{Path: path, Lines: lines, Truncated: truncated}
-	// 日志文件还没建（这个进程还没写过东西）不是错误，是**正常的第一天**。分清楚
-	// 这两件事，界面才不会把「还没有日志」画成「出错了」。
+	// The log file not existing yet (this process has not written anything) is not an error,
+	// it is **a normal first day**. Keeping the two apart is what stops the UI from drawing
+	// "no log yet" as "something failed".
 	data.Missing = err != nil
 	if data.Missing {
 		data.Lines = nil
 	}
 	return view.Concept{
 		ID: "gateway.log", Kind: view.KindLog, Title: i18n.T("Proxy log", nil),
-		// 只读：日志是**发生过的事**，不是配置。这个概念没有 Apply。
+		// Read-only: a log is **what happened**, not configuration. This concept has no Apply.
 		Data: data,
 		Live: true,
 	}
 }
 
-// tailLines 读文件最后 n 行，最多读 limit 字节。
+// tailLines reads the last n lines of a file, reading at most limit bytes.
 //
-// 返回的 truncated 表示「文件比 limit 大，前面还有」——不说这件事的话，用户会
-// 以为日志只有这么长，然后对着一段没有开头的输出找原因。
+// The returned truncated means "the file is bigger than limit, there is more before this" --
+// without saying so, the user would think the log is only this long and hunt for a cause in
+// output that has no beginning.
 func tailLines(path string, n, limit int) ([]string, bool, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -178,7 +190,7 @@ func tailLines(path string, n, limit int) ([]string, bool, error) {
 	if _, err := f.ReadAt(buf, size-read); err != nil && err != io.EOF {
 		return nil, false, err
 	}
-	// 从中间开始读的第一个「行」多半是半截的（被 limit 切掉了），丢掉它。
+	// The first "line" from a mid-file read is likely half a line (cut off by limit); drop it.
 	text := string(buf)
 	if truncated {
 		if i := strings.IndexByte(text, '\n'); i >= 0 {
@@ -199,16 +211,17 @@ func tailLines(path string, n, limit int) ([]string, bool, error) {
 	return lines, truncated, nil
 }
 
-// secretInLine 是「这一行里有凭据」的兜底判据。
+// secretInLine is the catch-all criterion for "there is a credential in this line".
 //
-// 日志本来不该出现凭据，但它是**别人写进来的**：一个 provider 的 URL 里带了 key、
-// 某个模块把整条请求头打了出来、将来某个插件把 body 记了一笔——这些都不是网关能
-// 保证不发生的事。而这个视图会把日志发到浏览器（loopback 也是**本机任何进程**
-// 都能读，见 config/view.go 里对 secretKeys 的那段）。所以这里做一次兜底：
-// 认得出形状的，一律变成 ***。
+// Credentials should never appear in logs, but the log is **written by others**: a provider
+// URL carrying a key, some module printing whole request headers, a future plugin recording
+// the body -- none of these are things the gateway can guarantee will not happen. And this
+// view ships the log to the browser (loopback is still readable by **any process on this
+// machine**, see the note on secretKeys in config/view.go). So there is one catch-all here:
+// anything whose shape is recognizable becomes ***.
 //
-// 宁可误杀（把一段合法的长串打码），也不放过——日志里少几个字符，比 key 出现在
-// 浏览器里轻得多。
+// Better to over-kill (mask a legitimate long string) than to let one through -- a few missing
+// characters in the log are much lighter than a key showing up in the browser.
 var secretInLine = []*regexp.Regexp{
 	regexp.MustCompile(`sk-[A-Za-z0-9_-]{12,}`),
 	regexp.MustCompile(`(?i)\b(api[_-]?key|token|authorization|bearer)\b\s*[:=]?\s*[A-Za-z0-9_\-.]{12,}`),
@@ -217,7 +230,8 @@ var secretInLine = []*regexp.Regexp{
 func redactLine(line string) string {
 	for _, re := range secretInLine {
 		line = re.ReplaceAllStringFunc(line, func(m string) string {
-			// 保留「哪个字段」那一段：全抹掉的话，排查的人连这里本来有东西都不知道。
+			// Keep the "which field" segment: wiping everything leaves the investigator not even
+			// knowing there was something here.
 			if i := strings.IndexAny(m, ":="); i >= 0 {
 				return m[:i+1] + "***"
 			}
@@ -227,10 +241,12 @@ func redactLine(line string) string {
 	return line
 }
 
-// metricGroups 把计数器按 Group 归拢：id 管排序与去重，label 只管印。
+// metricGroups groups counters by Group: id handles sorting and dedup, label is only for
+// printing.
 func seriesGroups() seriesData {
-	// 快照只取一次：这是个原子替换出来的 map，取两次会拿到两份可能不同的时刻
-	// （中间有请求在跑），同一组里的数就对不上了。
+	// Take the snapshot once: it is a map swapped in atomically; taking it twice can yield two
+	// different moments (requests run in between) and the numbers within a group stop adding
+	// up.
 	snap := metrics.Default.Snapshot()
 	byID := map[string]*seriesGroup{}
 	for _, name := range metrics.SortedKeys(snap) {

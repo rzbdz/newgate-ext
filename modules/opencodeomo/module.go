@@ -1,8 +1,9 @@
-// Package opencodeomo 把 Oh My OpenAgent 作为 OpenCode 的可选扩展接入。
+// Package opencodeomo wires Oh My OpenAgent in as an optional extension of OpenCode.
 //
-// OMO 同时涉及三类边界：改写它自己的配置文件、向 config 贡献动态角色、
-// 向 CLI 注册命令和诊断。它们由一个组件共同持有 Release，确保接管和注册
-// 可以完整撤销，但不会让 config、CLI 或基础 opencode 模块了解 OMO 格式。
+// OMO touches three boundaries at once: rewriting its own config file, contributing dynamic roles
+// to config, and registering commands and diagnostics with the CLI. One component holds the Release
+// for all of them, so the takeover and the registrations can be undone completely, while config,
+// the CLI and the base opencode module learn nothing about OMO's format.
 package opencodeomo
 
 import (
@@ -24,20 +25,21 @@ type configTakeover struct{}
 
 var _ agentapi.ConfigTakeover = (*configTakeover)(nil)
 
-// Takeover 创建 OMO 配置接管适配器；返回接口以隐藏无状态实现细节。
+// Takeover creates the OMO config takeover adapter; it returns an interface to hide the stateless
+// implementation details.
 func Takeover() agentapi.ConfigTakeover { return configTakeover{} }
 
-// New 声明 OMO 集成组件：绑定 OpenCode 配置接管、贡献额外档位，并向 CLI
-// 注册自己的命令与诊断。
+// New declares the OMO integration component: it binds the OpenCode config takeover, contributes
+// extra tiers, and registers its own commands and diagnostics with the CLI.
 //
-// 命令与诊断走 cli 的 Register（不是往一个「命令端口」里 Provide）：每次贡献
-// 都拿到 Release，四条边（接管 + 角色 + 命令 + 诊断）共用同一个 releases 累加
-// 器，Stop 时一起撤销。
+// Commands and diagnostics go through cli's Register (not Provide into a "command port"): every
+// contribution gets a Release, and the four edges (takeover + roles + commands + diagnostics) share
+// one releases accumulator, all undone together in Stop.
 //
-// 这也**反转了 cli 与 opencode-omo 的启动顺序**：2026-09-17 之前 omo 先起、
-// cli 后起并在 Start 里取一次快照；现在 cli 先起，omo 在 Start 里拿到
-// cliapi.Capability 再注册。停止顺序随之反转成 omo 先停、cli 后停——释放时
-// 目标必然还活着。
+// This also **reverses the start order of cli and opencode-omo**: before 2026-09-17 omo started
+// first, cli after it and took a snapshot once in Start; now cli starts first, and omo takes
+// cliapi.Capability in its Start and then registers. The stop order reverses accordingly to omo
+// first, cli after -- so the target is necessarily still alive when releasing.
 func New() modules.Component {
 	var releases []modules.Release
 	return modules.Component{
@@ -47,15 +49,15 @@ func New() modules.Component {
 		Requires: []modules.Requirement{
 			modules.Need(configapi.Capability),
 			modules.Need(agentapi.ConfigHooksCapability),
-			// 读侧：只为回答「opencode 到底装没装」（那张卡要不要锁灰）。同一个
-			// 提供者（config-hook），所以不新增依赖边。
+			// Read side: only to answer "is opencode installed at all" (whether that card should be
+			// locked gray). The same provider (config-hook), so no new dependency edge.
 			modules.Need(agentapi.AgentCatalogCapability),
 			modules.Need(opencodeapi.Capability),
-			// ui 是**弱依赖**（见 component.Optional）：装着界面就把 omo 那条命令
-			// 与它的体检项挂上去，没装就跳过——槽位接管照常工作。
+			// ui is a **weak dependency** (see component.Optional): with a UI installed, hang the omo
+			// command and its checkup item up; without one, skip -- slot takeover works as usual.
 			modules.Optional(cliapi.Capability),
-			// web 界面同理（另一条）：只装 dashboard 的装配里没有终端界面，
-			// 「哪个槽位用哪个模型」照样该看得见。
+			// The web UI likewise (the other one): an assembly with only the dashboard has no terminal
+			// UI, and "which slot uses which model" should still be visible.
 			modules.Optional(viewapi.Capability),
 		},
 		Start: func(_ context.Context, ctx modules.Context) error {
@@ -73,18 +75,20 @@ func New() modules.Component {
 			}
 			releases = append(releases, release)
 
-			// web 界面那一份（槽位归属）**先**注册：它不依赖 cli，只装 dashboard
-			// 的装配里也要有——下面那段一旦 return，这里就永远不会跑。
-			// 这台机器上有没有 opencode：没有的话，这张卡改的是一个不存在的
-			// 工具的行为，界面该把它整张锁灰（见 lib/view 的 Concept.Locked）。
-			// 判据只有一份（目录端口的 Installed，扣掉我们自己的 shim），这里
-			// 不自己查 PATH。
+			// The web UI's copy (slot bindings) is registered **first**: it does not depend on cli, and
+			// must be there in a dashboard-only assembly too -- once the block below returns, this one
+			// would never run.
+			// Is opencode present on this machine: if not, this card changes the behavior of a tool that
+			// does not exist, and the UI should lock the whole card gray (see lib/view's Concept.Locked).
+			// The criterion exists in one copy only (the catalog port's Installed, minus our own shim);
+			// this does not look up PATH itself.
 			lock := ""
 			if catalog := modules.MustGet(ctx, agentapi.AgentCatalogCapability); !catalog.Installed(client.AgentID) {
-				// 理由里带上**怎么办**：这一格的全部用处就是告诉用户「为什么动不了」
-				// 与「怎么让它能动」。装它那条命令是 agent 模块自己注入的
-				// （见 confighook 的 Install 能力），没装的时候才认 `-y`——
-				// 否则那面参数会被原样交给 opencode 自己。
+				// The reason carries **what to do**: this cell's entire use is telling the user "why it
+				// cannot be changed" and "how to make it changeable". The command that installs it is
+				// injected by the agent module itself (see confighook's Install capability), and `-y` is
+				// only recognized when that is not installed -- otherwise the flag would be handed to
+				// opencode itself as is.
 				lock = i18n.T("opencode is not installed on this machine — "+
 					"nothing on this card takes effect yet. Install it with `newgate opencode -y`.", nil)
 			}
@@ -120,27 +124,27 @@ func New() modules.Component {
 	}
 }
 
-// Targets 把接口调用转给当前环境的目标发现逻辑。
+// Targets forwards the interface call to the target discovery for the current environment.
 func (configTakeover) Targets() []string { return TargetFiles() }
 
-// IsTakenOver 检查单个目标是否已经指向 newgate。
+// IsTakenOver checks whether a single target already points at newgate.
 func (configTakeover) IsTakenOver(target string) bool {
 	return IsTakenOver(target)
 }
 
-// Apply 对所有目标执行可报告、可恢复的接管。
+// Apply performs a reportable, reversible takeover on all targets.
 func (configTakeover) Apply(port int) ([]*agentapi.TakeoverReport, error) {
 	return ApplyAll(port)
 }
 
-// Restore 撤销该适配器拥有的配置改写。
+// Restore undoes the config rewrites this adapter owns.
 func (configTakeover) Restore() ([]string, error) { return RestoreAll() }
 
-// SlotsFile 返回 OMO 动态档位的 newgate 自有配置路径。
+// SlotsFile returns the newgate-owned config path for OMO's dynamic tiers.
 func SlotsFile() string { return filepath.Join(paths.Config(), "omo-slots.json") }
 
-// TargetFiles 按 OpenCode/XDG 约定定位需要接管的配置，
-// 并优先选择用户已经存在的 OMO 文件，避免无意创建第二份配置。
+// TargetFiles locates the configs to take over per the OpenCode/XDG convention,
+// and prefers the OMO file the user already has, to avoid creating a second config by accident.
 func TargetFiles() []string {
 	if dir := os.Getenv("NEWGATE_TARGET_DIR"); dir != "" {
 		return []string{
@@ -166,9 +170,9 @@ func TargetFiles() []string {
 	return append(out, filepath.Join(configHome, "opencode", "oh-my-openagent.json"))
 }
 
-// writeAtomicMode 是内核那件 WriteAtomic 的薄封装（见 confighook/backup.go）。
-// 保留本地名字是因为槽位表用的是 0660（那个文件要跟别的用户共享），
-// 而取名叫法统一之后，读的人不必在「这是哪一份实现」上停一下。
+// writeAtomicMode is a thin wrapper over the kernel's WriteAtomic (see confighook/backup.go).
+// It keeps the local name because the slot table uses 0660 (that file is shared with other users),
+// and with one naming convention the reader need not pause over "which implementation is this".
 func writeAtomicMode(path string, content []byte, mode os.FileMode) error {
 	return agentapi.WriteAtomic(path, content, mode)
 }

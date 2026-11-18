@@ -5,33 +5,42 @@ import (
 	"strings"
 )
 
-// 本文件是 `config.yaml` 的**字节手术**：按路径改几个键，其余逐字节不动。
+// This file is the **byte surgery** on `config.yaml`: edit a few keys by path, leave the rest
+// byte for byte.
 //
-// # 为什么不是 YAML 往返
+// # Why not a YAML round trip
 //
-// 与 codex 那份 TOML 同一条理由（见 modules/codex/takeover.go）：做一次解析→序列化，
-// 顺序、引号风格、空行、以及 hermes 自己没写但用户手加的注释都会变——而那种损失不会
-// 让任何测试变红。另一条是这个仓库自己的：发行版不为一个客户端拉进一整个 YAML 库
-// （构建是离线的，go.mod 里每一行都要有理由）。
+// The same reason as codex's TOML (see modules/codex/takeover.go): one parse → serialize
+// changes ordering, quoting style, blank lines, and comments the user added by hand that hermes
+// never wrote -- and that loss turns no test red. The other reason is this repository's own: the
+// distribution does not pull in a whole YAML library for one client (the build is offline, and
+// every line in go.mod needs a reason).
 //
-// # 它认识的 YAML 是哪一种
+// # Which kind of YAML it understands
 //
-// **hermes 自己写出来的那一种**：块风格、两格缩进、空映射写成 `{}`、列表项缩进在
-// 父键下面（`hermes_cli/config.py` 用 yaml.safe_dump 落盘，2026-11-04 本机那份
-// 568 行就是这个形状）。手术只需要这几条：
+// **The kind hermes itself writes**: block style, two-space indent, empty mappings written as
+// `{}`, list items indented under their parent key (`hermes_cli/config.py` dumps with
+// yaml.safe_dump; the 568-line file on this machine on 2026-11-04 has exactly this shape).
+// Surgery needs only these few rules:
 //
-//   - 一个键 = 一行 `<缩进>key: 值` 或 `<缩进>key:`（后面跟一个更深缩进的块）；
-//   - 一个键的「块」= 它下面所有缩进更深的行（空行、注释、列表项都算在里面）；
-//   - 写进去的标量一律用 JSON 字符串字面量（它同时是合法的 YAML 双引号标量），
-//     所以不用操心 `:`、`#`、`yes`/`no` 这类会被 YAML 另作解释的取值。
+//   - a key = one line `<indent>key: value` or `<indent>key:` (followed by a deeper-indented
+//     block);
+//   - a key's "block" = every line below it with deeper indentation (blank lines, comments and
+//     list items count as part of it);
+//   - every scalar written uses a JSON string literal (which is also a valid YAML
+//     double-quoted scalar), so there is no need to worry about values like `:`, `#`, `yes`/`no`
+//     that YAML would interpret otherwise.
 //
-// 认不出来的形状（流式的非空映射 `{a: 1}`、多行标量、锚点）**不硬改**：调用方拿到
-// 错误，接管报一句让人能行动的话，文件不动——宁可接不上，也不写坏一份别人的配置。
+// Shapes it does not recognize (flow-style non-empty mappings `{a: 1}`, multi-line scalars,
+// anchors) are **not force-edited**: the caller gets an error, takeover reports one actionable
+// sentence, and the file stays put -- better to fail to connect than to corrupt someone else's
+// config.
 
-// doc 是按行切开的文件。改动都在 lines 上做，最后再拼回去。
+// doc is the file split into lines. All edits happen on lines, then everything is joined back.
 type doc struct {
 	lines []string
-	// trailingNL 原文是否以换行结尾——结果要保持一致（理由见 codex 的 rewrite）。
+	// trailingNL whether the original ends with a newline -- the result must match (reason in
+	// codex's rewrite).
 	trailingNL bool
 }
 
@@ -52,7 +61,8 @@ func (d *doc) String() string {
 	return out
 }
 
-// indentOf 一行开头有几个空格；空行与纯注释行返回 -1（它们不划分块的边界）。
+// indentOf how many spaces a line starts with; blank lines and pure comment lines return -1
+// (they do not divide block boundaries).
 func indentOf(line string) int {
 	t := strings.TrimLeft(line, " ")
 	if t == "" || strings.HasPrefix(t, "#") {
@@ -61,10 +71,11 @@ func indentOf(line string) int {
 	return len(line) - len(t)
 }
 
-// keyOf 取出 `key: …` / `key:` 这一行的键；不是映射键的行（列表项、续行）返回 false。
+// keyOf extracts the key of a `key: …` / `key:` line; lines that are not mapping keys (list
+// items, continuations) return false.
 //
-// 键必须是裸标识符（hermes 的键都是）：带引号的键、`? ` 复杂键一律不认——认错了
-// 一行，改的就是别人的值。
+// The key must be a bare identifier (hermes' keys all are): quoted keys and `? ` complex keys
+// are never recognized -- misread one line and the edit lands on someone else's value.
 func keyOf(line string) (string, bool) {
 	t := strings.TrimLeft(line, " ")
 	if t == "" || t[0] == '#' || t[0] == '-' || t[0] == '"' || t[0] == '\'' {
@@ -75,7 +86,7 @@ func keyOf(line string) (string, bool) {
 		return "", false
 	}
 	if i+1 < len(t) && t[i+1] != ' ' {
-		return "", false // `a:b` 是一个标量，不是键
+		return "", false // `a:b` is a scalar, not a key
 	}
 	k := t[:i]
 	if strings.ContainsAny(k, " \t{}[],") {
@@ -84,7 +95,8 @@ func keyOf(line string) (string, bool) {
 	return k, true
 }
 
-// valueOf 取出 `key: value` 那一行冒号之后的原文（去掉首尾空白）。
+// valueOf extracts the text after the colon of a `key: value` line (surrounding whitespace
+// trimmed).
 func valueOf(line string) string {
 	t := strings.TrimLeft(line, " ")
 	i := strings.Index(t, ":")
@@ -94,16 +106,17 @@ func valueOf(line string) string {
 	return strings.TrimSpace(t[i+1:])
 }
 
-// span 是一个键在文件里占的行：[head, end)。head 是键那一行，end 是它的块之后
-// 第一行（或文件末尾）。indent 是键那一行的缩进。
+// span is the lines a key occupies in the file: [head, end). head is the key's line, end is the
+// first line after its block (or end of file). indent is the key line's indentation.
 type span struct {
 	head, end, indent int
 }
 
-// blockEnd 从 head 的下一行起，找到第一行缩进 ≤ indent 的有效行。
+// blockEnd from the line after head, finds the first meaningful line whose indent <= indent.
 //
-// 例外：缩进**等于** indent 的列表项（`- x`）算在块里——YAML 允许 `key:` 下面的
-// 列表与键同列（PyYAML 缺省就这么写），而那些项属于这个键。
+// Exception: list items (`- x`) whose indent **equals** indent count as inside the block -- YAML
+// allows a list under `key:` to sit at the same column as the key (PyYAML writes it that way by
+// default), and those items belong to this key.
 func (d *doc) blockEnd(head, indent int) int {
 	end := head + 1
 	for end < len(d.lines) {
@@ -122,14 +135,15 @@ func (d *doc) blockEnd(head, indent int) int {
 		}
 		break
 	}
-	// 块末尾的空行/注释不归它：那多半是下一个键前面的分隔或说明。
+	// Blank lines/comments at the end of the block do not belong to it: they are probably the
+	// separator or note before the next key.
 	for end > head+1 && indentOf(d.lines[end-1]) < 0 {
 		end--
 	}
 	return end
 }
 
-// find 在 [from, to) 里找缩进恰好为 indent 的键 key。
+// find looks for key `key` with exactly indent `indent` in [from, to).
 func (d *doc) find(from, to, indent int, key string) (span, bool) {
 	for i := from; i < to; i++ {
 		if indentOf(d.lines[i]) != indent {
@@ -142,7 +156,7 @@ func (d *doc) find(from, to, indent int, key string) (span, bool) {
 	return span{}, false
 }
 
-// lookup 按路径找一个键；任何一级不在就返回 false。
+// lookup finds a key by path; false if any level is missing.
 func (d *doc) lookup(path ...string) (span, bool) {
 	from, to, indent := 0, len(d.lines), 0
 	var s span
@@ -160,9 +174,10 @@ func (d *doc) lookup(path ...string) (span, bool) {
 	return s, true
 }
 
-// childIndent 这个键的子键用几格缩进：有子键就照它的，没有就父缩进 + 2（hermes 的
-// 写法）。照现有的走而不是写死 2：用户手改过缩进的文件，补进去的键要与邻居对齐，
-// 否则就成了另一个父键的孩子。
+// childIndent how many spaces this key's children use: follow an existing child if there is
+// one, else parent indent + 2 (hermes' style). Following what exists instead of hard-coding 2:
+// in a file whose indent the user changed by hand, keys we add must align with their neighbors,
+// or they become children of another parent key.
 func (d *doc) childIndent(s span) int {
 	for i := s.head + 1; i < s.end; i++ {
 		if ind := indentOf(d.lines[i]); ind > s.indent {
@@ -174,7 +189,7 @@ func (d *doc) childIndent(s span) int {
 	return s.indent + 2
 }
 
-// get 读一个标量（去掉引号）；不在、或它是个块，返回 false。
+// get reads a scalar (unquoted); false if absent, or if it is a block.
 func (d *doc) get(path ...string) (string, bool) {
 	s, ok := d.lookup(path...)
 	if !ok {
@@ -187,16 +202,19 @@ func (d *doc) get(path ...string) (string, bool) {
 	return unquote(v), true
 }
 
-// errShape 是「这个形状我不硬改」的那一类错误。
+// errShape is the kind of error for "I will not force-edit this shape".
 type errShape struct{ path, why string }
 
 func (e *errShape) Error() string { return e.path + ": " + e.why }
 
-// ensure 保证路径上每一级都是一个**块**键（不存在就补在父块末尾），返回最后一级。
+// ensure guarantees every level on the path is a **block** key (adding it at the end of the
+// parent block if absent), and returns the last level.
 //
-// 父键此刻是 `key: {}` / `key: null` / `key:` 这种「空映射」时，把它改成 `key:`
-// 再往里补——hermes 把空映射写成 `{}`（`providers: {}` 就是）。父键是个非空标量
-// 或非空流式映射时**不改**：那是一个形状不对的文件，覆盖掉它就是丢别人的值。
+// When the parent key is currently an "empty mapping" like `key: {}` / `key: null` / `key:`, it
+// is turned into `key:` and things are added inside -- hermes writes an empty mapping as `{}`
+// (`providers: {}` is one). When the parent key is a non-empty scalar or a non-empty flow
+// mapping, **do not edit**: that is a file of the wrong shape, and overwriting it loses someone
+// else's values.
 func (d *doc) ensure(path ...string) (span, error) {
 	from, to, indent := 0, len(d.lines), 0
 	var s span
@@ -233,11 +251,12 @@ func (d *doc) insert(at int, lines ...string) {
 	d.lines = out
 }
 
-// remove 删掉 path 那个键（连同它的块）。返回是否真的删了。
+// remove deletes the key at path (together with its block). Returns whether it really removed it.
 //
-// 删完父块空了，父键写回 `key: {}`：光秃秃的 `key:` 在 YAML 里是 **null**，不是空映射
-// ——hermes 读到 `providers: null` 与读到 `{}` 走的不是同一条路（校验那一步会抓到它，
-// 但不该靠它抓）。
+// If the parent block ends up empty, the parent key is written back as `key: {}`: a bare `key:`
+// is **null** in YAML, not an empty mapping -- hermes takes a different path for
+// `providers: null` than for `{}` (the verify step would catch it, but it should not be what we
+// rely on).
 func (d *doc) remove(path ...string) bool {
 	s, ok := d.lookup(path...)
 	if !ok {
@@ -261,7 +280,7 @@ func (d *doc) replace(s span, with ...string) {
 	d.lines = out
 }
 
-// children 列出一个块键下面的直接子键（按出现顺序）。
+// children lists the direct child keys of a block key (in order of appearance).
 func (d *doc) children(path ...string) []string {
 	s, ok := d.lookup(path...)
 	if !ok {
@@ -279,7 +298,7 @@ func (d *doc) children(path ...string) []string {
 	return out
 }
 
-// indentBlock 给 body 每一非空行前面加 n 个空格。
+// indentBlock prepends n spaces to every non-empty line of body.
 func indentBlock(body []string, n int) []string {
 	pad := strings.Repeat(" ", n)
 	out := make([]string, len(body))
@@ -293,13 +312,14 @@ func indentBlock(body []string, n int) []string {
 	return out
 }
 
-// lit 把一个字符串写成 YAML 标量字面量。
+// lit writes a string as a YAML scalar literal.
 //
-// 能裸写就裸写（与 hermes 自己的落盘风格一致，diff 小），否则用 JSON 字符串——
-// JSON 字符串是合法的 YAML 双引号标量，所以「哪些字符要转义」只有一份答案。
-// 「能裸写」的判据刻意保守：只认 [A-Za-z0-9._/-]，且不以数字或 `-` 开头、
-// 不是 YAML 会另作解释的那几个词。`normal` 裸写，`newgate-ds` 裸写，
-// `smt-claude/claude-opus-5-5` 裸写，`http://…` 加引号。
+// Bare when possible (matching hermes' own dump style, keeping diffs small), otherwise a JSON
+// string -- a JSON string is a valid YAML double-quoted scalar, so "which characters must be
+// escaped" has exactly one answer. The criterion for "bare is possible" is deliberately
+// conservative: only [A-Za-z0-9._/-], not starting with a digit or `-`, and not one of the words
+// YAML would interpret otherwise. `normal` is bare, `newgate-ds` is bare,
+// `smt-claude/claude-opus-5-5` is bare, `http://…` gets quotes.
 func lit(s string) string {
 	if plain(s) {
 		return s
@@ -329,7 +349,8 @@ func plain(s string) bool {
 	return true
 }
 
-// unquote 去掉 YAML 标量两边的引号（双引号按 JSON 解，单引号按 YAML 的 `”` 转义）。
+// unquote strips the quotes on both sides of a YAML scalar (double quotes parsed as JSON, single
+// quotes with YAML's `”` doubling).
 func unquote(v string) string {
 	switch {
 	case len(v) >= 2 && v[0] == '"' && v[len(v)-1] == '"':
@@ -344,10 +365,12 @@ func unquote(v string) string {
 	return v
 }
 
-// sameScalar 两份字面量是不是同一个字符串值（`normal` 与 `"normal"` 是同一个）。
+// sameScalar whether two literals are the same string value (`normal` and `"normal"` are the
+// same).
 func sameScalar(a, b string) bool { return unquote(a) == unquote(b) }
 
-// raw 取出 path 那个键原样的行（连同它的块），以及键那一行的缩进。
+// raw extracts the verbatim lines of the key at path (together with its block), plus the key
+// line's indentation.
 func (d *doc) raw(path ...string) ([]string, int, bool) {
 	s, ok := d.lookup(path...)
 	if !ok {
@@ -356,9 +379,10 @@ func (d *doc) raw(path ...string) ([]string, int, bool) {
 	return append([]string(nil), d.lines[s.head:s.end]...), s.indent, true
 }
 
-// putRaw 把另一份文件里取来的原样行（见 raw）放回 path：已经在就整块换掉，不在就
-// 补在父块末尾。缩进按差值平移——还原时原文与此刻的父级缩进可能不同（hermes 重写过
-// 文件），平移之后它仍是那个父键的孩子。
+// putRaw puts the verbatim lines taken from another file (see raw) back at path: replace the
+// whole block if present, else append at the end of the parent block. Indentation is shifted by
+// the difference -- at restore time the original's and the current parent's indentation may
+// differ (hermes rewrote the file), and after the shift it is still a child of that parent key.
 func (d *doc) putRaw(lines []string, fromIndent int, path ...string) error {
 	parent, key := path[:len(path)-1], path[len(path)-1]
 	from, to, indent := 0, len(d.lines), 0
@@ -393,13 +417,16 @@ func (d *doc) putRaw(lines []string, fromIndent int, path ...string) error {
 	return nil
 }
 
-// mapChildren 同 children，但只要**值是映射**的那些（下面跟着块，或者写成 `{}`）。
+// mapChildren is like children but only for those whose **value is a mapping** (followed by a
+// block, or written as `{}`).
 //
-// 为什么要分开：真实文件里一个映射下面不一定只有一种东西。2026-11-04 本机那份
-// config.yaml 的 `auxiliary:` 底下混进了十几个 `display` 的标量（`compact: false`、
-// `skin: default`……——多半是哪一次迁移写错了缩进）。把它们当成辅助任务去改，就是
-// 往 `compact: false` 里塞子键：第一版就是在这里被 ensure 拒掉的（它做对了）。
-// 「哪些是任务」的判据于是是形状：值是映射的才是。
+// Why the distinction: in a real file a mapping does not necessarily contain only one kind of
+// thing. On this machine on 2026-11-04, `auxiliary:` in config.yaml had a dozen `display`
+// scalars mixed in (`compact: false`, `skin: default`, … -- some migration must have written
+// the wrong indent). Editing them as auxiliary tasks means stuffing child keys into
+// `compact: false`: that is exactly where the first version was rejected by ensure (which did
+// the right thing). The criterion for "which are tasks" is therefore shape: only those whose
+// value is a mapping.
 func (d *doc) mapChildren(path ...string) []string {
 	s, ok := d.lookup(path...)
 	if !ok {

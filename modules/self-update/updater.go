@@ -24,11 +24,11 @@ import (
 type updater struct {
 	st       settings
 	info     distinfo.Info
-	current  string // 这个二进制的版本号（buildinfo.Version）
+	current  string // version of this binary (buildinfo.Version)
 	goos     string
 	goarch   string
-	out      io.Writer // 进度（给人看的几行）
-	buildLog io.Writer // 构建/clone 的原始输出
+	out      io.Writer // progress (a few lines for humans)
+	buildLog io.Writer // raw output of the build/clone
 	client   func(repo string) *releaseClient
 	target   func() (string, error)
 	restart  func(target string, log io.Writer) (string, error)

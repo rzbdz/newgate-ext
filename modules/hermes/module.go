@@ -12,7 +12,7 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// New 声明 Hermes 客户端组件。
+// New declares the Hermes client component.
 func New() modules.Component {
 	var releases []modules.Release
 	return modules.Component{
@@ -21,16 +21,17 @@ func New() modules.Component {
 		Type: "client",
 		Requires: []modules.Requirement{
 			modules.Need(confighookapi.ConfigHooksCapability),
-			// web 界面：在就挂「Hermes 档位」那张卡（view.go），不在就跳过。
+			// web UI: when present, attach the "Hermes tiers" card (view.go); when not, skip.
 			modules.Optional(viewapi.Capability),
-			// 终端：status 那一行与 `newgate hermes-gateway`（status.go / command.go）。
+			// terminal: the status line and `newgate hermes-gateway` (status.go / command.go).
 			modules.Optional(cliapi.Capability),
-			// 服务期：模型清单的后台同步只在守护进程里跑（sync.go）。没有这条边
-			// （骨架发行版关掉了 gateway）就不同步——`newgate on hermes` 与
-			// `newgate hermes-gateway sync` 照常可用，只是不自动。
+			// serving: the model list's background sync runs only in the daemon (sync.go).
+			// Without this edge (the skeleton distribution turns gateway off) there is no sync
+			// -- `newgate on hermes` and `newgate hermes-gateway sync` work as usual, just not
+			// automatically.
 			modules.Optional(servingapi.Capability),
-			// 网关：替 hermes 的 URL 回答 /models（st-models.go）。弱依赖——骨架发行版
-			// 关掉了 gateway，那时也就没有代理可问。
+			// gateway: answer /models on hermes' behalf (st-models.go). A weak dependency --
+			// the skeleton distribution turns gateway off, and then there is no proxy to ask.
 			modules.Optional(gatewayapi.Capability),
 		},
 		Provides: []modules.Provision{
@@ -48,8 +49,9 @@ func New() modules.Component {
 			if err := add(hooks.RegisterAgent(Agent())); err != nil {
 				return err
 			}
-			// 安装方式：官方那一行安装脚本（`newgate hermes -y`，或没装时问一句）。
-			// 命令写在这里而不是内核里——换渠道是这家客户端的事。
+			// installation: the official install script line (`newgate hermes -y`, or ask when
+			// not installed). The command lives here rather than in the kernel -- switching
+			// channels is this client's business.
 			if err := add(hooks.RegisterAgentInstaller(ID, confighookapi.ExecInstaller(
 				"bash", "-c", "curl -fsSL "+InstallScript+" | bash"))); err != nil {
 				return err
@@ -57,7 +59,8 @@ func New() modules.Component {
 			if err := add(hooks.RegisterAgentFacts(ID, facts{})); err != nil {
 				return err
 			}
-			// 接管：改写 $HERMES_HOME/config.yaml（takeover.go）。值在 Apply 那一刻现算。
+			// takeover: rewrite $HERMES_HOME/config.yaml (takeover.go). Values are computed live
+			// at the moment of Apply.
 			if err := add(hooks.BindTakeover(ID, Takeover{})); err != nil {
 				return err
 			}

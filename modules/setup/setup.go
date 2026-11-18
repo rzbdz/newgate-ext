@@ -64,7 +64,7 @@ func Run(d Deps, opt Options) int {
 	if d.Out == nil {
 		d.Out = os.Stdout
 	}
-	fmt.Println() // 与 shell 提示符隔开一行
+	fmt.Println() // leave a blank line between the shell prompt and the wizard
 
 	t, err := term.Open()
 	if err != nil {
@@ -82,7 +82,7 @@ func Run(d Deps, opt Options) int {
 // place in the wizard reads keys directly** - all via Screen, so "what the user pressed"
 // has one entry, and tests and the real terminal take the same path.
 func runWithScreen(w io.Writer, d Deps, opt Options, sc Screen) int {
-	fmt.Println() // 与 shell 提示符隔开一行
+	fmt.Println() // leave a blank line between the shell prompt and the wizard
 	existing := Inspect()
 
 	// ---- 1. pick clients ----

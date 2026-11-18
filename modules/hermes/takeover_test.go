@@ -13,8 +13,9 @@ import (
 	"github.com/rzbdz/newgate-ext/testing/testkit"
 )
 
-// 接管 hermes 这一族测三件事：写进去的东西 hermes 能按我们的意思读出来（plan）、
-// 别人写的东西一个都不动（takeover 的往返）、以及后台同步只碰清单不碰槽位（sync）。
+// The hermes takeover family tests three things: what is written is read back by hermes the way
+// we mean it (plan), nothing anyone else wrote is touched (the takeover round trip), and
+// background sync touches only the list, not the slots (sync).
 
 func bind(provider, model string) domain.Candidates {
 	return domain.Candidates{{Provider: provider, Model: model}}
@@ -70,7 +71,8 @@ func TestCatalogListsTiersAndEachProfilesModels(t *testing.T) {
 	if !strings.Contains(got, "smt-claude/claude-opus-5-5") || !strings.Contains(got, "smt-codex/gpt-5.6-luna") {
 		t.Errorf("the pin line must list concrete models: %s", got)
 	}
-	// 模型名自己带 `/` 的点不中（NormalizeRole 取最后一段），不许列出来。
+	// A model name containing `/` cannot be pointed at (NormalizeRole takes the last segment);
+	// it must not be listed.
 	if strings.Contains(got, "gemini-3-pro") {
 		t.Errorf("model names containing / must not be listed: %s", got)
 	}
@@ -80,7 +82,8 @@ func TestCatalogListsTiersAndEachProfilesModels(t *testing.T) {
 	}
 }
 
-// 钉住那一行的 URL 带 /p/<profile>：网关只从 URL 认「这一发钉在哪份上」。
+// Pin that the line's URL carries /p/<profile>: the gateway recognizes "which profile this
+// request is pinned to" only from the URL.
 func TestPinnedRowsCarryTheProfileInTheURL(t *testing.T) {
 	c := buildCatalog(sampleInputs())
 	for _, e := range c.Entries[1:] {
@@ -97,8 +100,8 @@ func TestPinnedRowsCarryTheProfileInTheURL(t *testing.T) {
 	}
 }
 
-// 完整接管之后，hermes 读到的每一格都是我们的意思（经 hermes 的解析器复核——这台
-// 机器上没有 hermes 时退回本包的读回校验）。
+// After a full takeover, every cell hermes reads means what we meant (checked by hermes' parser
+// -- on a machine without hermes it falls back to this package's read-back check).
 func TestFullEditsPointEverythingAtTheProxy(t *testing.T) {
 	d := parseDoc(sampleYAML)
 	edits, _ := fullEdits(d, sampleInputs())
@@ -140,18 +143,18 @@ func TestFullEditsPointEverythingAtTheProxy(t *testing.T) {
 			t.Errorf("%s = %q, want %q", path, got, want)
 		}
 	}
-	// 别人的东西：一字不动。
+	// Other people's stuff: not one byte touched.
 	for _, keep := range []string{
 		`    pirate: "Arrr! Ye be talkin' to Captain Hermes: yo ho ho!"`,
 		"  - name: smt-claude",
-		"    model: gemini-3-flash-preview", // smart_model_routing 是死配置，不碰
+		"    model: gemini-3-flash-preview", // smart_model_routing is a dead setting, leave it alone
 		"  max_iterations: 50",
 	} {
 		if !strings.Contains(out, keep) {
 			t.Errorf("this line must not be touched: %q", keep)
 		}
 	}
-	// 幂等：再算一次没有任何改动。
+	// Idempotent: computing again yields no edits at all.
 	again, _ := fullEdits(r, sampleInputs())
 	for _, e := range again {
 		if changed, _ := r.put(e); changed {
@@ -160,7 +163,8 @@ func TestFullEditsPointEverythingAtTheProxy(t *testing.T) {
 	}
 }
 
-// 被引用着的过期行不删：删了 hermes 下一轮解析不出 provider，整个网关停摆。
+// A referenced stale line is not deleted: delete it and hermes cannot resolve a provider next
+// round, stalling the whole gateway.
 func TestCatalogKeepsAReferencedStaleRow(t *testing.T) {
 	src := "model:\n  provider: newgate-old\n  default: x\nproviders:\n  newgate-old:\n    name: newgate-old\n  newgate-gone:\n    name: newgate-gone\n  mine:\n    name: mine\n"
 	d := parseDoc(src)
@@ -179,7 +183,7 @@ func TestCatalogKeepsAReferencedStaleRow(t *testing.T) {
 	}
 }
 
-// ---------- 读写真文件：沙箱 ----------
+// ---------- reading and writing real files: sandbox ----------
 
 func sandbox(t *testing.T) string {
 	t.Helper()
@@ -201,7 +205,8 @@ func sandbox(t *testing.T) string {
 	return filepath.Join(dir, "config.yaml")
 }
 
-// 接管 → hermes 自己改了一格 → off：接管写过的几格回到原样，hermes 改的那格保留。
+// takeover → hermes itself changed one cell → off: the cells takeover wrote go back to their
+// original form, the one hermes changed stays.
 func TestTakeoverRoundTripKeepsWhatHermesWroteMeanwhile(t *testing.T) {
 	target := sandbox(t)
 	if _, err := (Takeover{}).Apply(8899); err != nil {
@@ -214,7 +219,7 @@ func TestTakeoverRoundTripKeepsWhatHermesWroteMeanwhile(t *testing.T) {
 	if !strings.Contains(string(b), "newgate-ds:") {
 		t.Fatalf("the profile line should be there\n%s", b)
 	}
-	// 用户在接管期间改了一个与我们无关的键（hermes config set 那种）。
+	// During takeover the user changed a key unrelated to us (the `hermes config set` kind).
 	b = []byte(strings.Replace(string(b), "  max_turns: 90", "  max_turns: 120", 1))
 	if err := ioutil.WriteFile(target, b, 0o600); err != nil {
 		t.Fatal(err)
@@ -224,8 +229,9 @@ func TestTakeoverRoundTripKeepsWhatHermesWroteMeanwhile(t *testing.T) {
 	}
 	after, _ := ioutil.ReadFile(target)
 	want := strings.Replace(sampleYAML, "  max_turns: 90", "  max_turns: 120", 1)
-	// 接管补进去、原件里没有的辅助任务会留下一个空映射（`goal_judge: {}`）——
-	// hermes 读它与读「没有」一样（缺省值深合并），把它们去掉再比。
+	// An auxiliary task we added that was not in the original leaves an empty mapping
+	// (`goal_judge: {}`) -- hermes reads it the same as absent (defaults deep-merge), so strip
+	// those before comparing.
 	got := string(after)
 	for _, t := range auxTasks {
 		got = strings.Replace(got, "  "+t+": {}\n", "", 1)
@@ -241,7 +247,8 @@ func TestTakeoverRoundTripKeepsWhatHermesWroteMeanwhile(t *testing.T) {
 	}
 }
 
-// 后台同步只碰清单：用户在 hermes 里 `/model … --global` 选过的主模型不会被改回去。
+// Background sync touches only the list: a main model the user selected in hermes with
+// `/model … --global` is not reverted.
 func TestSyncLeavesTheSlotsAlone(t *testing.T) {
 	target := sandbox(t)
 	if _, err := (Takeover{}).Apply(8899); err != nil {
@@ -253,7 +260,7 @@ func TestSyncLeavesTheSlotsAlone(t *testing.T) {
 	if err := ioutil.WriteFile(target, b, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	// newgate 这边加了一份 profile。
+	// A profile was added on the newgate side.
 	if err := store.SaveProfile(&domain.Profile{Name: "kimi",
 		Roles: map[string]domain.Candidates{"mid": bind("kimi", "kimi-k3")}}); err != nil {
 		t.Fatal(err)
@@ -275,7 +282,7 @@ func TestSyncLeavesTheSlotsAlone(t *testing.T) {
 	}
 }
 
-// 文件不在：不创建，报一句能行动的话。
+// The file is missing: do not create it, say one actionable line.
 func TestApplyWithoutAConfigDoesNotCreateOne(t *testing.T) {
 	testkit.Sandbox(t)
 	dir := t.TempDir()
@@ -289,7 +296,7 @@ func TestApplyWithoutAConfigDoesNotCreateOne(t *testing.T) {
 	}
 }
 
-// 写之前文件被别人改了：不写。
+// Someone else changed the file before the write: do not write.
 func TestWriteIfUnchangedRefusesARacingWriter(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "c.yaml")
@@ -303,8 +310,9 @@ func TestWriteIfUnchangedRefusesARacingWriter(t *testing.T) {
 	}
 }
 
-// 真实文件里 auxiliary 下面混着标量（2026-11-04 本机：display 的十几个键缩进错进了
-// auxiliary）。它们不是任务：不许被当成任务去改，也不许挡住整个接管。
+// In the real file, auxiliary has scalars mixed in (on this machine 2026-11-04: a dozen
+// `display` keys mis-indented into auxiliary). They are not tasks: they must not be edited as
+// tasks, and they must not block the whole takeover.
 func TestAuxiliaryWithStrayScalarsIsStillTakenOver(t *testing.T) {
 	src := strings.Replace(sampleYAML, "  compression:\n", "  compact: false\n  skin: default\n  compression:\n", 1)
 	d := parseDoc(src)
@@ -323,7 +331,8 @@ func TestAuxiliaryWithStrayScalarsIsStillTakenOver(t *testing.T) {
 	}
 }
 
-// 代理那一侧答的 /models 与写进文件的模型表是同一份（同一个函数算的）。
+// The /models the proxy side answers and the model table written into the file are the same
+// (computed by the same function).
 func TestModelsListerMatchesTheCatalog(t *testing.T) {
 	sandbox(t)
 	ids, ok := modelsLister{}.ListModels(ID, "ds")
@@ -341,8 +350,9 @@ func TestModelsListerMatchesTheCatalog(t *testing.T) {
 	}
 }
 
-// 同一台机器上两个守护进程（不同端口）：只有文件指着的那一个同步，另一个不碰。
-// 否则两边每十秒各把 base_url 改成自己的端口（2026-11-04 实测的来回跳）。
+// Two daemons on the same machine (different ports): only the one the file points at syncs,
+// the other does not touch it. Otherwise both rewrite base_url to their own port every ten
+// seconds (the bouncing measured 2026-11-04).
 func TestSyncOnlyByTheDaemonTheFilePointsAt(t *testing.T) {
 	target := sandbox(t)
 	if _, err := (Takeover{}).Apply(8899); err != nil {
@@ -350,7 +360,7 @@ func TestSyncOnlyByTheDaemonTheFilePointsAt(t *testing.T) {
 	}
 	before, _ := ioutil.ReadFile(target)
 	st := store.LoadState()
-	st.Port = 18950 // 这个进程是「另一个」守护进程
+	st.Port = 18950 // this process is "another" daemon
 	if err := store.SaveState(st); err != nil {
 		t.Fatal(err)
 	}
@@ -365,17 +375,19 @@ func TestSyncOnlyByTheDaemonTheFilePointsAt(t *testing.T) {
 	}
 }
 
-// TestHermesPythonRejectsANonPythonLauncher 是 2026-11-17 那次「后台同步卡住」的
-// 回归守卫。
+// TestHermesPythonRejectsANonPythonLauncher is the regression guard for the "background sync
+// got stuck" incident of 2026-11-17.
 //
-// 现场：hermes 的官方安装器在 `~/.local/bin/hermes` 放的是
-// `#!/bin/sh` + `exec …` 的**壳**。`hermesPython` 那时直接信任 shebang，于是
-// 拿 `/bin/sh` 当解释器去跑一段 python（`sh -I -c '<python>' a b c d`）——sh 从
-// **继承来的终端**读 stdin，那条命令永远不返回。接管与同步两处都会卡，
-// 而超时分支是 fail-open 的，所以外面看起来只是「同步没发生」。
+// Field evidence: hermes' official installer puts a **shell wrapper** at `~/.local/bin/hermes`
+// -- `#!/bin/sh` + `exec …`. `hermesPython` trusted the shebang directly at the time, so it
+// took `/bin/sh` as the interpreter and ran a piece of python with it
+// (`sh -I -c '<python>' a b c d`) -- and sh reads stdin from the **inherited terminal**, so
+// that command never returns. Both takeover and sync hang there, and the timeout branch is
+// fail-open, so from outside it merely looks like "the sync did not happen".
 //
-// 判据是：拿不到一个**名字像 python** 的解释器就返回空串（调用方降级成读回
-// 校验），而不是把一个别的东西当解释器去跑。
+// The criterion: unless we get an interpreter whose **name looks like python**, return an
+// empty string (the caller degrades to the read-back check) rather than running something else
+// as the interpreter.
 func TestHermesPythonRejectsANonPythonLauncher(t *testing.T) {
 	testkit.Sandbox(t)
 	dir := t.TempDir()
@@ -388,15 +400,16 @@ func TestHermesPythonRejectsANonPythonLauncher(t *testing.T) {
 		return p
 	}
 
-	// 官方安装器那种壳：shebang 是 `#!/bin/sh`，后面 exec 真的入口。
-	// 把它当解释器拿去跑一段 python，就是 2026-11-17 那次卡住的现场。
+	// The official installer's kind of wrapper: the shebang is `#!/bin/sh`, and exec follows
+	// to the real entry. Taking it as the interpreter and running a piece of python with it is
+	// exactly the stuck incident of 2026-11-17.
 	sh := writeLauncher("#!/bin/sh\nexec \"$HOME/.hermes/hermes-agent/.hermes/bin/hermes\" \"$@\"\n")
 	if got := pythonFor(sh); got != "" {
 		t.Fatalf("it treated %q as the hermes python interpreter (that would hang verify)", got)
 	}
 
-	// 真的 python 入口：认它（两种 shebang 写法都要认——venv 用绝对路径，
-	// 用户装的常用 `env python3`）。
+	// A real python entry: recognize it (both shebang spellings must be recognized -- venv
+	// uses an absolute path, user installs commonly use `env python3`).
 	for _, body := range []string{
 		"#!/usr/bin/env python3\n# real launcher\n",
 		"#!/usr/bin/python3\n# real launcher\n",

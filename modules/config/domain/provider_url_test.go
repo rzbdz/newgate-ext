@@ -9,14 +9,14 @@ import "testing"
 // The scene (Volcengine Ark, 2026-09-15): openai is at /api/coding/v3, anthropic
 // at /api/coding, and hitting the wrong one gives an istio-envoy empty-body 404.
 func TestProviderURL(t *testing.T) {
-	agg := Provider{BaseURL: "https://agg.example.com/v1"} // 两方言同 base
+	agg := Provider{BaseURL: "https://agg.example.com/v1"} // both dialects on the same base
 	dual := Provider{
 		BaseURL:      "https://ark.example.com/api/coding/v3",
 		AnthropicURL: "https://ark.example.com/api/coding",
 	}
 	dualV1 := Provider{
 		BaseURL:      "https://ark.example.com/api/coding/v3",
-		AnthropicURL: "https://ark.example.com/api/coding/v1", // 已经带 /v1
+		AnthropicURL: "https://ark.example.com/api/coding/v1", // already carries /v1
 	}
 	dualSlash := Provider{
 		BaseURL:      "https://ark.example.com/api/coding/v3/",
@@ -67,7 +67,7 @@ func TestIsAnthropicPath(t *testing.T) {
 		{"/messages/count_tokens", true},
 		{"/chat/completions", false},
 		{"/models", false},
-		{"/messagesx", false}, // 前缀像但不是同一个端点
+		{"/messagesx", false}, // prefix looks similar but it is not the same endpoint
 		{"", false},
 	} {
 		if got := IsAnthropicPath(c.suffix); got != c.want {

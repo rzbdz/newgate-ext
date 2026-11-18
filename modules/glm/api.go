@@ -2,11 +2,12 @@ package glm
 
 import modules "github.com/rzbdz/newgate/component"
 
-// Model 是 GLM 模型家族对外的判定端口。
-// 将匹配逻辑留在模型 owner 内，客户端交叉组件只消费结论。
+// Model is the outward-facing decision port for the GLM model family.
+// Keep the matching logic inside the model's owner; client cross-cutting components only
+// consume the conclusion.
 type Model struct {
 	MatchTarget func(model, provider, baseURL string) bool
 }
 
-// Capability 标识唯一的 GLM 模型家族判定器。
+// Capability identifies the one GLM model-family decider.
 var Capability = modules.NewCapability[Model]("model-family.glm")

@@ -116,7 +116,7 @@ func zombiePid(t *testing.T) int {
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	t.Cleanup(func() { _ = cmd.Wait() }) // 收尸，别把僵尸留给测试进程
+	t.Cleanup(func() { _ = cmd.Wait() }) // reap it, don't leave zombies to the test process
 	return pid
 }
 
@@ -163,8 +163,8 @@ func writeLockFile(t *testing.T, pid int) {
 func TestReconcileHealsFromTheLock(t *testing.T) {
 	sandbox(t)
 	live := newgateServeProcess(t)
-	writePidFile(t, zombiePid(t), 8899) // 现场：pidfile 里是个僵尸
-	writeLockFile(t, live)              // 锁一直是对的
+	writePidFile(t, zombiePid(t), 8899) // the scene: the pidfile holds a zombie
+	writeLockFile(t, live)              // the lock was always right
 
 	info, notes := Reconcile()
 	if info == nil {
@@ -216,10 +216,10 @@ func TestReconcileHealsWhenPidfileIsMissing(t *testing.T) {
 // would rewrite the pidfile back to the old process and fail the handoff on the spot.
 func TestReconcileLeavesALivePidfileAlone(t *testing.T) {
 	sandbox(t)
-	fresh := newgateServeProcess(t) // pidfile 说的：新进程
+	fresh := newgateServeProcess(t) // what the pidfile says: a new process
 	draining := newgateServeProcess(t)
 	writePidFile(t, fresh, 8899)
-	writeLockFile(t, draining) // 锁说的：还在排空的旧进程
+	writeLockFile(t, draining) // what the lock says: an old process still draining
 
 	info, notes := Reconcile()
 	if info == nil || info.PID != fresh {
@@ -261,7 +261,7 @@ func TestReconcileSaysNothingWhenNobodyRuns(t *testing.T) {
 // shell process. So the inference path demands harder proof (__serve), else says "don't know".
 func TestReconcileRefusesALockThatIsNotTheDaemon(t *testing.T) {
 	sandbox(t)
-	notADaemon := newgateNamedProcess(t) // argv0 带 newgate，但不是 __serve
+	notADaemon := newgateNamedProcess(t) // argv0 carries newgate, but not __serve
 	writePidFile(t, freePid(t), 8899)
 	writeLockFile(t, notADaemon)
 
@@ -312,7 +312,7 @@ func TestStopTakesTheLockHolderWhenPidfileIsStale(t *testing.T) {
 func TestStaleLockCleanupThenWriteOwnIsTheFix(t *testing.T) {
 	sandbox(t)
 	stale := freePid(t)
-	writePidFile(t, stale, 8899) // 上个进程留下的两样东西都指向死 pid
+	writePidFile(t, stale, 8899) // both leftovers from the previous process point at a dead pid
 	writeLockFile(t, stale)
 
 	if err := AcquireLock(); err != nil {

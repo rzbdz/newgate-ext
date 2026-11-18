@@ -21,15 +21,18 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// 这一族验的是**首屏那张卡**（home.overview）：它比链卡多的那两样东西——「这个
-// 客户端此刻走谁」与「链上每一站快不快」——是不是真的按契约摆出来了。
+// This family verifies **the first screen's card** (home.overview): whether the two things it has
+// that the chain card does not -- "who is this client using right now" and "how fast is each
+// station on the chain" -- are really laid out per the contract.
 //
-// 与 chains_test.go 同一套做法：起一张**真的**小图（本模块 + config，外加这一屏
-// 用得上的那几个端口），素材是沙箱里几份配置文件解析出来的。三个可选端口各给一份
-// **假**的替身（见 provides）：把它们真装起来各要一串别的依赖，而那些依赖与这里要
-// 验的东西没有关系。替身实现的是**契约接口**，不是把真模块的内部抄一遍。
+// Same approach as chains_test.go: bring up a **real** small graph (this module + config, plus the
+// ports this screen uses), with material parsed from a few config files in the sandbox. Each of
+// the three optional ports gets a **fake** stand-in (see provides): installing the real ones would
+// each drag in a string of other dependencies, and those have nothing to do with what is being
+// verified here. The stand-in implements the **contract interface**, not a copy of the real
+// module's internals.
 
-// provides 造一个只提供某个能力的测试组件。
+// provides builds a test component that provides exactly one capability.
 func provides(name string, p modules.Provision) modules.Component {
 	return modules.Component{
 		Name:     name,
@@ -41,17 +44,18 @@ func provides(name string, p modules.Provision) modules.Component {
 	}
 }
 
-// installedFacts 是「这家客户端装了」那份运行时事实（见 confighook.AgentFacts）。
+// installedFacts is the runtime fact "this client is installed" (see confighook.AgentFacts).
 //
-// 为什么不用 Agent.Bin 去 PATH 上找（那是缺省判据）：测试机上没有 claude / codex
-// 这两条命令，而**测试不该依赖开发机上装了什么**。事实优先于 PATH，正是真实现里
-// 那条判据的原话（见 confighook.InstalledDefault）。
+// Why not look Agent.Bin up on PATH (that is the default criterion): the test machine has neither
+// the claude nor the codex command, and **a test must not depend on what is installed on the dev
+// machine**. Facts win over PATH, which is the very wording of that criterion in the real
+// implementation (see confighook.InstalledDefault).
 type installedFacts bool
 
 func (f installedFacts) Installed() bool             { return bool(f) }
 func (installedFacts) SlotTier(agentapi.Slot) string { return "" }
 
-// ovFixture 是本族的全部设施。
+// ovFixture is the whole apparatus for this family.
 type ovFixture struct {
 	t    *testing.T
 	reg  *view.Registry
@@ -59,18 +63,21 @@ type ovFixture struct {
 	deps overviewDeps
 }
 
-// newOverviewFixture 开沙箱、起图、把这一节挂进账本。
+// newOverviewFixture opens a sandbox, brings up the graph, and registers this section into the
+// ledger.
 //
-// deps 由 extra 里那几个替身决定：**不同的测试要装不同的那一批可选端口**，而
-// 「一个都没装」正是其中一种（那时这一屏必须照常成立）。
+// deps are decided by the stand-ins in extra: **different tests install a different subset of the
+// optional ports**, and "none installed" is one of them (and then this screen must still hold
+// up).
 func newOverviewFixture(t *testing.T, extra ...modules.Component) *ovFixture {
 	t.Helper()
 	testkit.Sandbox(t)
 	if err := os.MkdirAll(paths.Mappings(), 0o770); err != nil {
 		t.Fatal(err)
 	}
-	// 配置根要立起来：一份 profile 都没有与「连目录都没有」是两件事——前者是全新
-	// 安装，后者是 ListProfiles 读不出来（那是错误，不是空配置）。
+	// The config root must exist: "no profile at all" and "not even the directory" are two different
+	// things -- the former is a fresh install, the latter is ListProfiles failing to read (that is an
+	// error, not an empty config).
 	seedProviders(t, `{"providers":{
 		"ark":{"base_url":"https://ark.example/v3","api_key":"k"},
 		"zhipu":{"base_url":"https://zhipu.example","api_key":"k"}
@@ -79,7 +86,8 @@ func newOverviewFixture(t *testing.T, extra ...modules.Component) *ovFixture {
 	g := testkit.Start(t, comps...)
 
 	f := &ovFixture{t: t, reg: view.NewRegistry(), cfg: testkit.Get(g, configapi.Capability)}
-	// 取三个可选端口。缺席是合法的（零值），而那正是其中一条被测的性质。
+	// Take the three optional ports. Absence is legal (zero value), and that is one of the tested
+	// properties.
 	if v, ok := testkit.Maybe(g, agentapi.AgentCatalogCapability); ok {
 		f.deps.agents = v
 	}
@@ -92,7 +100,7 @@ func newOverviewFixture(t *testing.T, extra ...modules.Component) *ovFixture {
 	return f
 }
 
-// overview 取这一刻的首屏那一张卡。
+// overview fetches this moment's first-screen card.
 func (f *ovFixture) overview() view.Overview {
 	f.t.Helper()
 	all, err := f.reg.Snapshot()
@@ -106,8 +114,9 @@ func (f *ovFixture) overview() view.Overview {
 		if c.Kind != view.KindOverview {
 			f.t.Fatalf("Kind should be %q, actual %q", view.KindOverview, c.Kind)
 		}
-		// 断类型而不是断 JSON：形状是**契约**（前端也按 Kind 挑渲染器），转不过去就是
-		// 有人换了 Data 的类型，而那在界面上只表现为「这一屏白了」。
+		// Assert on the type, not on the JSON: the shape is **contract** (the front end picks its
+		// renderer by Kind too), so a failed conversion means someone changed the type of Data -- and on
+		// the UI side that only shows up as "this screen went blank".
 		data, ok := c.Data.(view.Overview)
 		if !ok {
 			f.t.Fatalf("Data should be view.Overview, actual %T", c.Data)
@@ -118,7 +127,8 @@ func (f *ovFixture) overview() view.Overview {
 	return view.Overview{}
 }
 
-// auto 取网格最前面那一张「默认」卡（它不是一个 profile，见 view.OverviewCard.Auto）。
+// auto fetches the "default" card at the front of the grid (it is not a profile, see
+// view.OverviewCard.Auto).
 func (f *ovFixture) auto() view.OverviewCard {
 	f.t.Helper()
 	a := f.overview().Auto
@@ -142,7 +152,7 @@ func (f *ovFixture) card(profile string) view.OverviewCard {
 	return view.OverviewCard{}
 }
 
-// actions 是这张卡上动作 ID 的集合（断言只问「有没有」，不问顺序）。
+// actions is the set of action IDs on this card (the assertions ask "is it there", not the order).
 func actions(c view.OverviewCard) map[string]bool {
 	out := map[string]bool{}
 	for _, a := range c.Actions {
@@ -151,13 +161,13 @@ func actions(c view.OverviewCard) map[string]bool {
 	return out
 }
 
-// seedFile 落一份 profile（复用 chains_test.go 里那个 helper）。
+// seedFile writes one profile to disk (reusing the helper in chains_test.go).
 func (f *ovFixture) seedFile(rel, body string) {
 	f.t.Helper()
 	seedFile(f.t, rel, body)
 }
 
-// twoProfiles 是这一族里最常用的一副牌：production（全局默认）与 cheap。
+// twoProfiles is this family's most-used hand: production (the global default) and cheap.
 func (f *ovFixture) twoProfiles() {
 	f.t.Helper()
 	seedFile(f.t, "production.kv", "normal = ark/deepseek-v3\n")
@@ -167,14 +177,15 @@ func (f *ovFixture) twoProfiles() {
 	}
 }
 
-// ---------- 这一屏的两条路 ----------
+// ---------- the two paths of this screen ----------
 
-// TestOverviewIsTheOnlyCardOnTheLandingSection 这一节**只有一张卡**。
+// TestOverviewIsTheOnlyCardOnTheLandingSection: this section has **exactly one card**.
 //
-// 曾经有两张：首屏那张总览，外加一张 `home.chains`（逐条读的那一屏）。2026-09-29
-// 按用户的话删掉了后者（原话：「这个 tab、卡片就是没用的，直接删除：候选链」）——
-// 它讲的每一件事，首屏那张的时刻表上都有，而它多买到的只有一个标签条。这一条钉住
-// 「删干净了」：多回来一张，界面上就多一条要点的标签。
+// There used to be two: the first-screen overview, plus a `home.chains` (the read-it-one-by-one
+// screen). On 2026-09-29 the latter was deleted per the user (his words: "this tab, the card is
+// useless, just delete it: candidate chains") -- everything it said is on the first screen's
+// timetable, and all it bought extra was one tab strip. This pins "deleted cleanly": one card
+// coming back means one more tab to click through in the UI.
 func TestOverviewIsTheOnlyCardOnTheLandingSection(t *testing.T) {
 	f := newOverviewFixture(t)
 	f.twoProfiles()
@@ -197,23 +208,24 @@ func TestOverviewIsTheOnlyCardOnTheLandingSection(t *testing.T) {
 	if ov.Kind != view.KindOverview {
 		t.Errorf("Kind should be %q, actual %q", view.KindOverview, ov.Kind)
 	}
-	// 它摆的每一份 profile 都得在（少一张就是「某条链在界面上不存在」，而那件事
-	// 没有任何东西会报出来）。
+	// Every profile it lays out must be there (one missing means "some chain does not exist on the
+	// UI", and nothing would report that).
 	if got := len(ov.Data.(view.Overview).Cards); got != 2 {
 		t.Errorf("both tiers should each have a card, actual %d", got)
 	}
 }
 
-// TestOverviewAgentsAndUseActions 客户端目录在时：顶上按它列标签，「用它」按钮按
-// 每个客户端各报一个，**已经在用的那个不报**。
+// TestOverviewAgentsAndUseActions: with the client catalog present, the top lists tabs from it,
+// and the "use this" button is reported once per client, **excluding the one already in use**.
 //
-// 每条判据都是产品上真会遇到的那一种：
-//   - `codex` 单独设过（state.active.codex=cheap），所以 production 那张卡上要有
-//     `use:codex`；
-//   - `claude` 没单独设过（跟着全局默认 = production），所以 production 那张卡上
-//     **不该**有 `use:claude`——把它指给它自己是件没有意义的事；
-//   - 全局那一档（`use:global`）只在「这份不是全局默认」时出现；
-//   - **没装的客户端一个按钮都不报**：改了也不会有东西经过它。
+// Every criterion is one that really comes up in the product:
+//   - `codex` was set on its own (state.active.codex=cheap), so the production card must have
+//     `use:codex`;
+//   - `claude` was never set on its own (it follows the global default = production), so the
+//     production card **must not** have `use:claude` -- pointing it at itself is meaningless;
+//   - the global entry (`use:global`) appears only when "this profile is not the global default";
+//   - **an uninstalled client reports no button at all**: changing it would route nothing through
+//     it.
 func TestOverviewAgentsAndUseActions(t *testing.T) {
 	cat := testkit.NewCatalog().
 		Add(&agentapi.Agent{ID: "claude"}, &agentapi.Agent{ID: "codex"}, &agentapi.Agent{ID: "opencode"}).
@@ -232,9 +244,10 @@ func TestOverviewAgentsAndUseActions(t *testing.T) {
 	for _, a := range ov.Agents {
 		ids = append(ids, a.ID)
 	}
-	// 末尾那档空的「全部客户端」**必须在**：`use:global:<profile>` 只在当前这一档
-	// 是它的时候画得出来（见 Overview.svelte 的 actions()），少这一档就等于把
-	// 「所有客户端一起换链」从这一屏上删掉——而且是静默的。
+	// The empty "all clients" entry at the end **must be there**: `use:global:<profile>` can only be
+	// drawn while that is the current entry (see actions() in Overview.svelte), so dropping this
+	// entry equals deleting "switch every client's chain together" from this screen -- and silently
+	// at that.
 	if strings.Join(ids, ",") != "claude,codex,opencode," {
 		t.Fatalf("tabs should be sorted by id, all three clients present, and an empty tier at the end, actual %v", ids)
 	}
@@ -259,10 +272,10 @@ func TestOverviewAgentsAndUseActions(t *testing.T) {
 		if a.ID == "claude" && a.Profile != "production" {
 			t.Errorf("claude has no override, it should report the global default production, actual %q", a.Profile)
 		}
-		// Own 与 Profile 是两件事，而这里正是它们分得开的地方：codex 单独设过
-		// （Own=true），claude 只是跟着全局默认走、恰好解析成 production（Own=false）。
-		// 少了这一格，界面只能把这两个状态说成同一句话——而它们的路由行为不同：
-		// 改掉全局默认，claude 会跟着变，codex 不会。
+		// Own and Profile are two different things, and this is exactly where they separate: codex was
+		// set on its own (Own=true), claude merely follows the global default and happens to resolve to
+		// production (Own=false). Without this cell, the UI can only say both states in one sentence --
+		// and their routing differs: change the global default and claude moves, codex does not.
 		if a.ID == "codex" && !a.Own {
 			t.Error("codex has its own override, so Own should be true")
 		}
@@ -275,10 +288,11 @@ func TestOverviewAgentsAndUseActions(t *testing.T) {
 	if !prod[useActionID("codex", "production")] {
 		t.Error("the production card should have use:codex (codex on its own is set to cheap)")
 	}
-	// **这一条是这一整块的重点**：claude 此刻确实走在 production 上（它跟着全局
-	// 默认，而默认就是 production），但它**没有固定**在 production 上——「固定它」
-	// 与「让它跟着」是两个状态，所以「就用它」这个按钮必须还在。前一版按解析结果
-	// 去比，判的是「它已经在用了」，于是用户想固定住的那一步**永远做不出来**。
+	// **This one is the point of the whole block**: claude really is on production right now (it
+	// follows the global default, and the default is production), but it is **not pinned** to
+	// production -- "pin it" and "let it follow" are two states, so the "just use it" button must
+	// still be there. The previous version compared against the resolved result, judged "it is
+	// already in use", and so the step of pinning **could never be made**.
 	if !prod[useActionID("claude", "production")] {
 		t.Error("claude follows the default on production but is not pinned -- there should be a use:claude to pin it")
 	}
@@ -299,15 +313,17 @@ func TestOverviewAgentsAndUseActions(t *testing.T) {
 	if cheap[useActionID("codex", "cheap")] {
 		t.Error("codex is already pinned to cheap, so use:codex should not be offered again")
 	}
-	// **同一张卡上还有「把自动指到它」那一条**：它在「自动」那一档下才会被画出来
-	// （前端按当前这一档挑，见 Overview.svelte 的 actions）。两句话长在同一张卡上
-	// 是有意的——同一张卡、同一个手势，含义由你在哪一档决定。
+	// **The same card also carries the "point auto at it" entry**: it is drawn only on the "auto"
+	// tier (the front end picks by the current tier, see actions in Overview.svelte). The two
+	// sentences living on one card is on purpose -- same card, same gesture, meaning decided by
+	// which tier you are on.
 	if !cheap[useActionID(useGlobal, "cheap")] {
 		t.Error("the cheap card should have use:global:cheap (clicking it under the auto tier points auto at cheap)")
 	}
 
-	// 「自动」那张：它此刻 resolve 到 production，而它自己**不摆成员表**——能指向
-	// 哪几份由下面那几张 profile 卡自己说（点它们就是改自动）。
+	// The "auto" one: it resolves to production right now, and it **lays out no member table** --
+	// which profiles it can point at is said by the profile cards below (clicking them changes
+	// auto).
 	au := f.auto()
 	if au.Profile != "production" {
 		t.Errorf("\"auto\" should report the production that it currently resolves to, actual %q", au.Profile)
@@ -325,8 +341,9 @@ func TestOverviewAgentsAndUseActions(t *testing.T) {
 	if am[useAutoPrefix+"claude"] {
 		t.Error("claude has no override and already follows, so there should be no \"follow auto\" for it")
 	}
-	// 它的链必须与它指向的那一份**逐字相同**：两张卡各建一次的话，两次读盘之间配置
-	// 变了，同一份 profile 会在两张卡上显示两条不同的链。
+	// Its chain must be **identical word for word** to the profile it points at: built separately,
+	// config changing between the two disk reads would make one profile show two different chains
+	// on two cards.
 	if len(au.Roles) != len(f.card("production").Roles) {
 		t.Errorf("the \"auto\" chain should match the production one word for word, tier counts %d vs %d",
 			len(au.Roles), len(f.card("production").Roles))
@@ -336,12 +353,13 @@ func TestOverviewAgentsAndUseActions(t *testing.T) {
 	}
 }
 
-// TestOverviewUseActionWritesTheHeader 点一下「就用它」真的要落到 state.json 里
-// 那个客户端的那一行上。
+// TestOverviewUseActionWritesTheHeader: clicking "just use it" really must land on that client's
+// row in state.json.
 //
-// 走**动作**这条路（RunConceptAction）而不是直接调 store：界面上真的点的就是它，
-// 而这条路上有一跳（账本按概念 ID 找到卡、再在卡的动作里找那个 ID）只在调用那一刻
-// 才成立——动作 ID 拼错（`use:` 后面那一段）在这一跳上表现为「按钮点了没反应」。
+// Take the **action** path (RunConceptAction) rather than calling store directly: that is what the
+// UI click really is, and this path has a hop (the ledger finds the card by concept ID, then finds
+// that ID among the card's actions) that only holds at the moment of the call -- a mistyped action
+// ID (the part after `use:`) shows up on this hop as "the button does nothing when clicked".
 func TestOverviewUseActionWritesTheHeader(t *testing.T) {
 	cat := testkit.NewCatalog().Add(&agentapi.Agent{ID: "claude"}).
 		WithFacts("claude", installedFacts(true))
@@ -358,18 +376,21 @@ func TestOverviewUseActionWritesTheHeader(t *testing.T) {
 	if got := store.LoadState().Active["claude"]; got != "cheap" {
 		t.Fatalf("after running use:claude, state.active.claude should be cheap, actual %q", got)
 	}
-	// 同一个动作跑第二次时它已经不在那一行上了（「已经用它」的不报）——这正是
-	// 「按钮消失」在协议上的样子，而它必须报成一句说得通的话，不是静默。
+	// Run the same action a second time and it is no longer on that row (one "already using it" is
+	// not reported) -- that is exactly what "the button disappeared" looks like on the protocol,
+	// and it must be reported as a sentence that makes sense, not as silence.
 	if _, err := f.reg.RunConceptAction(overviewID, useActionPrefix+"claude"); err == nil {
 		t.Error("once it is already in use this action should no longer exist, the second click should report it")
 	}
 }
 
-// TestOverviewLatencyLandsOnTheStation 健康表里有样本时，链上那一站要带上数字与
-// 颜色，而颜色按 breaker 的档位来（阈值只有一处实现，见 breaker/status）。
+// TestOverviewLatencyLandsOnTheStation: with samples in the health table, that station on the
+// chain must carry a number and a color, and the color follows breaker's tier (the thresholds have
+// a single implementation, see breaker/status).
 //
-// 这条守的是首屏最要紧的一件事：用户是拿它比快慢的。三个档位各来一条，而「没样本」
-// 那一条**必须什么都不带**——画一个 0ms 是在说「快得没有延迟」，而真相是「不知道」。
+// This guards the first screen's most important thing: the user compares speeds with it. One entry
+// for each of the three tiers, and the "no samples" one **must carry nothing** -- drawing a 0ms is
+// saying "so fast there is no latency", while the truth is "unknown".
 func TestOverviewLatencyLandsOnTheStation(t *testing.T) {
 	table := breakerapi.NewTable()
 	f := newOverviewFixture(t, provides("breaker-stub",
@@ -377,7 +398,7 @@ func TestOverviewLatencyLandsOnTheStation(t *testing.T) {
 	f.seedFile("production.kv",
 		"normal = ark/fast-model, ark/ok-model, ark/slow-model, ark/unprobed-model\n")
 
-	// 三条各记一发探活结论。慢的那条 13000ms 越过 SlowMs=12000。
+	// Record one probe verdict each for the three. The slow one at 13000ms crosses SlowMs=12000.
 	for _, c := range []struct {
 		model string
 		ms    time.Duration
@@ -388,8 +409,8 @@ func TestOverviewLatencyLandsOnTheStation(t *testing.T) {
 		t.Fatal("not a single health record was kept -- do the snapshot keys and the RecordProbe keys not match?")
 	}
 
-	// 档位行按能力从高到低排（domain.Roles），而这份 profile 只写了 normal——
-	// 不能拿 Roles[0]（那是 heavy，空的）。
+	// Tier rows are ordered by capability, high to low (domain.Roles), and this profile only writes
+	// normal -- so Roles[0] cannot be taken (that is heavy, and empty).
 	var row view.OverviewRow
 	for _, r := range f.card("production").Roles {
 		if r.Tier == "normal" {
@@ -423,11 +444,13 @@ func TestOverviewLatencyLandsOnTheStation(t *testing.T) {
 	}
 }
 
-// TestOverviewWithoutOptionalPorts 一个可选端口都没装时，这一屏必须**照常出卡**。
+// TestOverviewWithoutOptionalPorts: with no optional port installed at all, this screen must
+// **still draw its card as usual**.
 //
-// 这是「少一样就整张卡消失」那类错唯一会红的地方：健康表不在就没有延迟、网关不在
-// 就没有探活按钮、客户端目录不在就只有那档「全部客户端」——而链一张不少，那句
-// 「所有客户端都用它」也还在（它是这种装配下唯一能把链换掉的手段）。
+// This is the only place where the "one thing missing and the whole card vanishes" class of bug
+// goes red: no health table means no latency, no gateway means no probe button, no client catalog
+// means only the "all clients" entry -- while not one chain is missing, and the "all clients use
+// it" sentence is still there too (under this assembly it is the only way to switch the chain).
 func TestOverviewWithoutOptionalPorts(t *testing.T) {
 	f := newOverviewFixture(t)
 	f.twoProfiles()
@@ -456,12 +479,14 @@ func TestOverviewWithoutOptionalPorts(t *testing.T) {
 	}
 }
 
-// ---------- 探活的扇出 ----------
+// ---------- probe fan-out ----------
 
-// TestProbeBatchReportsWhatWentWrong 探一批时，**没通的那几条要被说出来**。
+// TestProbeBatchReportsWhatWentWrong: when probing a batch, **the ones that did not connect must
+// be said out loud**.
 //
-// 按这个按钮的人要的答案正是「哪几家不通」，所以那几条必须出现在返回的那句话里；
-// 全都通了才返回 nil（那时横幅不该出现）。
+// The answer the person pressing this button wants is exactly "which ones do not connect", so
+// those must appear in the returned sentence; only when all connected is nil returned (and then
+// the banner should not appear).
 func TestProbeBatchReportsWhatWentWrong(t *testing.T) {
 	targets := []probeTarget{
 		{provider: "a", model: "m1", key: "a/m1"},
@@ -490,9 +515,9 @@ func TestProbeBatchReportsWhatWentWrong(t *testing.T) {
 	}
 }
 
-// TestProbeTargetsDedupe 同一条 binding 在一屏上出现很多次（跨 profile 的链是常态），
-// 而探活**一次只该打它一发**：同一个上游在同一时刻被我们打两发既没有新信息，也是
-// 在给对面上压力。
+// TestProbeTargetsDedupe: the same binding appears many times on one screen (cross-profile chains
+// are normal), and a probe **must hit it only once**: the same upstream hit twice by us at the same
+// moment brings no new information, and puts pressure on the other side.
 func TestProbeTargetsDedupe(t *testing.T) {
 	chains := []configapi.Chain{
 		{Key: "normal", Steps: []configapi.Step{bind("p", "m1"), bind("p", "m2")}},

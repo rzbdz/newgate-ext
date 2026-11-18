@@ -20,7 +20,7 @@ const (
 	colGap  = 26.0
 	marginX = 70.0
 	marginY = 56.0
-	charW   = 7.4 // 12px 等宽的大致字宽，用来估节点宽度
+	charW   = 7.4 // rough glyph width at 12px monospace, for estimating node width
 )
 
 // Layout computes each point's layer, order within the layer and coordinates in place.
@@ -36,8 +36,8 @@ func Layout(g *Graph) {
 		idx[n.ID] = i
 	}
 
-	deps := make([][]int, len(g.Nodes))  // 我依赖谁（出边）
-	users := make([][]int, len(g.Nodes)) // 谁依赖我（入边）
+	deps := make([][]int, len(g.Nodes))  // whom I depend on (out edges)
+	users := make([][]int, len(g.Nodes)) // who depends on me (in edges)
 	seen := map[[2]int]bool{}
 	for _, e := range g.Edges {
 		from, okFrom := idx[e.From]
@@ -235,7 +235,7 @@ func sortByNeighborMedian(layer, reference []int, adj [][]int) {
 			}
 		}
 		if len(found) == 0 {
-			median[id] = -1 // 没有邻居：留在原地（排序时排最前，靠稳定排序保持相对次序）
+			median[id] = -1 // no neighbours: stay put (sorted first; the stable sort keeps relative order)
 			continue
 		}
 		sort.Ints(found)
@@ -385,8 +385,10 @@ func localCrossings(byLayer [][]int, deps, users [][]int, layer, pos int) int {
 	if layer+1 < len(byLayer) {
 		total += crossingsBetween(byLayer[layer+1], byLayer[layer], users)
 	}
-	_ = deps // 保留签名里的对称性：调用方拥有两份邻接表，读起来能看出它是层间判据。
-	_ = pos  // 当前实现算整条相邻带，图小且结果稳定；无需做难读的局部数学。
+	_ = deps // keep the signature symmetric: the caller owns both adjacency
+	// lists, which is what makes it readable as the inter-layer criterion.
+	_ = pos // the current implementation computes the whole adjacent band; the
+	// graph is small and the result stable, so no unreadable local math is needed.
 	return total
 }
 

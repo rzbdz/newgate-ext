@@ -152,8 +152,8 @@ func concepts() ([]view.Concept, error) {
 	// `config.profile.*` before `config.providers`, so the first screen of the left column
 	// would be all tier files, with the upstream config beyond the first screen -- and "only
 	// with an upstream can a binding be picked" is the same thing as the order of operations.
-	out = append(out, stateConcept())     // Order 0：全局设置
-	out = append(out, providersConcept()) // Order 1：上游
+	out = append(out, stateConcept())     // Order 0: global settings
+	out = append(out, providersConcept()) // Order 1: upstream
 	// One file per tier, one card per file -- **change tiers, change inheritance, rename, delete,
 	// create** all happen on this card (see applyProfileRoles). Before 2026-09-20 there was also
 	// a "tier files" directory card here: it listed the files that correspond one to one with
@@ -247,8 +247,8 @@ type providerChoice struct {
 // upstream -- probing is `newgate probe`'s job, and UI loading should not touch the network.
 type profileData struct {
 	Profile     string `json:"profile"`
-	File        string `json:"file"` // 相对配置根；保存时原样回传
-	Base        string `json:"base"` // 基线（内容哈希），见 store.WriteIfUnchanged
+	File        string `json:"file"` // relative to the config root; sent back as is on save
+	Base        string `json:"base"` // baseline (content hash), see store.WriteIfUnchanged
 	Description string `json:"description,omitempty"`
 	Default     bool   `json:"default"`
 	Pinned      bool   `json:"pinned,omitempty"`
@@ -594,7 +594,7 @@ func applyProfileRoles(conceptID, file string, edit json.RawMessage, base string
 	}
 	curStem := strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))
 	if newName == "" || newName == curStem {
-		newName = "" // 没改名
+		newName = "" // unchanged
 	}
 
 	if strings.HasSuffix(file, ".kv") {
@@ -995,11 +995,11 @@ func applyProviders(file string, edit json.RawMessage, base string) (string, err
 		for _, k := range providerFields {
 			v, given := it.Values[k]
 			if !given {
-				continue // 界面上没有这一格：不碰
+				continue // no such field on screen: leave it alone
 			}
 			if k == "api_key" {
 				if v == "" {
-					continue // 空 = 别动它，见上面那段
+					continue // empty = leave it alone, see the paragraph above
 				}
 			}
 			if k == "models" {
@@ -1214,7 +1214,7 @@ func redact(text, language string) (string, bool) {
 	if language == "json" {
 		var doc map[string]any
 		if json.Unmarshal([]byte(text), &doc) != nil {
-			return text, false // 解析不了就原样给出去（只读视图，不写回）
+			return text, false // unparsable: hand it over as is (read-only view, never written back)
 		}
 		if !scrub(doc) {
 			return text, false

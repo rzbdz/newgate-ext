@@ -1,9 +1,11 @@
-// Package locale 决定**这次进程用哪门语言**，并把目录装进 lib/i18n。
+// Package locale decides **which language this process uses**, and installs the catalogs into
+// lib/i18n.
 //
-// 分工要看清：查表、占位符、复数、语言标签匹配都在叶子 lib/i18n 里（无状态、
-// 谁都能引）；这里只做一件有状态的事——**解析**：环境变量、state.json 里的持久化
-// 选择、以及系统 locale 三者谁说了算。它是可摘的：摘掉之后 lib/i18n 没有目录，
-// 每句话都原样输出源语言文本，进程照常。
+// See the split clearly: table lookup, placeholders, plurals and language-tag matching all live in
+// the leaf lib/i18n (stateless, anyone can import it); this does the one stateful thing --
+// **resolution**: which of the environment variable, the persisted choice in state.json, and the
+// system locale has the final say. It is removable: with it gone lib/i18n has no catalogs, every
+// sentence comes out as the source-language text, and the process carries on.
 package locale
 
 import (
@@ -11,33 +13,35 @@ import (
 	"github.com/rzbdz/newgate/lib/i18n"
 )
 
-// Source 说明这次的语言是**从哪来的**。为什么要把来源报出来：`newgate lang zh-Hans`
-// 写进配置之后，如果当前 shell 的 `LANG` 压着它，用户会觉得「我明明设了怎么没用」。
-// 来源是那句话的答案——doctor 与 `newgate lang` 都打它。
+// Source says **where this language came from**. Why report the source: after `newgate lang
+// zh-Hans` is written into the config, if the current shell's `LANG` overrides it, the user thinks
+// "I clearly set it, why does it not work". The source is the answer to that sentence -- doctor
+// and `newgate lang` both print it.
 type Source string
 
 const (
-	// SourceEnvOverride 会话级显式覆盖（`NEWGATE_LANG=zh-Hans newgate status`）。
+	// SourceEnvOverride is a session-level explicit override (`NEWGATE_LANG=zh-Hans newgate
+	// status`).
 	SourceEnvOverride Source = "NEWGATE_LANG"
-	// SourceConfig 配置里持久化的选择（`newgate lang zh-Hans` 写下的）。
+	// SourceConfig is the choice persisted in the config (written by `newgate lang zh-Hans`).
 	SourceConfig Source = "config"
-	// SourceSystem 跟随系统（LC_ALL / LC_MESSAGES / LANG）。
+	// SourceSystem is following the system (LC_ALL / LC_MESSAGES / LANG).
 	SourceSystem Source = "system"
-	// SourceDefault 谁都没说 → 源语言。
+	// SourceDefault is nobody said anything → the source language.
 	SourceDefault Source = "default"
 )
 
-// Service 是「这次用哪门语言」这件事的所有权端口。
+// Service is the ownership port for "which language this run uses".
 type Service interface {
-	// Lang 当前生效的语言 tag（**实际**用的，回退之后的那一个）。
+	// Lang is the language tag in effect (the one **actually** used, after fallback).
 	Lang() string
-	// Requested 这次要求的是哪门语言（可能与 Lang 不同：要求了一门没翻的）。
+	// Requested is which language was asked for (may differ from Lang: an untranslated one).
 	Requested() string
-	// Source 这个选择是从哪来的。
+	// Source is where this choice came from.
 	Source() Source
-	// Available 可选语言的体检结果（覆盖率、机翻计数）。
+	// Available is the checkup of the selectable languages (coverage, machine-translation counts).
 	Available() []i18n.Info
 }
 
-// Capability 是这个端口的唯一身份。
+// Capability is this port's unique identity.
 var Capability = modules.NewCapability[Service]("locale")

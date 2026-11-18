@@ -158,7 +158,7 @@ func signature() string {
 				names = append(names, e.Name())
 			}
 		}
-		sort.Strings(names) // 顺序必须稳定，否则指纹会假变化
+		sort.Strings(names) // the order must be stable, or the fingerprint changes spuriously
 		for _, n := range names {
 			files = append(files, filepath.Join(paths.Mappings(), n))
 		}

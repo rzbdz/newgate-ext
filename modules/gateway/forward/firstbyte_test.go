@@ -24,7 +24,7 @@ func TestCompactNotTightTimeout(t *testing.T) {
 	var upstreamGot uint32
 	hung := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.StoreUint32(&upstreamGot, 1)
-		time.Sleep(3 * time.Second) // 慢，但没超过 150s 标准上限
+		time.Sleep(3 * time.Second) // slow, but under the 150s standard ceiling
 		_, _ = w.Write([]byte(`{"from":"hung-slow"}`))
 	}))
 	defer hung.Close()
@@ -38,7 +38,7 @@ func TestCompactNotTightTimeout(t *testing.T) {
 	front := httptest.NewServer(http.HandlerFunc(srv.handleProxy))
 	defer front.Close()
 
-	// 客户端 1.2s 后放弃（远晚于 400ms 的紧超时，远早于 150s 标准上限）
+	// the client gives up after 1.2s (well past the tight 400ms timeout, well before the 150s cap)
 	ctx, cancel := context.WithTimeout(context.Background(), 1200*time.Millisecond)
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost,
@@ -55,7 +55,8 @@ func TestCompactNotTightTimeout(t *testing.T) {
 	if atomic.LoadUint32(&upstreamGot) == 0 {
 		t.Fatal("the request did not reach the upstream")
 	}
-	// 客户端断开后 proxy goroutine 处理取消需要一点时间——轮询等它记账
+	// after the client disconnects the proxy goroutine needs a moment to handle cancellation --
+	// poll until it has accounted for it
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		if metrics.Default.Snapshot()["client.cancel"] == 1 {
@@ -86,11 +87,11 @@ func sandboxState(t *testing.T, stateJSON string) {
 	}
 }
 
-// classifierBody 复刻 Bash 权限分类器的形态（实抓：非流式 + system
-// 自报 "You are a security monitor"）。
+// classifierBody replicates the shape of the Bash permission classifier (observed: non-streaming
+// + a system that self-reports "You are a security monitor").
 const classifierBody = `{"model":"mid","max_tokens":2112,` +
 	`"system":[{"type":"text","text":"You are a security monitor for autonomous AI coding agents."}],` +
 	`"messages":[{"role":"user","content":"classify"}]}`
 
-	// compactBody 复刻 /compact 总结请求的形态（非流式，**没有**分类器
-	// marker——大输入、不挡交互，不该吃紧超时）。
+	// compactBody replicates the shape of a /compact summary request (non-streaming, **no**
+	// classifier marker -- large input, does not block interaction, must not eat the tight timeout).

@@ -15,10 +15,10 @@ import (
 // A target connection's state. These words show up in the CLI, the web table and the log
 // - **one vocabulary**, or "terminal says idle, UI says disconnected" looks like two things.
 const (
-	StateIdle       = "idle"       // 还没有人用过，或者空闲超时已经断开
-	StateConnecting = "connecting" // 正在拨（有人已经在拨了，别人在等）
+	StateIdle       = "idle"       // nobody has used it yet, or the idle timeout already closed it
+	StateConnecting = "connecting" // dialing (someone is already dialing, the rest wait)
 	StateUp         = "up"
-	StateDown       = "down" // 上一次拨号失败，原因在 lastErr
+	StateDown       = "down" // the last dial failed, reason in lastErr
 )
 
 // pool manages all targets' SSH connections: lazy dial, reuse, idle reap, persistent keepalive.

@@ -7,64 +7,72 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// 本文件是交给界面的那一面：**一屏看到我这些链**。
+// This file is the face handed to the UI: **see these chains of mine on one screen**.
 
-// registerView 把这一节挂上去。没有 web 界面时什么都不做（见 module.go）。
+// registerView hangs this section up. It does nothing without a web UI (see module.go).
 //
-// 登记时**一个文件都不读**：产出函数 `concepts` 要等到真的有人来看界面才跑。
-// 这一条在这里格外要紧——链的结论要重读并重新解析每一份 profile（见
-// configapi.Config.AllChains 与 lib/view 的包注释），而每一条 `newgate …` 命令
-// 都会跑到这里，其中绝大多数没有人会打开界面。
+// Registration **reads not one file**: the producer function `concepts` runs only once someone
+// actually comes to look at the UI. This matters especially here -- the chain verdicts re-read and
+// re-parse every profile (see configapi.Config.AllChains and the package comment in lib/view),
+// while every `newgate …` command reaches this point, and on the vast majority of them nobody
+// opens the UI.
 func registerView(v view.Service, cfg configapi.Config, deps overviewDeps) (modules.Release, error) {
-	// `.Landing()`：首屏落在这一节上。多个人声明时按 Source 取最小的那个
-	// （见 lib/view 的 Sections），所以它不是一个「抢座位」的动作——多一份声明
-	// 不会让这一屏变成随机的，只会按 Source 分胜负。
+	// `.Landing()`: the first screen lands on this section. When several declare it, the one with
+	// the smallest Source wins (see Sections in lib/view), so this is not a "grab the seat" move --
+	// an extra declaration does not make this screen random, it only settles by Source.
 	//
-	// **不归组**（曾经是 `.In("Overview")`）：侧栏把**声明了落点的那一栏**排在目录
-	// 第一位、且不给它画分组标题（见 Sidebar.svelte 的 rows）。归组的话它会连同
-	// 标题一起被卷到中间去，而「凭什么它最上面」这个问题就答不上来了——它自己在
-	// 第一位时，位置本身就是那句话，与「不归组的那几栏排最前面」是同一条理由。
+	// **No group** (it used to be `.In("Overview")`): the sidebar puts **the entry that declared the
+	// landing** first in the directory, and draws no group heading for it (see rows in
+	// Sidebar.svelte). Grouped, it would be rolled into the middle together with a heading, and "why
+	// is it at the top" would have no answer -- while at the top itself, the position is the answer,
+	// the same reason as "the ungrouped entries come first".
 	section := view.Title(func() string { return i18n.T("Home", nil) }).Landing().Of(view.FieldRoutes)
-	// 这一节上只挂**一颗**动作：fallback 那个状态开关（见 overview.go 的
-	// fallbackAction）。曾经还有一颗「全都探一遍」，2026-09-29 按用户的话去掉了
-	// （原话：「主页全部探一遍那个按钮也是傻啊，直接移除掉吧」）——探某一份是卡片头
-	// 上那颗的事，而「全都探一遍」是一次要打十几个上游、几十秒才有结果的批量操作，
-	// 放在一屏拿来扫的界面上，点它的人多半只想看看某一家的延迟。
-	// fallback 链总开关，与探活并排挂在右上角（判据同：没装网关就不挂——链都没有，
-	// 关一个不存在的开关没有意义）。
+	// This section carries **exactly one** action: the fallback state switch (see fallbackAction in
+	// overview.go). There used to be a "probe them all" as well, removed per the user on 2026-09-29
+	// (his words: "the probe-all button on the home page is stupid too, just remove it") -- probing
+	// one profile is the card head's job, while "probe them all" is a batch operation that hits a
+	// dozen upstreams and takes tens of seconds for a result, and on a screen meant for scanning,
+	// the person clicking it mostly just wants to see one provider's latency.
+	// The fallback-chain master switch, hung in the top right next to probing (same criterion: not
+	// hung without the gateway -- there are no chains, and turning off a switch that does not exist
+	// is meaningless).
 	if a, ok := fallbackAction(deps.gateway); ok {
 		section = section.Does(a)
 	}
 	return v.Register(Name, section, concepts(cfg, deps))
 }
 
-// concepts 是「此刻这些链长什么样」。每次被调用都重新读盘——CLI 刚建的档位、
-// 刚改的 providers.json 会在下一次快照里出现（见 view 包注释里那段）。
+// concepts is "what these chains look like right now". Every call re-reads from disk -- a tier the
+// CLI just created, a providers.json just changed, shows up in the next snapshot (see that
+// passage in the view package comment).
 //
-// 读不出来时**整节报错**（而不是画一屏空的）：AllChains 的错误只有两种——配置
-// 目录整个读不了，或者一份 profile 都读不出来，两种都不是「这台机器没有链」那个
-// 意思。画成空屏会让用户以为配置丢了，而真正的原因（权限、路径）一个字都看不到。
-// 这与 config 那边逐张卡片给 Broken 的做法不冲突：那里是**一份文件**坏了，别的
-// 照常；这里失败的是「所有链」这件事本身。
+// When it cannot be read, **the whole section errors** (rather than drawing an empty screen):
+// AllChains has only two kinds of error -- the config directory being entirely unreadable, or not
+// one profile being readable, and neither means "this machine has no chains". An empty screen
+// would make the user think the config is gone, while the real cause (permissions, path) would not
+// show a single word. This does not conflict with config handing out Broken per card: there **one
+// file** is broken and the rest carry on; here what fails is "all the chains" itself.
 //
-// # 两概念共用一次 AllChains
+// # Two concepts share one AllChains
 //
-// 这一节有两张卡（首屏那张总览 + 逐条读的链卡），它们摆的必须是**同一个时刻**的
-// 配置。各自问一次 AllChains 的代价不止是双倍（那一位要重读并重新解析每一份
-// profile），更糟的是两次调用之间盘可能被人改了一笔——于是两张卡说的是两份不同的
-// 配置，而屏幕上完全看不出异样。所以链只取一次，往下传（见 chains.go 的文件头）。
+// This section has two cards (the first-screen overview + the read-one-by-one chain card), and
+// what they lay out must be the config of **the same moment**. Asking AllChains separately costs
+// more than double (that one re-reads and re-parses every profile); worse, the disk may be changed
+// between the two calls -- so the two cards state two different configs, and nothing on screen
+// looks odd. So the chains are fetched once and passed down (see chains.go's file header).
 func concepts(cfg configapi.Config, deps overviewDeps) view.Contributor {
 	return func() ([]view.Concept, error) {
 		all, err := cfg.AllChains()
 		if err != nil {
 			return nil, err
 		}
-		// **只有一张卡**。曾经这里还有一张 `home.chains`（逐条读的那一屏：每一档
-		// 解析成什么、谁被跳过、为什么），2026-09-29 按用户的话删掉了——原话是
-		// 「这个 tab、卡片就是没用的，直接删除：候选链」。它讲的每一件事，首屏那张
-		// 卡的时刻表上都有一份（摊开那张卡就是同样的结论），而它多买到的只有一个
-		// 标签条。那句话在这一屏上尤其贵：主页要的是「一屏看完」，多一条标签就多
-		// 一层要点。
+		// **One card only**. There used to be a `home.chains` here too (the read-one-by-one screen:
+		// what each tier resolves to, who was skipped, and why), deleted per the user on 2026-09-29 --
+		// his words: "this tab, the card is useless, just delete it: candidate chains". Everything it
+		// said has a copy on the first-screen card's timetable (opening that card gives the same
+		// conclusion), and all it bought extra was one tab strip. That strip is especially expensive on
+		// this screen: the home page wants "see it all on one screen", and one more tab is one more
+		// layer to click through.
 		return []view.Concept{overviewConcept(all, deps)}, nil
 	}
 }

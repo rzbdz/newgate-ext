@@ -6,7 +6,8 @@ import (
 	"testing"
 )
 
-// 插入点必须在子数组**开头**，且除了插进去的那段，其余每个字节原样保留。
+// The insertion point must be at the **start** of the sub-array, and apart from the inserted
+// span every other byte stays as is.
 func TestEnsureArrayItemArrayHead(t *testing.T) {
 	body := []byte("{\n  \"messages\": [\n" +
 		"    {\"role\": \"user\", \"content\": [{\"type\":\"text\",\"text\":\"a\"}]},\n" +
@@ -30,7 +31,8 @@ func TestEnsureArrayItemArrayHead(t *testing.T) {
 		`"content": [{"type":"thinking","thinking":""},{"type":"text","text":"b"}]`) {
 		t.Fatalf("not inserted at the head:\n%s", out)
 	}
-	// user 那条与顶层其余字节不动：缩进、key 顺序、1e10 的字面量都在
+	// The user entry and the rest of the top level stay put: indentation, key order and the
+	// 1e10 literal are all still there
 	if !strings.Contains(string(out), `{"role": "user", "content": [{"type":"text","text":"a"}]}`) {
 		t.Fatalf("the user message was touched:\n%s", out)
 	}
@@ -39,7 +41,8 @@ func TestEnsureArrayItemArrayHead(t *testing.T) {
 	}
 }
 
-// 空数组不需要补逗号；need 返回 false 的一律不碰，且返回原字节。
+// An empty array needs no comma; anything need returns false for is left alone and the
+// original bytes come back.
 func TestEnsureArrayItemArrayHeadEdges(t *testing.T) {
 	body := []byte(`{"messages":[{"role":"assistant","content":[]}]}`)
 	out, n, err := EnsureArrayItemArrayHead(body, "messages", "content",
@@ -104,9 +107,9 @@ func TestAppendLastArrayItemArray(t *testing.T) {
 	}
 }
 
-// AppendArrayItemArrayAt 按下标挑元素。存在的理由见函数注释：要追加的那条消息
-// **不是**数组的最后一项（Claude Code 会在 tool_result 之后追加一条 role:"system"
-// 的插话，现场 dump/err-400-req000464）。
+// AppendArrayItemArrayAt picks the element by index. Why it exists: see the function note -
+// the message to append to is **not** the array's last entry (Claude Code appends a
+// role:"system" remark after a tool_result; field dump dump/err-400-req000464).
 func TestAppendArrayItemArrayAt(t *testing.T) {
 	body := []byte(`{"messages":[` +
 		`{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1"}]},` +
@@ -121,7 +124,7 @@ func TestAppendArrayItemArrayAt(t *testing.T) {
 	if !json.Valid(out) {
 		t.Fatalf("the result is not valid JSON:\n%s", out)
 	}
-	// 追加在第 0 项（user 那条）的 content 尾部，system 仍在它后面。
+	// Appended at the tail of entry 0's (the user one) content; system is still after it.
 	if !strings.Contains(string(out),
 		`{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1"},{"type":"text","text":"continue"}]}`) {
 		t.Fatalf("not appended to the content of item 0:\n%s", out)
@@ -133,7 +136,8 @@ func TestAppendArrayItemArrayAt(t *testing.T) {
 		t.Fatalf("an unrelated big integer was rewritten:\n%s", out)
 	}
 
-	// 下标越界、元素不是对象：什么都不做，且**返回原字节**（不是拷贝）。
+	// Index out of range, element not an object: do nothing and **return the original
+	// bytes** (not a copy).
 	for _, tc := range []struct {
 		name string
 		idx  int
@@ -146,20 +150,22 @@ func TestAppendArrayItemArrayAt(t *testing.T) {
 		}
 	}
 
-	// 元素不是对象（顶层数组里混了标量）时跳过，不 panic 也不改字节。
+	// Skip when the element is not an object (scalars mixed into the top-level array):
+	// no panic, no byte changed.
 	scalar := []byte(`{"messages":[1,{"role":"user","content":[]}]}`)
 	out, changed, err = AppendArrayItemArrayAt(scalar, "messages", "content", 0, block)
 	if err != nil || changed || string(out) != string(scalar) {
 		t.Fatalf("scalar element: changed=%v err=%v\n%s", changed, err, out)
 	}
 
-	// content 是字符串（没有子数组可追加）：按「形状不认识」报 errNotArray。
+	// content is a string (no sub-array to append to): report errNotArray as "shape
+	// unrecognized".
 	strContent := []byte(`{"messages":[{"role":"user","content":"plain text"}]}`)
 	if _, _, err := AppendArrayItemArrayAt(strContent, "messages", "content", 0, block); err == nil {
 		t.Fatal("a string content should raise errNotArray")
 	}
 
-	// 空 content 数组：不加前导逗号。
+	// Empty content array: no leading comma.
 	empty := []byte(`{"messages":[{"role":"user","content":[]}]}`)
 	out, changed, err = AppendArrayItemArrayAt(empty, "messages", "content", 0, block)
 	if err != nil || !changed {

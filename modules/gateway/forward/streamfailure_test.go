@@ -13,10 +13,10 @@ import (
 	"github.com/rzbdz/newgate-ext/modules/gateway/quirk"
 )
 
-// streamFailUpstream 是「Responses 方言在流里报失败」的假上游：**HTTP 200**，
-// 然后一条 response.failed。真实上游就是这个形状（core/mock/fake_upstream.py
-// 的 _responses_failed 逐字复刻过），而它正是这条测试存在的理由——按状态码写
-// 的判据在这里看不见任何异常。
+// streamFailUpstream is a fake upstream for "a Responses-dialect upstream reporting failure
+// inside the stream": **HTTP 200**, then a response.failed. That is the real upstream's shape
+// (core/mock/fake_upstream.py's _responses_failed replicates it verbatim), and it is exactly
+// why this test exists -- a status-code criterion sees nothing wrong here.
 func streamFailUpstream(t *testing.T, message string) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -37,36 +37,40 @@ func streamFailUpstream(t *testing.T, message string) *httptest.Server {
 	}))
 }
 
-// TestStreamFailureInsideA200IsLearned 钉住这条路上**唯一**的学习入口。
+// TestStreamFailureInsideA200IsLearned pins the **only** learning entry on this path.
 //
-// # 它复现的故障（用户 2026-09-22 报的那一句）
+// # The failure it reproduces (the line the user reported on 2026-09-22)
 //
-// Codex → GLM：上游把拒绝塞在事件流里，HTTP 状态码是 200。数据面那条按状态码
-// 走的 learnQuirks（status >= 400 才学）因此**一次都不触发**，quirk 表永远是
-// 空的，always-thinks 的 Match 永远不绿——用户看到的是「必现、过一会儿自己好」
-// （「好」是因为恰好有人 probe 过那一家，而那是运气，不是机制）。
+// Codex → GLM: the upstream puts the rejection inside the event stream, HTTP status 200. The
+// data plane's status-code-driven learnQuirks (learns only on status >= 400) therefore **never
+// fires**, the quirk table stays empty forever, and always-thinks' Match never turns green --
+// what the user sees is "reproducible, heals by itself after a while" ("heals" because someone
+// happened to probe that provider, which is luck, not mechanism).
 //
-// # 为什么断言「落盘缓存里有这一笔」而不是「quirk 表里有」
+// # Why assert "this entry is in the persisted cache" and not "in the quirk table"
 //
-// 表活在内存里，重启就空；用户真正要的是**下一发不再撞**，那靠的是落盘
-// （probe-capabilities.json）+ 下个进程的 LoadCachedCapabilities。所以这里
-// 断言到盘上那一笔为止——内存里那位只是这条路的中间站。
+// The table lives in memory and is empty after a restart; what the user really wants is **the
+// next shot not hitting it**, which rests on persistence (probe-capabilities.json) + the next
+// process's LoadCachedCapabilities. So the assertion goes as far as the entry on disk -- the
+// in-memory one is only an intermediate stop on this path.
 //
-// 签名是就地注册的：判据的归属是 `modules/thinking`（它拥有那个补丁），而
-// forward 只是**用**它。真注册它会把 modules/thinking 拖进本包的测试依赖，
-// 成一圈不该有的依赖。
+// The signature is registered in place: the criterion's home is `modules/thinking` (it owns
+// that patch), and forward only **uses** it. Registering it for real would drag
+// modules/thinking into this package's test dependencies, a cycle that should not exist.
 func TestStreamFailureInsideA200IsLearned(t *testing.T) {
 	isolate(t)
 	quirk.Default.Reset()
 	t.Cleanup(quirk.Default.Reset)
 
-	// 判据本身（「报错里出现『始终思考』→ 这个模型不能关思考」）由
-	// modules/thinking 在 Start 里注册，而 TestMain 起的整张图把它装进来了
-	// ——本测试只是**用**它，不另注册一条（注册会撞名，那是设计好的：
-	// RegisterSignature 对同一个 Label 当场报错，见 gateway/quirk）。
+	// The criterion itself ("the error says 'always thinks' → this model cannot disable
+	// thinking") is registered by modules/thinking in Start, and the graph TestMain starts
+	// has it installed -- this test only **uses** it, registering no second copy (that would
+	// collide, by design: RegisterSignature errors at once on a duplicate Label, see
+	// gateway/quirk).
 	//
-	// 这一句把「判据真的在那儿」钉住：哪天 thinking 被摘掉，这里会先红，
-	// 而不是让下面的断言从「学到了」悄悄变成一条**测不到东西**的绿。
+	// This line pins "the criterion really is there": the day thinking is removed, this goes
+	// red first, rather than letting the assertion below quietly turn from "learned" into a
+	// green that **tests nothing**.
 	if got := quirk.Default.Learn("probe-check", "probe-check", 400, []byte("始终思考")); len(got) == 0 {
 		t.Fatal("the modules/thinking signatures were not installed - this test is a no-op, fix the assembly first")
 	}
@@ -86,8 +90,8 @@ func TestStreamFailureInsideA200IsLearned(t *testing.T) {
 	defer func() { testChain = nil }()
 
 	srv, logs := newLoggingTestServer()
-	// 停机时落盘那一步（真实 daemon 走的是 Shutdown / 优雅交接两条路，
-	// 这里是同一个函数）。
+	// The persist step at shutdown (a real daemon takes the Shutdown / graceful-handover paths;
+	// this is the same function).
 	defer srv.flushPendingQuirks()
 
 	front := httptest.NewServer(http.HandlerFunc(srv.handleProxy))
@@ -101,7 +105,8 @@ func TestStreamFailureInsideA200IsLearned(t *testing.T) {
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 
-	// 前两件是**这条故障为什么难查**的形状：状态码 200、连接正常。
+	// The first two are **the shape of why this failure is hard to diagnose**: status 200,
+	// connection fine.
 	if resp.StatusCode != 200 {
 		t.Fatalf("the shape of this path is 200, got %d", resp.StatusCode)
 	}
@@ -109,11 +114,11 @@ func TestStreamFailureInsideA200IsLearned(t *testing.T) {
 		t.Fatalf("the failure in the stream was not relayed to the client as is:\n%s", body)
 	}
 
-	// 学到手（内存表）
+	// learned (in-memory table)
 	if !quirk.Default.Has("smt-glm", "glm-5.3", quirk.NoThinkingDisable) {
 		t.Fatalf("the failure in the stream was not learned. log:\n%s", logs.String())
 	}
-	// 说出来了（不静默）：用户得知道我们从下一发开始会往请求里加东西。
+	// said it (not silent): the user has to know we add things to requests from the next shot on.
 	if log := logs.String(); !strings.Contains(log, "reported a failure inside the event stream") {
 		t.Fatalf("the log has no line saying 'the upstream reported a failure inside the stream':\n%s", log)
 	}
@@ -121,7 +126,7 @@ func TestStreamFailureInsideA200IsLearned(t *testing.T) {
 		t.Fatalf("the log has no 'learned' line:\n%s", log)
 	}
 
-	// 落盘（换版/重启之后还认得）
+	// persisted (still recognized after an upgrade/restart)
 	srv.flushPendingQuirks()
 	disk := probe.DiskQuirks()
 	if len(disk) != 1 || disk[0].Provider != "smt-glm" || disk[0].Model != "glm-5.3" {
@@ -129,23 +134,27 @@ func TestStreamFailureInsideA200IsLearned(t *testing.T) {
 	}
 }
 
-// TestSuccessfulStreamDoesNotLearn 不误伤：正常收尾的流一个字节都不学。
+// TestSuccessfulStreamDoesNotLearn no collateral damage: a normally finished stream learns not
+// one byte.
 //
-// 这条判据比上一条重要——上一条坏了是「没学到」（用户再撞一次，可恢复），
-// 这条坏了是**凭一条正常的流往所有请求里加字段**，而那是不可恢复的静默改
-// 用户请求。所以这里连「表是空的」和「没写盘」两件都断言。
+// This criterion matters more than the previous one -- if that one breaks it is "did not
+// learn" (the user hits it again, recoverable), if this one breaks it is **adding fields to
+// every request on the strength of one normal stream**, an unrecoverable silent edit of the
+// user's requests. So it asserts both "the table is empty" and "nothing was written to disk".
 func TestSuccessfulStreamDoesNotLearn(t *testing.T) {
 	isolate(t)
 	quirk.Default.Reset()
 	t.Cleanup(quirk.Default.Reset)
 
-	// 判据本身（「报错里出现『始终思考』→ 这个模型不能关思考」）由
-	// modules/thinking 在 Start 里注册，而 TestMain 起的整张图把它装进来了
-	// ——本测试只是**用**它，不另注册一条（注册会撞名，那是设计好的：
-	// RegisterSignature 对同一个 Label 当场报错，见 gateway/quirk）。
+	// The criterion itself ("when the error says 'always thinks' -> this model cannot turn
+	// thinking off") is registered by modules/thinking in Start, and the whole graph that
+	// TestMain builds includes it -- this test only **uses** it and does not register its
+	// own (registering would collide on purpose: RegisterSignature errors on a duplicate
+	// Label, see gateway/quirk).
 	//
-	// 这一句把「判据真的在那儿」钉住：哪天 thinking 被摘掉，这里会先红，
-	// 而不是让下面的断言从「学到了」悄悄变成一条**测不到东西**的绿。
+	// This line pins down "the criterion is really there": the day thinking is removed,
+	// this goes red first, instead of the assertions below quietly turning from "learned"
+	// into a green that **tests nothing**.
 	if got := quirk.Default.Learn("probe-check", "probe-check", 400, []byte("始终思考")); len(got) == 0 {
 		t.Fatal("the modules/thinking signatures were not installed - this test is a no-op, fix the assembly first")
 	}

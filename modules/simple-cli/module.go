@@ -296,7 +296,7 @@ func kindLabel(kind string) string {
 	case kindVerbose:
 		return i18n.T("verbose mode", nil)
 	}
-	return kind // 认不出的身份原样打出来：那是新增注入点忘了登记，看得见比看不见强
+	return kind // an unknown kind goes out as-is: a new injection point forgot to register
 }
 
 func (s *service) accept(kind string) modules.Release {

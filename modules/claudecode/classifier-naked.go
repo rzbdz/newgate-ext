@@ -35,8 +35,8 @@ const NakedConfigKey = "classifier_naked"
 // takes effect**, and the status line prints `-2562047h…` (time.Until overflows on
 // the zero value). Hit on the very first real run after going live on 2026-09-17.
 type NakedConfig struct {
-	Mode      string    `json:"mode"`       // "on"（自限窗口）| "forever"
-	ExpiresAt time.Time `json:"expires_at"` // Mode=="on" 时这个窗口到哪一刻失效
+	Mode      string    `json:"mode"`       // "on" (self-limiting window) | "forever"
+	ExpiresAt time.Time `json:"expires_at"` // when this window expires while Mode=="on"
 }
 
 // Marshal encodes the bytes to write into state.json. Field key names are decided
@@ -67,7 +67,7 @@ func ParseNakedConfig(raw []byte) (NakedConfig, bool) {
 	switch c.Mode {
 	case "on":
 		if !time.Now().Before(c.ExpiresAt) {
-			return c, false // 窗口已过（或 expires_at 缺失/为零值）：当作没开
+			return c, false // window has passed (or expires_at missing/zero): treat as off
 		}
 		return c, true
 	case "forever":

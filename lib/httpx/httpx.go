@@ -36,7 +36,7 @@ func LoopbackAwareTransport() *http.Transport {
 	t := http.DefaultTransport.(*http.Transport).Clone()
 	t.Proxy = func(req *http.Request) (*url.URL, error) {
 		if IsLoopback(req.URL.Hostname()) {
-			return nil, nil // 直连，不经代理
+			return nil, nil // direct: no proxy
 		}
 		return http.ProxyFromEnvironment(req)
 	}

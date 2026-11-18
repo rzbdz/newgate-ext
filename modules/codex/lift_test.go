@@ -151,8 +151,8 @@ func TestHasUsableTopLevelTools(t *testing.T) {
 		{`{"tools":[{"type":"function","name":"f"}]}`, true},
 		{`{"tools":[]}`, false},
 		{`{"tools":null}`, false},
-		{`{"model":"x"}`, false},    // 缺席：没有「已存在的顶层 tools」可用
-		{`{"tools":"oops"}`, false}, // 不是数组
+		{`{"model":"x"}`, false},    // absent: no existing top-level tools to use
+		{`{"tools":"oops"}`, false}, // not an array
 	}
 	for _, c := range cases {
 		if got := HasUsableTopLevelTools([]byte(c.body)); got != c.want {
@@ -247,7 +247,7 @@ func TestApplyEmptyArrayCountsNoLeaves(t *testing.T) {
 // safe under the wrong Agent (it will not overstep and lift a non-codex nested shape).
 func TestApplyWrongAgent(t *testing.T) {
 	body := []byte(`{"model":"x","input":[{"type":"additional_tools","tools":[]}]}`)
-	r := &special.Request{Agent: "claude"} // 别的客户端
+	r := &special.Request{Agent: "claude"} // some other client
 	out, notes, err := ToolsLift{}.Apply(body, r)
 	if err != nil {
 		t.Fatal(err)

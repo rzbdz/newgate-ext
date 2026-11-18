@@ -16,8 +16,8 @@ func init() {
 	roleprov.Register(omoRolesProvider{})
 }
 
-// isolate 把配置目录与目标文件目录都指到临时目录：接管会写文件，
-// 一个都不能落到用户的真实配置上。
+// isolate points both the config directory and the target file directory at a temp directory:
+// takeover writes files, and not one may land on the user's real config.
 func isolate(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -76,8 +76,9 @@ func node(t *testing.T, root map[string]interface{}, section, name string) map[s
 	return n
 }
 
-// TestTakeoverKeepsSlotIdentity 接管要**保留槽位身份**：以前所有槽位都被翻成
-// 按体格算的档位名（sisyphus 和 librarian 从此长得一样），现在必须各自留名。
+// TestTakeoverKeepsSlotIdentity: takeover must **keep slot identity**: previously every slot was
+// translated into a build-derived tier name (sisyphus and librarian looked the same from then on);
+// now each must keep its own name.
 func TestTakeoverKeepsSlotIdentity(t *testing.T) {
 	target := isolate(t)
 	omo := writeTarget(t, target, "oh-my-openagent.json", sampleOmo)
@@ -97,13 +98,15 @@ func TestTakeoverKeepsSlotIdentity(t *testing.T) {
 	if got := node(t, root, "categories", "deep")["model"]; got != "newgate/cat-deep" {
 		t.Errorf("the categories key prefix is wrong: %v", got)
 	}
-	// fallback_models 收敛成同一个键：链由 newgate 在服务端兜底（原列表记在注册表）
+	// fallback_models converges to the same key: the chain is covered by newgate on the server side
+	// (the original list is recorded in the registry)
 	fb, _ := node(t, root, "agents", "sisyphus")["fallback_models"].([]interface{})
 	if len(fb) != 1 || fb[0] != "newgate/omo-sisyphus" {
 		t.Errorf("fallback_models should collapse into one entry per key, got %v", fb)
 	}
 
-	// opencode.json 的 provider 里要把这些 id 登记出来，否则 opencode 认不出
+	// These ids must be registered in opencode.json's provider, otherwise opencode does not recognize
+	// them
 	provs, _ := readJSONFile(t, oc)["provider"].(map[string]interface{})
 	models, _ := provs["newgate"].(map[string]interface{})["models"].(map[string]interface{})
 	for _, id := range []string{"omo-sisyphus", "omo-librarian", "cat-deep", "cat-quick"} {
@@ -113,8 +116,9 @@ func TestTakeoverKeepsSlotIdentity(t *testing.T) {
 	}
 }
 
-// TestRegistryRecordsCurrentAndSuggested 注册表要同时记「现状」和「建议」：
-// 现状保证接管不改行为，建议是给用户的一个可选项（variant 强度要算进去）。
+// TestRegistryRecordsCurrentAndSuggested: the registry must record both "current" and "suggested":
+// current guarantees takeover does not change behavior, suggested is an option for the user (the
+// variant strength counts).
 func TestRegistryRecordsCurrentAndSuggested(t *testing.T) {
 	target := isolate(t)
 	writeTarget(t, target, "oh-my-openagent.json", sampleOmo)
@@ -129,9 +133,9 @@ func TestRegistryRecordsCurrentAndSuggested(t *testing.T) {
 	}
 
 	cases := []struct{ key, was, variant, current, suggested string }{
-		// opus 体格 + variant max：现状 normal（老行为），建议 heavy
+		// opus build + variant max: current is normal (the old behavior), suggested is heavy
 		{"omo-sisyphus", "smt/gpt-5.6-sol", "max", "normal", "heavy"},
-		// luna 是轻活：现状 light，没有 variant 就不建议改
+		// luna is light work: current is light, and without a variant no change is suggested
 		{"omo-librarian", "smt/gpt-5.6-luna", "", "light", "light"},
 		{"cat-deep", "smt/gpt-5.6-terra", "high", "mid", "mid"},
 		{"cat-quick", "smt/gemini-3.1-flash-lite-preview", "", "light", "light"},
@@ -154,15 +158,16 @@ func TestRegistryRecordsCurrentAndSuggested(t *testing.T) {
 			t.Errorf("%s default must equal the current setting (no behavior change), got %q", c.key, sl.Default)
 		}
 	}
-	// 原 fallback 列表要留档（用户想恢复成显式链时用得上）
+	// The original fallback list must be kept on record (it helps when the user wants to restore an
+	// explicit chain)
 	if sl, _ := reg.SlotOf("omo-sisyphus"); len(sl.WasFallbacks) != 2 {
 		t.Errorf("the original fallback list was not recorded: %v", sl.WasFallbacks)
 	}
 }
 
-// TestRetakeoverIsIdempotent 反复接管不能层层加码，也不能把「原来是什么模型」
-// 忘掉：第二次接管时磁盘上已经是我们写的 newgate/omo-sisyphus 了，
-// 原模型名只能从备份里找回来。
+// TestRetakeoverIsIdempotent: repeated takeover must not stack up, nor forget "what model it used
+// to be": on the second takeover the disk already holds our newgate/omo-sisyphus, and the
+// original model name can only be recovered from the backup.
 func TestRetakeoverIsIdempotent(t *testing.T) {
 	target := isolate(t)
 	omo := writeTarget(t, target, "oh-my-openagent.json", sampleOmo)
@@ -186,18 +191,19 @@ func TestRetakeoverIsIdempotent(t *testing.T) {
 	}
 }
 
-// TestOldTakeoverKeepsBehaviour 老版本接管过的文件（newgate/heavy）再被接管时，
-// 现状必须原样保留——升级不能悄悄改变用户当前的模型选择。
+// TestOldTakeoverKeepsBehaviour: when a file taken over by an old version (newgate/heavy) is taken
+// over again, the current must be kept as is -- an upgrade must not quietly change the user's
+// current model choice.
 //
-// 原模型名这时只能从 backups/original/ 里找回来（磁盘上那份早被改写了），
-// 顺带验证这条找回路径。
+// The original model name can only be recovered from backups/original/ at this point (the copy on
+// disk was rewritten long ago), which also verifies that recovery path.
 func TestOldTakeoverKeepsBehaviour(t *testing.T) {
 	target := isolate(t)
 	old := `{"agents":{"sisyphus":{"model":"newgate/heavy","variant":"max"}}}`
 	omo := writeTarget(t, target, "oh-my-openagent.json", old)
 	writeTarget(t, target, "opencode.json", `{}`)
 
-	// 老版本接管留下的原始备份（真名字在里面）
+	// The original backup left by the old version's takeover (the real name is in it)
 	orig := filepath.Join(os.Getenv("NEWGATE_HOME"), "backups", "original")
 	if err := os.MkdirAll(orig, 0o700); err != nil {
 		t.Fatal(err)
@@ -217,13 +223,14 @@ func TestOldTakeoverKeepsBehaviour(t *testing.T) {
 	if sl.Was != "smt/gpt-5.6-sol" {
 		t.Errorf("the original model name should be recovered from the backup, got %q", sl.Was)
 	}
-	// 但现在是 omo-sisyphus 这个键在承担 heavy，用户以后可以单独改它
+	// But now the omo-sisyphus key carries heavy, and the user can change it later on its own
 	if got := node(t, readJSONFile(t, omo), "agents", "sisyphus")["model"]; got != "newgate/omo-sisyphus" {
 		t.Errorf("the old file should be upgraded to slot keys too: %v", got)
 	}
 }
 
-// TestModeSuggestedSwitches 模式开关：suggested 才走建议，current 是默认。
+// TestModeSuggestedSwitches: the mode switch: suggested takes the suggestion, current is the
+// default.
 func TestModeSuggestedSwitches(t *testing.T) {
 	target := isolate(t)
 	writeTarget(t, target, "oh-my-openagent.json", sampleOmo)
@@ -236,7 +243,7 @@ func TestModeSuggestedSwitches(t *testing.T) {
 	if got := reg.SlotBinding("omo-sisyphus"); got != "normal" {
 		t.Fatalf("the default (current) should be normal, got %q", got)
 	}
-	// 覆盖优先于模式
+	// Overrides win over the mode
 	reg.Overrides = map[string]string{"omo-sisyphus": "@mid"}
 	if got := reg.SlotBinding("omo-sisyphus"); got != "@mid" {
 		t.Fatalf("the override should win, got %q", got)
@@ -248,9 +255,10 @@ func TestModeSuggestedSwitches(t *testing.T) {
 	}
 }
 
-// TestRolesReachTheResolver 模块注册的角色键要真的能解析出链来——这是
-// 「omo 插件把自己的 sub agent key 机制注册给框架」的端到端验收：
-// 框架侧（core/domain + resolve）全程不认识 omo，只看注册表。
+// TestRolesReachTheResolver: the role keys a module registers must really resolve into chains --
+// this is the end-to-end acceptance of "the omo plugin registers its own sub agent key mechanism
+// with the framework": the framework side (core/domain + resolve) knows nothing about omo
+// throughout, it only looks at the registry.
 func TestRolesReachTheResolver(t *testing.T) {
 	target := isolate(t)
 	writeTarget(t, target, "oh-my-openagent.json", sampleOmo)
@@ -271,7 +279,8 @@ func TestRolesReachTheResolver(t *testing.T) {
 		t.Fatal("built-in tiers should be recognized too (same role table)")
 	}
 
-	// 一个只写了 normal 的 profile：omo-sisyphus 的缺省是 normal，应当整条跟上
+	// A profile that writes only normal: omo-sisyphus's default is normal, and the whole chain should
+	// follow
 	prio := 10
 	profiles := []*domain.Profile{{
 		Name: "head", Priority: &prio,
@@ -287,11 +296,12 @@ func TestRolesReachTheResolver(t *testing.T) {
 	}
 }
 
-// TestRegistryIsReadableByOtherUsers 注册表必须**组可读**。
+// TestRegistryIsReadableByOtherUsers: the registry must be **group-readable**.
 //
-// 现场（2026-09-16）：root 的 CLI 接管成功、omo-slots.json 也写出来了，
-// 跑 daemon 的 claude 用户却一个角色键都没注册到——文件按 0600 落地，
-// 另一个用户读不到。症状是「文件明明在那儿，daemon 说不认识这个模型」。
+// Field report (2026-09-16): root's CLI takeover succeeded and omo-slots.json was written, yet the
+// claude user running the daemon registered not one role key -- the file landed as 0600 and another
+// user could not read it. The symptom was "the file is clearly there and the daemon says it does
+// not know this model".
 func TestRegistryIsReadableByOtherUsers(t *testing.T) {
 	target := isolate(t)
 	writeTarget(t, target, "oh-my-openagent.json", sampleOmo)
@@ -308,7 +318,8 @@ func TestRegistryIsReadableByOtherUsers(t *testing.T) {
 	}
 }
 
-// TestSuggest 建议档位的两条规则：模型名归体格，variant 在阶梯上挪一级。
+// TestSuggest: the two rules of the suggested tier: the model name gives the build, and variant
+// moves one step on the ladder.
 func TestSuggest(t *testing.T) {
 	cases := []struct {
 		model, variant string
@@ -320,8 +331,8 @@ func TestSuggest(t *testing.T) {
 		{"smt/claude-sonnet-5", "", "mid"},
 		{"smt/gpt-5.6-luna", "max", "mid"},
 		{"smt/gpt-5.6-luna", "low", "light"},
-		{"smt/gemini-3.1-pro-preview", "max", "vision"}, // vision 是正交档，不参与升降
-		{"smt/whatever-unknown", "max", ""},             // 没命中规则就不建议
+		{"smt/gemini-3.1-pro-preview", "max", "vision"}, // vision is orthogonal, no up/down tier
+		{"smt/whatever-unknown", "max", ""},             // no rule matched: no suggestion
 	}
 	for _, c := range cases {
 		got, why := Suggest(c.model, c.variant)
@@ -334,10 +345,11 @@ func TestSuggest(t *testing.T) {
 	}
 }
 
-// TestTakeoverCarriesAgentIdentity 锁住 2026-10-29 snode1 那次现场：接管写进
-// opencode.json 的 baseURL 必须带 `/a/opencode`。网关只从路径认客户端
-// （`/a/<agent>[/p/<profile>]/v1/...`，见内核 forward.parseTarget），漏了它
-// 请求就被当成匿名、走全局缺省——界面上给 opencode 单独选的 profile 永远不生效。
+// TestTakeoverCarriesAgentIdentity pins the 2026-10-29 snode1 field case: the baseURL written into
+// opencode.json by takeover must carry `/a/opencode`. The gateway recognizes the client only from
+// the path (`/a/<agent>[/p/<profile>]/v1/...`, see the kernel's forward.parseTarget), so without it
+// the request is treated as anonymous and takes the global default -- the profile picked separately
+// for opencode in the UI never takes effect.
 func TestTakeoverCarriesAgentIdentity(t *testing.T) {
 	target := isolate(t)
 	p := writeTarget(t, target, "opencode.json", `{"$schema":"x"}`)

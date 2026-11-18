@@ -47,7 +47,7 @@ type Options struct {
 func Launch(a *agentapi.Agent, facts agentapi.AgentFacts, args []string, o Options) int {
 	depth, _ := strconv.Atoi(os.Getenv("NEWGATE_DEPTH"))
 	if depth >= 2 || os.Getenv("NEWGATE_DISABLE") == "1" {
-		return execReal(a, args, nil) // 完全透传，不注入
+		return execReal(a, args, nil) // straight passthrough, no injection
 	}
 
 	st := store.LoadState()
@@ -243,12 +243,12 @@ func execReal(a *agentapi.Agent, args []string, inject map[string]string) int {
 					i18n.A{"file": real, "err": err2}))
 				return 70
 			}
-			return 0 // 不会走到这里：Exec 成功则不返回
+			return 0 // unreachable: Exec does not return on success
 		}
 		fmt.Fprintf(os.Stderr, "newgate: exec %s failed: %v\n", real, err)
 		return 70
 	}
-	return 0 // 不会走到这里：Exec 成功则不返回
+	return 0 // unreachable: Exec does not return on success
 }
 
 func indexByte(s string, b byte) int {

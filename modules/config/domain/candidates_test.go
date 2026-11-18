@@ -77,7 +77,7 @@ func TestReaddedEmptyTierInheritsParent(t *testing.T) {
 		"vision": {{Provider: "p", Model: "v-class"}},
 	}}
 	child := &Profile{Roles: map[string]Candidates{
-		"vision": {}, // 删除后又空加回来
+		"vision": {}, // deleted, then added back empty
 	}}
 
 	child.MergeFrom(base)

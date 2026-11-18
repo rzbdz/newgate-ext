@@ -8,71 +8,81 @@ import (
 	"github.com/rzbdz/newgate-ext/modules/config/domain"
 )
 
-// 本文件是**这次接管要写什么**：给定此刻的 newgate 配置，算出 config.yaml 里每一处
-// 该是什么值。纯函数（输入是 inputs，输出是 []edit），所以它能被单测直接钉住。
+// This file is **what this takeover should write**: given the newgate config as it is now,
+// compute what every place in config.yaml should be. A pure function (inputs in, []edit out),
+// so it can be pinned directly by unit tests.
 //
-// # 写的是哪几处（hermes 0.13，2026-11-04 读源码 + 本机实测）
+// # Which places are written (hermes 0.13, 2026-11-04: source reading + local measurement)
 //
-//	model.provider / default        newgate / 档位名（槽位 model）
-//	model.base_url / api_key / api_mode   本地代理（见下：为什么在 model 里也写一份）
-//	model.context_length            活动 profile 的窗口（知道才写）
-//	providers.newgate               「跟着 newgate 走」那一行：/model 里只列档位
-//	providers.newgate-<profile>     每份 profile 一行：钉在那份 profile 上（URL 带 /p/），
-//	                                列档位 + 它绑定的每个具体模型（provider/model）
-//	delegation.provider / model     newgate / 档位（槽位 delegation），base_url/api_key 清空
-//	auxiliary.<task>.provider/model newgate / 档位，base_url/api_key 清空
+//	model.provider / default        newgate / tier name (slot model)
+//	model.base_url / api_key / api_mode   the local proxy (see below: why also write one here)
+//	model.context_length            the active profile's window (written only if known)
+//	providers.newgate               the "follow newgate" line: /model lists tiers only
+//	providers.newgate-<profile>     one line per profile: pinned to that profile (URL has /p/),
+//	                                listing tiers + every concrete model it binds
+//	                                (provider/model)
+//	delegation.provider / model     newgate / tier (slot delegation), base_url/api_key cleared
+//	auxiliary.<task>.provider/model newgate / tier, base_url/api_key cleared
 //
-// # 几处不显然的取舍
+// # A few non-obvious trade-offs
 //
-//   - **provider 写具名的 `newgate`，不写 `custom`**：具名 provider 走
-//     `_resolve_named_custom_runtime`，它的 api_mode、URL 都按我们写的来；/model 的
-//     列表里那一行也会被标成「当前」（is_current 比的是 provider 键）。
-//   - **model 里再写一份 base_url / api_key / api_mode**：辅助任务在拿不到主循环的
-//     运行时时会按 `model.base_url` 解析一个裸的 `custom`（auxiliary_client 的退路），
-//     而 `/model <名字>` 不带 `--provider` 时，hermes 只在 base_url 是本机地址时才
-//     认定「当前是自定义端点」，否则可能把人换到 OpenRouter 去。两处都靠这一份兜住。
-//   - **api_key 写一个占位值而不是留空**：留空时 hermes 会按顺序去拿 `OPENAI_API_KEY`
-//     / `OPENROUTER_API_KEY`——用户真的钥匙会被发到代理（虽然代理会丢掉它，但那本不
-//     该出门）。占位值要 ≥4 个字符且不是 `dummy` 这类词，否则同样被当成「没给」。
-//   - **不写 `discover_models: false`**：/model 会去问 `<base>/models` 并用问到的替换
-//     这里的模型表，而那份清单由本模块在代理那一侧答（st-models.go），与这里写的是
-//     同一个函数算的。写那个键的代价是 hermes 每归一化一次就往 errors.log 里记一条
-//     「unknown config keys ignored」（实测一次 `hermes chat` 九条）。这里的 `models:`
-//     仍然要写：每个模型的 context_length 只能从这里来。
-//   - **delegation 清掉 base_url**：它有 base_url 时 api_mode 被写死成
-//     chat_completions、provider 被忽略（delegate_tool.py）；清掉才走具名 provider。
-//   - **auxiliary 清掉 base_url / api_key**：两者都在时它直接当自定义端点用，
-//     provider 那一格就不算数了（`_resolve_task_provider_model`）。
+//   - **provider is the named `newgate`, not `custom`**: a named provider goes through
+//     `_resolve_named_custom_runtime`, whose api_mode and URL follow what we wrote; /model's
+//     list marks that line as "current" too (is_current compares the provider key).
+//   - **also write base_url / api_key / api_mode under model**: when an auxiliary task cannot
+//     get the main loop's runtime it resolves a bare `custom` from `model.base_url`
+//     (auxiliary_client's fallback), and when `/model <name>` is used without `--provider`,
+//     hermes only considers "the current endpoint is custom" if base_url is a local address --
+//     otherwise it may switch the user to OpenRouter. Both places are covered by this one copy.
+//   - **api_key is a placeholder value, not empty**: left empty, hermes goes down the list to
+//     fetch `OPENAI_API_KEY` / `OPENROUTER_API_KEY` -- the user's real key would be sent to the
+//     proxy (the proxy drops it, but it never should have left the house). The placeholder must
+//     be >= 4 characters and not a word like `dummy`, or it is likewise treated as "not given".
+//   - **do not write `discover_models: false`**: /model asks `<base>/models` and replaces the
+//     model table here with what it gets back, and that list is answered by this module on the
+//     proxy side (st-models.go), computed by the same function as what is written here. The
+//     price of writing that key is that every normalization hermes does logs one
+//     "unknown config keys ignored" into errors.log (measured: nine for one `hermes chat`).
+//     The `models:` here still must be written: each model's context_length can only come from
+//     here.
+//   - **delegation clears base_url**: with a base_url, api_mode is hard-wired to
+//     chat_completions and provider is ignored (delegate_tool.py); clearing it routes through
+//     the named provider.
+//   - **auxiliary clears base_url / api_key**: with both present it uses them directly as a
+//     custom endpoint and the provider cell no longer counts
+//     (`_resolve_task_provider_model`).
 
-// ProviderID 是我们在 config.yaml 的 `providers:` 里占的那个键（也是它的前缀：每份
-// profile 一行，叫 `newgate-<profile>`）。前缀下面的键**都归我们**：接管时整块重写，
-// 同步时多出来的删掉（见 ownedProvider）。
+// ProviderID is the key we occupy in config.yaml's `providers:` (and its prefix: one line per
+// profile, called `newgate-<profile>`). Keys under the prefix **all belong to us**: rewritten
+// wholesale at takeover, extras deleted at sync (see ownedProvider).
 const ProviderID = "newgate"
 
-// placeholderKey 见文件头「api_key 写一个占位值」。
+// placeholderKey see "api_key is a placeholder value" in the file header.
 const placeholderKey = "newgate-local"
 
-// apiMode 是 hermes 发给我们的方言：OpenAI chat completions。
+// apiMode is the dialect hermes speaks to us: OpenAI chat completions.
 //
-// 为什么不是 anthropic_messages（hermes 原来配的那种）：newgate 的转发是**纯字节直通**，
-// 客户端的方言必须是上游听得懂的；今天每家 provider 都声明 `protocol: openai`，而
-// anthropic 方言只有部分聚合器收。另一条是 hermes 自己的：fallback 与 delegation 的
-// 某些路径**不认**具名 provider 的 api_mode、一律按 chat_completions 走——选它，两条
-// 路就不会一条走一种方言。
+// Why not anthropic_messages (the one hermes was configured with before): newgate's forwarding
+// is **pure byte passthrough**, so the client's dialect must be one the upstream understands;
+// today every provider declares `protocol: openai`, while the anthropic dialect is accepted by
+// only some aggregators. The other reason is hermes' own: some fallback and delegation paths
+// **do not honor** a named provider's api_mode and always go chat_completions -- pick it and the
+// two paths will not each speak a different dialect.
 const apiMode = "chat_completions"
 
-// auxTasks 是 hermes 0.13 代码里真正会调用的辅助任务（`auxiliary.<task>`）。
+// auxTasks are the auxiliary tasks hermes 0.13's code actually calls (`auxiliary.<task>`).
 //
-// 文件里出现、但不在这张表里的任务（`flush_memories` 是一个：没有代码读它）也照样接管
-// ——接管是「文件里写着的模型都指到我们」，不是「我们认识的才算」。表的用处是反过来：
-// 文件里**没写**的那几个也补上，否则它们走 `auto`、跟着主循环用 normal 档，
-// 槽位卡上设的 light 对它们不生效，而卡片上看不出来。
+// Tasks that appear in the file but are not in this table (`flush_memories` is one: no code
+// reads it) are taken over anyway -- takeover means "every model written in the file points at
+// us", not "only the ones we know count". The table's use is the reverse: also add the ones
+// **missing** from the file, or they go `auto`, follow the main loop on the normal tier, and the
+// light set on the slot card has no effect on them, invisibly.
 var auxTasks = []string{
 	"vision", "web_extract", "compression", "session_search", "skills_hub",
 	"approval", "mcp", "title_generation", "triage_specifier", "curator", "goal_judge",
 }
 
-// auxSlot 某个辅助任务归哪个槽位（见 agent.go 的槽位表）。
+// auxSlot which slot an auxiliary task belongs to (see the slot table in agent.go).
 func auxSlot(task string) string {
 	switch task {
 	case "vision":
@@ -83,17 +93,18 @@ func auxSlot(task string) string {
 	return SlotAuxiliary
 }
 
-// inputs 是算一次接管要用到的全部事实——都在调用方那一刻现取（见 takeover.go 的
-// currentInputs），这里不读盘。
+// inputs is every fact needed to compute a takeover -- all fetched live by the caller at that
+// moment (see currentInputs in takeover.go); nothing here reads from disk.
 type inputs struct {
 	Port int
-	// Tiers 槽位名 → 此刻该走的档位。
+	// Tiers slot name → the tier to use right now.
 	Tiers map[string]string
-	// Active 是 hermes 此刻跟随的那份 profile（state.json 的 ActiveFor("hermes")）。
+	// Active is the profile hermes follows right now (state.json's ActiveFor("hermes")).
 	Active string
-	// Profiles 是全部 profile（按名字排好）。
+	// Profiles is every profile (sorted by name).
 	Profiles []*domain.Profile
-	// Unreadable 有文件、但这一刻读不出来的 profile（手改坏了）。它们那一行不动。
+	// Unreadable profiles that exist but cannot be read right now (broken by a manual edit).
+	// Their line is left alone.
 	Unreadable []string
 }
 
@@ -114,8 +125,8 @@ func (in inputs) profile(name string) *domain.Profile {
 	return nil
 }
 
-// window 一份 profile 声明的上下文窗口；没声明返回 0（= 不写，理由同 codex 的
-// contextWindow：猜一个数比不写更糟）。
+// window the context window a profile declares; 0 if none (= do not write, same reason as
+// codex's contextWindow: guessing a number is worse than not writing).
 func window(p *domain.Profile) int {
 	if p == nil {
 		return 0
@@ -123,19 +134,20 @@ func window(p *domain.Profile) int {
 	return p.ContextWindow
 }
 
-// providerKey 某份 profile 那一行的键。
+// providerKey the key of a profile's line.
 func providerKey(profile string) string { return ProviderID + "-" + profile }
 
-// ownedProvider 这个键是不是我们的（`newgate` 或 `newgate-*`）。
+// ownedProvider whether this key is ours (`newgate` or `newgate-*`).
 func ownedProvider(key string) bool {
 	return key == ProviderID || strings.HasPrefix(key, ProviderID+"-")
 }
 
-// profileKeyOK 这份 profile 的名字能不能当一个 provider 键。
+// profileKeyOK whether this profile's name can serve as a provider key.
 //
-// profile 名来自文件名，理论上什么字符都有；而这个键要同时活在 YAML（裸键）、
-// hermes 的 slug（`custom_provider_slug` 会小写化、换掉空格）与 URL 路径（`/p/<名字>`）
-// 里。三处都安全的只有这一小撮字符；不安全的那份**跳过并报出来**，不硬塞。
+// Profile names come from file names and can in theory contain anything; and this key has to
+// live at once in YAML (a bare key), hermes' slug (`custom_provider_slug` lowercases and
+// replaces spaces) and a URL path (`/p/<name>`). Only this small set of characters is safe in
+// all three; the unsafe ones are **skipped and reported**, not forced in.
 func profileKeyOK(name string) bool {
 	if name == "" {
 		return false
@@ -150,18 +162,21 @@ func profileKeyOK(name string) bool {
 	return true
 }
 
-// concreteModels 一份 profile 绑定的每个具体模型，写成 `provider/model`。
+// concreteModels every concrete model a profile binds, written as `provider/model`.
 //
-// 为什么带 provider 前缀：/model 的列表就是用户看见的全部——同一个模型名在两家
-// provider 上都有时，前缀是唯一能让人分清的东西。数据面会把前缀剥掉
-// （gateway/protocol.NormalizeRole），剥完剩下的正是配置里那个模型名，所以在这一
-// 行（URL 钉在这份 profile 上）里点名必然能被反查回来。
+// Why the provider prefix: the /model list is all the user sees -- when the same model name
+// exists at two providers, the prefix is the only thing that tells them apart. The data plane
+// strips the prefix (gateway/protocol.NormalizeRole), and what remains is exactly the model name
+// in the config, so naming it on this line (whose URL is pinned to this profile) is always
+// resolvable back.
 //
-// **跳过模型名本身带 `/` 的绑定**（OpenRouter 那种 `google/gemini-…`）：NormalizeRole
-// 取的是最后一个 `/` 之后的部分，它在任何客户端那里都点不中——列出来就是一个选了
-// 必 404 的条目。跳过的那些交回给调用方报出来。
+// **Bindings whose model name itself contains `/` are skipped** (OpenRouter's
+// `google/gemini-…`): NormalizeRole takes the part after the last `/`, which no client can
+// point at -- listing it would be an entry guaranteed to 404 when picked. The skipped ones are
+// handed back to the caller to report.
 //
-// 顺序：档位按 domain.Roles 的能力顺序，其余键按名字；同一个模型只列第一次出现。
+// Order: tiers in domain.Roles' capability order, the rest by name; a model is listed only at
+// its first appearance.
 func concreteModels(p *domain.Profile) (ids []string, skipped []string) {
 	if p == nil {
 		return nil, nil
@@ -209,16 +224,16 @@ func concreteModels(p *domain.Profile) (ids []string, skipped []string) {
 	return ids, skipped
 }
 
-// providerEntry 是 `providers:` 下面的一行。
+// providerEntry is one line under `providers:`.
 func providerEntry(key, url string, ids []string, win int) omap {
 	models := make(omap, 0, len(ids))
 	for _, id := range ids {
 		meta := omap{}
 		if win > 0 {
-			// 按**模型**声明，不只写 model.context_length：后者是全局的一格，hermes 在
-			// /model 换模型时会把它清掉（run_agent.py），之后的新模型就只能靠它自己去
-			// 猜（猜不到按 256K）。per-model 那一格按 (base_url, 模型名) 精确匹配，
-			// 换到哪个都有。
+			// Declare it **per model**, not just model.context_length: the latter is one global
+			// cell, and when /model switches models hermes clears it (run_agent.py); after that the
+			// new model can only rely on its own guess (256K if it cannot guess). The per-model
+			// cell matches exactly on (base_url, model name), so switching to any model still hits.
 			meta = omap{{"context_length", win}}
 		}
 		models = append(models, kv{id, meta})
@@ -233,14 +248,16 @@ func providerEntry(key, url string, ids []string, win int) omap {
 	}
 }
 
-// catalog 是 `providers:` 下我们那几行，以及没能列出来的东西（要报给人看）。
+// catalog is our lines under `providers:`, plus whatever could not be listed (to be
+// reported to the user).
 type catalog struct {
 	Entries []kv
-	// Skipped 名字不能当键的 profile、模型名带 `/` 的绑定——都写成给人看的一句。
+	// Skipped profiles whose name cannot be a key, and bindings whose model name contains `/`
+	// -- each written as one sentence for the user.
 	Skipped []string
 }
 
-// buildCatalog 算出「跟着走」那一行 + 每份 profile 一行。
+// buildCatalog computes the "follow us" line + one line per profile.
 func buildCatalog(in inputs) catalog {
 	var c catalog
 	c.Entries = append(c.Entries, kv{ProviderID,
@@ -261,13 +278,14 @@ func buildCatalog(in inputs) catalog {
 	return c
 }
 
-// catalogEdits 是「只动模型清单」的那一组改动：我们那几行写成此刻的样子，多出来的
-// （profile 删了）删掉。
+// catalogEdits is the group of changes that "only touch the model list": our lines are
+// rewritten to their current shape, and the extra ones (profiles deleted) are removed.
 //
-// 例外：**此刻还被引用着**的那一行不删——用户在 hermes 里 `/model … --global` 把
-// 主模型钉到了 `newgate-old` 上，而 old 这份 profile 刚被删掉。删了那一行，hermes
-// 下一轮就解析不出 provider，整个消息网关停摆；留着它，最坏是请求被 newgate 404
-// 回去（profile 不存在），而那句报错是说得清楚的。留下的那一行报出来。
+// Exception: a line that is **still referenced right now** is not removed -- the user pinned
+// the main model to `newgate-old` with `/model … --global` in hermes, and the old profile was
+// just deleted. Remove that line and hermes cannot resolve a provider next round, stalling the
+// whole messaging gateway; keep it and the worst case is a request 404-ing back from newgate
+// (profile does not exist), and that error is understandable. The kept line is reported.
 func catalogEdits(d *doc, in inputs) ([]edit, catalog) {
 	c := buildCatalog(in)
 	var edits []edit
@@ -278,7 +296,7 @@ func catalogEdits(d *doc, in inputs) ([]edit, catalog) {
 	}
 	referenced := referencedProviders(d)
 	for _, n := range in.Unreadable {
-		want[providerKey(n)] = true // 读不出来 ≠ 删掉了：原样留着
+		want[providerKey(n)] = true // unreadable != deleted: keep it as it is
 		c.Skipped = append(c.Skipped, "profile "+strconv.Quote(n)+" (unreadable, row left as is)")
 	}
 	for _, k := range d.mapChildren("providers") {
@@ -294,7 +312,8 @@ func catalogEdits(d *doc, in inputs) ([]edit, catalog) {
 	return edits, c
 }
 
-// referencedProviders 文件里此刻有哪些 provider 键被用着（主循环、delegation、各辅助任务）。
+// referencedProviders which provider keys in the file are in use right now (main loop,
+// delegation, each auxiliary task).
 func referencedProviders(d *doc) map[string]bool {
 	out := map[string]bool{}
 	add := func(path ...string) {
@@ -310,7 +329,7 @@ func referencedProviders(d *doc) map[string]bool {
 	return out
 }
 
-// fullEdits 是一次完整接管：模型清单 + 每个槽位指到我们。
+// fullEdits is one complete takeover: the model list + every slot pointed at us.
 func fullEdits(d *doc, in inputs) ([]edit, catalog) {
 	edits, c := catalogEdits(d, in)
 	url := in.baseURL("")
@@ -322,8 +341,9 @@ func fullEdits(d *doc, in inputs) ([]edit, catalog) {
 		edit{Path: m("api_key"), Value: placeholderKey},
 		edit{Path: m("api_mode"), Value: apiMode},
 	)
-	// `model.model` 是 `default` 的旧别名（只在 default 缺席时被读）。文件里有它就写成
-	// 同一个值：留着旧的模型名，读的人会以为 hermes 还在用它。
+	// `model.model` is the old alias of `default` (read only when default is absent). If it
+	// is in the file, write the same value: leaving the old model name makes the reader think
+	// hermes still uses it.
 	if _, ok := d.lookup("model", "model"); ok {
 		edits = append(edits, edit{Path: m("model"), Value: in.Tiers[SlotModel]})
 	}
@@ -361,10 +381,12 @@ func fullEdits(d *doc, in inputs) ([]edit, catalog) {
 	return edits, c
 }
 
-// takenOverPaths 接管会碰的全部路径——还原时逐个放回原件里的样子（见 Restore）。
+// takenOverPaths every path takeover touches -- at restore time each is put back the way it
+// was in the original (see Restore).
 //
-// 由「此刻的文件」与「原件」两份一起决定：原件里有、此刻没有的辅助任务也要放回去；
-// 此刻有、原件里没有的（我们补的）要删掉。
+// Decided from both "the file right now" and "the original": auxiliary tasks present in the
+// original but absent now must be put back too; ones present now but absent from the original
+// (added by us) must be removed.
 func takenOverPaths(cur, orig *doc) [][]string {
 	var out [][]string
 	seen := map[string]bool{}

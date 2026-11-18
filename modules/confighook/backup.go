@@ -105,7 +105,7 @@ func PruneSnapshots(keep int) {
 	if len(stamps) <= keep {
 		return
 	}
-	sort.Strings(stamps) // 时间戳格式可直接字典序排序
+	sort.Strings(stamps) // the timestamp format sorts lexicographically as-is
 	for _, s := range stamps[:len(stamps)-keep] {
 		_ = os.RemoveAll(filepath.Join(paths.BackupDir(), s))
 	}

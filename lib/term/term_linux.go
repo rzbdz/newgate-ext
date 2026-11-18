@@ -23,7 +23,7 @@ type termios struct {
 }
 
 const (
-	tcgets = 0x5401 // TIOCGETA(Linux) / TCGETS(Darwin) 在这两个平台上都可用
+	tcgets = 0x5401 // TIOCGETA(Linux) / TCGETS(Darwin): both work on both platforms
 	tcsets = 0x5402
 )
 

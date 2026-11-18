@@ -23,7 +23,7 @@ func TestControlUpgradeAuth(t *testing.T) {
 	_ = ioutil.WriteFile(filepath.Join(dir, "state.json"),
 		[]byte(`{"default_profile":"ds","port":1,"control_token":"`+tok+`"}`), 0o600)
 
-	srv := newTestServer() // s.ln == nil：鉴权通过后会 503，正好不真交接
+	srv := newTestServer() // s.ln == nil: once auth passes it 503s, so no real handoff happens
 	front := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		srv.handleControlUpgrade(w, r)
 	}))

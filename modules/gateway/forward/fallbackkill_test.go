@@ -13,28 +13,29 @@ import (
 	"github.com/rzbdz/newgate-ext/modules/gateway/metrics"
 )
 
-// 这一组测试锁的是 forward.go 里那段短路（2026-09-28）：**两条互不相干的路由
-// 到这里合成同一个结果**——只发链头、不换人。
+// This group of tests locks the short-circuit in forward.go (2026-09-28): **two unrelated
+// routes end up with the same result here** -- send the chain head only, never swap.
 //
-//   - `--profile=xx`：URL 路径里那一段 `/p/<name>`（launch 只在点名时才写它），
-//     此前它只把 profile 钉成链头，链尾照样按 profile 优先级接上别人。用户点名
-//     的那个挂了就**静默换到另一个 profile**——配置显示的、界面显示的、实际跑
-//     的是三个不同的东西。
-//   - `newgate fallback off`：全局关掉所有 fallback 链。
+//   - `--profile=xx`: the `/p/<name>` segment in the URL path (launch writes it only
+//     when named); before this, it only pinned the profile as the chain head, while the
+//     tail still got others attached by profile priority. When the named one went down it
+//     **silently swapped to another profile** -- config, UI and the actual run: three things.
+//   - `newgate fallback off`: turn off every fallback chain globally.
 //
-// 判据选「第二站被没被敲过」（命中计数）而不是「返回了什么」：返回码在这两种
-// 情况下都可能一样，而「有没有换人」只有上游自己知道。
+// The criterion is "was the second stop knocked on" (hit count), not "what came back": the
+// status code can be the same either way, while "was someone swapped in" only the upstream knows.
 //
-// **这条测试证明的是这次截断，不是「上游挂了也不换人」那件现场事**：截断发生在
-// `s.Filters.Admit` 之前（那段代码在 resolve.ResolveRequest 里面），所以一个
-// 被策略判成不可用的候选在这里根本轮不到。真现场（某个 provider 真挂了、熔断器
-// 真的摘了它的牌）由 mock/e2e_claude.sh 那边锁——那里上游是真的坏的，断言不可能
-// 因为「恰好没人可换」而对上。
+// **This test proves this truncation, not the field event "the upstream is down and nobody is
+// swapped in"**: truncation happens before `s.Filters.Admit` (that code sits inside
+// resolve.ResolveRequest), so a candidate a policy judged unusable never gets a turn here.
+// The real event (a provider really down, the breaker really pulling its card) is locked by
+// mock/e2e_claude.sh -- the upstream there is really broken, so the assertion cannot pass by
+// accident of "nobody was available to swap to".
 
 const fallbackShapeBody = `{"type":"error","message":"The ` + "`reasoning_content`" +
 	` in the thinking mode must be passed back to the API."}`
 
-// fallbackRig 是这组测试的现场：两站假上游 + 一台前端。
+// fallbackRig is the scene for this group of tests: two fake upstreams + one front end.
 type fallbackRig struct {
 	srv   *Server
 	logs  *syncBuffer
@@ -43,16 +44,17 @@ type fallbackRig struct {
 	hits2 *int64
 }
 
-// newFallbackRig 起一条两站链：第一站用「思考模式要求逐字回传」那句形状错误回
-// 400，第二站正常回 200。
+// newFallbackRig starts a two-stop chain: the first stop answers 400 with the shape error
+// "thinking mode requires reasoning passed back verbatim", the second answers a normal 200.
 //
-// 两站都必须是**真起的 httptest**，不能拿假函数糊过去：这条测试唯一有分量的
-// 判据就是「第二站有没有被敲门」，而那个数只有真服务器数得出来。
+// Both stops must be **really started httptest servers**, not faked with functions: the only
+// meaningful criterion here is "was the second stop knocked on", and only a real server counts.
 //
-// 注册 shapeTestFilter{advance: true} 是为了让链上第一发的判决与现场一致（形状
-// 400 能不能换人由策略说，不由数据面猜）；它对第二站的 200 是惰性的。注意它
-// **左右不了**被截断那两种情况：`isLast` 在循环体顶部就按 len(steps) 算好了，
-// 只剩一步时恒为真，`advance` 于是与判决无关。
+// shapeTestFilter{advance: true} keeps the first shot's verdict consistent with the field
+// (whether a shape 400 may swap is policy's call, not the data plane's guess); it is inert
+// for the second stop's 200. Note it **cannot influence** the two truncated cases: `isLast`
+// is computed from len(steps) at the top of the loop body, so with one step left it is always
+// true and `advance` becomes irrelevant to the verdict.
 func newFallbackRig(t *testing.T) *fallbackRig {
 	t.Helper()
 
@@ -82,15 +84,16 @@ func newFallbackRig(t *testing.T) *fallbackRig {
 				Provider: testProvider(up2.URL)},
 		}
 	}
-	// testChain 是个**包级变量**，而 store.Load() 每个请求都重新读盘。漏掉这一步
-	// 重置，后面任何一个用例都会拿到这条两站假链——它那两个 provider 在别人那份
-	// 沙箱里并不存在，症状是「另一个测试莫名其妙地换人了」。
-	// （TestClientCancelAbortsUpstream 就是这么漏的；这里顺手补上它缺的那一句。）
+	// testChain is a **package-level variable**, and store.Load() re-reads the disk per request.
+	// Miss this reset and any later case gets this two-stop fake chain -- its two providers do
+	// not exist in anyone else's sandbox, and the symptom is "another test mysteriously swapped
+	// in someone else". (TestClientCancelAbortsUpstream leaked exactly that way; the line it
+	// was missing is added here.)
 	//
-	// 这里必须是 t.Cleanup，**不能是 defer**：defer 在本 helper 返回时就跑了，
-	// 也就是在 rig.post 之前——那样 testChain 恒为 nil，每个用例都退到真实的
-	// resolve.ResolveRequest 上，而那份沙箱里没有 profiles.json，症状是
-	// 「tier heavy has no usable candidate under profile …」的 404。
+	// This must be t.Cleanup, **never defer**: defer would run when this helper returns, i.e.
+	// before rig.post -- testChain would then be nil every time, every case would fall back to
+	// the real resolve.ResolveRequest, and that sandbox has no profiles.json, so the symptom is
+	// a 404 "tier heavy has no usable candidate under profile ...".
 	t.Cleanup(func() { testChain = nil; metrics.Default.Reset() })
 
 	srv, logs := newLoggingTestServer()
@@ -102,7 +105,7 @@ func newFallbackRig(t *testing.T) *fallbackRig {
 	return &fallbackRig{srv: srv, logs: logs, front: front, hits1: &h1, hits2: &h2}
 }
 
-// post 发一发普通 OpenAI 方言请求，返回响应与原文。
+// post sends one ordinary OpenAI-dialect request and returns the response and raw body.
 func (r *fallbackRig) post(t *testing.T, path string) (*http.Response, string) {
 	t.Helper()
 	resp, err := http.Post(r.front.URL+path, "application/json",
@@ -115,11 +118,12 @@ func (r *fallbackRig) post(t *testing.T, path string) (*http.Response, string) {
 	return resp, string(body)
 }
 
-// TestFallbackOnByDefaultStillSwaps：不装开关时**照旧换人**。
+// TestFallbackOnByDefaultStillSwaps: with no switch installed it **still swaps**.
 //
-// 这条是另外两条的对照：没有它，「第二站一次没被敲」也可能只是这条假链根本没接
-// 上（比如 testChain 没生效、模型名没落到档位上），而那两种情况下的绿是空转的。
-// 所以默认这一发必须证明链是**活的**。
+// This is the control for the other two: without it, "the second stop was never knocked"
+// could just mean this fake chain was never wired up (testChain did not take effect, the model
+// name did not land on a tier), and both those greens are idle. So this default shot must
+// prove the chain is **alive**.
 func TestFallbackOnByDefaultStillSwaps(t *testing.T) {
 	sandboxState(t, `{"port": 0, "chain": {"fallback_on_400": true}}`)
 	metrics.Default.Reset()
@@ -132,7 +136,7 @@ func TestFallbackOnByDefaultStillSwaps(t *testing.T) {
 	if n := atomic.LoadInt64(rig.hits1); n != 1 {
 		t.Errorf("the first stop was hit %d times, want 1", n)
 	}
-	// 上游挂了重试会把同一站再敲一次，所以这里只断言「被敲过」。
+	// a down upstream retries knock the same stop again, so only assert "was knocked".
 	if n := atomic.LoadInt64(rig.hits2); n == 0 {
 		t.Error("the second stop was never hit - the chain is not wired, so the rest of this test passes vacuously")
 	}
@@ -143,7 +147,7 @@ func TestFallbackOnByDefaultStillSwaps(t *testing.T) {
 	if !strings.Contains(logs, "advancing to next chain step") {
 		t.Errorf("it failed over but left no trace:\n%s", logs)
 	}
-	// 留痕的落点：这一发在日志里该自报「换了人」（成功路径按 i>0 打这句）。
+	// the trail should land here: this shot must report "swapped" in the log (path prints it for i>0).
 	if !strings.Contains(logs, "(failover)") {
 		t.Errorf("the success log line is not marked failover:\n%s", logs)
 	}
@@ -155,18 +159,18 @@ func TestFallbackOnByDefaultStillSwaps(t *testing.T) {
 	}
 }
 
-// TestPinnedProfileStopsAtTheHead：`--profile=xx` 只走那一个 profile。
+// TestPinnedProfileStopsAtTheHead: `--profile=xx` walks only that one profile.
 //
-// 判据是 URL 路径里那一段 `/p/<name>`——launch 只在用户点了名时才把它写进 base
-// URL，parseTarget 读出来就是 Target.Profile。所以这条测试走的是**和 `newgate
-// claude --profile=x` 完全同一条路径**，不是另造一个开关。
+// The criterion is the `/p/<name>` segment in the URL path -- launch writes it into the base
+// URL only when the user names one, and parseTarget reads it out as Target.Profile. So this
+// test walks **exactly the same path as `newgate claude --profile=x`**, not a switch of its own.
 func TestPinnedProfileStopsAtTheHead(t *testing.T) {
 	sandboxState(t, `{"port": 0, "chain": {"fallback_on_400": true}}`)
 	metrics.Default.Reset()
 	rig := newFallbackRig(t)
 
-	// /a/claude/ 那一段只是让这次调用带上 agent 身份（现场就是 `newgate claude`
-	// 起的进程），钉住 profile 的是 /p/ 那一段。
+	// The /a/claude/ segment only gives this call an agent identity (the field is a process
+	// started by `newgate claude`); what pins the profile is the /p/ segment.
 	resp, body := rig.post(t, "/a/claude/p/pinned-test/v1/chat/completions")
 
 	if n := atomic.LoadInt64(rig.hits2); n != 0 {
@@ -175,7 +179,7 @@ func TestPinnedProfileStopsAtTheHead(t *testing.T) {
 	if n := atomic.LoadInt64(rig.hits1); n != 1 {
 		t.Errorf("the first stop was hit %d times, want 1", n)
 	}
-	// 这一发必须**撞在上游上**：用户要的就是上游的原文，不是被谁接住之后的 200。
+	// This shot must **land on the upstream**: the user wants its raw body, not a 200 from a catch.
 	if resp.StatusCode != 400 {
 		t.Fatalf("status = %d, want 400 (the named one is down, so report it as is)", resp.StatusCode)
 	}
@@ -186,8 +190,8 @@ func TestPinnedProfileStopsAtTheHead(t *testing.T) {
 		t.Errorf("no failover happened yet X-Newgate-Failover was written: %q", got)
 	}
 	logs := rig.logs.String()
-	// 被砍掉的那几步连同原因都要在日志里——不静默。格式是 formatSteps 的
-	// `profile:provider/model`，所以这里能精确到那一步是谁。
+	// The dropped steps and their reasons must both be in the log -- not silent. The format is
+	// formatSteps' `profile:provider/model`, so this pins exactly which step that was.
 	if !strings.Contains(logs, "profile pinned-test is pinned, dropping 1 fallback step: other:other-ok/real-model-1") {
 		t.Errorf("nothing recorded 'who was dropped and why':\n%s", logs)
 	}
@@ -199,10 +203,10 @@ func TestPinnedProfileStopsAtTheHead(t *testing.T) {
 	}
 }
 
-// TestFallbackOffStopsAtTheHead：`newgate fallback off` 关的是**其余所有路径**。
+// TestFallbackOffStopsAtTheHead: `newgate fallback off` turns off **all remaining paths**.
 //
-// 与上一条同一个截断点、同一个结果，区别只在于判据来自全局开关而不是这次调用的
-// 路径——所以这里走的是最普通的 URL（不带 /p/ 段）。
+// Same truncation point and same result as the previous one; only the criterion differs -- a
+// global switch rather than this call's path -- so this walks the plainest URL (no /p/ segment).
 func TestFallbackOffStopsAtTheHead(t *testing.T) {
 	sandboxState(t, `{"port": 0, "gateway": {"fallback": false}, "chain": {"fallback_on_400": true}}`)
 	metrics.Default.Reset()
@@ -234,23 +238,26 @@ func TestFallbackOffStopsAtTheHead(t *testing.T) {
 	}
 }
 
-// TestFallbackOffBeatsTheProfilePin... 不需要：两者要的结果完全一样（只走链头），
-// 先后只在日志措辞上有差别，而那种先后顺序是 switch 的两个 case，读一眼就知道。
-// 这里改成锁另一件真正会分家的事——**超时预算**。
+// TestFallbackOffBeatsTheProfilePin... not needed: both want exactly the same result
+// (chain head only); the order only changes the log wording, and that order is two switch
+// cases you read at a glance. Instead this locks the other real split -- the **timeout budget**.
 
-// TestFallbackOffIgnoresTheTimeoutBudget：「无视所有 timeout」不是另写的一条分支，
-// 而是截断**推出来的**：budget 那道闸带 `i > 0`，链只剩一步时 i 恒为 0。
+// TestFallbackOffIgnoresTheTimeoutBudget: "ignore all timeouts" is not a separate branch, it
+// is **implied by** the truncation: the budget gate carries `i > 0`, and with one step left i is 0.
 //
-// 预算用 1ms：`start` 是这一发请求刚进 handler 时取的，链上任何一次上游往返都不
-// 可能在一毫秒内回来，所以只要那道闸够得着（链上还有第二站），`i > 0` 那一发必然
-// 判超时、必然打 `budget-exhausted` 进 X-Newgate-Chain。这就是「1ms」买到的东西：
-// 截断若被谁拆了，这条测试当场看得见；写成 `total_budget_ms: 0` 则**什么都测不到**
-// ——`ChainLimits.Budget()` 把 `<= 0` 当没配，退回默认 120000ms（Domain 的语义，
-// 不是这里的），那样这条测试对预算是否生效就完全瞎了。
+// The budget is 1ms: `start` is taken when this request enters the handler, and no upstream
+// round trip can come back within a millisecond, so whenever that gate is reachable (a second
+// stop exists) the `i > 0` shot must time out and must record `budget-exhausted` in
+// X-Newgate-Chain. That is what "1ms" buys: if someone dismantles the truncation this test
+// sees it at once; `total_budget_ms: 0` would **test nothing** -- `ChainLimits.Budget()`
+// treats `<= 0` as unset and falls back to the default 120000ms (Domain semantics, not this
+// file's), leaving this test blind to whether the budget works at all.
 //
-// 断言停在「上游原文 + 只敲了第一站 + 这个计数器是 0」：预算若真的生效，第二站
-// 会被敲到（第 1022 行只改 isLast 与 trail，**不跳出**这一发），响应变成第二站的
-// 200——那是另一条测试的现场，这条只关心第一站有没有被如实报出来。
+// The assertion stops at "upstream raw body + only the first stop knocked + this counter is
+// 0": if the budget really took effect the second stop would be knocked (line 1022 changes
+// only isLast and trail, **without breaking out** of this shot) and the response would become
+// the second stop's 200 -- another test's scene; this one only cares that the first stop is
+// reported faithfully.
 func TestFallbackOffIgnoresTheTimeoutBudget(t *testing.T) {
 	sandboxState(t, `{"port": 0, "gateway": {"fallback": false}, "chain": {"fallback_on_400": true, "total_budget_ms": 1}}`)
 	metrics.Default.Reset()
@@ -277,7 +284,8 @@ func TestFallbackOffIgnoresTheTimeoutBudget(t *testing.T) {
 	}
 }
 
-// 最后一条说明，留给下一个改这段的人：这里的 400 原文会被原样转给客户端，那是
-// 4xx 定案分支的行为（`w.Write(eb)`）。**不要断言 X-Newgate-Evidence**：它的值是
-// filepath.Base(base)，而 saveErrEvidence 在写不出文件时给的是空 base，这个头
-// 就退化成 "."——那是一条看着像有、其实没有内容的断言。
+// A last note for whoever edits this next: the raw 400 here is forwarded as-is to the client,
+// which is the 4xx final-branch behavior (`w.Write(eb)`). **Do not assert
+// X-Newgate-Evidence**: its value is filepath.Base(base), and saveErrEvidence gives an empty
+// base when it cannot write the file, so that header degrades to "." -- an assertion that
+// looks like it has content but has none.

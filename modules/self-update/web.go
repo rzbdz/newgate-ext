@@ -149,7 +149,7 @@ func webLabels() map[string]string {
 func webAssets() fs.FS {
 	sub, err := fs.Sub(webFiles, "web")
 	if err != nil {
-		panic(err) // 嵌入的目录在编译期就定了，这里失败是构建坏了
+		panic(err) // the embedded dir is fixed at compile time; failing here means the build is broken
 	}
 	return sub
 }

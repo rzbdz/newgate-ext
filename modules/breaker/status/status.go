@@ -100,7 +100,7 @@ const (
 	LatencyFast    Latency = iota // < FastMs
 	LatencyOK                     // <= SlowMs
 	LatencySlow                   // > SlowMs
-	LatencyUnknown                // 没有样本
+	LatencyUnknown                // no samples
 )
 
 const (

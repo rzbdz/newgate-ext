@@ -6,8 +6,9 @@ import (
 	"testing"
 )
 
-// TestInsertTopLevelRaw_KeepsEveryOtherByte 插入新 key 只能多出插入的那一段，
-// 其余字节（缩进、key 顺序、大整数字面量、Unicode 转义）必须原样。
+// TestInsertTopLevelRaw_KeepsEveryOtherByte: inserting a new key may only add the inserted
+// span; the other bytes (indentation, key order, big integer literals, Unicode escapes) must
+// stay as they were.
 func TestInsertTopLevelRaw_KeepsEveryOtherByte(t *testing.T) {
 	body := []byte(`{
   "model": "deepseek-chat",
@@ -57,7 +58,8 @@ func TestInsertTopLevelRaw_NotObject(t *testing.T) {
 	}
 }
 
-// TestEnsureArrayItemField_OnlyMatchingItems 只补 match 中的、且还没有该字段的元素。
+// TestEnsureArrayItemField_OnlyMatchingItems adds only to elements that match and lack the
+// field.
 func TestEnsureArrayItemField_OnlyMatchingItems(t *testing.T) {
 	body := []byte(`{"model":"x","messages":[` +
 		`{"role":"user","content":"a"},` +
@@ -110,7 +112,8 @@ func TestEnsureArrayItemField_OnlyMatchingItems(t *testing.T) {
 	}
 }
 
-// TestEnsureArrayItemField_NoopKeepsBytes 没东西要补时必须返回原切片、n=0。
+// TestEnsureArrayItemField_NoopKeepsBytes: with nothing to add it must return the original
+// slice and n=0.
 func TestEnsureArrayItemField_NoopKeepsBytes(t *testing.T) {
 	body := []byte(`{"messages":[{"role":"user","content":"a"}]}`)
 	out, n, err := EnsureArrayItemField(body, "messages", "reasoning_content",
@@ -126,8 +129,8 @@ func TestEnsureArrayItemField_NoopKeepsBytes(t *testing.T) {
 	}
 }
 
-// TestEnsureArrayItemField_NestedRoleNotConfused 嵌套在 content 里的 "role"
-// 不能被当成消息的 role，嵌套对象也不能被当成数组元素。
+// TestEnsureArrayItemField_NestedRoleNotConfused: a "role" nested inside content must not be
+// taken for the message's role, and a nested object must not be taken for an array element.
 func TestEnsureArrayItemField_NestedRoleNotConfused(t *testing.T) {
 	body := []byte(`{"messages":[` +
 		`{"content":[{"role":"assistant","text":"text inside the content"}],"role":"user"}` +
@@ -145,7 +148,8 @@ func TestEnsureArrayItemField_NestedRoleNotConfused(t *testing.T) {
 	}
 }
 
-// TestEnsureArrayItemField_WhitespaceAndEmptyItems 缩进、空对象元素、非对象元素。
+// TestEnsureArrayItemField_WhitespaceAndEmptyItems: indentation, empty object elements,
+// non-object elements.
 func TestEnsureArrayItemField_WhitespaceAndEmptyItems(t *testing.T) {
 	body := []byte("{\n  \"messages\": [\n    {},\n    \"bare string\",\n    { \"role\": \"assistant\" }\n  ]\n}")
 	out, n, err := EnsureArrayItemField(body, "messages", "reasoning_content",

@@ -8,11 +8,13 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// status 把 hermes 的接管状况报进 `newgate status`：/model 里列了几份 profile、
-// 清单最近一次同步、以及网关要不要重启（理由见 gateway.go）。
+// status reports hermes' takeover state into `newgate status`: how many profiles are listed in
+// /model, when the list was last synced, and whether the gateway needs a restart (the reason is
+// in gateway.go).
 //
-// 由本模块报：这三件事都是 hermes 自己的知识，界面不认识它们。没装 hermes 的机器上
-// 一个字都不报（说的是一个不存在的工具的行为）。
+// Reported by this module: all three are hermes' own knowledge, and the UI knows none of it. On
+// a machine without hermes it says nothing at all (that would be describing the behavior of a
+// tool that does not exist).
 type status struct{}
 
 var _ cliapi.StatusProvider = status{}
@@ -24,8 +26,8 @@ func (status) Status() []cliapi.StatusLine {
 	return []cliapi.StatusLine{{Rank: 27, Label: "Hermes", Value: statusText(true)}}
 }
 
-// statusText 是 status 那一行与 `newgate hermes-gateway` 共用的那句话。color=false 给
-// 网页用（它自己上色）。
+// statusText is the sentence shared by the status line and `newgate hermes-gateway`.
+// color=false is for the web page (it colors on its own).
 func statusText(color bool) string {
 	paint := func(f func(string) string, s string) string {
 		if color {

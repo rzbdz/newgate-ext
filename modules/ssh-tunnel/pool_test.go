@@ -40,7 +40,7 @@ func TestAcquireDialsOnceAndHandsOutLeases(t *testing.T) {
 	}
 	first.Release()
 	second.Release()
-	first.Release() // 幂等：多放一次不该把计数放到负数去
+	first.Release() // idempotent: one extra release must not drive the count negative
 	if snap, _ := p.Snapshot("ds"); snap.Refs != 0 {
 		t.Errorf("after releasing refs = %d, want 0 (one extra release must not become -1)", snap.Refs)
 	}
@@ -132,11 +132,11 @@ func TestIdleConnectionsAreLetGo(t *testing.T) {
 	}
 	l.Release()
 
-	p.reap(time.Now()) // 刚用完：不该断
+	p.reap(time.Now()) // just used: must not close
 	if d.openSessions() != 1 {
 		t.Fatal("it broke right after being loaned")
 	}
-	p.reap(time.Now().Add(2 * time.Second)) // 超过空闲：该断
+	p.reap(time.Now().Add(2 * time.Second)) // past idle: must close
 	if got := d.openSessions(); got != 0 {
 		t.Errorf("%d connections remain after the idle timeout", got)
 	}

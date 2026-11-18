@@ -113,13 +113,13 @@ func (t *Terminal) ReadEvent() Event {
 		return Event{Key: KeyInterrupt}
 	case 4: // Ctrl-D
 		return Event{Key: KeyEOF}
-	case 1: // Ctrl-A：行首
+	case 1: // Ctrl-A: start of line
 		return Event{Key: KeyHome}
-	case 5: // Ctrl-E：行尾
+	case 5: // Ctrl-E: end of line
 		return Event{Key: KeyEnd}
 	case 8, 127:
 		return Event{Key: KeyBackspace}
-	case 21: // Ctrl-U：清空这一行（ReadLine 里用）
+	case 21: // Ctrl-U: clear this line (used by ReadLine)
 		return Event{Key: KeyOther, Rune: 21}
 	case 27:
 		return t.readEscape()
@@ -195,7 +195,7 @@ func (t *Terminal) readEscape() Event {
 		return Event{Key: KeyHome}
 	case 'F':
 		return Event{Key: KeyEnd}
-	case 'Z': // Shift-Tab：反向切换
+	case 'Z': // Shift-Tab: cycle backwards
 		return Event{Key: KeyOther, Rune: 'Z'}
 	case '1', '3', '4', '7', '8':
 		// `ESC [ 3 ~` delete, `1~`/`7~` Home, `4~`/`8~` End. Consume the trailing `~`.
@@ -230,7 +230,7 @@ type LineMode struct {
 // LineResult is the outcome of ReadLine.
 type LineResult struct {
 	Text   string
-	Cancel bool // 用户按了 Esc / Ctrl-C
+	Cancel bool // the user pressed Esc / Ctrl-C
 	EOF    bool
 }
 

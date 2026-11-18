@@ -38,11 +38,11 @@ var (
 // Paths are not here: they all come from the paths package (the single source of config
 // dir paths in this repo); tests isolate via NEWGATE_HOME (the testkit.Sandbox way).
 type Config struct {
-	Endpoint string // 形如 https://gateway-host.tailnet.ts.net:8899
-	RootKey  []byte // 预共享根密钥原文
-	Version  string // 本二进制构建串，喂给 Gate
+	Endpoint string // e.g. https://gateway-host.tailnet.ts.net:8899
+	RootKey  []byte // the pre-shared root key, verbatim
+	Version  string // this binary's build string, fed to the gate
 	Log      *log.Logger
-	HTTP     *http.Client // nil = 默认（20s 超时）
+	HTTP     *http.Client // nil = default (20s timeout)
 	Now      func() time.Time
 }
 
@@ -78,14 +78,14 @@ func New(cfg Config) (*Client, error) {
 // Channel is one channel's result for this round.
 type Channel struct {
 	Kind string
-	Gen  int // 这一轮之后生效的代数
+	Gen  int // the generation in effect after this round
 
 	// Changed: content changed and is on disk. **Only then log "updated"**: a generation
 	// bump with identical bytes (host re-published the same content) is not an update.
 	Changed   bool
-	Refused   bool // 拉到了、但拒绝应用（保留上一份继续服务）
+	Refused   bool // pulled, but refused to apply (the previous one keeps serving)
 	Reason    string
-	Err       error // 这一通道自身的错误（网络、解密、校验）
+	Err       error // this channel's own error (network, decryption, validation)
 	Drift     *DriftReport
 	Written   []string
 	Removed   []string
@@ -101,15 +101,15 @@ type Channel struct {
 type Outcome struct {
 	Config  Channel
 	Secrets Channel
-	Notes   []string // 给调用方展示的旁注（记账损坏、权威变更…）
+	Notes   []string // side notes for the caller (ledger corruption, authority change, ...)
 
 	// The fields below are what finalize sums up as "how this round went overall"; callers
 	// only **render** it - recording and judging happen inside Pull's lock, see finalize.
 	Failed    bool
-	ErrText   string // 稳定的错误串（同一问题重复出现时字符串不变，日志抑制靠它）
-	FailCount int    // 这一轮之后连续失败的次数
-	Recovered bool   // 这一轮恢复（此前有失败）
-	PrevGen   int    // 这一轮之前生效的配置代数（日志里写 "41 → 42" 用）
+	ErrText   string // a stable error string (same problem, same string; log suppression uses it)
+	FailCount int    // consecutive failures after this round
+	Recovered bool   // recovered this round (there were failures before)
+	PrevGen   int    // config generation before this round (for "41 → 42" in logs)
 }
 
 // Pull pulls one round and applies it.
@@ -218,7 +218,7 @@ func (c *Client) pullConfig(ctx context.Context, st *State, force bool) Channel 
 		return ch
 	}
 	if snap.HostID == "" {
-		snap.HostID = env.Host // 宿主没填就用信封上那个（两者本应一致）
+		snap.HostID = env.Host // the host left it empty: take the envelope's (they should agree)
 	}
 	if snap.Generation != env.Gen {
 		// Envelope says 42, ciphertext says 41: host-side assembly bug. One number; no guessing.

@@ -9,16 +9,18 @@ import (
 
 const ID = "opencode"
 
-// NpmPackage 是官方 npm 包（2026-11-17 核过 registry 的 `latest`，bin 里是 opencode）。
+// NpmPackage is the official npm package (checked the registry's `latest` on 2026-11-17; the bin
+// is opencode).
 //
-// 为什么不用 `https://opencode.ai/install`：那个脚本要联网挑版本、改 PATH、还要
-// 处理一堆平台分支——它是**给人装的**，不是给另一个程序在向导里调用的。npm 这条
-// 渠道与 claude / codex 一致，且失败时错误信息是可读的（见内核 install.go）。
+// Why not `https://opencode.ai/install`: that script picks a version over the network, edits
+// PATH, and handles a pile of platform branches -- it is **for a person to install with**, not for
+// another program to call from a wizard. The npm route is the same as claude / codex, and its error
+// messages are readable when it fails (see the kernel's install.go).
 const NpmPackage = "opencode-ai"
 
 func Agent() *agentapi.Agent {
 	return &agentapi.Agent{
-		// 界面上的图标（见 icon.go：它为什么住在这个模块里）。
+		// The icon in the UI (see icon.go: why it lives in this module).
 		Icon:    iconPath,
 		ID:      ID,
 		Bin:     []string{"opencode"},

@@ -29,7 +29,7 @@ import (
 type fakeScreen struct {
 	events []term.Event
 	lines  []string
-	picked []func(string, string, int) // 每次 render 都会被记下来（可选断言）
+	picked []func(string, string, int) // recorded on every render (optional assertions)
 	sent   *bytes.Buffer
 }
 
@@ -84,7 +84,7 @@ func runes(rs ...rune) []term.Event {
 type fakeCatalog struct {
 	agents       map[string]*agentapi.Agent
 	installed    map[string]bool
-	installs     *[]string // 记下跑过哪些安装命令的 agent
+	installs     *[]string // records which agents had an install command run
 	installFails map[string]bool
 }
 

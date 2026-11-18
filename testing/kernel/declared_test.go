@@ -51,7 +51,7 @@ func TestEveryMustGetIsDeclared(t *testing.T) {
 		}
 		moduleGo := filepath.Join(dir, "module.go")
 		if _, err := os.Stat(moduleGo); err != nil {
-			continue // 不是模块（没有 module.go），不归这条管
+			continue // not a module (no module.go), out of scope here
 		}
 
 		declared := declaredCapabilities(t, dir)
@@ -86,9 +86,9 @@ func TestEveryMustGetIsDeclared(t *testing.T) {
 type capKey string
 
 type mustGet struct {
-	pos        string // `文件:行`，报错时点名
+	pos        string // `file:line`, named in errors
 	key        capKey
-	unresolved string // 非空 = 解析不了，值是那句表达式的原文
+	unresolved string // non-empty = can't parse; the value is the raw expression
 }
 
 // declaredCapabilities collects every capability appearing in `Requires`.
@@ -241,7 +241,7 @@ func forEachFile(t *testing.T, dir string, fn func(*token.FileSet, *ast.File, st
 	if err != nil {
 		t.Fatalf("walking %s failed: %v", dir, err)
 	}
-	sort.Strings(names) // 稳定顺序：同一处坏代码每次报同一行
+	sort.Strings(names) // stable order: the same bad code reports the same line every time
 	for _, path := range names {
 		fset := token.NewFileSet()
 		f, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)

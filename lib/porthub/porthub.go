@@ -39,7 +39,7 @@ import (
 // Mount is one mounted record, used for diagnostics and status.
 type Mount struct {
 	Prefix string
-	Owner  string // 谁挂的（模块名）；冲突时报错要点名
+	Owner  string // who mounted it (module name); a conflict error must name names
 }
 
 // Registry is the mount table. The zero value is unusable; use NewRegistry or Default.

@@ -8,15 +8,18 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// gatewayCommand 是 `newgate hermes-gateway`：看 / 同步 / 重启 hermes 的消息网关。
+// gatewayCommand is `newgate hermes-gateway`: look at / sync / restart hermes' messaging
+// gateway.
 //
-// 为什么不是 `newgate hermes <子命令>`：`newgate hermes` 已经是「启动 hermes」那个
-// 动词（每个客户端的 ID 都是，见 runtime 的 launch），子命令会与 hermes 自己的参数
-// 撞名（`hermes gateway …` 本来就是 hermes 的命令）。
+// Why not `newgate hermes <subcommand>`: `newgate hermes` is already the verb "launch hermes"
+// (every client's ID is, see runtime's launch), and a subcommand would collide with hermes'
+// own arguments (`hermes gateway …` is already a hermes command).
 //
-//	newgate hermes-gateway            状态：接管没有、清单新不新、网关要不要重启
-//	newgate hermes-gateway sync       现在就把 /model 的清单同步一次（不碰槽位）
-//	newgate hermes-gateway restart    让 hermes 收尾正在跑的会话、重启网关
+//	newgate hermes-gateway            status: taken over or not, is the list current, does the
+//	                                  gateway need a restart
+//	newgate hermes-gateway sync       sync the /model list right now (does not touch slots)
+//	newgate hermes-gateway restart    let hermes drain the running sessions and restart the
+//	                                  gateway
 type gatewayCommand struct{}
 
 var (

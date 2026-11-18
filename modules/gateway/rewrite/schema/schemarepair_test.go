@@ -6,7 +6,8 @@ import (
 	"testing"
 )
 
-// 现场原样：opencode 1.18.19 的 background_cancel，parameters 里没有 required。
+// Verbatim from the field: opencode 1.18.19's background_cancel, with no required in
+// parameters.
 const realTool = `[
  {"type":"function","function":{
    "name":"background_cancel",
@@ -46,12 +47,12 @@ func TestRepairsMissingRequired(t *testing.T) {
 			t.Errorf("required of %v is not an array: %T", fn["name"], req)
 		}
 	}
-	// 已有的 required 不能被动
+	// An existing required must not be touched
 	bash := tools[1]["function"].(map[string]interface{})["parameters"].(map[string]interface{})
 	if got := bash["required"].([]interface{}); len(got) != 1 || got[0] != "cmd" {
 		t.Errorf("the existing required of bash was changed: %v", got)
 	}
-	// 其它字段保留
+	// Other fields are preserved
 	bc := tools[0]["function"].(map[string]interface{})["parameters"].(map[string]interface{})
 	if bc["$schema"] == nil {
 		t.Error("$schema was lost")
@@ -61,7 +62,8 @@ func TestRepairsMissingRequired(t *testing.T) {
 	}
 }
 
-// 没东西可补时必须返回 changed=false，让调用方保持原始字节不动。
+// With nothing to repair it must return changed=false, leaving the caller's original bytes
+// untouched.
 func TestNoChangeMeansNoRewrite(t *testing.T) {
 	clean := `[{"type":"function","function":{"name":"x","parameters":{"type":"object","properties":{},"required":[]}}}]`
 	out, changes, err := Repair([]byte(clean))
@@ -84,7 +86,7 @@ func TestRepairsNested(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// obj 和 items 里的 object 各补一处
+	// One each in obj and in the object inside items
 	if len(changes) != 1 || !strings.Contains(changes[0], "+2") {
 		t.Errorf("nested objects should get 2 repairs, got %v", changes)
 	}

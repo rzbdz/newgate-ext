@@ -13,39 +13,46 @@ import (
 
 var _ special.Plugin = nothink{}
 
-// StateKey 是 state.json 里这一格的名字（本模块所有，见 module.go 的注册）。
+// StateKey is the name of this cell in state.json (owned by this module, see the registration in
+// module.go).
 //
-// 键名**别改**：known-good 回滚二进制读的是同一份配置文件，改了键就等于把这个
-// 开关忘在打开状态——而它开着的时候用户的模型是不推理的（同 classifier_naked）。
+// **Do not change the key name**: a known-good rollback binary reads the same config file, and
+// changing the key is equivalent to leaving this switch forgotten in on state -- and while it is
+// on, the user's models do not reason (same as classifier_naked).
 const StateKey = "nothink"
 
-// disabled 是替客户端写下去的思考开关：Anthropic 方言里「这一轮不要思考」。
+// disabled is the thinking switch written on behalf of the client: in the Anthropic dialect, "do
+// not think this round".
 var disabled = []byte(`{"type":"disabled"}`)
 
-// Config 是一次「全局不思考」窗口的描述。CLI 构建/持久化，插件消费。
+// Config describes one "globally do not think" window. Built/persisted by the CLI, consumed by the
+// plugin.
 //
-// **JSON 标签不能省**：`expires_at` 靠标签才对得上 `ExpiresAt`（Go 的默认字段名
-// 匹配忽略大小写但不忽略下划线）。少了标签，反序列化出来的 ExpiresAt 是零值，
-// `time.Now().Before(zero)` 恒为 false → `on` 当场判定过期 → 开关**永远不生效**，
-// 而 status 那行会打出 `-2562047h…`。这个坑在 classifier_naked 上实跑撞过一次
-// （2026-09-17），形状一样的结构就别再踩第二遍。
+// **The JSON tag cannot be omitted**: `expires_at` only matches `ExpiresAt` through the tag (Go's
+// default field-name matching ignores case but not underscores). Without the tag, the deserialized
+// ExpiresAt is the zero value, `time.Now().Before(zero)` is always false → `on` judged expired on
+// the spot → the switch **never takes effect**, and the status line prints `-2562047h…`. This pit
+// was hit for real once on classifier_naked (2026-09-17); a struct of the same shape must not step
+// in it a second time.
 type Config struct {
-	Mode      string    `json:"mode"`       // "on"（自限窗口）| "forever"
-	ExpiresAt time.Time `json:"expires_at"` // Mode=="on" 时这个窗口到哪一刻失效
+	Mode      string    `json:"mode"`       // "on" (self-limiting window) | "forever"
+	ExpiresAt time.Time `json:"expires_at"` // when this window expires while Mode=="on"
 }
 
-// Marshal 编成要写进 state.json 的字节。
+// Marshal encodes the bytes to write into state.json.
 func Marshal(c Config) ([]byte, error) { return json.Marshal(c) }
 
-// Parse 解析 state.json 里那一格，并把**过期判定放在这里**。
+// Parse parses that cell in state.json, and puts **the expiry judgment here**.
 //
-// `on` 是懒过期的（daemon 不持 timer），所以「现在还算不算开着」只能由读的那一刻
-// 决定；而读它的地方有三个（Match / Status / 命令），各判一次必然漂移
-// ——classifier_naked 上实跑撞过那一版：Respond 判了过期、Status 没判，于是窗口
-// 过去之后 status 打出一行「还有 -6m3s 自动关」。一个已经失效的窗口在**任何**读点
-// 都该表现为「没开」，这条不变式只有一个执行点才不会破。
+// `on` expires lazily (the daemon holds no timer), so "does this still count as on right now" can
+// only be decided at the moment of reading; and there are three places that read it (Match / Status
+// / the command), and judging separately in each will drift -- that version was hit for real on
+// classifier_naked: Respond judged expiry, Status did not, so after the window status printed a
+// line "auto-off in -6m3s". A window that has already lapsed should look like "not on" at **any**
+// read point, and that invariant holds only with a single enforcement point.
 //
-// 坏数据（空、坏 JSON、模式不在白名单）一律按「没开」处理——关起来是安全侧。
+// Bad data (empty, bad JSON, mode not in the allowlist) is all treated as "not on" -- off is the
+// safe side.
 func Parse(raw []byte) (Config, bool) {
 	var c Config
 	if len(raw) == 0 || json.Unmarshal(raw, &c) != nil {
@@ -60,21 +67,24 @@ func Parse(raw []byte) (Config, bool) {
 	return c, false
 }
 
-// nothink 是那个插件：开关开着时，把这一次请求改成「不思考」。
+// nothink is that plugin: while the switch is on, turn this request into "do not think".
 //
-// 它自己只做一件事——**覆盖客户端的思考意图**（见 Apply）；补与翻那两半在
-// 内核的 BestEffortDisable 里，本模块通过 capability 调它，而不是复制一份。
+// It itself does only one thing -- **override the client's thinking intent** (see Apply); the fill
+// and translate halves live in the kernel's BestEffortDisable, which this module calls through a
+// capability rather than copying.
 type nothink struct{ thinking thinkingapi.Service }
 
 func (nothink) Name() string { return "nothink" }
 
-// Before 让本插件排在兜底翻译器（always-thinks）前面：我们写下去的 disabled 要
-// 轮到它看一眼（模型关不掉思考时它会把 disabled 翻成 enabled + low）。反过来排
-// 的后果不是顺序难看，是那一发带着 disabled 撞 400。
+// Before puts this plugin ahead of the fallback translator (always-thinks): the disabled we write
+// must get a look from it (when the model cannot have thinking turned off, it translates disabled
+// into enabled + low). Ordering it the other way round, the consequence is not ugly ordering but
+// that this round goes upstream with disabled and hits a 400.
 //
-// 这里只写内核自己的插件名：产品插件的排序边由产品自己声明，而内核那条
-// `app/ordering_test.go` 拒「内核的排序边指向内核之外的插件」——方向是
-// 「本模块 → 内核插件」这一条。
+// Only the kernel's own plugin name is written here: the ordering edges of product plugins are
+// declared by the product itself, and the kernel's `app/ordering_test.go` rejects "a kernel
+// ordering edge pointing at a plugin outside the kernel" -- the direction is "this module → kernel
+// plugin", this one edge.
 func (nothink) Before() []string { return []string{"always-thinks"} }
 func (nothink) After() []string  { return nil }
 
@@ -86,20 +96,22 @@ func (nothink) Why() string {
 		"newgate nothink off ends it; st off nothink takes this plugin out without touching the setting", nil)
 }
 
-// Match 认「这个开关此刻开着」这一件事，**外加**这次请求说的是 Anthropic 方言。
+// Match recognizes "this switch is on right now", **plus** this request speaking the Anthropic
+// dialect.
 //
-// 方言判据放在 Match 而不是 Apply 里：它不是「这次没什么可改的」那种例外，而是
-// 「这件事与我无关」——OpenAI 方言的请求从头到尾就不该被这条策略算进去
-// （见包注释里 opencode 那段现场）。
+// The dialect criterion sits in Match rather than Apply: it is not the "nothing to change this
+// round" kind of exception, it is "this has nothing to do with me" -- an OpenAI-dialect request
+// should never be counted by this policy at all (see the opencode field report in the package
+// comment).
 func (nothink) Match(r *special.Request) bool {
 	return r != nil && domain.IsAnthropicPath(r.Path) && active(r)
 }
 
-// active 这个开关此刻开着吗。
+// active: is this switch on right now.
 //
-// 读的是**这次请求看到的那份配置快照**（r.State），不是现去读盘：一次请求里所有
-// 插件看的是同一个世界。State 缺席（单测、旧调用面）按「没开」处理——关着才是
-// 这条开关的缺省态。
+// It reads **the config snapshot this request saw** (r.State), not the disk afresh: within one
+// request every plugin sees the same world. A missing State (unit tests, old call surfaces) counts
+// as "not on" -- off is this switch's default state.
 func active(r *special.Request) bool {
 	if r == nil || r.State == nil {
 		return false
@@ -108,27 +120,30 @@ func active(r *special.Request) bool {
 	return on
 }
 
-// Apply 把「全局不思考」落到这一份请求体上。
+// Apply lands "globally do not think" on this one request body.
 //
-// 两步，各自的边界都写清楚：
+// Two steps, each with its boundary spelled out:
 //
-//  1. **客户端写了 thinking 就覆盖它**（adaptive / enabled / 别的形状都算）。
-//     这是这个开关存在的全部意义：主循环那一发带的正是 adaptive，不覆盖它，
-//     这个开关对真正在思考的那条路径等于不存在。改写只动 thinking 这一个值的
-//     字节区间（rewrite 的原语），body 里其余每个字节原样保留。
-//  2. **剩下的交给内核的 best-effort**：没写 thinking 的补上 disabled；模型
-//     关不掉思考的（always-thinks 那张 quirk 表）就地翻成 enabled +
-//     reasoning_effort=low。翻不动就原样发——best effort 的边界是「绝不因为这
-//     个意图让请求失败」，而不是「一定要关掉」。
+//  1. **If the client wrote thinking, override it** (adaptive / enabled / any other shape).
+//     That is the entire point of this switch: the main loop's request carries exactly
+//     adaptive, and without overriding it this switch is equivalent to nonexistent on the
+//     path that actually thinks. The rewrite touches only thinking's byte range (a rewrite
+//     primitive); every other byte in the body is kept as is.
+//  2. **The rest goes to the kernel's best-effort**: add disabled where no thinking was
+//     written; where the model cannot have thinking turned off (the always-thinks quirk
+//     table), translate it in place into enabled + reasoning_effort=low. Untranslatable
+//     goes out as is -- best effort's boundary is "never fail the request because of this
+//     intent", not "must turn it off".
 //
-// 客户端显式设了 reasoning_effort 的那种请求，第 2 步会整个跳过（内核那条判据：
-// 设了强度就是要思考）；但第 1 步照样把 thinking 改成 disabled——两条字段是
-// **两回事**，这里不替用户猜哪一条说了算，只保证「全局不思考」这一条落地。
+// For a request where the client explicitly set reasoning_effort, step 2 is skipped entirely (the
+// kernel's criterion: setting an effort means wanting to think); but step 1 still changes thinking
+// to disabled -- the two fields are **two different things**, and this does not guess on the user's
+// behalf which one rules; it only makes sure "globally do not think" lands.
 func (n nothink) Apply(body []byte, r *special.Request) ([]byte, []string, error) {
-	// 再确认一次 Match。框架那条链本来就只对匹配的插件调 Apply，所以这一句是**多**
-	// 的——但它守的东西值得：这条插件改的是客户端**写出来的意图**，而「开关关着就
-	// 一个字节都不动」这条不变式写在改动的旁边，换个调用面（测试、将来的别的链）
-	// 也破不了。
+	// Confirm Match once more. The framework's chain only calls Apply on matching plugins anyway, so
+	// this line is **redundant** -- but what it guards is worth it: this plugin changes the intent
+	// the client **wrote**, and the invariant "switch off means not one byte touched" sits right next
+	// to the change, so another call surface (tests, another chain in the future) cannot break it.
 	if !n.Match(r) {
 		return body, nil, nil
 	}
@@ -138,8 +153,8 @@ func (n nothink) Apply(body []byte, r *special.Request) ([]byte, []string, error
 		if kind, _ := rewrite.TopLevelString(raw, "type"); kind != "disabled" {
 			rewritten, err := rewrite.ReplaceTopLevelRaw(out, "thinking", disabled)
 			if err != nil {
-				// 改不动就照原样发：宁可这一发按客户端的意图思考，也不能因为
-				// 一个开关把请求弄坏（fail-open，它同时也是一条 note）。
+				// Unchangeable goes out as is: better that this round thinks per the client's intent than
+				// that a switch breaks the request (fail-open, and it is also a note).
 				return body, nil, i18n.Ef(err, "thinking left as the client wrote it ({err})", nil)
 			}
 			out = rewritten
@@ -150,18 +165,20 @@ func (n nothink) Apply(body []byte, r *special.Request) ([]byte, []string, error
 
 	translated, more, err := n.thinking.BestEffortDisable(out, r)
 	if err != nil {
-		// 到不了这里：内核那一手的失败都折进 notes（它自己就是 fail-open 的）。
-		// 真到了就当它没跑——上面那一手已经落地，照它发出去更接近用户的意图。
+		// Unreachable: the kernel move folds its failures into notes (it is fail-open itself). If it
+		// really happens, treat it as not having run -- the move above already landed, and sending per
+		// that is closer to the user's intent.
 		return out, notes, nil
 	}
 	return translated, append(notes, more...), nil
 }
 
-// Status 让 `newgate status` 在开关开着的时候一直打出来。
+// Status makes `newgate status` keep printing this while the switch is on.
 //
-// 为什么这条比别的状态行更该在：它改的是**模型的行为**，而症状（不推理了、
-// 变笨了、变快了）没有任何一处会自己说是谁干的。忘了自己开着它的那一刻，
-// 那件事就成了一道要翻配置才答得上来的问题。
+// Why this belongs on the status screen more than other status lines: it changes **the model's
+// behavior**, and the symptoms (no more reasoning, dumber, faster) will never say anywhere who did
+// it. The moment you forget you left it on, that becomes a question answerable only by digging
+// through the config.
 func (nothink) Status(state *domain.State) []special.StatusItem {
 	if state == nil {
 		return nil

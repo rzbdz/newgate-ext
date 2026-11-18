@@ -26,12 +26,12 @@ import (
 // So footguns get their own read-only card: why it is read-only, and which command to use.
 
 type switchItem struct {
-	ID     string `json:"id"`     // 开关点路径（StateKey 里的键）
-	Label  string `json:"label"`  // 人话标题
-	Kind   string `json:"kind"`   // 界面渲染用：全是 bool
-	Value  bool   `json:"value"`  // **当前生效**的状态（出厂态 + 用户的设定）
-	Why    string `json:"why"`    // 关掉会发生什么
-	Group  string `json:"group"`  // 模块名（界面拿它分组）
+	ID     string `json:"id"`     // switch path (the key inside StateKey)
+	Label  string `json:"label"`  // plain-words title
+	Kind   string `json:"kind"`   // for UI rendering: always bool
+	Value  bool   `json:"value"`  // the **currently effective** state (factory + user setting)
+	Why    string `json:"why"`    // what happens if you turn it off
+	Group  string `json:"group"`  // module name (the UI groups by it)
 	Danger string `json:"danger"` // safe / quirk / footgun
 	Until  string `json:"until,omitempty"`
 }

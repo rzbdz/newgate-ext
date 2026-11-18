@@ -10,23 +10,25 @@ import (
 	"github.com/rzbdz/newgate/app"
 )
 
-// TestMain 是这个包唯一的进程级装配点（internal 与 external 两个测试包共用同一个
-// 测试二进制，所以 TestMain 全包只能有一个）。
+// TestMain is this package's only process-level assembly point (the internal and external test
+// packages share one test binary, so a package-wide TestMain can only exist once).
 //
-// 它做两件事，**顺序不能反**：
+// It does two things, **in this order**:
 //
-//  1. 把全部测试关进一个临时 NEWGATE_HOME 并铺一份最小配置；
-//  2. 起一张真组件图（有些用例要验模块注册进来了没有）。
+//  1. confine all tests into a temporary NEWGATE_HOME and lay down a minimal config;
+//  2. start a real component graph (some cases verify whether a module got registered).
 //
-// 第 1 步是 2026-09-18 补的，起因是 CI 连续三次红：这个包里凡是走
-// `newTestServer()` 的用例都没有 Watch，handler 于是退化成 `store.Load()` 直接
-// 读盘——读的是**开发机上真实的那份 ~/.config/newgate**。开发机永远有配置，所以
-// 本地一直绿；干净的 runner 上 Load 失败、`snap()` 返回 nil，每一发请求都变成
-// 400「[newgate] 配置读不出」，于是整包一起挂。
+// Step 1 was added on 2026-09-18 because CI went red three times in a row: every case in this
+// package going through `newTestServer()` had no Watch, so the handler degraded to
+// `store.Load()` reading the disk directly -- reading **the real ~/.config/newgate on the
+// developer machine**. A dev machine always has config, so locally it stayed green; on a clean
+// runner Load failed, `snap()` returned nil, and every request became a 400 "[newgate] cannot
+// read config", so the whole package went down together.
 //
-// 教训不是「CI 环境要补配置」，而是**测试不该依赖跑它的那台机器**：这台机器上有
-// 配置只是巧合，用例真正需要的是「一份能解析的配置」，那就自己铺一份。
-// 个别用例仍可以用 sandboxState(t, …) 覆盖成自己那一份。
+// The lesson is not "CI needs config", it is **tests must not depend on the machine running
+// them**: config existing on that machine is a coincidence; what a case really needs is "a
+// config that parses", so lay one down yourself. Individual cases can still override it with
+// sandboxState(t, ...).
 func TestMain(m *testing.M) {
 	dir, err := os.MkdirTemp("", "newgate-forward-test-")
 	if err != nil {

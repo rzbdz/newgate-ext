@@ -75,7 +75,7 @@ func checkGo() error {
 	}
 	m := goVersionRe.FindStringSubmatch(string(out))
 	if m == nil {
-		return nil // 认不出来（自编的 devel 版）就放行，让构建自己说话
+		return nil // unrecognized (a locally built devel version): let it through and let the build speak
 	}
 	if minor, _ := strconv.Atoi(m[1]); minor < minGo {
 		return i18n.E("{go} is too old to build newgate (needs go1.{min} or newer, which fetches the toolchain go.mod asks for); install a newer Go, or use a release",
@@ -86,8 +86,8 @@ func checkGo() error {
 
 // repoState is what a checkout looks like right now (taken before and after sync).
 type repoState struct {
-	branch   string // 空 = detached
-	upstream string // 空 = 没有上游
+	branch   string // empty = detached
+	upstream string // empty = no upstream
 	ahead    int
 	behind   int
 	dirty    bool

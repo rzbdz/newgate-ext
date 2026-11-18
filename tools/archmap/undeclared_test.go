@@ -209,7 +209,7 @@ func rootModuleOf(imp string) (string, bool) {
 			continue
 		}
 		if strings.Contains(rest, "/") {
-			return "", false // 叶子：不是根包
+			return "", false // a leaf: not a root package
 		}
 		return norm(rest), true
 	}

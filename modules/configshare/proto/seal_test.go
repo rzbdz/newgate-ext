@@ -114,14 +114,14 @@ func TestSealBindsContext(t *testing.T) {
 	})
 	t.Run("replay an old generation", func(t *testing.T) {
 		cp := *env
-		cp.Gen = 41 // 把第 42 代重放成第 41 代，让副本回滚
+		cp.Gen = 41 // replay generation 42 as 41, making the replica roll back
 		if _, err := Open(encKey, KindConfig, &cp); !errors.Is(err, ErrTampered) {
 			t.Fatalf("tampering with the generation must fail decryption, got: %v", err)
 		}
 	})
 	t.Run("mix-up", func(t *testing.T) {
 		cp := *env
-		cp.Host = "host-b" // Host 是明文，不绑进 AAD 的话它就能被随便改
+		cp.Host = "host-b" // Host is plaintext; without binding it into the AAD anyone can change it
 		if _, err := Open(encKey, KindConfig, &cp); !errors.Is(err, ErrTampered) {
 			t.Fatalf("tampering with the authority identity must fail decryption, got: %v", err)
 		}

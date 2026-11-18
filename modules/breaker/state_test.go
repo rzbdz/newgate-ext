@@ -86,7 +86,7 @@ func TestAvailabilityNeedsConsecutiveFailures(t *testing.T) {
 // failure and one 429, one each, is not yet enough to say it is broken.
 func TestBucketSwitchRestartsTheStreak(t *testing.T) {
 	b, _ := clocked()
-	connFail(b, "relay", "model") // 可用性 1
+	connFail(b, "relay", "model") // availability ledger, 1
 	rate := func() Result {
 		return b.Report("relay", "model", Input{Kind: KindUpstreamStatus, Status: 429})
 	}
@@ -181,7 +181,7 @@ func TestHalfOpenAdmitsExactlyOneTrial(t *testing.T) {
 	if b.Available("p", "m") {
 		t.Fatal("it let a trial through before the cooldown ended")
 	}
-	advance(time.Second) // 正好到期
+	advance(time.Second) // exactly at expiry
 	if !b.Available("p", "m") {
 		t.Fatal("it did not let a trial through after the cooldown ended")
 	}
@@ -204,7 +204,7 @@ func TestHalfOpenAdmitsExactlyOneTrial(t *testing.T) {
 func TestTrialFailureReopensWithBackoff(t *testing.T) {
 	b, advance := clocked()
 	connFail(b, "p", "m")
-	connFail(b, "p", "m") // 首次开闸：60s
+	connFail(b, "p", "m") // first open: 60s
 
 	// Three rounds of "cooldown expires -> let a trial through
 	// -> trial fails -> close": the cooldown should double.
@@ -405,11 +405,11 @@ func TestPreSealDiagnosticSparesAHealthyBinding(t *testing.T) {
 		if provider != "p" || model != "m" {
 			t.Fatalf("the diagnostic probe asked about the wrong binding: %s/%s", provider, model)
 		}
-		return true // 探活说它还通
+		return true // the probe says it is still reachable
 	})
 
 	connFail(b, "p", "m")
-	r := connFail(b, "p", "m") // 数到阈值
+	r := connFail(b, "p", "m") // counts up to the threshold
 	if r.Opened {
 		t.Fatal("the diagnostic said usable, yet it was dropped anyway")
 	}
@@ -482,7 +482,7 @@ func TestPreSealDiagnosticRunsOnceForConcurrentFailures(t *testing.T) {
 		mu.Unlock()
 		if first {
 			entered <- struct{}{}
-			<-release // 卡住第一个诊断，让后面的失败都撞进 verifying
+			<-release // block the first diagnostic so later failures all pile into verifying
 		}
 		return true
 	})
@@ -514,7 +514,7 @@ func TestHalfOpenTrialFailureSkipsDiagnostic(t *testing.T) {
 	b.SetVerifier(func(string, string) bool { calls++; return true })
 
 	connFail(b, "p", "m")
-	connFail(b, "p", "m") // 这次会诊断（结果说健康 → 不摘）
+	connFail(b, "p", "m") // this time it diagnoses (the result says healthy → no open)
 	if calls != 1 {
 		t.Fatalf("the first time the threshold is reached it should diagnose once, got %d", calls)
 	}

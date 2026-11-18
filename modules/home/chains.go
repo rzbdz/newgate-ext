@@ -12,44 +12,52 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// 本文件把 config 的**读端口**结论（configapi.Config.AllChains）翻译成界面要的形状
-// （view.Chains）。它是纯函数：进来一份结论、出去一份数据，不读盘（除了那一处取
-// 「profile 落在哪份文件」的 stat）、不碰时钟。
+// This file translates config's **read-port** conclusion (configapi.Config.AllChains) into
+// the shape the UI wants (view.Chains). It is a pure function: one conclusion in, one piece of
+// data out; it reads no disk (apart from that one stat for "which file the profile lives in")
+// and never touches a clock.
 //
-// # 为什么这一层值得单独存在，而不是让 config 直接产出 view.Chains
+// # Why this layer deserves to exist on its own, instead of config producing view.Chains
 //
-// 因为它们是**两个问题**。config 回答的是「这一份档位此刻解析成什么」，与谁说、
-// 在哪一屏上说是无关的（命令行 `newgate tier` 要的是同一份结论）；而「一屏怎么
-// 摆、链尾那句话怎么写、哪几个动作挂在哪一行」是**产品取舍**，随发行版变——
-// 内核里不该有 `home` 这个模块的名字，这一层就是那条接缝（见 core/CLAUDE.md §0）。
+// Because they are **two questions**. config answers "what this tier resolves to right now",
+// which has nothing to do with who is asking or on which screen (the command-line
+// `newgate tier` wants the same conclusion); while "how a screen is laid out, how the line at
+// the end of a chain reads, which actions hang on which row" is a **product trade-off**, and
+// varies per distribution -- the kernel should not contain the name of the `home` module; this
+// layer is that seam (see core/CLAUDE.md §0).
 //
-// # 一次快照，一屏一个时刻
+// # One snapshot, one moment per screen
 //
-// 上面的 all 是**一次** AllChains 拿到的（见 configapi.Config.AllChains 的注释）：
-// 分开问十次会拼起十个时刻的配置，而界面上看不出任何异样。所以这里**不重新读盘**，
-// 只把拿到的结论摆出来；唯一的一次磁盘访问是取「这份 profile 落在哪份文件」，
-// 而那不是链的结论（它是文件的地址，不随解析变）。
+// The all above comes from **one** AllChains call (see the comment on
+// configapi.Config.AllChains): asking separately ten times assembles the config of ten
+// moments, and nothing on screen looks wrong. So this **does not re-read the disk**; it only
+// lays out the conclusion it was given; the one and only disk access fetches "which file this
+// profile lives in", and that is not part of the chain's conclusion (it is a file address,
+// unchanged by resolution).
 //
-// # 依赖方向
+// # Dependency direction
 //
-// 对内核的 import 只有三样：**公开契约**（configapi）、共享叶子（paths / store，
-// core/CLAUDE.md 明说谁都能直接 import）、以及契约本身（lib/view、lib/i18n）。
-// 链的**结论**一律走端口——这里不 import store/resolve 去自己算一条链，那种依赖会
-// 在内核重构时断在另一个仓库里，而且那里没有测试会红。
+// The kernel imports are just three kinds: the **public contract** (configapi), shared leaves
+// (paths / store, which core/CLAUDE.md says anyone may import directly), and the contracts
+// themselves (lib/view, lib/i18n). The chain's **conclusion** always goes through the port --
+// this does not import store/resolve to compute a chain itself; that kind of dependency snaps
+// off in the other repository when the kernel is refactored, and no test there goes red.
 
-// ---------- 跳过：只给汇总，永不逐条铺开 ----------
+// ---------- skips: summary only, never one row per skip ----------
 
-// skipNote 是链尾那句「还有谁被跳过、为什么」。
+// skipNote is the line at the end of a chain: "who else was skipped, and why".
 //
-// # 一条取舍（与 `newgate tier` 同源，措辞各写各的）
+// # One trade-off (same source as `newgate tier`, each writes its own wording)
 //
-// **只给按类目的计数**。实测一份配置里 106 条跳过有 91 条是「与更靠前的候选重复」
-// ——把必然发生的去重当结果一行行铺开，只会把真正的结论（走谁）淹掉，而这个页面
-// 的结构本来就是「一行一条链」。想逐条看的人要的是另一个口子（`newgate tier <档位>`
-// 会按类目分组并给每类一句「所以呢」），不是这里。
+// **Counts by category only**. Measured on one config: of 106 skips, 91 are "duplicate of an
+// earlier candidate" -- laying out an inevitable dedup row by row only drowns the real
+// conclusion (who gets used), and this page is structured as "one row per chain" anyway.
+// Someone who wants each one in detail wants another door (`newgate tier <tier>` groups by
+// category and gives each one a "so what"), not this.
 //
-// 类目顺序固定（skipKindOrder）：同一份配置跑两次，这句话必须逐字相同——链卡
-// 会被反复重算（每次快照都是一次），一个随 map 遍历序变的句子看起来像「配置又动了」。
+// Category order is fixed (skipKindOrder): the same config run twice must produce this
+// sentence word for word -- the chain card is recomputed over and over (every snapshot is
+// one), and a sentence that follows map iteration order looks like "the config moved again".
 func skipNote(skips []configapi.Skip) string {
 	if len(skips) == 0 {
 		return ""
@@ -69,23 +77,28 @@ func skipNote(skips []configapi.Skip) string {
 		i18n.A{"reasons": strings.Join(parts, " · ")})
 }
 
-// skipKindOrder 是类目的**固定次序**（只有列在这里的类目会被画出来）。
+// skipKindOrder is the **fixed order** of categories (only categories listed here are drawn).
 //
-// 它同时是一张**契约表**：下面的 skipLabel 只认这几个标记，认不出来的（将来内核
-// 新加一类）落进 skipOther 那一栏——数量照报，只是没有专属的名字。整张表漏掉某一类
-// 的代价是那一类被静默吞掉，所以这里有 chains_test.go 的一条棘轮：真 skips 递进来
-// 之后每一类都必须出现在那句话里。
+// It is also a **contract table**: skipLabel below recognizes only these markers, and an
+// unrecognized one (a category the kernel adds later) falls into the skipOther slot -- counted,
+// just without a name of its own. The cost of one category missing from this table is that
+// category being swallowed in silence, so chains_test.go has a ratchet here: once real skips
+// are passed in, every category must appear in that sentence.
 //
-// # 这几个标记是从哪儿来的
+// # Where these markers come from
 //
-// 它们不是本模块的词汇，是 **resolve 与显示层之间的协议**：建链时就打好在
-// `Skip.Kind` 上，`newgate tier` 用它分组计数、状态块尾行用它、这里也用它
-// （见 resolve/chain.go 那组常量的注释：它们是机器标记，不随语言变）。
+// They are not this module's vocabulary; they are the **protocol between resolve and the
+// display layer**: stamped on `Skip.Kind` when the chain is built, and used by `newgate tier`
+// to group and count, by the status block's last line, and here
+// (see the comments on that group of constants in resolve/chain.go: they are machine markers
+// and do not change with language).
 //
-// 字面量在这里重写了一遍而不是 import resolve：链的结论一律走 configapi 端口
-// （见 api.go——发行版自己 import resolve 去拼是内核点名要避免的那种依赖），而
-// 这几个字符串是**协议**，不是实现细节。写错/内核改名由测试拦：chains_test.go 拿
-// 真的 skips（沙箱里解析出来的）过一遍这里，对不上就红。
+// The literals are rewritten here rather than imported from resolve: the chain's conclusion
+// always goes through the configapi port (see api.go -- the distribution importing resolve to
+// assemble on its own is exactly the dependency the kernel calls out to avoid), and these
+// strings are **protocol**, not implementation detail. A typo / a kernel rename is caught by
+// the test: chains_test.go passes the real skips (resolved in a sandbox) through here and goes
+// red if they do not line up.
 const (
 	skipExcluded    = "excluded"
 	skipUndefined   = "undefined"
@@ -103,8 +116,8 @@ var skipKindOrder = []string{
 	skipMaxSteps, skipDuplicate, skipCycle, skipOther,
 }
 
-// skipKind 取一条跳过的类目；没打标记的归「其他」（今天不会发生——建链时一定打，
-// 这是给外面手搓的 Skip 留的兜底）。
+// skipKind returns a skip's category; one without a marker counts as "other" (which cannot
+// happen today -- chains always stamp it; this is a fallback for hand-built Skips from outside).
 func skipKind(s configapi.Skip) string {
 	if s.Kind != "" {
 		return s.Kind
@@ -112,22 +125,27 @@ func skipKind(s configapi.Skip) string {
 	return skipOther
 }
 
-// skipLabel 是类目在**这一屏上**的说法。
+// skipLabel is the category's wording **on this screen**.
 //
-// 措辞是本模块自己的（与 `newgate tier` 那边各写各的：那边是终端里的一行统计，
-// 这里是浏览器里链尾的一句话，读者与空间都不一样），但**类目是同一套**——两边
-// 认的是同一批机器标记，所以同一份配置在两个界面上数出来的条数一定相同。
+// The wording is this module's own (each side writes its own, like `newgate tier`: that one is
+// a statistic line in a terminal, this is a sentence at the end of a chain in a browser, with
+// different readers and different room), but **the categories are the same set** -- both sides
+// recognize the same batch of machine markers, so the same config counts the same number of
+// entries in both UIs.
 //
-// 只有这里过 i18n：类目本身是机器标记，翻了它就没有判据了（同 resolve 那条注释）。
+// Only this goes through i18n: the categories themselves are machine markers, and translating
+// them leaves no criterion (the same note as in resolve).
 func skipLabel(kind string) string {
 	switch kind {
 	case skipExcluded:
-		// 不翻：它是配置文件里那个标志名（`excluded=true`），用户拿去 grep 的就是它。
+		// Not translated: it is the flag name in the config file (`excluded=true`), and it is
+		// what the user greps for.
 		return skipExcluded
 	case skipUndefined:
 		return i18n.T("not defined", nil)
 	case skipNoKey:
-		// 说全 `api_key` 而不是「没有 key」：用户要去加的那个字段就叫这个名字。
+		// Say the whole `api_key` rather than "no key": the field the user has to add is
+		// called exactly that.
 		return i18n.T("no api_key", nil)
 	case skipUnavailable:
 		return i18n.T("unavailable", nil)
@@ -143,26 +161,32 @@ func skipLabel(kind string) string {
 	return i18n.T("other", nil)
 }
 
-// ---------- 这一份 profile 落在哪份文件 ----------
+// ---------- which file this profile lives in ----------
 
-// profileFile 是这一份 profile 的文件地址，**相对配置根**（空 = 取不到）。
+// profileFile is this profile's file address, **relative to the config root** (empty = cannot
+// be obtained).
 //
-// # 为什么这个字段要有
+// # Why this field has to exist
 //
-// 界面拿它把「控件」与「原文」两半配成一对并排（见 view.ChainCard.File 与 nav.ts
-// 的 fileOf），而配对的判据是**字符串相等**——所以这里的写法必须与 config 自己
-// 那几张卡一致：相对配置根（paths.RelToRoot）。这里写绝对路径的症状是右栏不出来，
-// 而左栏一切正常，看起来只像「原文那一半没做」。
+// The UI uses it to pair the "controls" half with the "raw text" half side by side (see
+// view.ChainCard.File and fileOf in nav.ts), and the pairing criterion is **string equality**
+// -- so the spelling here must match config's own cards: relative to the config root
+// (paths.RelToRoot). With an absolute path here the symptom is the right column not showing
+// while the left column is perfectly fine, looking merely like "the raw-text half was not
+// done".
 //
-// # 为什么次序是「.kv 优先」
+// # Why the order is ".kv first"
 //
-// 同一份 profile 可以同时有 .kv 与 .json，而**.kv 赢**（store.LoadProfile 的读取
-// 次序）。这里按同一次序探测，探测不到就退回 .json——两边给出不同文件的话，用户在
-// 界面上改的是一份、解析读的是另一份（改完没反应，而文件确实变了）。
+// One profile can have both .kv and .json, and **.kv wins** (store.LoadProfile's read order).
+// Probing follows the same order here, falling back to .json -- if the two sides named
+// different files, the user would edit one in the UI while resolution reads the other (no
+// effect after the edit, even though the file really changed).
 //
-// 先 store.LoadProfileRaw 读一遍再取路径：**读得出来才报地址**。读不出来的那份
-// 根本不会出现在这张卡上（store.Load 会跳过坏文件），所以这一步今天是恒真的；把它
-// 写出来是因为它才是「这份文件存在且可用」的判据，而 stat 只回答「有个同名的东西」。
+// Read once with store.LoadProfileRaw before taking the path: **only what reads back gets an
+// address**. One that does not read back never appears on this card anyway (store.Load skips
+// broken files), so this step is always true today; it is written out because it is the real
+// criterion for "this file exists and is usable", while stat only answers "something with that
+// name is there".
 func profileFile(profile string) string {
 	if _, err := store.LoadProfileRaw(profile); err != nil {
 		return ""

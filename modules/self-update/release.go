@@ -82,7 +82,7 @@ func (e rateLimitErr) Error() string        { return e.msg.Error() }
 func (e rateLimitErr) Is(target error) bool { return target == errRateLimited }
 
 type releaseClient struct {
-	api  string // https://api.github.com（测试换成 httptest）
+	api  string // https://api.github.com (tests swap in httptest)
 	web  string // https://github.com
 	repo string // owner/repo
 	http *http.Client

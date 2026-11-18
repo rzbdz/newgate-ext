@@ -8,8 +8,8 @@ import (
 
 const probeUserItem = `{"type":"message","role":"user","content":[{"type":"input_text","text":"continue"}]}`
 
-// 非空数组：补在收尾 ] 之前，其余每一个字节原样保留（缩进、key 顺序、
-// 数字字面量、以及那条已有 item 自己）。
+// Non-empty array: insert before the closing ], keeping every other byte as is
+// (indentation, key order, number literals, and the existing item itself).
 func TestAppendTopLevelArrayItemNonEmpty(t *testing.T) {
 	body := []byte("{\n  \"model\": \"deepseek-flash\",\n  \"input\": [\n" +
 		"    {\"type\": \"function_call_output\", \"call_id\": \"call_faedac\", \"output\": \"x\"}\n" +
@@ -39,7 +39,8 @@ func TestAppendTopLevelArrayItemNonEmpty(t *testing.T) {
 	if string(parsed.Input[1]) != probeUserItem {
 		t.Fatalf("what was added is not that item:\n%s", parsed.Input[1])
 	}
-	// 逐字保留：原有 item、缩进、1e10 的字面量、顶层 key 顺序
+	// Preserved verbatim: the existing item, indentation, the 1e10 literal, top-level key
+	// order
 	if !strings.Contains(string(out), `{"type": "function_call_output", "call_id": "call_faedac", "output": "x"}`) {
 		t.Fatalf("the existing items were touched:\n%s", out)
 	}
@@ -54,8 +55,9 @@ func TestAppendTopLevelArrayItemNonEmpty(t *testing.T) {
 	}
 }
 
-// 空数组与「只有空白」的数组都不补逗号（补出来是 `[,x]`，不是合法 JSON）；
-// 非数组、缺 key、不是对象一律**不动**且如实报错，交给调用方按 fail-open 处理。
+// Neither an empty array nor a whitespace-only array gets a comma (it would yield `[,x]`,
+// not valid JSON); a non-array, a missing key or a non-object is **left alone** and reported
+// truthfully, for the caller to handle fail-open.
 func TestAppendTopLevelArrayItemEdges(t *testing.T) {
 	cases := []struct {
 		name     string

@@ -21,8 +21,8 @@ var (
 
 type version struct {
 	major, minor, patch int
-	pre                 string // v0.9.0-rc1 的 rc1
-	ahead               int    // describe 的提交数（tag 之后几个提交）
+	pre                 string // the rc1 of v0.9.0-rc1
+	ahead               int    // commit count from describe (how many commits past the tag)
 	hash                string
 	dirty               bool
 }

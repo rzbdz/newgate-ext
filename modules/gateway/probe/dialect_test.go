@@ -9,8 +9,8 @@ import (
 	"github.com/rzbdz/newgate-ext/modules/gateway/dialect"
 )
 
-// fakeBilingual 模拟聚合器（api.rvcompute.com 实测形态）：
-// openai 和 anthropic 两个方言都收，但 count_tokens 可以开关。
+// fakeBilingual models an aggregator (the shape measured on api.rvcompute.com):
+// it accepts both the openai and anthropic dialects, but count_tokens can be toggled.
 func fakeBilingual(t *testing.T, countTokens bool) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -32,8 +32,8 @@ func fakeBilingual(t *testing.T, countTokens bool) *httptest.Server {
 	}))
 }
 
-// TestCheckDialectsBilingual openai 声明的 provider 实际 anthropic 也通：
-// 探明 openai+anthropic；count_tokens 有就 ✓、没有就明确 ✗。
+// TestCheckDialectsBilingual: a provider declared as openai actually speaks anthropic too -
+// the probe finds openai+anthropic; count_tokens gets ✓ when present and an explicit ✗ when not.
 func TestCheckDialectsBilingual(t *testing.T) {
 	dialect.Reset()
 	t.Cleanup(dialect.Reset)
@@ -59,8 +59,9 @@ func TestCheckDialectsBilingual(t *testing.T) {
 	}
 }
 
-// TestCheckDialectsOpenAIOnly openai 方言独占的上游（DeepSeek 官方形态）：
-// anthropic 探明不支持，count_tokens 不用试就记 ✗（/messages 都没有）。
+// TestCheckDialectsOpenAIOnly: an upstream exclusive to the openai dialect (the official
+// DeepSeek shape) - anthropic is found unsupported, and count_tokens is marked ✗ without
+// trying (there is not even /messages).
 func TestCheckDialectsOpenAIOnly(t *testing.T) {
 	dialect.Reset()
 	t.Cleanup(dialect.Reset)
@@ -85,7 +86,7 @@ func TestCheckDialectsOpenAIOnly(t *testing.T) {
 	if ok, known := dialect.Supports("prov", "deepseek-chat", dialect.CapCountTokens); ok || !known {
 		t.Errorf("count_tokens should be recorded unsupported as well (there is not even /messages), got (ok=%v known=%v)", ok, known)
 	}
-	// 不该拿 count_tokens 去撞一个连 /messages 都没有的上游
+	// count_tokens must not be thrown at an upstream that lacks even /messages
 	for _, p := range paths {
 		if p == "/v1/messages/count_tokens" {
 			t.Fatal("when anthropic does not work, count_tokens should not be probed either")
@@ -93,8 +94,8 @@ func TestCheckDialectsOpenAIOnly(t *testing.T) {
 	}
 }
 
-// TestCheckDialectsAnthropicDeclared 声明 anthropic 的 provider：openai
-// 是被探的那个；auth 用声明协议的（与 gate 的 setAuth 一致）。
+// TestCheckDialectsAnthropicDeclared: a provider declaring anthropic - openai
+// is the one probed; auth follows the declared protocol (same as setAuth in gate).
 func TestCheckDialectsAnthropicDeclared(t *testing.T) {
 	dialect.Reset()
 	t.Cleanup(dialect.Reset)
@@ -116,8 +117,8 @@ func TestCheckDialectsAnthropicDeclared(t *testing.T) {
 	}
 }
 
-// TestLearnDialectTransientNotLearned 429/超时不学——猜错会让 gate 永久
-// 放弃一个本来存在的端点。
+// TestLearnDialectTransientNotLearned: 429/timeouts are not learned - a wrong guess would
+// make gate abandon an endpoint that actually exists, for good.
 func TestLearnDialectTransientNotLearned(t *testing.T) {
 	dialect.Reset()
 	t.Cleanup(dialect.Reset)

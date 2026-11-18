@@ -48,8 +48,8 @@ type Node struct {
 type Edge struct {
 	From  string `json:"from"`
 	To    string `json:"to"`
-	Style string `json:"style"` // solid = Need，dashed = Optional，cross = 跨仓库
-	Label string `json:"label"` // 走的是哪个 capability
+	Style string `json:"style"` // solid = Need, dashed = Optional, cross = cross-repo
+	Label string `json:"label"` // which capability it goes through
 	// Cycle marks "this edge is inside one strongly connected component" (two dirs
 	// reachable from each other).
 	//

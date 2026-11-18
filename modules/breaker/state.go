@@ -32,15 +32,15 @@ type probeResult struct {
 // trial close the breaker immediately and double the cooldown (60s -> 120s -> 240s …,
 // capped at 10 minutes), so a bad upstream does not come back to hit once a minute.
 type record struct {
-	fails      int       // 当前这本账的连续失败数
-	bucket     Bucket    // fails 记的是哪本账（换账本要清零重数）
-	openedAt   time.Time // 非零 = 已摘牌
-	openUntil  time.Time // 冷却何时到期
-	halfOpenAt time.Time // 非零 = 半开试探在飞，值 = 试探失效时刻
+	fails      int       // consecutive failures in the current ledger
+	bucket     Bucket    // which ledger `fails` counts (switching ledgers resets the count)
+	openedAt   time.Time // non-zero = breaker is open
+	openUntil  time.Time // when the cooldown expires
+	halfOpenAt time.Time // non-zero = a half-open trial is in flight; value = when that trial expires
 	cooldown   time.Duration
 	reason     string
-	shapeSkips int // 请求形状错误的次数（永不摘牌，只计数）
-	spared     int // 上闸前诊断探活把它救回来的次数
+	shapeSkips int // count of requests with a shape error (never opens the breaker, only counts)
+	spared     int // count of times the pre-trip diagnostic probe saved it from opening
 	// verifying: a "pre-trip diagnostic" is in flight right now. What it blocks is concurrent
 	// duplicate diagnostics: two failures arriving at the same binding at once should probe only once.
 	verifying bool
@@ -66,13 +66,13 @@ type table struct {
 	ranker  *ranker
 	shapes  shapeRegistry
 	policy  Policy
-	now     func() time.Time // 测试注入时钟；生产恒为 time.Now
+	now     func() time.Time // injected clock for tests; always time.Now in production
 
 	file         string
 	persistedAt  time.Time
 	persistTimer *time.Timer
 	onError      func(error)
-	loadErr      error // 装载期失败，等 SetErrorHandler 装上后补报
+	loadErr      error // load-time failure, reported once SetErrorHandler is installed
 	verify       func(provider, model string) bool
 }
 
@@ -172,7 +172,7 @@ func (b *table) Available(provider, model string) bool {
 		return false
 	}
 	if !r.halfOpenAt.IsZero() && now.Before(r.halfOpenAt) {
-		return false // 已经有一个试探在飞，不并发放第二个
+		return false // a trial is already in flight; do not let a second one run concurrently
 	}
 	r.halfOpenAt = now.Add(b.policy.TrialTTL)
 	return true
@@ -290,7 +290,7 @@ func (b *table) unsealLocked(r *record) {
 	r.openedAt = time.Time{}
 	r.openUntil = time.Time{}
 	r.halfOpenAt = time.Time{}
-	r.cooldown = 0 // 退避归位：下次再从基准冷却开始
+	r.cooldown = 0 // backoff reset: the next cooldown starts from the baseline again
 	r.reason = ""
 	r.bucket = BucketNone
 	b.persistLocked()
@@ -305,7 +305,7 @@ func (b *table) unsealLocked(r *record) {
 func (b *table) failLocked(r *record, bucket Bucket, now time.Time) (bool, bool) {
 	rule := b.policy.rule(bucket)
 	if rule.Threshold <= 0 {
-		return false, false // 这本账永不摘牌
+		return false, false // this ledger never opens the breaker
 	}
 	if !r.openedAt.IsZero() {
 		if now.Before(r.openUntil) {
@@ -328,7 +328,7 @@ func (b *table) failLocked(r *record, bucket Bucket, now time.Time) (bool, bool)
 	}
 	r.fails++
 	if r.fails < rule.Threshold {
-		b.persistLocked() // 未开闸也要落盘：不然重启等于白送一次免死金牌
+		b.persistLocked() // persist even without opening: otherwise a restart hands out a free pass
 		return false, false
 	}
 	if r.verifying {
@@ -398,7 +398,7 @@ func (b *table) RecordProbe(provider, model string, status, contextBytes int,
 
 	if reason != "" {
 		rule := b.policy.rule(BucketAvailability)
-		r.cooldown = 0 // probe 的结论是权威的：退避重新从基准开始
+		r.cooldown = 0 // the probe's conclusion is authoritative: backoff restarts from the baseline
 		b.openLocked(r, rule, now, reason)
 		r.fails = rule.Threshold
 		return grade, true

@@ -7,26 +7,30 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// Group 返回计数器归属的组：**身份**（ASCII 稳定标识）与**说法**（给人看的锚点）。
+// Group returns a counter's group: **identity** (a stable ASCII id) and **rendering** (a
+// human-facing anchor).
 //
-// 为什么要分成两样：`newgate metrics` 那张表按组排序，而那个顺序讲的是**一次请求
-// 的生命周期**（请求 → 链 → 超时 → 兜底 → 插件 → 熔断 → 客户端）——顺序本身是
-// 内容，不是版式。排序就得拿一个**与语言无关**的东西去对；拿说法去对，换个语言
-// 顺序就可能跟着变（两门语言里那几个词没有共同的次序），于是中文用户和英文用户
-// 看到的不是同一张表。身份管排序与去重，说法只管印出来。
+// Why two things: `newgate metrics`' table sorts by group, and that order tells **the life of
+// one request** (request → chain → timeout → fallback → plugin → breaker → client) --
+// the order itself is content, not layout. Sorting needs something **language-independent**;
+// sort by rendering and the order may follow the language (those words have no common order in
+// two languages), so Chinese and English users would not see the same table. Identity handles
+// sorting and dedup, rendering only prints.
 //
-// **为什么这张表住在这里而不是 CLI**：这些名字是转发热路径产生的（全部由
-// gateway/forward 里的 metrics.Default.Inc 写下），含义只有数据面知道。CLI 的
-// `newgate metrics` 是那一屏表格的**排版者**，它不该知道 "chain.failover"
-// 是什么——2026-09-18 之前那张表硬编码在 modules/cli/diag.go 里，于是改一个
-// 计数器名要同时改两处，而 CLI 那处根本不知道自己在改什么。
+// **Why this table lives here and not in the CLI**: these names are produced by the forwarding
+// hot path (all written by metrics.Default.Inc in gateway/forward), and only the data plane
+// knows what they mean. The CLI's `newgate metrics` is that screen's **typesetter** and should
+// not know what "chain.failover" is -- before 2026-09-18 that table was hardcoded in
+// modules/cli/diag.go, so renaming a counter meant editing two places, and the CLI one had no
+// idea what it was changing.
 //
-// **这张表只覆盖数据面自己的计数器。** 别人的计数器由别人自报：调用方先问
-// 策略账本（policy.Registry.MetricGroup），没人认领才落到这里。`breaker.*`
-// 那三行 2026-09-18 就是这么搬回 modules/breaker 的——熔断器打开意味着什么，
-// 不该由这个包解释。
+// **This table covers only the data plane's own counters.** Others' counters are self-reported:
+// the caller asks the policy ledger first (policy.Registry.MetricGroup) and only falls back
+// here when nobody claims them. breaker's three lines moved back to modules/breaker on
+// 2026-09-18 exactly this way -- what a breaker opening means is not this package's to explain.
 //
-// 身份也**不翻译**：它是计数器与表格之间那份契约的键，只在本进程内用。
+// Identity is **not translated** either: it is the key of the contract between counters and
+// table, used only inside this process.
 func Group(k string) (id, label string) {
 	switch {
 	case strings.HasPrefix(k, "requests."):
@@ -45,11 +49,13 @@ func Group(k string) (id, label string) {
 	return "other", i18n.T("other", nil)
 }
 
-// Hint 返回计数器名字的人话注释。没列出的不硬凑——空说明比编一句好。
+// Hint returns a plain-language note for a counter name. No padding for unlisted ones -- an
+// empty note beats one made up.
 //
-// 同 Group：只有数据面自己的计数器在这里，别人的由贡献者经 MetricNamer 自报。
-// `special.*` 一族也是自报的（special.MetricProvider）——那个名字里带插件名，
-// 只有插件知道那一笔业务上意味着什么。
+// Same as Group: only the data plane's own counters are here; others are self-reported by their
+// contributor through MetricNamer. The `special.*` family is self-reported too
+// (special.MetricProvider) -- those names carry the plugin name, and only the plugin knows what
+// that entry means in business terms.
 func Hint(k string) string {
 	switch {
 	case k == "requests.total":

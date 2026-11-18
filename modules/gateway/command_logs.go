@@ -86,7 +86,7 @@ func runLogs(host cliapi.Host, n int, follow bool) int {
 	if auto {
 		limit = logTailDefault
 		if style.TTY() {
-			limit = 0 // 终端：全量交给分页器
+			limit = 0 // terminal: hand everything to the pager
 		}
 	}
 	if limit > 0 && len(lines) > limit {

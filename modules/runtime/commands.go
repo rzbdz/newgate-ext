@@ -341,7 +341,7 @@ func cmdRestart(agents confighookapi.AgentCatalog, force bool) int {
 func tryHandoff() bool {
 	i := daemon.Running()
 	if i == nil {
-		return false // 没在跑，restart 退化为 start
+		return false // not running, so restart degrades to start
 	}
 	st := store.LoadState()
 	if st.ControlToken == "" {
@@ -385,7 +385,7 @@ func tryHandoff() bool {
 		return false
 	}
 	// 200 = new process on the socket, pid/lock rewritten. Here we only confirm it is fully in place.
-	for k := 0; k < 100; k++ { // 最多 5s
+	for k := 0; k < 100; k++ { // wait at most 5s
 		if j := daemon.Running(); j != nil && j.PID != i.PID && pingProxy(j.Port) {
 			fmt.Println(style.Item(style.OK, i18n.T("Proxy gracefully restarted   pid {old} → {new} · 127.0.0.1:{port}",
 				i18n.A{"old": i.PID, "new": j.PID, "port": j.Port})))

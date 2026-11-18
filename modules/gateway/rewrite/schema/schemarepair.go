@@ -8,21 +8,21 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// Repair 修补 tools 数组里会被严格校验器拒绝的 schema 问题。
+// Repair patches schema problems in the tools array that strict validators reject.
 //
-// 设计原则：
-//  1. 只做**语义无操作**的修补。按 JSON Schema 规范 `"required": []` 与
-//     不写 required 完全等价，所以补上它不改变任何行为，只是让把「缺失」
-//     当 null 处理的校验器（如 DeepSeek 网关）能通过。
-//  2. 没有任何要补的东西时返回 changed=false，调用方就完全不碰原始字节——
-//     该走忠实透传的时候一个字节都不动。
-//  3. 每一处修补都记录下来，绝不静默改用户的请求。
+// Design principles:
+//  1. Only make **semantically no-op** repairs. Per the JSON Schema spec `"required": []` is
+//     fully equivalent to omitting required, so adding it changes no behavior; it only lets
+//     validators that treat "missing" as null (such as the DeepSeek gateway) pass.
+//  2. When there is nothing to repair it returns changed=false and the caller does not touch
+//     the original bytes at all - when faithful pass-through is right, not one byte moves.
+//  3. Every repair is recorded; the user's request is never silently changed.
 //
-// 现场依据：opencode 1.18.19 发的 35 个 tool 里有 4 个（background_cancel、
-// list_mcp_resources、list_mcp_resource_templates、session_list）的
-// parameters 是 {"type":"object","properties":{…}} 但没有 required 键，
-// DeepSeek 上游报 400 `Invalid schema for function 'background_cancel':
-// null is not of type "array"`。Claude 上游对此宽容。
+// Field evidence: of the 35 tools opencode 1.18.19 sends, 4 (background_cancel,
+// list_mcp_resources, list_mcp_resource_templates, session_list) have
+// parameters of {"type":"object","properties":{…}} with no required key, and the
+// DeepSeek upstream answers 400 `Invalid schema for function 'background_cancel':
+// null is not of type "array"`. The Claude upstream is lenient about it.
 func Repair(toolsRaw []byte) (out []byte, changes []string, err error) {
 	var tools []interface{}
 	if err := json.Unmarshal(toolsRaw, &tools); err != nil {
@@ -50,7 +50,7 @@ func Repair(toolsRaw []byte) (out []byte, changes []string, err error) {
 	}
 
 	if len(fixed) == 0 {
-		return nil, nil, nil // 无需修补：调用方保持原字节
+		return nil, nil, nil // nothing to repair: the caller keeps the original bytes
 	}
 	sort.Strings(fixed)
 
@@ -68,8 +68,8 @@ func nameOr(s string) string {
 	return s
 }
 
-// repairObjectSchema 递归给所有 type:"object" 的子 schema 补上缺失的 required。
-// 返回补了几处。
+// repairObjectSchema recursively adds the missing required to every type:"object"
+// sub-schema. It returns how many were added.
 func repairObjectSchema(schema map[string]interface{}) int {
 	n := 0
 	if t, _ := schema["type"].(string); t == "object" {
@@ -77,13 +77,13 @@ func repairObjectSchema(schema map[string]interface{}) int {
 			schema["required"] = []interface{}{}
 			n++
 		} else if schema["required"] == nil {
-			// 显式 null 也一并修成空数组
+			// An explicit null is fixed into an empty array too
 			schema["required"] = []interface{}{}
 			n++
 		}
 	}
 
-	// properties 下的每个子 schema
+	// Every sub-schema under properties
 	if props, ok := schema["properties"].(map[string]interface{}); ok {
 		for _, v := range props {
 			if sub, ok := v.(map[string]interface{}); ok {
@@ -91,11 +91,11 @@ func repairObjectSchema(schema map[string]interface{}) int {
 			}
 		}
 	}
-	// 数组的 items
+	// An array's items
 	if items, ok := schema["items"].(map[string]interface{}); ok {
 		n += repairObjectSchema(items)
 	}
-	// 组合关键字
+	// Combinator keywords
 	for _, key := range []string{"anyOf", "oneOf", "allOf"} {
 		if arr, ok := schema[key].([]interface{}); ok {
 			for _, v := range arr {

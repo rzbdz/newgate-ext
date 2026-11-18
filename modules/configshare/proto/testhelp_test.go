@@ -74,8 +74,8 @@ type fakeHost struct {
 	secGen   int
 	files    map[string][]byte
 	keys     map[string]string
-	cfgMiss  bool // /__newgate/config 回 404（模拟"对端不是宿主"）
-	authFail bool // 回 401（模拟根密钥不同）
+	cfgMiss  bool // /__newgate/config returns 404 (simulates "the peer is not a host")
+	authFail bool // returns 401 (simulates a different root key)
 	// Serve these bytes directly without Seal. Used to build "tampered envelope" and
 	// "garbage that will not open" - neither can be made by a sealing fake host.
 	rawConfig  []byte

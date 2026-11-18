@@ -14,11 +14,11 @@ import (
 	"github.com/rzbdz/newgate-ext/modules/gateway/dialect"
 )
 
-// heavyChainOnly 测试桩：heavy 档指向 given 上游，其他档为空——count_tokens
-// 的转发只看主循环档（heavy）链头。
-// mainLoopChainOnly 造一条「只有主力档（normal）有候选」的链。
-// count_tokens 补的就是主力档链头（forward.mainLoopHead），所以别的档位
-// 一律返回 nil——它要是去问了别的档位，这个测试就该红。
+// heavyChainOnly is a test stub: heavy points at the given upstream, the other tiers are empty
+// -- count_tokens forwarding only looks at the main-loop tier (heavy) chain head.
+// mainLoopChainOnly builds a chain where "only the main tier (normal) has candidates".
+// count_tokens fills in exactly the main tier's chain head (forward.mainLoopHead), so every
+// other tier returns nil -- if it ever asked another tier, this test should go red.
 func mainLoopChainOnly(t *testing.T, up *httptest.Server) {
 	t.Helper()
 	dialect.Reset()
@@ -38,8 +38,8 @@ func mainLoopChainOnly(t *testing.T, up *httptest.Server) {
 	}
 }
 
-// ctPost 经代理发一个 count_tokens 请求（不带 model 字段——正是日志里
-// 「请求体顶层没有 model 字符串字段」的形态）。
+// ctPost sends one count_tokens request through the proxy (without the model field -- which is
+// exactly the "request body has no top-level model string field" shape from the logs).
 func ctPost(t *testing.T, front *httptest.Server, path string) (int, []byte) {
 	t.Helper()
 	body := `{"messages":[{"role":"user","content":"take a look at this, and count the tokens while you are at it"}],"tools":[]}`
@@ -52,10 +52,10 @@ func ctPost(t *testing.T, front *httptest.Server, path string) (int, []byte) {
 	return resp.StatusCode, b
 }
 
-// TestCountTokensLazyProbeThenLocal 上游没有 count_tokens（聚合器实测
-// 形态：/messages 200、/messages/count_tokens 404）。gate 层面的 lazy
-// probe：第一发试转发、撞 404、学到「没有」退回本地粗估；此后不再白跑
-// （上游零命中），客户端拿到的始终是本地 200。
+// TestCountTokensLazyProbeThenLocal the upstream has no count_tokens (the aggregator's observed
+// shape: /messages 200, /messages/count_tokens 404). lazy probe at the gate level: the first
+// shot tries to forward, hits 404, learns "not there", falls back to the local rough estimate;
+// after that it stops burning requests (zero upstream hits), and the client always gets a 200.
 func TestCountTokensLazyProbeThenLocal(t *testing.T) {
 	var hits int
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -73,7 +73,7 @@ func TestCountTokensLazyProbeThenLocal(t *testing.T) {
 	for i, path := range []string{
 		"/v1/messages/count_tokens",
 		"/a/claude/p/ds/v1/messages/count_tokens",
-		"/v1/messages/count_tokens", // 第三发：已学到，不该再撞
+		"/v1/messages/count_tokens", // third request: already learned, must not hit it again
 	} {
 		code, b := ctPost(t, front, path)
 		if code != 200 {
@@ -90,14 +90,14 @@ func TestCountTokensLazyProbeThenLocal(t *testing.T) {
 	if hits != 1 {
 		t.Fatalf("the upstream should be hit only once (lazy probe), got %d - the learned 'unsupported' did not take effect", hits)
 	}
-	// 学到的状态本身也要对
+	// the learned state itself must be right too
 	if ok, known := dialect.Supports("test-prov", "real-model-1", dialect.CapCountTokens); !known || ok {
 		t.Fatalf("should have learned an explicit unsupported, got (ok=%v known=%v)", ok, known)
 	}
 }
 
-// TestCountTokensForwardedWhenSupported 上游有 count_tokens（原生
-// anthropic 端点）：转发拿真值，model 字段按 mid 链头补上。
+// TestCountTokensForwardedWhenSupported the upstream has count_tokens (a native anthropic
+// endpoint): forward to take the real value, filling the model field from the mid chain head.
 func TestCountTokensForwardedWhenSupported(t *testing.T) {
 	var gotModel, gotPath, gotAuth string
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -137,7 +137,7 @@ func TestCountTokensForwardedWhenSupported(t *testing.T) {
 		t.Errorf("auth follows the protocol declared by the provider, got %q", gotAuth)
 	}
 
-	// 学到「支持」后再来一发，仍是真值
+	// after learning "supported", send one more shot: still the real value
 	code, b = ctPost(t, front, "/v1/messages/count_tokens")
 	if code != 200 {
 		t.Fatalf("the second request should keep forwarding, got %d", code)
@@ -147,8 +147,8 @@ func TestCountTokensForwardedWhenSupported(t *testing.T) {
 	}
 }
 
-// TestCountTokensTransientErrorNotLearned 429 是「现在不行」不是「没有」：
-// 不学，本次退回本地粗估；下一发继续试转发。
+// TestCountTokensTransientErrorNotLearned 429 means "not right now", not "not there": it is not
+// learned, this shot falls back to the local rough estimate; the next shot forwards again.
 func TestCountTokensTransientErrorNotLearned(t *testing.T) {
 	var hits int
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -177,19 +177,19 @@ func TestCountTokensTransientErrorNotLearned(t *testing.T) {
 	}
 }
 
-// TestCountTokensAlreadyLearnedSkipsUpstream 已探明支持的上游直接转发、
-// 不再走本地粗估（对照：LazyProbe 用例里已探明不支持的直接本地）。
+// TestCountTokensAlreadyLearnedSkipsUpstream an upstream already known to support it is
+// forwarded directly, no local estimate (contrast: in LazyProbe, the known-unsupported goes local).
 func TestCountTokensAlreadyLearnedSkipsUpstream(t *testing.T) {
 	dialect.Reset()
 	t.Cleanup(dialect.Reset)
 	t.Cleanup(func() { testChain = nil })
 
-	// 上游挂了（连接被拒也无所谓——根本不该连它）
+	// the upstream is down (connection refused does not matter -- it should never be dialed)
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Error("already learned 'unsupported', so the upstream must not be touched again")
 	}))
 	upURL := up.URL
-	up.Close() // 故意关掉：连不上也不影响本地粗估
+	up.Close() // closed on purpose: being unreachable does not affect the local rough estimate
 
 	testChain = func(role string) []resolve.Step {
 		if role != "normal" {
@@ -219,8 +219,8 @@ func TestCountTokensAlreadyLearnedSkipsUpstream(t *testing.T) {
 	}
 }
 
-// TestCountTokensRespectsClientModel 客户端自己带了 model 字段就尊重它，
-// 不拿 mid 链头覆盖（count_tokens 按点名模型的 tokenizer 算才对）。
+// TestCountTokensRespectsClientModel when the client carries its own model field, respect it
+// and don't overwrite it with the mid chain head (count_tokens wants the named model's tokenizer).
 func TestCountTokensRespectsClientModel(t *testing.T) {
 	var gotModel string
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -253,8 +253,8 @@ func TestCountTokensRespectsClientModel(t *testing.T) {
 	}
 }
 
-// TestAPIHelloAnsweredLocally Claude Code 的连通性探针（HEAD/GET，无 body）
-// 本地应 200——掉进 model 解析会刷 400 日志（2026-09-09 实抓）。
+// TestAPIHelloAnsweredLocally Claude Code's connectivity probe (HEAD/GET, no body) should get a
+// local 200 -- falling into model parsing only spams 400 logs (observed 2026-09-09).
 func TestAPIHelloAnsweredLocally(t *testing.T) {
 	srv := newTestServer()
 	front := httptest.NewServer(http.HandlerFunc(srv.handleProxy))
@@ -273,10 +273,10 @@ func TestAPIHelloAnsweredLocally(t *testing.T) {
 	}
 }
 
-// TestBodylessProbesAre404NotFailures 本机推理服务的探测（hermes 对 127.0.0.1 的
-// base_url 会问 /api/tags、/v1/props、/version …）本地答 404，且不计入失败数——
-// 以前它们掉进 model 解析，每一发一条「错误 400」+ 失败计数（2026-11-04 实抓）。
-// 带 body 却缺 model 的 POST 仍然是 400：那是真的形状不对。
+// TestBodylessProbesAre404NotFailures the local inference service's probes (hermes asks
+// /api/tags, /v1/props, /version ... for a 127.0.0.1 base_url) get a local 404 and do not count
+// as failures -- they used to fall into model parsing: one "error 400" + a failure count per
+// shot (observed 2026-11-04). A POST that carries a body but no model is still a 400: bad shape.
 func TestBodylessProbesAre404NotFailures(t *testing.T) {
 	srv := newTestServer()
 	front := httptest.NewServer(http.HandlerFunc(srv.handleProxy))

@@ -244,7 +244,7 @@ func TestTheCardsAreLockedWhenTheClientIsNotThere(t *testing.T) {
 	// Both directions must be **fabricated**: whoever runs this
 	// test is using claude, so "is it on PATH" depends on the machine --
 	// assuming it is absent would make this test always red on a dev box.
-	t.Setenv("PATH", t.TempDir()) // 一个空目录：什么都找不到
+	t.Setenv("PATH", t.TempDir()) // an empty directory: nothing is found
 	if reason := lockReason(); reason == "" {
 		t.Fatal("claude is not on PATH, so these two cards should be greyed out")
 	}

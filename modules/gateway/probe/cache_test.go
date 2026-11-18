@@ -100,34 +100,40 @@ func TestSummarizeCountsUniqueModels(t *testing.T) {
 	}
 }
 
-// TestPendingQuirksSurviveARestart 钉住「转发路上学到的毛病也要活过重启」。
+// TestPendingQuirksSurviveARestart pins "quirks learned while forwarding must also survive
+// a restart".
 //
-// # 为什么这一条非有不可
+// # Why this one is indispensable
 //
-// 用户 2026-09-22 报的故障是「重启后第一发 Codex → GLM 必然 400、过一会儿自己
-// 好」，而它的成因是**两份时间尺度不同**：补丁的判据在内存表里（重启即空），
-// 落盘缓存却只有 `newgate probe` 会写。于是换版/重启之后，那一发实打实的
-// 400 得重新撞一次才学得回来——必现、且没有任何表面原因。
+// The failure the user reported on 2026-09-22 was "after a restart, the first Codex → GLM
+// shot always 400s, then it fixes itself", and its cause is **two timescales that differ**:
+// the patch's criterion lives in the in-memory table (empty after a restart), while the
+// persisted cache is written only by `newgate probe`. So after an upgrade/restart that
+// genuine 400 must be hit once more before it is learned back - always, with no visible
+// reason.
 //
-// 于是这里量的是那**两个时刻之间**：
+// So what is measured here is **between those two moments**:
 //
-//	1 撞一次 4xx（Learn 记进内存表）→ 记进待落盘那一份；
-//	2 停机（Flush）→ 写进 probe-capabilities.json；
-//	3 进程重启（内存表清空）；
-//	4 LoadCachedCapabilities() → 内存表里必须又有了，**第一条请求就不会再撞**。
+//	1 hit one 4xx (Learn records it in memory) → record it in the pending set;
+//	2 shutdown (Flush) → write it into probe-capabilities.json;
+//	3 process restart (in-memory table cleared);
+//	4 LoadCachedCapabilities() → it must be in memory again, so **the first request no
+//	  longer hits it**.
 //
-// 第 3 步必须是**真的一次清空**而不是「再建一张表」：内存表活下来这个测试就
-// 变成了空转（它测的正是「没有内存表时靠盘上那份」，见 quirk.Default 的注释）。
+// Step 3 must be **a real clearing**, not "build another table": if the in-memory table
+// survives, this test goes hollow (it tests exactly "rely on the disk copy when there is no
+// in-memory table", see the comment on quirk.Default).
 func TestPendingQuirksSurviveARestart(t *testing.T) {
 	t.Setenv("NEWGATE_HOME", t.TempDir())
 	quirk.Default.Reset()
 	t.Cleanup(quirk.Default.Reset)
 
 	target := Target{Provider: "relay", Model: "always-thinks"}
-	// 判据由拥有补丁的模块注册（这里是 modules/thinking 的那条，原文见
-	// signatures.go）。测试里自己注册一条同形状的，而不是 import 那个模块：
-	// probe 在 gateway 这一层，thinking 在它上面，import 过来就是一条反向的
-	// 依赖边（同一条理由见 modules/gateway/direction_test.go）。
+	// The criterion is registered by the module owning the patch (here the one in
+	// modules/thinking, verbatim in signatures.go). The test registers one of the same shape
+	// instead of importing that module: probe sits at the gateway layer, thinking above it,
+	// and importing it would be a reverse dependency edge (the same reason as
+	// modules/gateway/direction_test.go).
 	rel, err := quirk.Default.RegisterSignature(quirk.Signature{
 		Flag:  quirk.NoThinkingDisable,
 		Any:   []string{"始终思考"},
@@ -141,7 +147,8 @@ func TestPendingQuirksSurviveARestart(t *testing.T) {
 			_ = rel()
 		}
 	})
-	// 走的是真实判据而不是直接 Mark：这条路上「认出签名」本身也是被测的一环。
+	// It goes through the real criterion instead of Mark: "recognizing the signature" is
+	// itself under test on this path.
 	learned := quirk.Default.Learn(target.Provider, target.Model, 400,
 		[]byte(`{"error":{"message":"该模型始终思考，不支持关闭思考；请使用 low、high 或 max。"}}`))
 	if len(learned) == 0 {
@@ -155,7 +162,7 @@ func TestPendingQuirksSurviveARestart(t *testing.T) {
 		t.Fatalf("writing on shutdown failed: %v", err)
 	}
 
-	// 重启：内存里那一位清掉。
+	// Restart: clear that bit in memory.
 	quirk.Default.Reset()
 	if quirk.Default.Has(target.Provider, target.Model, quirk.NoThinkingDisable) {
 		t.Fatal("after clearing, the in-memory table should be empty (otherwise this test tests nothing)")
@@ -169,11 +176,12 @@ func TestPendingQuirksSurviveARestart(t *testing.T) {
 	}
 }
 
-// TestMergeQuirksIsAUnion 钉住「并进缓存是并集，不是覆盖」。
+// TestMergeQuirksIsAUnion pins "merging into the cache is a union, not an overwrite".
 //
-// 缓存里那两位方言结论来自一次真探活，被一次转发路上学到的毛病抹掉的话，症状是
-// **下游按一个错的方言去发**（探活说这个端点只收 openai，抹成「不知道」之后
-// 就会去试 anthropic）——而这一条没有任何症状指向那次落盘。
+// The two dialect conclusions in the cache come from a real probe; if a quirk learned while
+// forwarding erased them, the symptom is **downstream sending with a wrong dialect** (the
+// probe says this endpoint only accepts openai, and once wiped to "unknown" it tries
+// anthropic) - and nothing points at that persist.
 func TestMergeQuirksIsAUnion(t *testing.T) {
 	t.Setenv("NEWGATE_HOME", t.TempDir())
 
@@ -203,11 +211,11 @@ func TestMergeQuirksIsAUnion(t *testing.T) {
 	}
 }
 
-// TestDiskQuirksReportsWhatIsWorthReloading：启动时那个问题——「盘上有没有值得
-// 装回来的东西」——的答案只能从**毛病位非零**的目标来。
+// TestDiskQuirksReportsWhatIsWorthReloading: the answer to the startup question - "is there
+// anything on disk worth restoring" - can only come from targets with **non-zero quirk bits**.
 //
-// 探活写下的那些方言结论（quirks==0）不该被算成「有一份缓存」，否则「这台机器
-// 到底探过没有」这个判断会永远为真。
+// The dialect conclusions a probe wrote (quirks==0) must not count as "there is a cache",
+// or "has this machine ever probed" is always true.
 func TestDiskQuirksReportsWhatIsWorthReloading(t *testing.T) {
 	t.Setenv("NEWGATE_HOME", t.TempDir())
 
