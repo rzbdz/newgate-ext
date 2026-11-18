@@ -19,6 +19,7 @@ import (
 	"os"
 
 	"github.com/rzbdz/newgate-ext/lib/assembly"
+	"github.com/rzbdz/newgate-ext/lib/buildinfo"
 	"github.com/rzbdz/newgate-ext/manifest"
 	"github.com/rzbdz/newgate-ext/manifest/distinfo"
 	"github.com/rzbdz/newgate-ext/modules/config/paths"
@@ -33,6 +34,13 @@ var (
 )
 
 func main() {
+	// The version also has to reach lib/buildinfo, which is where every UI reads it
+	// from (`newgate version`, the daemon's first log line, the web status page). The
+	// kernel stopped writing that global when it stopped knowing the distribution
+	// (see entry.MakeProcess) -- and nobody took over, so every binary reported `dev`
+	// until 2026-11-18, when `newgate upgrade` refused its own fresh build because of
+	// it. Two consumers, one fact: set it here, in the composition root, once.
+	buildinfo.Set(version, buildTime, commitTime)
 	os.Exit(app.Main(context.Background(), app.Options{
 		Loader:     manifest.Loader{Spec: distinfo.Spec()},
 		Version:    version,
