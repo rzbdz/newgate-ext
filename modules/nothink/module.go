@@ -67,7 +67,7 @@ func New() modules.Component {
 	return modules.Component{
 		Name: Name,
 		Desc: func() string {
-			return i18n.T("a global no-reasoning switch, best effort (newgate nothink on|forever|off)", nil)
+			return i18n.T("asks every upstream not to think; best effort (newgate nothink on|forever|off)", nil)
 		},
 		// Same class as the kernel's modules/thinking: it is a thinking policy unrelated to any model
 		// family.
