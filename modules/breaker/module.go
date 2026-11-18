@@ -7,6 +7,7 @@ import (
 	cliapi "github.com/rzbdz/newgate-ext/modules/cli/extension"
 	"github.com/rzbdz/newgate-ext/modules/config/paths"
 	gatewayapi "github.com/rzbdz/newgate-ext/modules/gateway"
+	pluginmanagerapi "github.com/rzbdz/newgate-ext/modules/pluginmanager"
 	modules "github.com/rzbdz/newgate/component"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
@@ -40,6 +41,10 @@ func New() modules.Component {
 			// This edge is also the startup-order edge -- gateway ->
 			// breaker -> deepseek (deepseek needs my shape-detector outlet).
 			modules.Need(gatewayapi.Capability),
+			// The switch system: this module reports the pause switch (see switches.go) and
+			// reads it back on the admission path. The direction is breaker -> plugin-manager,
+			// never the other way -- the ledger lists modules, it does not know their business.
+			modules.Need(pluginmanagerapi.Capability),
 			// ui is a **weak dependency** (see component.Optional): mount `newgate breaker` if a UI is
 			// installed, skip it if not -- the health table itself works as usual, just with no entry point.
 			modules.Optional(cliapi.Capability),
@@ -59,11 +64,21 @@ func New() modules.Component {
 			// others registered (see the three-phase rule in docs/02-component-framework.md)
 			// -- the registry is offered, and the moment to read it is during Serve.
 			gateway := modules.MustGet(ctx, gatewayapi.Capability)
-			release, err := gateway.RegisterFilter(plane{t: table})
+			release, err := gateway.RegisterFilter(&plane{t: table})
 			if err != nil {
 				return err
 			}
 			releases = append(releases, release)
+
+			// Report the pause switch. Not optional: this is the only way out of "a network
+			// wobble delisted everything", so an assembly that silently lacks the port would
+			// ship the failure mode with no cure (hence Need above, not Optional).
+			pm := modules.MustGet(ctx, pluginmanagerapi.Capability)
+			self, err := pm.RegisterSelf("breaker", Switches())
+			if err != nil {
+				return err
+			}
+			releases = append(releases, self)
 
 			// The web UI copy registers **first**: it does not depend on cli and must be there in
 			// an assembly with only the dashboard -- once the block below returns, this would never

@@ -49,6 +49,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rzbdz/newgate-ext/modules/config/domain"
 	modules "github.com/rzbdz/newgate/component"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
@@ -289,6 +290,19 @@ type Env interface {
 	// error - always false. Diagnosis must not be a get-out-of-jail card for a bad binding;
 	// it should only stop a misjudgment.
 	Probe(provider, model string) bool
+	// State is the config snapshot this service sees **right now**.
+	//
+	// It is here for the same reason Probe is: a contributor's decisions can depend on
+	// something only the running data plane knows. A switch point is the case that made it
+	// necessary (2026-11-18) -- the health table's own "pause" switch lives in state.json,
+	// and Admit runs before any request has a snapshot of its own. It is a *fact about the
+	// system at this instant*, not configuration handed in at assembly: the value changes
+	// while the process runs, and reading it must stay free (the data plane hands out its
+	// atomic snapshot, no IO).
+	//
+	// May be nil: then a contributor reads it as "nothing set", the same fail-open direction
+	// as every other switch lookup.
+	State() *domain.State
 }
 
 // EnvBinder is an optional phase: contributors that want runtime capabilities implement it.

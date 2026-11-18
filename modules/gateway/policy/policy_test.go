@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rzbdz/newgate-ext/modules/config/domain"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
@@ -117,6 +118,10 @@ func (e *envrec) Probe(provider, model string) bool {
 	e.probes = append(e.probes, provider+"/"+model)
 	return true
 }
+
+// State is nil: these cases are about the probe and the log outlet, and nil reads as
+// "nothing set" in every switch lookup.
+func (e *envrec) State() *domain.State { return nil }
 
 type binder struct {
 	named

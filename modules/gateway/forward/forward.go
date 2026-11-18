@@ -258,6 +258,16 @@ func (e serverEnv) Logf(format string, args ...any) { e.s.logf(format, args...) 
 
 func (e serverEnv) Probe(provider, model string) bool { return e.s.probe(provider, model) }
 
+// State is the config snapshot the data plane is serving right now. Nil when the config cannot
+// be read: the same fail-open direction as every switch lookup (a contributor reads nil as
+// "nothing set").
+func (e serverEnv) State() *domain.State {
+	if sn := e.s.snap(); sn != nil {
+		return sn.State
+	}
+	return nil
+}
+
 // Handler builds the data plane's handler on this port.
 //
 // Anyone mounting another service on the same port (the daemon entry) **asks it for one

@@ -453,6 +453,33 @@ func (b *table) Flush() {
 	b.persistLocked()
 }
 
+// DiscardOpen forgets every delisting, and persists that at once.
+//
+// It is the other half of the pause switch (see SwitchAdmission): being paused must be *usable*
+// the moment it is turned on, not "admissible but still showing a full table of tripped
+// bindings". What is discarded is the **verdict**, not the evidence: fail counts, shape skips,
+// spared counts and probe results stay, so `newgate breaker` still answers "who is failing".
+//
+// Only the pause switch calls this (from Admit, once per transition), so it is deliberately not
+// on the Breaker port -- the port is "many readers, few writers", and this would be a fourth
+// ownerless write door.
+func (b *table) DiscardOpen() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	cleared := 0
+	for _, r := range b.records {
+		if r.openedAt.IsZero() {
+			continue
+		}
+		cleared++
+		b.unsealLocked(r)
+	}
+	if cleared > 0 {
+		b.persistLocked()
+	}
+	return cleared
+}
+
 // Score returns the predicted TTFT (milliseconds) for the current context bucket.
 // Fully unobserved uses a neutral 6s, sorting after fluent and in the middle of usable.
 func (b *table) Score(provider, model string, contextBytes int) int {

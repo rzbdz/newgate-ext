@@ -730,6 +730,7 @@
         "log"
       ]
     },
+    "Health table (delisting)": {},
     "Hermes": {},
     "Hermes model": {},
     "Home": {},
@@ -1150,6 +1151,11 @@
     "[breaker] health table read/write failed (continuing with in-memory state): {err}": {
       "args": [
         "err"
+      ]
+    },
+    "[breaker] paused: {n} delistings cleared (network trouble?), every binding is admitted until the switch is turned back on": {
+      "args": [
+        "n"
       ]
     },
     "[naked] forever mode: the classifier request was approved directly, the upstream was not called": {},
@@ -4227,6 +4233,7 @@
     "turn it off: newgate nothink off": {},
     "turned off": {},
     "turned off but still in effect": {},
+    "turned off, every binding is admitted again and the delisted ones are cleared — the table keeps counting what fails, it just stops steering the chain. Use it when one network wobble has emptied the whole table and you know the upstreams are fine": {},
     "turned on": {},
     "two providers are both named \"{name}\"": {
       "args": [

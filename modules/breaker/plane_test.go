@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rzbdz/newgate-ext/modules/config/domain"
 	gwpolicy "github.com/rzbdz/newgate-ext/modules/gateway/policy"
 )
 
@@ -126,7 +127,7 @@ func TestPlaneJudgeTruthTable(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			table, _ := clocked()
 			tt.out.Provider, tt.out.Model, tt.out.Binding = "p", "m", "p/m"
-			got := plane{t: table}.Judge(tt.out)
+			got := (&plane{t: table}).Judge(tt.out)
 			if got.Stop != tt.want.Stop || got.Attribute != tt.want.Attribute {
 				t.Errorf("Judge(%+v) = {Stop:%v Attribute:%v}, want {Stop:%v Attribute:%v}",
 					tt.out, got.Stop, got.Attribute, tt.want.Stop, tt.want.Attribute)
@@ -166,7 +167,7 @@ func TestPlaneJudgeCountsFailuresIntoTheLedger(t *testing.T) {
 		t.Run("booked/"+tt.name, func(t *testing.T) {
 			table, _ := clocked()
 			tt.out.Provider, tt.out.Model = "p", "m"
-			plane{t: table}.Judge(tt.out)
+			(&plane{t: table}).Judge(tt.out)
 			if got := rowOf(table, "p", "m"); got.Fails == 0 {
 				t.Errorf("%s did not make it into the ledger: %+v", tt.name, got)
 			}
@@ -185,7 +186,7 @@ func TestPlaneJudgeCountsFailuresIntoTheLedger(t *testing.T) {
 		t.Run("not booked/"+tt.name, func(t *testing.T) {
 			table, _ := clocked()
 			tt.out.Provider, tt.out.Model = "p", "m"
-			res := plane{t: table}.Judge(tt.out)
+			res := (&plane{t: table}).Judge(tt.out)
 			if res.Attribute {
 				t.Errorf("%s was judged as bookable", tt.name)
 			}
@@ -205,7 +206,7 @@ func TestPlaneJudgeCountsFailuresIntoTheLedger(t *testing.T) {
 func TestPlaneJudgeReportsOpenAndSpared(t *testing.T) {
 	t.Run("drops at the threshold", func(t *testing.T) {
 		table, _ := clocked()
-		p := plane{t: table}
+		p := &plane{t: table}
 		out := gwpolicy.Outcome{Provider: "p", Model: "m", Binding: "p/m",
 			Kind: gwpolicy.ConnectionFailed}
 
@@ -229,7 +230,7 @@ func TestPlaneJudgeReportsOpenAndSpared(t *testing.T) {
 		table, _ := clocked()
 		// Install the "pre-trip diagnostic": say it is still usable.
 		table.SetVerifier(func(provider, model string) bool { return true })
-		p := plane{t: table}
+		p := &plane{t: table}
 		out := gwpolicy.Outcome{Provider: "p", Model: "m", Binding: "p/m",
 			Kind: gwpolicy.ConnectionFailed}
 
@@ -261,7 +262,7 @@ func TestPlaneJudgeReportsOpenAndSpared(t *testing.T) {
 // that sentence): switching language or rewording must not make this test go red.
 func TestPlaneAdmitIsAvailablePlusAReason(t *testing.T) {
 	table, advance := clocked()
-	p := plane{t: table}
+	p := &plane{t: table}
 
 	if ok, why := p.Admit("p", "m"); !ok || why != "" {
 		t.Errorf("when nothing is wrong it should be usable with no reason, got (%v, %q)", ok, why)
@@ -293,7 +294,7 @@ func TestPlaneAdmitIsAvailablePlusAReason(t *testing.T) {
 // the status document (rather than stuffing them into an extra object) is precisely for this.
 func TestPlaneDocKeepsTheWireKey(t *testing.T) {
 	table, _ := clocked()
-	p := plane{t: table}
+	p := &plane{t: table}
 	p.Judge(gwpolicy.Outcome{Provider: "p", Model: "m", Kind: gwpolicy.RejectedStatus, Status: 401})
 
 	doc := p.Doc()
@@ -324,7 +325,7 @@ func TestPlaneDocKeepsTheWireKey(t *testing.T) {
 // on the spot, a good one unseals on the spot (even during quarantine, 2026-11-04).
 func TestPlaneObserveProbesIsAuthoritative(t *testing.T) {
 	table, _ := clocked()
-	p := plane{t: table}
+	p := &plane{t: table}
 
 	// The threshold is 2, but one failed probe is enough.
 	acks := p.ObserveProbes([]gwpolicy.ProbeObservation{{
@@ -365,7 +366,7 @@ func TestPlaneBindEnvWiresTheTwoCapabilities(t *testing.T) {
 	table, _ := clocked()
 	var logged []string
 	probed := 0
-	plane{t: table}.BindEnv(envStub{
+	(&plane{t: table}).BindEnv(envStub{
 		// **Render** this line and then capture it: BindEnv now passes `Logf("%s",
 		// message)` (formatting is done by i18n, so a `%` in a translation must not
 		// deform the log), and capturing only the format would show a literal `%s`.
@@ -397,12 +398,16 @@ func TestPlaneBindEnvWiresTheTwoCapabilities(t *testing.T) {
 type envStub struct {
 	logf  func(string, ...any)
 	probe func(string, string) bool
+	state *domain.State
 }
 
 func (e envStub) Logf(format string, args ...any) { e.logf(format, args...) }
 func (e envStub) Probe(provider, model string) bool {
 	return e.probe(provider, model)
 }
+
+// State is normally nil here (no switch set); the pause switch's own cases set it.
+func (e envStub) State() *domain.State { return e.state }
 
 // rowOf picks out a binding's row from the snapshot; with no such row it
 // gives the zero value (equivalent to "nothing happened in the ledger"
@@ -426,7 +431,7 @@ func (errForTest) Error() string { return "writing to disk failed (test)" }
 // Before 2026-09-18 they were hardcoded in modules/gateway/metrics/hints.go -- which put the
 // authority to explain "what a breaker opening means" into a package that does not know breakers.
 func TestPlaneMetricNamingLivesHere(t *testing.T) {
-	p := plane{t: newTable()}
+	p := &plane{t: newTable()}
 	for _, key := range []string{"breaker.opened", "breaker.spared", "breaker.skipped.shape_error"} {
 		// Assert the **identity**: it is language-independent and is the half
 		// used for table sorting. The wording ("breaker") follows the language,

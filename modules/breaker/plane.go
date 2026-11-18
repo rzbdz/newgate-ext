@@ -29,7 +29,9 @@ package breaker
 import (
 	"encoding/json"
 	"strings"
+	"sync/atomic"
 
+	"github.com/rzbdz/newgate-ext/modules/config/domain"
 	gwpolicy "github.com/rzbdz/newgate-ext/modules/gateway/policy"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
@@ -38,24 +40,52 @@ import (
 //
 // It **has no state of its own**: all state is in `*table`, and plane only translates. That way
 // `newgate breaker` (reading health.json / Snapshot directly) and the hot path see the same facts.
-type plane struct{ t *table }
+type plane struct {
+	t *table
+
+	// Receivers are **pointers** for one reason: BindEnv fills in env/logf below, and a value
+	// receiver would write them into a copy. Everything else here is read-only, so the pointer
+	// buys exactly the two fields that are installed once, at Serve time.
+	//
+	// env is the runtime capabilities the data plane lent us (policy.Env), installed by BindEnv
+	// when the service comes up. Nil before that -- and nil reads as "nothing set", which is the
+	// fail-open direction for both of them.
+	env gwpolicy.Env
+
+	// logf is the data plane's log outlet, installed by BindEnv with everything else. Nil in
+	// tests that never install one, and a log line is never worth a panic.
+	logf func(format string, args ...any)
+
+	// paused records whether the last Admit saw the switch off, so "turned off just now" is one
+	// transition rather than a write on every request. Atomic because Admit runs on every
+	// request's chain build, from many goroutines.
+	paused atomic.Bool
+}
+
+// stateOf reads the snapshot, tolerating "not installed yet" (assembly-time calls in tests).
+func (p *plane) stateOf() *domain.State {
+	if p.env == nil {
+		return nil
+	}
+	return p.env.State()
+}
 
 // All seven optional phases implemented. The complete var assertion is so
 // that "if one interface is deleted some day", it fails to compile right here,
 // rather than silently degrading to "that decision point is answered by nobody".
 var (
-	_ gwpolicy.Filter      = plane{}
-	_ gwpolicy.Admitter    = plane{}
-	_ gwpolicy.Adjudicator = plane{}
-	_ gwpolicy.Controller  = plane{}
-	_ gwpolicy.Flusher     = plane{}
-	_ gwpolicy.EnvBinder   = plane{}
-	_ gwpolicy.MetricNamer = plane{}
+	_ gwpolicy.Filter      = (*plane)(nil)
+	_ gwpolicy.Admitter    = (*plane)(nil)
+	_ gwpolicy.Adjudicator = (*plane)(nil)
+	_ gwpolicy.Controller  = (*plane)(nil)
+	_ gwpolicy.Flusher     = (*plane)(nil)
+	_ gwpolicy.EnvBinder   = (*plane)(nil)
+	_ gwpolicy.MetricNamer = (*plane)(nil)
 )
 
-func (p plane) Name() string { return "breaker" }
+func (p *plane) Name() string { return "breaker" }
 
-func (p plane) Why() string {
+func (p *plane) Why() string {
 	return i18n.T("binding health table: trips after consecutive failures, "+
 		"releases one half-open trial when the cooldown expires", nil)
 }
@@ -73,7 +103,29 @@ func (p plane) Why() string {
 // round's "half-open trial slot", and one slot lets exactly one real request through (see
 // Available in state.go). resolve asks exactly once per candidate, so "let one through"
 // holds naturally there -- which is also why policy.Admitter allows only one contributor.
-func (p plane) Admit(provider, model string) (bool, string) {
+func (p *plane) Admit(provider, model string) (bool, string) {
+	// The pause switch (see SwitchAdmission): off means "do not steer the chain right now".
+	//
+	// It is checked here and not in Judge because this is the door that decides admission -- and
+	// because the switch must take effect **immediately**, including for bindings already
+	// delisted. Since a network wobble empties the whole table at once, "admit everything" alone
+	// would be a lie while the table still says tripped: the transition therefore also discards
+	// the delistings, once, on the request that first sees the switch off.
+	//
+	// The cost on the hot path is one atomic bool plus (while paused) one JSON parse of this
+	// module's own state section, the same read every other switch does.
+	if paused(p.stateOf()) {
+		if p.paused.CompareAndSwap(false, true) {
+			if n := p.t.DiscardOpen(); n > 0 && p.logf != nil {
+				// `%s`, not `%d`: the count goes through i18n.T's placeholders, so a `%` in a
+				// translation cannot deform the line (same rule as the error outlet above).
+				p.logf("%s", i18n.T("[breaker] paused: {n} delistings cleared (network trouble?), "+
+					"every binding is admitted until the switch is turned back on", i18n.A{"n": n}))
+			}
+		}
+		return true, ""
+	}
+	p.paused.Store(false)
 	if p.t.Available(provider, model) {
 		return true, ""
 	}
@@ -86,7 +138,7 @@ func (p plane) Admit(provider, model string) (bool, string) {
 	return false, i18n.T("circuit open", nil)
 }
 
-func (p plane) Rank(provider, model string, contextBytes int) int {
+func (p *plane) Rank(provider, model string, contextBytes int) int {
 	return p.t.Rank(provider, model, contextBytes)
 }
 
@@ -102,7 +154,7 @@ func (p plane) Rank(provider, model string, contextBytes int) int {
 // same 400 delisted mid-chain but not at the chain tail). So this keeps one call that judges and
 // records together, at the cost that it makes a network request during the **pre-trip diagnostic**
 // (up to 16s) -- the data plane has always called it this way, see verifyProbeAttempts.
-func (p plane) Judge(in gwpolicy.Outcome) gwpolicy.Verdict {
+func (p *plane) Judge(in gwpolicy.Outcome) gwpolicy.Verdict {
 	res := p.t.Report(in.Provider, in.Model, input(in))
 
 	if in.Kind == gwpolicy.Succeeded {
@@ -194,7 +246,7 @@ func note(res Result, provider string) string {
 // Observe is only reached by the success outcome: record one
 // real time-to-first-byte sample. Availability is not touched here -- delisting
 // after the first byte has arrived is pointless (see succeedLocked in state.go).
-func (p plane) Observe(in gwpolicy.Outcome) {
+func (p *plane) Observe(in gwpolicy.Outcome) {
 	if in.Kind != gwpolicy.Succeeded {
 		return
 	}
@@ -214,7 +266,7 @@ func (p plane) Observe(in gwpolicy.Outcome) {
 // The old fields sitting at the top level are still there: Requests / Failures / Breakers
 // are exactly the same names today as yesterday; only where they are produced changed, from
 // "the forwarding path calls Health" to "the forwarding path merges policy self-reports".
-func (p plane) Doc() map[string]json.RawMessage {
+func (p *plane) Doc() map[string]json.RawMessage {
 	raw, err := json.Marshal(p.t.Snapshot())
 	if err != nil {
 		// Everything Snapshot returns is scalars and fixed-length arrays, so Marshal cannot fail;
@@ -230,7 +282,7 @@ func (p plane) Doc() map[string]json.RawMessage {
 //
 // The returned Note is logged by the data plane verbatim: that "at least 60s, or one successful
 // probe" describes the health table's backoff semantics, which only this place knows.
-func (p plane) ObserveProbes(obs []gwpolicy.ProbeObservation) []gwpolicy.ProbeAck {
+func (p *plane) ObserveProbes(obs []gwpolicy.ProbeObservation) []gwpolicy.ProbeAck {
 	out := make([]gwpolicy.ProbeAck, 0, len(obs))
 	for _, o := range obs {
 		grade, opened := p.t.RecordProbe(o.Provider, o.Model, o.Status, o.ContextBytes,
@@ -255,7 +307,7 @@ func (p plane) ObserveProbes(obs []gwpolicy.ProbeObservation) []gwpolicy.ProbeAc
 // Today's implementation has no error to report (persistLocked hands failures to onError), so
 // it always returns nil; the error is kept on the interface because "persisting failed" may
 // one day need to affect the exit code, and by then changing the interface would be too late.
-func (p plane) Flush() error {
+func (p *plane) Flush() error {
 	p.t.Flush()
 	return nil
 }
@@ -272,7 +324,9 @@ func (p plane) Flush() error {
 //     It used to be a callback the data plane injected into the health table in reverse
 //     -- that reverse edge was the hard evidence that "who owns the capability" was
 //     unclear; now it belongs to the data plane and is lent to policy (policy.Env.Probe).
-func (p plane) BindEnv(env gwpolicy.Env) {
+func (p *plane) BindEnv(env gwpolicy.Env) {
+	p.env = env
+	p.logf = env.Logf
 	p.t.SetErrorHandler(func(err error) {
 		// Formatting is done by i18n.T, so `%s` is used here:
 		// a `%` in a translation must not deform this log line.
@@ -294,14 +348,14 @@ func (p plane) BindEnv(env gwpolicy.Env) {
 // Identity ("breaker") and wording (the translation of `Breaker`) are given
 // separately: that table sorts by group, and the sort must be language-independent
 // -- the reason is in the comment on modules/gateway/metrics.Group.
-func (p plane) MetricGroup(key string) (id, label string) {
+func (p *plane) MetricGroup(key string) (id, label string) {
 	if strings.HasPrefix(key, "breaker.") {
 		return "breaker", i18n.T("Breaker", nil)
 	}
 	return "", ""
 }
 
-func (p plane) MetricHint(key string) string {
+func (p *plane) MetricHint(key string) string {
 	switch key {
 	case "breaker.opened":
 		return i18n.T("breaker opened, provider removed for now", nil)
