@@ -1,59 +1,59 @@
 #!/usr/bin/env bash
-# 零 token 端到端：**内核自己**的行为——接管注入、档位解析与转发、控制端点、
-# 优雅交接、后台分类器改道、窗口声明、运行期开关。
+# Zero-token end to end: **the kernel's own** behavior -- takeover injection, tier resolution and forwarding, the control endpoint,
+# graceful handover, background classifier rerouting, window declarations, runtime switches.
 #
-# 验证（对应本次特性/修复）：
-#   1. 启动时注入的 env 是**真实模型名**（claude 界面显示 deepseek-chat，
-#      而不是 heavy），且 base URL 带上 /a/claude/p/<profile>。
-#   2. 代理把真实模型名反解回档位，转发给正确的上游。
-#   3. count_tokens：Claude Code 周期性调用（水位条/自动压缩阈值）。上游
-#      听得懂（原生 anthropic 端点）就转发拿真值、model 按 mid 链头补上；
-#      听不懂的（聚合器 404）由 forward 层 lazy probe 学下来退回本地粗估
-#      （单测覆盖）。
-#   4. 控制端点 /__newgate/stop：多用户共享部署下，读得到配置却发不出
-#      信号的用户靠它停机——错令牌 403，对令牌让 daemon 退干净。
-#   5. 优雅交接 /__newgate/upgrade（nginx 式零停机升级）：restart 把监听
-#      socket 移交给新进程，在途 SSE 流由旧进程流完为止——开发 newgate
-#      的会话本身就穿行在代理里，这是「能持续开发」的前提。
-#   6. 后台请求：分类器整条链改走 light、其余只禁思考。Claude Code 的非流
-#      式后台调用不带 thinking，国模却把缺省当默认思考 → 15-30 秒、成波超
-#      时。代理一律补 thinking:disabled（缺就补、带了也改写）；其中 Bash
-#      安全分类器本体（实抓特征：system 开头 "You are a security monitor…"）
-#      在**建链之前**改道 light 档——含 fallback，light 挂了沿 light 链换
-#      人，不回 mid；其他后台调用（compact 总结这类）不改道；主循环的流式
-#      请求不受影响。
-#   7. 窗口声明：Claude Code 不认识注入的模型名（glm-4-plus / normal），
-#      按「未知模型」假设窗口。profile 里声明了 context_window/
-#      auto_compact_window 就在启动时注入对应的 CLAUDE_CODE_* env；但
-#      Claude Code 客户端把窗口封在 512K、compact 封在 400K（2026-11-12
-#      现场：1M 顶到真实窗口最后一格，400 之后连 /compact 都发不出去）。
-#      没声明窗口的 profile 拿到上限值，没声明 compact 的交给客户端自己算。
-#   8. 运行期开关与 special 层开关（第 19/20 章）：探针用内核自己的
-#      schema-repair，这样这一层不依赖任何发行版模块。
+# What it verifies (corresponding to this feature/fix):
+#   1. The env injected at startup is the **real model name** (the claude UI shows deepseek-chat,
+#      not heavy), and the base URL carries /a/claude/p/<profile>.
+#   2. The proxy resolves the real model name back to a tier and forwards it to the right upstream.
+#   3. count_tokens: Claude Code calls it periodically (the context gauge / auto-compact threshold). If the upstream
+#      understands it (native anthropic endpoint), forward it and get the real value, filling in model from the mid chain head;
+#      if it does not (an aggregator 404s), the forward layer's lazy probe learns that and falls back to a local rough estimate
+#      (covered by unit tests).
+#   4. The control endpoint /__newgate/stop: in a multi-user shared deployment, a user who can read the config but cannot send
+#      a signal uses it to stop -- wrong token is 403, the right token lets the daemon exit cleanly.
+#   5. Graceful handover /__newgate/upgrade (nginx-style zero-downtime upgrade): restart hands the listening
+#      socket to the new process, and in-flight SSE streams finish on the old process -- the session developing newgate
+#      itself runs through the proxy, so this is the precondition for "being able to keep developing".
+#   6. Background requests: the classifier's whole chain reroutes to light, everything else only gets thinking disabled. Claude Code's non-streaming
+#      background calls carry no thinking, but domestic models treat absence as "think by default" -> 15-30 seconds, failing in waves with
+#      timeouts. The proxy always adds thinking:disabled (add it when missing, rewrite it when present); among them the Bash
+#      safety classifier itself (captured traits: the system starts with "You are a security monitor...")
+#      reroutes to the light tier **before the chain is built** -- fallback included, so if light is down it moves along the light chain to
+#      someone else, never back to mid; other background calls (compact summaries and the like) do not reroute; the main loop's streaming
+#      requests are unaffected.
+#   7. Window declarations: Claude Code does not recognize the injected model names (glm-4-plus / normal),
+#      and assumes a window for an "unknown model". When the profile declares context_window/
+#      auto_compact_window, the corresponding CLAUDE_CODE_* env is injected at startup; but
+#      the Claude Code client caps the window at 512K and compact at 400K (2026-11-12
+#      on site: 1M went to the last cell of the real window, and after 400 even /compact could not be sent).
+#      A profile that declares no window gets the cap value, and one that declares no compact leaves it to the client.
+#   8. Runtime switches and special-layer switches (chapters 19/20): the probe uses the kernel's own
+#      schema-repair, so this layer does not depend on any distribution module.
 #
-# # 发行版模块的行为不在这里（2026-09-20 拆开）
+# # Distribution module behavior is not here (split apart 2026-09-20)
 #
-# 上游怪癖补丁（DeepSeek 的推理原文回填、尾部形状修补、跨上游迁移）跟着模块
-# 住在发行版仓库，由 **发行版的 mock/e2e_claude_dist.sh** 锁——它复用本目录的
-# 假上游（那是逐字节复刻真实上游行为的产物，复制一份必然漂移）。拆开之前那几
-# 章在本文件里，于是**内核的测试依赖一个发行版模块**：摘掉它内核就红。边界与
-# 理由见 docs/09-extension-guide.md §8。
+# The upstream quirk patches (DeepSeek's reasoning echo, tail-shape repair, cross-upstream migration) follow their modules
+# and live in the distribution repository, locked by **the distribution's mock/e2e_claude_dist.sh** -- it reuses this directory's
+# fake upstream (which is a byte-for-byte replica of real upstream behavior; a copy would inevitably drift). Before the split those
+# chapters were in this file, so **the kernel's tests depended on a distribution module**: remove it and the kernel went red. The boundary and
+# the reasons are in docs/09-extension-guide.md §8.
 #
-# 全部在临时沙箱里跑，不碰真实 ~/.config / ~/.claude / shell rc。
-# # 这份脚本为什么在发行版仓库里（2026-09-20 搬来）
+# Everything runs in a temporary sandbox, touching neither the real ~/.config / ~/.claude / shell rc.
+# # Why this script lives in the distribution repository (moved here 2026-09-20)
 #
-# 它原来是内核的 mock/e2e_claude.sh。这些章节全部经由**真客户端接管**（newgate
-# claude → wrapper → runtime → 假 claude），而客户端接入是产品取舍——那三个模块
-# （claudecode / opencode / opencodeomo）搬到了本仓库，所以它们的端到端也跟过来。
+# It used to be the kernel's mock/e2e_claude.sh. All these chapters go through **real client takeover** (newgate
+# claude → wrapper → runtime → fake claude), and client takeover is a product trade-off -- those three modules
+# (claudecode / opencode / opencodeomo) moved to this repository, so their end-to-end tests moved along.
 #
-# 内核那一侧留下了**机制面**的 e2e（curl 打数据面 + 控制端点 + 运行期开关），
-# 覆盖没有丢：两边合起来是原来那 16 章，只是分家分在「谁认识客户端」这条线上。
+# What is left on the kernel side is the e2e for the **mechanism surface** (curl against the data plane + control endpoint + runtime switches),
+# and coverage is not lost: together the two sides are the original 16 chapters, with the split drawn along "who knows the client".
 
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# 二进制来自本仓库的构建入口（build/build.sh），**按 newgate 落一份**再用：
-# 它是多调用型的，argv0 决定入口（见 README）。产物名里的架构用 Go 的叫法。
+# The binary comes from this repository's build entry point (build/build.sh); **drop a copy named newgate** before using it:
+# it is multi-invocation, and argv0 decides the entry point (see the README). The arch in the artifact name uses Go's naming.
 CORE="${NEWGATE_E2E_CORE:-$ROOT/core}"
 case "$(uname -m)" in
   x86_64)        host_arch=amd64 ;;
@@ -62,8 +62,8 @@ case "$(uname -m)" in
   *)             host_arch=$(uname -m) ;;
 esac
 BIN_SRC="${NEWGATE_E2E_BIN:-$ROOT/dist/newgate-default-$(uname -s | tr 'A-Z' 'a-z')-$host_arch}"
-[ -x "$BIN_SRC" ] || { echo "找不到二进制 $BIN_SRC——先跑 build/build.sh"; exit 1; }
-[ -f "$CORE/mock/fake_upstream.py" ] || { echo "core/ 里没有假上游：先 git submodule update --init"; exit 1; }
+[ -x "$BIN_SRC" ] || { echo "Binary not found: $BIN_SRC -- run build/build.sh first"; exit 1; }
+[ -f "$CORE/mock/fake_upstream.py" ] || { echo "No fake upstream in core/: first git submodule update --init"; exit 1; }
 SANDBOX="${NEWGATE_E2E_SANDBOX:-$(mktemp -d /tmp/newgate-claude-e2e.XXXXXX)}"
 BIN="$SANDBOX/bin/newgate"
 mkdir -p "$(dirname "$BIN")"
@@ -75,36 +75,36 @@ FAKEBIN="$SANDBOX/fakebin"
 PASS=0; FAIL=0
 ok()   { echo "  ✓ $1"; PASS=$((PASS+1)); }
 bad()  { echo "  ✗ $1"; FAIL=$((FAIL+1)); }
-check(){ if [ "$2" = "$3" ]; then ok "$1"; else bad "$1 (期望 '$3'，实际 '$2')"; fi; }
+check(){ if [ "$2" = "$3" ]; then ok "$1"; else bad "$1 (expected '$3', got '$2')"; fi; }
 
 export NEWGATE_HOME="$SANDBOX/ng"
 mkdir -p "$NEWGATE_HOME/mappings" "$FAKEBIN"
-# 沙箱要密闭：跑 e2e 的会话自己可能带着 newgate 注入的窗口声明（嵌套
-# 启动时父进程 env 会漏给子进程），不 unset 会让「没声明的 profile」
-# 用例读到父会话的值、假失败。
+# The sandbox must be sealed: the session running the e2e may itself carry window declarations injected by newgate (when started
+# nested the parent's env leaks into child processes); not unsetting them makes the "profile with no declaration"
+# case read the parent session's values and fail spuriously.
 unset CLAUDE_CODE_MAX_CONTEXT_TOKENS CLAUDE_CODE_AUTO_COMPACT_WINDOW
-# 语言要密闭：脚本断言的是**源语言原文**（英文），而跑它的机器可能是 zh-Hans
-# （我们自己的机器就是）。不钉住的话，「界面上是英文」这类断言在中文机器上假红。
+# The language must be sealed too: the script asserts **source-language text** (English), while the machine running it may be zh-Hans
+# (our own machines are). Without pinning it, "the UI says X in English" assertions fail spuriously on a Chinese machine.
 export NEWGATE_LANG=en
 unset LC_ALL LC_MESSAGES LANG LANGUAGE 2>/dev/null || true
 
 cleanup() {
   "$BIN" stop >/dev/null 2>&1 || true
   [ -n "${UP_PID:-}" ] && kill "$UP_PID" 2>/dev/null
-  # 调试用：NEWGATE_E2E_KEEP=1 保留沙箱（日志、假上游收到的 body 都在里面），
-  # 出红的时候不至于对着一个删掉的目录猜。
+  # For debugging: NEWGATE_E2E_KEEP=1 keeps the sandbox (logs and the bodies the fake upstream received are in there),
+  # so a red run does not leave you guessing against a deleted directory.
   if [ -n "${NEWGATE_E2E_KEEP:-}" ]; then
-    echo "沙箱保留（NEWGATE_E2E_KEEP）: $SANDBOX"
+    echo "Sandbox kept (NEWGATE_E2E_KEEP): $SANDBOX"
   else
     rm -rf "$SANDBOX"
   fi
 }
 trap cleanup EXIT
 
-echo "沙箱: $SANDBOX"
-[ -x "$BIN" ] || { echo "先 make build"; exit 1; }
+echo "Sandbox: $SANDBOX"
+[ -x "$BIN" ] || { echo "run make build first"; exit 1; }
 
-# ---- 假 claude：像 Claude Code 那样发请求。E2E_SCENARIO 选形态 ----
+# ---- fake claude: send requests the way Claude Code does. E2E_SCENARIO picks the shape ----
 cat > "$FAKEBIN/claude" <<'PY'
 #!/usr/bin/env python3
 import json, os, urllib.request, urllib.error
@@ -143,9 +143,9 @@ if scenario == "plain":
                         "messages": [{"role": "user", "content": "ping"}]})
         print(f"HTTP={code}")
 elif scenario in ("think1", "think2", "think3"):
-    # Claude Code 主循环形态：**流式** + thinking 显式开着 + 带 tools，
-    # 历史里的 assistant 消息被客户端剥掉了 thinking 块——只剩 tool_use。
-    # （流式是关键：claude-bg 只改写非流式的后台调用，主循环不碰。）
+    # Claude Code main-loop shape: **streaming** + thinking explicitly on + tools present,
+    # and the assistant messages in history have had their thinking blocks stripped by the client -- only tool_use is left.
+    # (Streaming is the key: claude-bg only rewrites non-streaming background calls, and leaves the main loop alone.)
     tid = "toolu_mock_1" if scenario == "think2" else "toolu_UNSEEN_999"
     msgs = [{"role": "user", "content": "go"}]
     if scenario != "think1":
@@ -163,9 +163,9 @@ elif scenario in ("think1", "think2", "think3"):
     if code != 200:
         print(body[:200])
 elif scenario == "count_tokens":
-    # Claude Code 的 count_tokens：不带 model 字段的形态也要能活
+    # Claude Code's count_tokens: the shape without a model field must also survive
     code, body = post(base.rstrip("/") + "/v1/messages/count_tokens",
-                      {"messages": [{"role": "user", "content": "数一下 token"}],
+                      {"messages": [{"role": "user", "content": "count the tokens"}],
                        "tools": TOOLS})
     print(f"HTTP={code}")
     try:
@@ -173,17 +173,17 @@ elif scenario == "count_tokens":
     except Exception:
         print("INPUT_TOKENS=PARSE_FAIL")
 elif scenario in ("bg_plain", "bg_adaptive", "bg_other", "bg_realname"):
-    # Claude Code 后台小调用的形态（实抓 2026-09，cc 2.1.263）：非流式、
-    # model 就是档位名 mid、不带 tools、max_tokens 2112。
-    #   bg_plain / bg_adaptive / bg_realname = Bash 分类器本体：system ~126KB
-    #     开头是 "You are a security monitor…"（bg_plain 连 thinking 都没写，
-    #     bg_adaptive 显式要求 adaptive）→ 都切 light；只给没写 thinking 的
-    #     bg_plain 注入 disabled，显式意图不覆盖。
-    #   bg_other = 其他后台调用（compact 总结这类）：system 没有那句自报
-    #     家门 → 保留 mid，只禁思考。
-    #   bg_realname = 真实模型名时代的回归现场（2026-09-09 实抓）：分类器
-    #     用主循环槽位的真实名（glm-4-plus）点名，它同时绑 heavy+mid、按
-    #     Roles 顺序反解成 heavy——tier 闸门版本会整个跳过。仍要切 light。
+    # The shape of Claude Code's small background calls (captured 2026-09, cc 2.1.263): non-streaming,
+    # model is the tier name mid, no tools, max_tokens 2112.
+    #   bg_plain / bg_adaptive / bg_realname = the Bash classifier itself: system ~126KB
+    #     starting with "You are a security monitor..." (bg_plain does not even write thinking,
+    #     bg_adaptive explicitly asks for adaptive) -> all switch to light; disabled is injected only into
+    #     bg_plain, which wrote no thinking; an explicit intent is not overridden.
+    #   bg_other = other background calls (compact summaries and the like): the system lacks that self-identifying
+    #     line -> stays on mid, only thinking is disabled.
+    #   bg_realname = the regression case from the real-model-name era (captured 2026-09-09): the classifier
+    #     names the main-loop slot's real name (glm-4-plus), which is bound to both heavy+mid and resolves
+    #     back to heavy in Roles order -- the tier-gate version skips it entirely. It must still switch to light.
     payload = {"model": "mid", "max_tokens": 2112,
                "messages": [{"role": "user", "content": "classify this command"},
                             {"role": "user", "content": "and this one"}]}
@@ -204,7 +204,7 @@ elif scenario in ("bg_plain", "bg_adaptive", "bg_other", "bg_realname"):
 PY
 chmod +x "$FAKEBIN/claude"
 
-# ---- 配置：ds + glm 两个 provider，指向假上游 ----
+# ---- config: two providers, ds + glm, pointing at the fake upstream ----
 cat > "$NEWGATE_HOME/providers.json" <<EOF
 {
   "providers": {
@@ -229,109 +229,109 @@ cat > "$NEWGATE_HOME/state.json" <<EOF
 { "default_profile": "ds", "port": $PROXY_PORT }
 EOF
 
-echo; echo "== 1. 启动假上游（严格 DeepSeek 口径） =="
+echo; echo "== 1. Start the fake upstream (strict DeepSeek semantics) =="
 python3 "$CORE/mock/fake_upstream.py" --port "$UP_PORT" >"$SANDBOX/upstream.log" 2>&1 &
 UP_PID=$!
 for _ in $(seq 30); do
   curl -sf "http://127.0.0.1:$UP_PORT/__mock/requests" >/dev/null && break; sleep 0.1
 done
 curl -sf "http://127.0.0.1:$UP_PORT/__mock/requests" >/dev/null \
-  && ok "假上游在 127.0.0.1:$UP_PORT" || { bad "假上游没起来"; exit 1; }
+  && ok "fake upstream on 127.0.0.1:$UP_PORT" || { bad "the fake upstream did not start"; exit 1; }
 
-# PATH 里 fakebin 在最前，newgate claude 会 exec 我们的假 claude。
+# fakebin is first on PATH, so newgate claude will exec our fake claude.
 export PATH="$FAKEBIN:$PATH"
 
 echo; echo "== 2. newgate claude --profile=ds =="
 curl -sf "http://127.0.0.1:$UP_PORT/__mock/reset" -X POST >/dev/null
 OUT="$("$BIN" claude --profile=ds 2>"$SANDBOX/ds.err")"
 echo "$OUT" | sed 's/^/    /'
-# 真实模型名，**裸的**：2026-11-12 起不再拼 `[1m]`（1M 声明把会话顶到
-# 真实窗口最后一格，400 之后连 /compact 都发不出去，见 modules/claudecode）。
-# 窗口改由 CLAUDE_CODE_MAX_CONTEXT_TOKENS 声明并封顶 512K。下一行断言上游
-# 收到的就是这个名字。
-check "opus 档注入的是真实模型名（裸名）" \
+# The real model name, **bare**: since 2026-11-12 no `[1m]` is appended any more (the 1M declaration pushed the session to
+# the last cell of the real window; after a 400 even /compact could not be sent, see modules/claudecode).
+# The window is now declared by CLAUDE_CODE_MAX_CONTEXT_TOKENS, capped at 512K. The next line asserts the upstream
+# receives exactly this name.
+check "the opus tier is injected with the real model name (bare name)" \
   "$(echo "$OUT" | grep '^OPUS_MODEL=' | cut -d= -f2-)" "deepseek-chat"
 echo "$OUT" | grep '^BASE_URL=' | grep -q "/a/claude/p/ds" \
-  && ok "base URL 带上 /a/claude/p/ds" \
-  || bad "base URL 应含 /a/claude/p/ds（实际 $(echo "$OUT" | grep '^BASE_URL=')）"
+  && ok "base URL carries /a/claude/p/ds" \
+  || bad "base URL should contain /a/claude/p/ds (actual $(echo "$OUT" | grep '^BASE_URL='))"
 GOT=$(curl -s "http://127.0.0.1:$UP_PORT/__mock/requests" | python3 -c 'import json,sys;r=json.load(sys.stdin);print(r[0]["body"]["model"] if r else "NONE")')
-check "上游收到 ds 的 deepseek-chat" "$GOT" "deepseek-chat"
+check "the upstream received deepseek-chat from ds" "$GOT" "deepseek-chat"
 
-echo; echo "== 3. newgate claude --profile=glm（切换） =="
+echo; echo "== 3. newgate claude --profile=glm (switch) =="
 curl -sf "http://127.0.0.1:$UP_PORT/__mock/reset" -X POST >/dev/null
 OUT="$("$BIN" claude --profile=glm 2>"$SANDBOX/glm.err")"
 echo "$OUT" | sed 's/^/    /'
-check "切到 glm 后 opus 档是 glm-4-plus（裸名）" \
+check "after switching to glm the opus tier is glm-4-plus (bare name)" \
   "$(echo "$OUT" | grep '^OPUS_MODEL=' | cut -d= -f2-)" "glm-4-plus"
 GOT=$(curl -s "http://127.0.0.1:$UP_PORT/__mock/requests" | python3 -c 'import json,sys;r=json.load(sys.stdin);print(r[0]["body"]["model"] if r else "NONE")')
-check "上游收到 glm 的 glm-4-plus" "$GOT" "glm-4-plus"
+check "the upstream received glm-4-plus from glm" "$GOT" "glm-4-plus"
 
-echo; echo "== 4. 不带 profile 用默认（ds）：动态模式，槽位 = 档位名 =="
-# 默认（动态）模式槽位保持档位名——会话发档位名回来，代理按请求时的当前
-# 配置解析，--set-profile 对跑着的会话立刻生效。窗口声明照注入（档位名
-# 对 Claude Code 也是未知模型，MAX_CONTEXT_TOKENS 一样生效）。
+echo; echo "== 4. Without a profile, use the default (ds): dynamic mode, slot = tier name =="
+# In the default (dynamic) mode the slot keeps the tier name -- the session sends the tier name back, and the proxy resolves it
+# against the config current at request time, so --set-profile takes effect immediately for running sessions. Window declarations are still injected (the tier name
+# is an unknown model for Claude Code too, and MAX_CONTEXT_TOKENS works the same way).
 curl -sf "http://127.0.0.1:$UP_PORT/__mock/reset" -X POST >/dev/null
 OUT="$("$BIN" claude 2>"$SANDBOX/default.err")"
-check "默认（动态）：opus 槽 = 主力档 normal（裸名）" \
+check "default (dynamic): opus slot = the workhorse tier normal (bare name)" \
   "$(echo "$OUT" | grep '^OPUS_MODEL=' | cut -d= -f2-)" "normal"
-check "默认（动态）：窗口声明=客户端上限（ds 没配 → 512K）" \
+check "default (dynamic): window declaration = client cap (ds has none configured -> 512K)" \
   "$(echo "$OUT" | grep '^WIN_MAX=' | cut -d= -f2-)" "512000"
 
-echo; echo "== 5. 不存在的 profile 要立刻报错（退出码 65） =="
+echo; echo "== 5. A nonexistent profile must fail immediately (exit code 65) =="
 "$BIN" claude --profile=nope >/dev/null 2>"$SANDBOX/nope.err"
 RC=$?
-check "退出码 65" "$RC" "65"
-grep -q 'No such profile' "$SANDBOX/nope.err" && ok "报错信息说明了 profile 不存在" || bad "报错信息没说 profile 不存在"
+check "exit code 65" "$RC" "65"
+grep -q 'No such profile' "$SANDBOX/nope.err" && ok "the error message says the profile does not exist" || bad "the error message does not say the profile does not exist"
 
-echo; echo "== 6. 上游严格性自检：尾部形状（不是推理字段）才决定 400 =="
-# 先证明假上游真的在执行**实测口径**——否则后面那些 200 不能说明任何问题。
+echo; echo "== 6. Upstream strictness self-check: the tail shape (not the reasoning field) is what decides the 400 =="
+# First prove the fake upstream really enforces **the measured criterion** -- otherwise all those later 200s prove nothing.
 #
-# 判据是 2026-09-18 打真实 smt-deepseek/deepseek-flash 逐格实测出来的，而且
-# 是拿**真实 Claude Code 抓包**（dump/err-400-req000412.client-sent.json，
-# 764KB、229 条消息、UA claude-cli/2.1.273）原样复现的：
+# The criterion was measured cell by cell on 2026-09-18 against the real smt-deepseek/deepseek-flash, and
+# reproduced verbatim from **a real Claude Code capture** (dump/err-400-req000412.client-sent.json,
+# 764KB, 229 messages, UA claude-cli/2.1.273):
 #
-#   原样（尾 = 裸 [tool_result]）                     → 400 reasoning_content…
-#   同一个请求体，只去掉最后 assistant 的 thinking 块  → 400（推理字段无关）
-#   同一个请求体，只在尾部 content[] 里加 text " "     → 200
-#   两个都做                                          → 200
+#   as is (tail = bare [tool_result])                 -> 400 reasoning_content...
+#   the same body, only the last assistant thinking block removed  -> 400 (the reasoning field is irrelevant)
+#   the same body, only a text " " added to the tail content[]      -> 200
+#   both                                              -> 200
 #
-# 报错文案说「推理没回传」，真实原因却是「这一轮没有新指令」——文案与原因
-# 不一致，正是这条检查必须按**形状**写、不能按文案写的原因。
+# The error text says "reasoning was not passed back", while the real cause is "no new instruction this round" -- the text and the cause
+# disagree, which is exactly why this check must be written by **shape**, not by text.
 #
-# 三格：裸 tool_result 要 400；同一个 + 一个空格 text、以及 + 一个普通文字块
-# 都要 200。上下两格一起才说明判据画在哪条线上（只测 400 会让「见谁都拦」
-# 的假上游也过）。
-tail_case() {  # $1=尾部 content[] 的字面量  $2=期望状态码  $3=说明
+# Three cells: a bare tool_result must be 400; the same + a space text, and + a normal text block,
+# must both be 200. Both directions together show where the criterion is drawn (testing only the 400s would let an upstream that
+# "blocks everything it sees" pass too).
+tail_case() {  # $1=the literal for the tail content[]  $2=expected status code  $3=description
   CODE=$(curl -s -o "$SANDBOX/strict.out" -w "%{http_code}" -X POST \
     "http://127.0.0.1:$UP_PORT/v1/messages" -H 'Content-Type: application/json' \
-    -d '{"model":"deepseek-chat","max_tokens":16,"thinking":{"type":"enabled","budget_tokens":1024},"tools":[{"name":"Read","input_schema":{"type":"object"}}],"messages":[{"role":"user","content":[{"type":"text","text":"跑一下"}]},{"role":"assistant","content":[{"type":"tool_use","id":"toolu_x","name":"Read","input":{}}]},{"role":"user","content":'"$1"'}]}')
-  check "尾部 $3 → $2" "$CODE" "$2"
+    -d '{"model":"deepseek-chat","max_tokens":16,"thinking":{"type":"enabled","budget_tokens":1024},"tools":[{"name":"Read","input_schema":{"type":"object"}}],"messages":[{"role":"user","content":[{"type":"text","text":"run it"}]},{"role":"assistant","content":[{"type":"tool_use","id":"toolu_x","name":"Read","input":{}}]},{"role":"user","content":'"$1"'}]}')
+  check "tail $3 -> $2" "$CODE" "$2"
 }
 tail_case '[{"type":"tool_result","tool_use_id":"toolu_x","content":"ok"}]' \
-  400 "只有 tool_result（裸）"
+  400 "only tool_result (bare)"
 tail_case '[{"type":"tool_result","tool_use_id":"toolu_x","content":"ok"},{"type":"text","text":" "}]' \
-  200 "tool_result + 一个空格"
-tail_case '[{"type":"tool_result","tool_use_id":"toolu_x","content":"ok"},{"type":"text","text":"继续"}]' \
-  200 "tool_result + 普通指令"
-# 报错原文必须是上游那句（后面几章靠它认形状），逐字锁住。
+  200 "tool_result + one space"
+tail_case '[{"type":"tool_result","tool_use_id":"toolu_x","content":"ok"},{"type":"text","text":"continue"}]' \
+  200 "tool_result + a normal instruction"
+# The error text must be the upstream's own sentence (later chapters rely on it to recognize the shape); lock it verbatim.
 CODE=$(curl -s -o "$SANDBOX/strict.out" -w "%{http_code}" -X POST \
   "http://127.0.0.1:$UP_PORT/v1/messages" -H 'Content-Type: application/json' \
   -d '{"model":"deepseek-chat","messages":[{"role":"user","content":[{"type":"tool_result","tool_use_id":"t","content":"ok"}]}]}')
 command grep -q "must be passed back" "$SANDBOX/strict.out" \
-  && ok "400 的文案是上游那句（推理字段）——文案与真实原因不一致，别按文案判" \
-  || bad "400 文案不对：$(head -c 160 "$SANDBOX/strict.out")"
+  && ok "the 400 text is the upstream's own sentence (reasoning field) -- text and real cause disagree, do not judge by text" \
+  || bad "wrong 400 text: $(head -c 160 "$SANDBOX/strict.out")"
 
-echo; echo "== 10. count_tokens：上游听得懂就转发拿真值 =="
-# Claude Code 周期性调 count_tokens 算上下文水位（OpenAI 方言上游没有这个
-# 端点）。假上游实现了它（原生 anthropic 形态）→ 代理必须转发：model 按
-# mid 档链头补上（count_tokens 请求不带 model），客户端拿到上游真值 42，
-# 而不是本地字节数/4 粗估。本地粗估兜底（上游 404 → 学习 → 不再白跑）
-# 由单测盖着（count_tokens_test.go）。
+echo; echo "== 10. count_tokens: if the upstream understands it, forward and get the real value =="
+# Claude Code calls count_tokens periodically to compute context usage (OpenAI-dialect upstreams have no such
+# endpoint). The fake upstream implements it (native anthropic shape) -> the proxy must forward: fill model from
+# the mid tier's chain head (count_tokens requests carry no model), and the client gets the upstream's real value 42,
+# not a local bytes/4 estimate. The local estimate fallback (upstream 404 -> learn -> stop wasting requests)
+# is covered by unit tests (count_tokens_test.go).
 curl -sf "http://127.0.0.1:$UP_PORT/__mock/reset" -X POST >/dev/null
 OUT="$(E2E_SCENARIO=count_tokens "$BIN" claude --profile=ds 2>"$SANDBOX/ct.err")"
 echo "$OUT" | sed 's/^/    /'
 check "count_tokens 200" "$(echo "$OUT" | grep '^HTTP=' | cut -d= -f2)" "200"
-check "拿到上游真值 42（不是本地粗估）" "$(echo "$OUT" | grep '^INPUT_TOKENS=' | cut -d= -f2)" "42"
+check "got the upstream's real value 42 (not a local estimate)" "$(echo "$OUT" | grep '^INPUT_TOKENS=' | cut -d= -f2)" "42"
 GOT=$(curl -s "http://127.0.0.1:$UP_PORT/__mock/requests" | python3 -c '
 import json,sys
 r=json.load(sys.stdin)
@@ -340,56 +340,56 @@ if not ct:
     print("NOT_FORWARDED")
 else:
     print(str(ct[0]["body"].get("model","NONE"))+"@"+ct[0]["path"])')
-check "转发到了上游、model 按 mid 链头补上" "$GOT" "deepseek-chat@/v1/messages/count_tokens"
+check "forwarded to the upstream, with model filled from the mid chain head" "$GOT" "deepseek-chat@/v1/messages/count_tokens"
 
-echo; echo "== 11. 控制端点：跨用户停机（/__newgate/stop + 令牌） =="
-# 多用户部署：claude 用户读得到共享配置，却对 root 起的 daemon 没有
-# kill() 权限——停机只能靠这个端点。错令牌必须 403；对令牌 200 且
-# daemon 自己退干净（pid/lock 都清掉）。
+echo; echo "== 11. Control endpoint: cross-user shutdown (/__newgate/stop + token) =="
+# Multi-user deployment: the claude user can read the shared config but has no
+# kill() permission on a daemon started as root -- so stopping can only go through this endpoint. A wrong token must be 403; the right token 200 and
+# the daemon exits cleanly itself (both pid and lock cleaned up).
 PIDFILE="$NEWGATE_HOME/.newgate.pid"
 if [ -f "$PIDFILE" ]; then
   PORT=$(python3 -c 'import json;print(json.load(open("'"$NEWGATE_HOME"'/state.json"))["port"])')
   TOK=$(python3 -c 'import json;print(json.load(open("'"$NEWGATE_HOME"'/state.json")).get("control_token",""))')
   if [ -n "$TOK" ]; then
-    ok "state.json 里生成了控制令牌"
+    ok "a control token was generated in state.json"
   else
-    bad "控制令牌没生成（跨用户停机会退化成「请让 root 来停」）"
+    bad "no control token was generated (cross-user shutdown would degrade to asking root to stop it)"
   fi
   CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
     "http://127.0.0.1:$PORT/__newgate/stop" -H 'Authorization: Bearer wrong-token')
-  check "错令牌 → 403" "$CODE" "403"
+  check "wrong token -> 403" "$CODE" "403"
   CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
     "http://127.0.0.1:$PORT/__newgate/stop" -H "Authorization: Bearer $TOK")
-  check "对令牌 → 200" "$CODE" "200"
-  # 等的是「pid 和 lock 都清了」——断言的就是这两件事，等待条件必须一致。
-  # 只等 pidfile 会在 RemovePid() 与 RemoveLock() 之间被抢占：pid 没了、lock
-  # 还剩几微秒，轮询恰好落进这个窗口就误报「没退干净」（2026-09-17 偶发）。
+  check "right token -> 200" "$CODE" "200"
+  # What we wait for is "both pid and lock are gone" -- those are the two things asserted, so the wait condition must match.
+  # Waiting only on the pidfile gets preempted between RemovePid() and RemoveLock(): pid gone, lock
+  # still there for a few microseconds, and a poll landing exactly in that window falsely reports "did not exit cleanly" (intermittent, 2026-09-17).
   for _ in $(seq 40); do
     [ ! -f "$PIDFILE" ] && [ ! -f "$NEWGATE_HOME/.newgate.lock" ] && break
     sleep 0.1
   done
   if [ ! -f "$PIDFILE" ] && [ ! -f "$NEWGATE_HOME/.newgate.lock" ]; then
-    ok "daemon 收到指令后退出，pid/lock 都清了"
+    ok "the daemon exited after the command, pid/lock are both gone"
   else
-    bad "daemon 没退干净（pid 或 lock 还在）"
+    bad "the daemon did not exit cleanly (pid or lock still there)"
   fi
   curl -sf "http://127.0.0.1:$PORT/__newgate/status" >/dev/null 2>&1 \
-    && bad "端口还在听？" || ok "端口已释放"
+    && bad "the port is still listening?" || ok "the port is released"
 else
-  bad "沙箱 daemon 的 pid 文件不在（前面哪一步没起 daemon？）"
+  bad "the sandbox daemon's pid file is missing (did some earlier step fail to start the daemon?)"
 fi
 
-echo; echo "== 12. 优雅交接：restart 不掐在途流（nginx 式零停机升级） =="
-# 上一章把 daemon 停了，先经懒启动路径拉回来。
+echo; echo "== 12. Graceful handover: restart does not cut in-flight streams (nginx-style zero-downtime upgrade) =="
+# The previous chapter stopped the daemon; bring it back through the lazy-start path first.
 OUT="$(E2E_SCENARIO=plain "$BIN" claude --profile=ds 2>/dev/null)"
-check "懒启动拉回 daemon" "$(echo "$OUT" | grep '^HTTP=' | cut -d= -f2)" "200"
+check "lazy start brought the daemon back" "$(echo "$OUT" | grep '^HTTP=' | cut -d= -f2)" "200"
 PIDFILE="$NEWGATE_HOME/.newgate.pid"
 read_pid() { python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["pid"])' "$PIDFILE" 2>/dev/null; }
 OLD_PID=$(read_pid)
 if [ -z "$OLD_PID" ]; then
-  bad "pid 文件读不出，没法验证换血"
+  bad "cannot read the pid file, so the handover cannot be verified"
 else
-  # 一条 ~2.5s 的慢 SSE 流，中途 restart：流必须完整流完
+  # A ~2.5s slow SSE stream, with a restart in the middle: the stream must finish completely
   curl -sN -o "$SANDBOX/sse.out" -w '%{http_code}' -X POST \
     "http://127.0.0.1:$PROXY_PORT/a/claude/p/ds/v1/messages" \
     -H 'Content-Type: application/json' -H 'x-api-key: newgate-local' \
@@ -397,101 +397,101 @@ else
     -d '{"model":"deepseek-chat","max_tokens":64,"stream":true,"mock_slow":true,"messages":[{"role":"user","content":"go"}]}' \
     > "$SANDBOX/sse.code" &
   CURL_PID=$!
-  sleep 0.8  # 流已经跑起来，正在途中
+  sleep 0.8  # the stream is already running, in flight
   OUT="$("$BIN" restart 2>&1)"
   echo "$OUT" | sed 's/^/    /'
   echo "$OUT" | command grep -q 'gracefully restarted' \
-    && ok "restart 走了优雅交接（socket 移交）" \
-    || bad "restart 没走交接: $(echo "$OUT" | head -2)"
+    && ok "restart did a graceful handover (socket handover)" \
+    || bad "restart did not hand over: $(echo "$OUT" | head -2)"
   wait "$CURL_PID"
-  check "SSE 流 200（restart 就发生在流中途）" "$(cat "$SANDBOX/sse.code")" "200"
+  check "SSE stream 200 (the restart happened mid-stream)" "$(cat "$SANDBOX/sse.code")" "200"
   command grep -q 'message_stop' "$SANDBOX/sse.out" \
-    && ok "流完整流完（收到 message_stop）" || bad "在途流被 restart 掐断了"
+    && ok "the stream finished completely (message_stop received)" || bad "the in-flight stream was cut off by the restart"
   RCVD=$(cat "$SANDBOX/sse.out" | command grep -c 'content_block_delta')
-  [ "$RCVD" -ge 4 ] && ok "增量块都到了（$RCVD）" || bad "增量块丢了（只有 $RCVD）"
+  [ "$RCVD" -ge 4 ] && ok "all delta chunks arrived ($RCVD)" || bad "delta chunks lost (only $RCVD)"
   NEW_PID=$(read_pid)
   if [ -n "$NEW_PID" ] && [ "$NEW_PID" != "$OLD_PID" ]; then
-    ok "pid 已换血（$OLD_PID → $NEW_PID）"
+    ok "pid changed ($OLD_PID -> $NEW_PID)"
   else
-    bad "pid 没换血（旧 $OLD_PID，新 '$NEW_PID'）"
+    bad "pid did not change (old $OLD_PID, new '$NEW_PID')"
   fi
-  # 交接后的新请求要落在（也可能没落在，但必须成功）新进程上
+  # A new request after the handover must land on the new process (it may not, but it must succeed)
   OUT="$(E2E_SCENARIO=plain "$BIN" claude --profile=ds 2>/dev/null)"
-  check "交接后新请求 200" "$(echo "$OUT" | grep '^HTTP=' | cut -d= -f2)" "200"
+  check "new request after the handover returns 200" "$(echo "$OUT" | grep '^HTTP=' | cut -d= -f2)" "200"
 fi
 
-echo; echo "== 13. 后台请求：分类器切轻档，其余只禁思考 =="
-# 实抓（2026-09，glm-5.3）：Bash 分类器 = 非流式、model=mid、system 开头
-# "You are a security monitor…"。代理必须把分类器（bg_plain/bg_adaptive）
-# 切到 light；没写 thinking 的 bg_plain 注入 disabled，显式 adaptive 必须
-# 保留。其他后台调用（bg_other，compact 总结）保留 mid + disabled。
+echo; echo "== 13. Background requests: the classifier switches to the light tier, everything else only gets thinking disabled =="
+# Captured (2026-09, glm-5.3): the Bash classifier = non-streaming, model=mid, the system starts with
+# "You are a security monitor...". The proxy must switch the classifier (bg_plain/bg_adaptive)
+# to light; bg_plain, which wrote no thinking, gets disabled injected, and an explicit adaptive must be
+# preserved. Other background calls (bg_other, compact summaries) keep mid + disabled.
 for SC in bg_plain bg_adaptive bg_other bg_realname; do
   curl -sf "http://127.0.0.1:$UP_PORT/__mock/reset" -X POST >/dev/null
   OUT="$(E2E_SCENARIO=$SC "$BIN" claude --profile=glm 2>"$SANDBOX/$SC.err")"
   echo "$OUT" | sed 's/^/    /'
-  check "$SC 请求 200" "$(echo "$OUT" | grep '^HTTP=' | cut -d= -f2)" "200"
-  WANT="glm-4-plus|disabled"          # bg_other：无标记 → 留在 mid
-  [ "$SC" != "bg_other" ] && WANT="glm-4.5-air|disabled"  # 分类器 → light
-  [ "$SC" = "bg_adaptive" ] && WANT="glm-4.5-air|adaptive" # 显式 thinking 不覆盖
+  check "$SC request returns 200" "$(echo "$OUT" | grep '^HTTP=' | cut -d= -f2)" "200"
+  WANT="glm-4-plus|disabled"          # bg_other: no marker -> stays on mid
+  [ "$SC" != "bg_other" ] && WANT="glm-4.5-air|disabled"  # classifier -> light
+  [ "$SC" = "bg_adaptive" ] && WANT="glm-4.5-air|adaptive" # an explicit thinking is not overridden
   GOT=$(curl -s "http://127.0.0.1:$UP_PORT/__mock/requests" | python3 -c '
 import json,sys
 r=json.load(sys.stdin)
 b=r[0]["body"] if r else {}
 th=(b.get("thinking") or {}).get("type","MISSING")
 print(str(b.get("model","NONE"))+"|"+th)')
-  check "$SC 上游收到 $WANT" "$GOT" "$WANT"
+  check "$SC: the upstream received $WANT" "$GOT" "$WANT"
 done
 
-echo; echo "== 13b. 点名 profile 就只走它：链尾被砍掉（不再换人） =="
-# 点名的语义是「这次就用这个 profile」：launch 只在用户点了名时才把 /p/<name>
-# 写进 base URL，代理据此把链**截断到链头**。所以 glm 挂了就如实报 glm 的错，
-# 绝不悄悄换到别人——这条断言原来写的是反的（期望沿链换到 ds 拿 200），
-# 因为那时候的行为就是那样：配置显示 glm、界面显示 glm、实际跑的是 ds。
+echo; echo "== 13b. Naming a profile uses only that one: the chain tail is cut off (no more switching) =="
+# Naming a profile means "use this profile for this call": launch only writes /p/<name> into the base URL when the user names one,
+# and the proxy truncates the chain **to its head** based on that. So if glm is down, it reports glm's error truthfully,
+# and never quietly switches to someone else -- this assertion was originally written the other way round (expecting a switch along the chain to ds for a 200),
+# because that was the behavior then: the config said glm, the UI said glm, and what actually ran was ds.
 #
-# 改道仍是路由决策（建链之前）：这一发撞上分类器（bg_plain → light 档），
-# 所以整条链是 light，被砍掉的尾巴是**下一个 profile 的 light**
-# （ds:ds/deepseek-chat），不是 mid 的 glm-4-plus。
+# Rerouting is still a routing decision (before the chain is built): this request hits the classifier (bg_plain -> light tier),
+# so the whole chain is light, and the tail that got cut is **the next profile's light**
+# (ds:ds/deepseek-chat), not mid's glm-4-plus.
 LOG="$NEWGATE_HOME/newgate.log"
 curl -sf "http://127.0.0.1:$UP_PORT/__mock/reset" -X POST >/dev/null
 curl -sf "http://127.0.0.1:$UP_PORT/__mock/fail?code=500" >/dev/null
 OUT="$(E2E_SCENARIO=bg_plain "$BIN" claude --profile=glm 2>"$SANDBOX/bgfo.err")"
 echo "$OUT" | sed 's/^/    /'
-check "点名的 profile 挂了就如实报 500（不换人）" "$(echo "$OUT" | grep '^HTTP=' | cut -d= -f2)" "500"
+check "a named profile that is down is reported truthfully as 500 (no switching)" "$(echo "$OUT" | grep '^HTTP=' | cut -d= -f2)" "500"
 GOT=$(curl -s "http://127.0.0.1:$UP_PORT/__mock/requests" | python3 -c '
 import json,sys
 r=json.load(sys.stdin)
 models=[x["body"].get("model") for x in r if x["path"].endswith("/messages")]
 print("|".join(dict.fromkeys(models)))')
-# 判据是**去过重的**模型序列：熔断器在快到阈值时会先打一发「预闸体检」
-# （[probe] pre-gate diagnosis，计数器 breaker.spared），那一发也走 /messages、
-# 也被假上游记下来。所以同一站被敲两次是正常的，而「换没换人」看的是**出现过
-# 哪些站**——去重之后才不会被体检打进来的重复项污染（2026-09-28 实测踩过：
-# 原始 join 在 13c 那条上给出 deepseek-chat|deepseek-chat，看着像换了人）。
-check "只敲了 glm 的链头：glm-4.5-air" "$GOT" "glm-4.5-air"
-# 砍掉了谁必须说出来（不静默）。怎么渲染前缀是机制、不是承诺（实测那行是
-# `[proxy] #13 profile glm is pinned, …`，reqID 是展开的），所以只锚那句尾巴，
-# 别去匹配前缀。
+# The criterion is the **de-duplicated** model sequence: the breaker, near its threshold, first fires a "pre-gate diagnosis"
+# ([probe] pre-gate diagnosis, counter breaker.spared), and that request also goes through /messages
+# and is also recorded by the fake upstream. So hitting the same stop twice is normal, and "did it switch" is about **which stops
+# appeared** -- only after de-duplication is it not polluted by duplicates from the diagnosis (measured 2026-09-28:
+# a raw join gave deepseek-chat|deepseek-chat on 13c, which looked like a switch).
+check "only glm's chain head was hit: glm-4.5-air" "$GOT" "glm-4.5-air"
+# Who got cut must be said out loud (not silently). How the prefix is rendered is mechanism, not a promise (measured, that line is
+# `[proxy] #13 profile glm is pinned, ...`, with reqID expanded), so anchor only that tail,
+# do not match the prefix.
 for _ in $(seq 20); do
   command grep -aq 'profile glm is pinned, dropping 1 fallback step: ds:ds/deepseek-chat' "$LOG" 2>/dev/null && break
   sleep 0.1
 done
 command grep -aq 'profile glm is pinned, dropping 1 fallback step: ds:ds/deepseek-chat' "$LOG" \
-  && ok "日志说明白了砍掉哪一步（profile … is pinned）" \
-  || bad "日志没留下「砍掉了谁」（$LOG）"
-# 4xx 定案分支不写 X-Newgate-Failover，所以这里**不能**拿它当判据（缺席是必然的、
-# 空转的）；上面那两个判据才是：状态码来自链头、上游只被敲了一次。
+  && ok "the log says which step was cut (profile ... is pinned)" \
+  || bad "the log does not record who got cut ($LOG)"
+# The 4xx finalization branch does not write X-Newgate-Failover, so **cannot** use it here as a criterion (its absence is certain,
+# a no-op); the two criteria above are the ones that matter: the status code comes from the chain head, and the upstream was hit only once.
 
-echo; echo "== 13c. newgate fallback off：全局关掉换人（所有 gateway 路径） =="
-# 13b 是**点名**时的截断，这一节是全局开关。判据在 state.json 的
-# gateway.fallback 上，覆盖所有没点名 profile 的请求（网页、curl、别的 agent
-# 都从这儿过）。两者同一个截断点、同一个结果，区别只在「为什么砍」——日志
-# 措辞不一样，所以两条路能分开验。
+echo; echo "== 13c. newgate fallback off: globally turn off switching (all gateway paths) =="
+# 13b is the truncation when a profile is **named**; this section is the global switch. The criterion is on
+# gateway.fallback in state.json and covers every request that names no profile (the web UI, curl, other agents
+# all go through here). Both share the same truncation point and the same result; the only difference is "why it was cut" -- the log
+# wording differs, so the two paths can be verified separately.
 #
-# 形态是「先证链是活的、再关掉、再开回来」，不是只证「没换人」：一条根本没接
-# 上的链也能让「第二站没被敲」成立，那正是 13b 之前那版空转的样子。
+# The shape is "first prove the chain is alive, then turn it off, then turn it back on", not just "no switching": a chain that was never connected
+# can also make "the second stop was not hit" true, which is exactly how the version before 13b passed while doing nothing.
 #
-# `newgate fallback` 没有「不带参数自报现状」这种用法（无参数报 usage 并以 64
-# 退出，与 schema-repair 同一条家规），现状从 `newgate status` 看。
+# `newgate fallback` has no "report the current state when given no arguments" usage (no args prints usage and exits with 64,
+# the same house rule as schema-repair); see the current state with `newgate status`.
 LOG="$NEWGATE_HOME/newgate.log"
 RESETUP() { curl -sf "http://127.0.0.1:$UP_PORT/__mock/reset" -X POST >/dev/null; }
 MODELS() { curl -s "http://127.0.0.1:$UP_PORT/__mock/requests" | python3 -c '
@@ -499,160 +499,160 @@ import json,sys
 r=json.load(sys.stdin)
 print("|".join(dict.fromkeys(x["body"].get("model") for x in r if x["path"].endswith("/messages"))))'; }
 
-# (1) 对照：默认开着，同一发必须沿链换人。没有这一发，「关掉之后只敲了一次」
-#     也可能只是链没接上；顺带它也把 chain.failover 记账（15 章要读）。
-#     MODELS 是去过重的（见 13b 的注释）：这里要的是「去过哪几站」。
+# (1) Control: on by default, the same request must switch along the chain. Without this one, "only one hit after turning it off"
+#     could also just mean the chain was not connected; it also records chain.failover (chapter 15 reads it).
+#     MODELS is de-duplicated (see the note in 13b): what is wanted here is "which stops were visited".
 RESETUP; curl -sf "http://127.0.0.1:$UP_PORT/__mock/fail?code=500" >/dev/null
 OUT="$(E2E_SCENARIO=bg_plain "$BIN" claude 2>"$SANDBOX/fbon1.err")"
-check "对照：fallback 开着 ⇒ 链头挂了仍 200（沿 light 链换人）" \
+check "control: fallback on => still 200 when the chain head is down (switch along the light chain)" \
   "$(echo "$OUT" | grep '^HTTP=' | cut -d= -f2)" "200"
-check "对照：敲了两站（ds 的 light → glm 的 light）" "$(MODELS)" "deepseek-chat|glm-4.5-air"
+check "control: two stops hit (ds's light -> glm's light)" "$(MODELS)" "deepseek-chat|glm-4.5-air"
 
-# (2) 关掉：同一发必须直接撞在链头上，上游原文原样报出来。
+# (2) Turned off: the same request must hit the chain head and report the upstream's own text as is.
 "$BIN" fallback off >/dev/null 2>&1
 RESETUP; curl -sf "http://127.0.0.1:$UP_PORT/__mock/fail?code=500" >/dev/null
 OUT="$(E2E_SCENARIO=bg_plain "$BIN" claude 2>"$SANDBOX/fboff.err")"
-check "fallback 关了 ⇒ 链头的 500 原样报出来" \
+check "fallback off => the chain head's 500 is reported as is" \
   "$(echo "$OUT" | grep '^HTTP=' | cut -d= -f2)" "500"
-check "fallback 关了 ⇒ 只敲了链头（没换人）" "$(MODELS)" "deepseek-chat"
+check "fallback off => only the chain head was hit (no switching)" "$(MODELS)" "deepseek-chat"
 for _ in $(seq 20); do
   command grep -aq 'fallback is off, dropping 1 chain step: glm:glm/glm-4.5-air' "$LOG" 2>/dev/null && break
   sleep 0.1
 done
 command grep -aq 'fallback is off, dropping 1 chain step: glm:glm/glm-4.5-air' "$LOG" \
-  && ok "日志说明白了砍掉哪一步（fallback is off）" \
-  || bad "日志没留下「砍掉了谁」（$LOG）"
-# 这一行是用户唯一的线索：平时请求照常 200，只有某个上游真的挂了才显形；
-# 忘了自己拨过这个开关，就会把「没有 fallback」误读成「链上没人可换」。
-check "status 报出 fallback=off" \
+  && ok "the log says which step was cut (fallback is off)" \
+  || bad "the log does not record who got cut ($LOG)"
+# This line is the user's only clue: normally requests return 200 as usual, and it only shows when some upstream really is down;
+# having forgotten you flipped this switch, you would misread "no fallback" as "nobody on the chain to switch to".
+check "status reports fallback=off" \
   "$("$BIN" status 2>&1 | command grep -c 'fallback=off')" "1"
 
-# (3) 拨回去：开关是对称的，状态行跟着干净。
+# (3) Flip it back: the switch is symmetric, and the status line follows cleanly.
 "$BIN" fallback on >/dev/null 2>&1
 RESETUP; curl -sf "http://127.0.0.1:$UP_PORT/__mock/fail?code=500" >/dev/null
 OUT="$(E2E_SCENARIO=bg_plain "$BIN" claude 2>"$SANDBOX/fbon2.err")"
-check "fallback 开回来 ⇒ 又沿链换人了" \
+check "fallback back on => switching along the chain again" \
   "$(echo "$OUT" | grep '^HTTP=' | cut -d= -f2)" "200"
-check "fallback 开回来 ⇒ status 不再报 fallback=off" \
+check "fallback back on => status no longer reports fallback=off" \
   "$("$BIN" status 2>&1 | command grep -c 'fallback=off')" "0"
 
-echo; echo "== 15. newgate metrics：路径上的操作全记账 =="
-# 计数器在 daemon 内存里（/__newgate/metrics），CLI 经 HTTP 读；第 12 节
-# 的 restart 已经清过一次零，所以这里自己先制造几笔再验。count_tokens
-# 直接 curl 代理（假上游有这个端点 → 转发拿真值）。
+echo; echo "== 15. newgate metrics: everything on the path is accounted =="
+# The counters live in daemon memory (/__newgate/metrics), and the CLI reads them over HTTP; the restart in section 12
+# already cleared them once, so manufacture a few here first and then check. count_tokens
+# goes straight to the proxy with curl (the fake upstream has that endpoint -> forward and get the real value).
 CT_CODE=$(curl -s -o "$SANDBOX/ct2.out" -w '%{http_code}' -X POST \
   "http://127.0.0.1:$PROXY_PORT/a/claude/p/glm/v1/messages/count_tokens" \
   -H 'Content-Type: application/json' -H 'x-api-key: newgate-local' \
   -d '{"messages":[{"role":"user","content":"count me"}]}')
-check "metrics 前置：count_tokens 200" "$CT_CODE" "200"
+check "metrics precondition: count_tokens 200" "$CT_CODE" "200"
 MOUT="$("$BIN" metrics 2>"$SANDBOX/metrics.err")"
 echo "$MOUT" | sed 's/^/    /'
 for KEY in "special.claude-bg.route_light" "count_tokens.forwarded" "count_tokens.total" "chain.step_failed" "chain.failover"; do
   echo "$MOUT" | command grep -q "$KEY" \
-    && ok "metrics 有 $KEY" \
-    || bad "metrics 缺 $KEY（输出：$(echo "$MOUT" | head -3)）"
+    && ok "metrics has $KEY" \
+    || bad "metrics is missing $KEY (output: $(echo "$MOUT" | head -3))"
 done
 
-echo; echo "== 14. 窗口声明：跟 profile 走，但封顶 512K/400K =="
-# Claude Code 不认识我们注入的模型名，按「未知模型」假设窗口。glm 声明了
-# 1M/500k → 被客户端的上限压到 512K/400K（2026-11-12 现场：1M 顶到最后一格，
-# 400 之后连 /compact 都发不出去）；ds 没声明 → 窗口用上限 512K，compact
-# 交给客户端自己按窗口算。
+echo; echo "== 14. Window declarations: follow the profile, but capped at 512K/400K =="
+# Claude Code does not recognize the model names we inject and assumes a window for an "unknown model". glm declares
+# 1M/500k -> the client's caps squeeze it to 512K/400K (2026-11-12 on site: 1M hit the last cell,
+# and after 400 even /compact could not be sent); ds declares none -> the window uses the cap 512K, and compact
+# is left to the client to compute from the window.
 OUT="$(E2E_SCENARIO=plain "$BIN" claude --profile=glm 2>/dev/null)"
-check "glm: MAX_CONTEXT_TOKENS 封到 512000" \
+check "glm: MAX_CONTEXT_TOKENS capped at 512000" \
   "$(echo "$OUT" | grep '^WIN_MAX=' | cut -d= -f2-)" "512000"
-check "glm: AUTO_COMPACT_WINDOW 封到 400000" \
+check "glm: AUTO_COMPACT_WINDOW capped at 400000" \
   "$(echo "$OUT" | grep '^WIN_COMPACT=' | cut -d= -f2-)" "400000"
 OUT="$(E2E_SCENARIO=plain "$BIN" claude --profile=ds 2>/dev/null)"
-check "ds（没声明）: MAX_CONTEXT_TOKENS=512000（用上限）" \
+check "ds (nothing declared): MAX_CONTEXT_TOKENS=512000 (uses the cap)" \
   "$(echo "$OUT" | grep '^WIN_MAX=' | cut -d= -f2-)" "512000"
-check "ds（没声明）: AUTO_COMPACT_WINDOW 为空（客户端自己算）" \
+check "ds (nothing declared): AUTO_COMPACT_WINDOW empty (the client computes it)" \
   "$(echo "$OUT" | grep '^WIN_COMPACT=' | cut -d= -f2-)" ""
 
-echo; echo "== 16. naked：Bash 分类器被短路，上游一个请求都收不到 =="
-# 裸奔是「自家安全门」：开着时 Bash 分类器请求被直接批准，不经过上游。判据
-# 跟上章节同一个（bg_plain = "You are a security monitor…" 的后台小调用）。
-#   关着：请求真的打到上游（glm 的 light 档）；
-#   开着：请求被短路，上游 /__mock/requests 数 0，短路口计数器涨。
+echo; echo "== 16. naked: the Bash classifier is short-circuited, the upstream receives not one request =="
+# Going naked is "our own security gate": while on, Bash classifier requests are approved directly and never reach the upstream. The criterion
+# is the same as the previous chapter (bg_plain = the small background call with "You are a security monitor...").
+#   off: the request really reaches the upstream (glm's light tier);
+#   on: the request is short-circuited, the upstream's /__mock/requests count is 0, and the short-circuit counter goes up.
 UPCOUNT() { curl -s "http://127.0.0.1:$UP_PORT/__mock/requests" | python3 -c 'import json,sys;print(len(json.load(sys.stdin)))'; }
 RESETUP() { curl -sf "http://127.0.0.1:$UP_PORT/__mock/reset" -X POST >/dev/null; }
 
 RESETUP
 OUT="$(E2E_SCENARIO=bg_plain "$BIN" claude --profile=glm 2>"$SANDBOX/nk_off.err")"
 echo "$OUT" | sed 's/^/    /'
-check "裸奔关：bg_plain 200" "$(echo "$OUT" | grep '^HTTP=' | cut -d= -f2)" "200"
-check "裸奔关：上游收到 1 个分类器请求" "$(UPCOUNT)" "1"
+check "naked off: bg_plain 200" "$(echo "$OUT" | grep '^HTTP=' | cut -d= -f2)" "200"
+check "naked off: the upstream received 1 classifier request" "$(UPCOUNT)" "1"
 GOT=$(curl -s "http://127.0.0.1:$UP_PORT/__mock/requests" | python3 -c '
 import json,sys
 r=json.load(sys.stdin)
 print(r[0]["body"].get("model","NONE") if r else "NONE")')
-check "裸奔关：分类器照常切到 light（glm-4.5-air）" "$GOT" "glm-4.5-air"
+check "naked off: the classifier still switches to light (glm-4.5-air)" "$GOT" "glm-4.5-air"
 
 "$BIN" naked on >/dev/null 2>&1
 RESETUP
 OUT="$(E2E_SCENARIO=bg_plain "$BIN" claude --profile=glm 2>"$SANDBOX/nk_on.err")"
 echo "$OUT" | sed 's/^/    /'
-check "裸奔开：bg_plain 仍 200（被短路批准）" "$(echo "$OUT" | grep '^HTTP=' | cut -d= -f2)" "200"
-check "裸奔开：上游收到 0 个请求（真的被短路了）" "$(UPCOUNT)" "0"
+check "naked on: bg_plain still 200 (approved via the short circuit)" "$(echo "$OUT" | grep '^HTTP=' | cut -d= -f2)" "200"
+check "naked on: the upstream received 0 requests (really short-circuited)" "$(UPCOUNT)" "0"
 MOUT="$("$BIN" metrics 2>/dev/null)"
-# 断言**机器事实**：计数器名（标识符，表格保证不折断——见内核 lib/style 的列宽
-# 下限）与说明的开头那几个字。
+# Assert **machine facts**: the counter name (an identifier; the table guarantees it is never wrapped -- see the column-width
+# floor in the kernel's lib/style) and the first few words of the description.
 #
-# **不逐字匹配整句人话**：说明是散文，按列宽折行、而且是**按字符**断的
-# （第一行以 `naked: the classi` 硬断）。逐字去 match 一整句，断言的就变成了
-# 「终端多宽」。换行压平也救不了——续行带着列缩进，词与词之间是多空格。
-# 2026-09-20 之前这里是逐行 grep：中文说明短、恰好没被折开，英文一长就折了，
-# 落空的样子还像「计数没了」。
+# **Do not match a whole sentence of prose verbatim**: the description is prose, wrapped to the column width, and broken **per character**
+# (the first line hard-breaks at `naked: the classi`). Matching a whole sentence verbatim turns the assertion into
+# "how wide is the terminal". Flattening the newlines does not save it either -- continuation lines carry the column indent, and words are separated by multiple spaces.
+# Before 2026-09-20 this was a line-by-line grep: the Chinese description was short and happened not to wrap, and a long English one wraps,
+# and the failure looked like "the counter is gone".
 FLAT="$(echo "$MOUT" | tr '\n' ' ' | tr -s ' ')"
 case "$FLAT" in
   *"classifier-naked.shortcircuit"*"naked:"*)
-    ok "metrics 有 special.classifier-naked.shortcircuit（短路已计数）" ;;
-  *) bad "metrics 缺 naked 短路计数（输出：$(echo "$MOUT" | command grep -a classifier-naked)）" ;;
+    ok "metrics has special.classifier-naked.shortcircuit (short circuit counted)" ;;
+  *) bad "metrics is missing the naked short-circuit counter (output: $(echo "$MOUT" | command grep -a classifier-naked))" ;;
 esac
 "$BIN" naked off >/dev/null 2>&1
-check "裸奔终于关掉（不留沙箱脏状态）" "$("$BIN" naked 2>&1 | command grep -c 'naked is off')" "1"
+check "naked finally off (leave no dirty sandbox state)" "$("$BIN" naked 2>&1 | command grep -c 'naked is off')" "1"
 
-echo; echo "== 19. 运行期开关：模块自己上报、命令自己注册 =="
-# 这一层是「everything is module」的用户界面：模块在 Start 里把自己的开关点
-# 上报给 plugin-manager（RegisterSelf），命令由**各模块自己**注册进 cli
-# （gateway 的 st/schema-repair、claudecode 的 naked、plugin-manager 的 plugin）。
+echo; echo "== 19. Runtime switches: modules report themselves, commands register themselves =="
+# This layer is the user interface of "everything is a module": modules report their switch points
+# to plugin-manager in Start (RegisterSelf), and the commands are registered into cli by **each module itself**
+# (gateway's st/schema-repair, claudecode's naked, plugin-manager's plugin).
 #
-# 这里断言的是列表的地基：**枚举源必须是组件图**，不是「谁上报过」——否则
-# 「这个模块没有开关」和「这个模块忘了注册」长得一模一样，用户看到的是同一个
-# 空列表。「关掉一个点真的改变热路径」那一半由第 20 章的 schema-repair 锁。
+# What is asserted here is the foundation of the list: **the enumeration source must be the component graph**, not "who reported" -- otherwise
+# "this module has no switches" and "this module forgot to register" look exactly the same, and the user sees the same
+# empty list. The "turning a point off really changes the hot path" half is locked by schema-repair in chapter 20.
 #
-# 2026-09-20 起这一章只看**内核自带**的模块：上游怪癖模块（deepseek 那套开关点
-# 曾经是这一层最好的例子）跟着发行版走了，它的开关点由发行版自己的 e2e 锁。
+# Since 2026-09-20 this chapter only looks at **the kernel's own** modules: the upstream quirk modules (the deepseek switch set
+# used to be the best example of this layer) moved with the distribution, and their switch points are locked by the distribution's own e2e.
 PLUGIN_OUT="$("$BIN" plugin 2>&1)"
 case "$PLUGIN_OUT" in
   *"breaker"*"plugin-manager"*"gateway"*)
-    ok "plugin：列出全部模块（含没参与开关体系的）" ;;
-  *) bad "plugin 没列全模块：$(echo "$PLUGIN_OUT" | head -6 | tr '\n' ' ')" ;;
+    ok "plugin: lists every module (including ones outside the switch system)" ;;
+  *) bad "plugin did not list every module: $(echo "$PLUGIN_OUT" | head -6 | tr '\n' ' ')" ;;
 esac
 case "$PLUGIN_OUT" in
-  *"infra"*"gateway"*"model"*) ok "plugin：按分类分组展示" ;;
-  *) bad "plugin 没有按分类分组" ;;
+  *"infra"*"gateway"*"model"*) ok "plugin: grouped by category" ;;
+  *) bad "plugin is not grouped by category" ;;
 esac
 case "$PLUGIN_OUT" in
   *"cannot be toggled at runtime (v1)"*)
-    ok "plugin：没上报开关点的模块显式标注（不是静默省略）" ;;
-  *) bad "plugin 没标注「无法 runtime 开关」" ;;
+    ok "plugin: modules that report no switch point are labeled explicitly (not silently omitted)" ;;
+  *) bad "plugin does not label modules that cannot be toggled at runtime" ;;
 esac
 
-# 开关点认不出来时必须是**报错**，不是静默当成 on/off。
-"$BIN" plugin 根本没有这个模块 off >/dev/null 2>&1
-check "plugin：不存在的目标以非零退出" "$([ $? -ne 0 ] && echo yes || echo no)" "yes"
+# When a switch point cannot be recognized it must be **an error**, not silently treated as on/off.
+"$BIN" plugin no-such-module off >/dev/null 2>&1
+check "plugin: a nonexistent target exits non-zero" "$([ $? -ne 0 ] && echo yes || echo no)" "yes"
 
-echo; echo "== 20. special_treatment（整层 / 单插件）与 schema-repair =="
-# 这些开关不住在 plugin-manager 的账本里，而是 domain.State 上的 typed 字段
-# （special_treatment / special_treatment_off / schema_repair），所以单开一章。
-# 断言的是同一件事：**关掉之后热路径真的不做了**——只写进 state.json 而没人读，
-# 等于一个好看的开关。
+echo; echo "== 20. special_treatment (whole layer / single plugin) and schema-repair =="
+# These switches do not live in plugin-manager's ledger but are typed fields on domain.State
+# (special_treatment / special_treatment_off / schema_repair), hence their own chapter.
+# The assertion is the same thing: **once off, the hot path really stops doing it** -- written into state.json but read by nobody
+# is just a pretty switch.
 #
-# 探针用 schema-repair（内核 gateway 自己的一个 special 插件）：它补的是
-# "required": []，语义无操作，但**上游收到的字节里有没有那个键是看得见的**，
-# 正好当「这一层还在不在跑」的探针。2026-09-20 之前这里的探针是发行版那支
-# 尾部形状补丁（deepseek 第 4 手）——它更好用，但它跟着拥有者搬去发行版了。
+# The probe uses schema-repair (a special plugin of the kernel's gateway itself): it adds
+# "required": [], which is a no-op semantically, but **whether that key is in the bytes the upstream receives is visible**,
+# which makes it a perfect probe for "is this layer still running". Before 2026-09-20 the probe here was the distribution's
+# tail-shape patch (deepseek's 4th move) -- easier to use, but it moved to the distribution with its owner.
 SCHEMA_BODY='{"model":"normal","max_tokens":16,"messages":[{"role":"user","content":"hi"}],'\
 '"tools":[{"type":"function","function":{"name":"t","parameters":{"type":"object","properties":{}}}}]}'
 has_required() {
@@ -661,7 +661,7 @@ import json,sys
 try:
     r=json.load(sys.stdin)
     prm=r[0]["body"]["tools"][0]["function"]["parameters"]
-    print("有" if "required" in prm else "无")
+    print("yes" if "required" in prm else "no")
 except Exception:
     print("NOUP")' 2>/dev/null
 }
@@ -671,21 +671,21 @@ post_schema() {
     -H 'Content-Type: application/json' -d "$SCHEMA_BODY"
 }
 
-# (1) 单插件开关：这一格就是「只写进 state.json 而没人读」的反面。
+# (1) Single-plugin switch: this cell is the opposite of "written into state.json but read by nobody".
 "$BIN" schema-repair on >/dev/null 2>&1
 post_schema
-check "schema-repair on ⇒ 上游收到补好的 required" "$(has_required)" "有"
+check "schema-repair on => the upstream receives the repaired required" "$(has_required)" "yes"
 
 "$BIN" schema-repair off >/dev/null 2>&1
 post_schema
-check "schema-repair off ⇒ 字节原样，不补 required" "$(has_required)" "无"
+check "schema-repair off => bytes as is, required not added" "$(has_required)" "no"
 
-# (2) 整层关：special_treatment off ⇒ 这一层里所有**插件**都不跑。
+# (2) Whole layer off: special_treatment off => every **plugin** in this layer stops running.
 #
-# 探针得选一个真住在这层里的插件：内核自己的 claude-bg（claudecode 模块）给
-# 非流式后台调用补 thinking:disabled，上游收到没有这个字段就是「它没跑」。
-# 注意 schema-repair **不在这层里**（它是 gatewaystate 上的独立字段），所以它
-# 当不了整层开关的探针——2026-09-20 实测：st off 之后 required 照样被补。
+# The probe must pick a plugin that really lives in this layer: the kernel's own claude-bg (the claudecode module) adds
+# thinking:disabled to non-streaming background calls, and the upstream receiving no such field means "it did not run".
+# Note that schema-repair is **not in this layer** (it is a separate field on gatewaystate), so it
+# cannot probe the whole-layer switch -- measured 2026-09-20: after st off, required was still added.
 bg_thinking() {
   RESETUP
   E2E_SCENARIO=bg_other "$BIN" claude --profile=glm >/dev/null 2>&1
@@ -697,27 +697,27 @@ print((b.get("thinking") or {}).get("type","MISSING"))' 2>/dev/null
 }
 "$BIN" st on >/dev/null 2>&1
 GOT_BG="$(bg_thinking)"
-check "st on（整层）⇒ special 插件在跑（后台调用被补 thinking:disabled）" "$GOT_BG" "disabled"
+check "st on (whole layer) => the special plugins run (background calls get thinking:disabled)" "$GOT_BG" "disabled"
 
 "$BIN" st off >/dev/null 2>&1
 GOT_BG="$(bg_thinking)"
-check "st off（整层）⇒ 这一层不跑了（后台调用不再被补 thinking）" "$GOT_BG" "MISSING"
+check "st off (whole layer) => the layer does not run (background calls no longer get thinking)" "$GOT_BG" "MISSING"
 
-# (3) 整层开回来：同一发必须又被补上（开关是对称的）。
+# (3) Whole layer back on: the same request must get it added again (the switch is symmetric).
 "$BIN" st on >/dev/null 2>&1
 GOT_BG="$(bg_thinking)"
-check "st on（整层）⇒ 插件又跑起来了（开关对称）" "$GOT_BG" "disabled"
+check "st on (whole layer) => the plugins run again (switch is symmetric)" "$GOT_BG" "disabled"
 
-# 收尾：不留非出厂态（沙箱虽然会删，但脏状态会让调试时看到的现状骗人）。
-# fallback 也算在里面：13c 把它拨回过 off，漏了这一格的话，一个「忘了拨回来」
-# 的沙箱在 status 上看着和干净的一模一样——而它的症状要等某个上游真挂了才现形。
+# Wrap-up: leave no non-factory state (the sandbox is deleted anyway, but dirty state makes the status shown while debugging lie).
+# fallback counts too: 13c flipped it back off, and missing this cell would leave a sandbox that "forgot to flip it back"
+# looking exactly like a clean one in status -- and its symptom only shows when some upstream really goes down.
 "$BIN" schema-repair on >/dev/null 2>&1
 "$BIN" st on >/dev/null 2>&1
 "$BIN" fallback on >/dev/null 2>&1
-check "收尾：开关都回到出厂态" \
+check "wrap-up: all switches are back to factory state" \
   "$("$BIN" status 2>&1 | command grep -c 'special off:\|schema-repair=off\|fallback=off')" "0"
 
 
 echo
-echo "结果: $PASS 通过, $FAIL 失败"
+echo "Result: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

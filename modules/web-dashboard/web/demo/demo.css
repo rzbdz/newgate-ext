@@ -1,25 +1,25 @@
-/* 演示页**自己**的那几条样式。
+/* The few styles that belong to the demo page **itself**.
  *
- * 卡片那一族的样式（.card / .row / .pill / .mono …）不在这里——它们是产品的
- * （`src/app.css` 是全局的），演示页直接 import 那一份，见 main.ts 的说明。
- * 这个文件只管**产品里不存在**的东西：演示页自己的 toast。
+ * The card family's styles (.card / .row / .pill / .mono ...) are not here - they are the product's
+ * (`src/app.css` is global), and the demo page imports that one directly, see the note in main.ts.
+ * This file only handles things **that do not exist in the product**: the demo page's own toast.
  *
- * 那份壳的版面（侧栏 / 顶栏 / 网格）住在 DemoShell.svelte 的 `<style>` 里，与产品
- * 那边把 `.shell` 放在 app.css 里是同一个理由的反面：产品的网格必须全局，因为它
- * 要管子组件的**根元素**（Sidebar / TabStrip 都是组件）；演示页的壳整块都在自己
- * 那一个文件里，不需要谁来给它定位置。
+ * The shell's layout (sidebar / top bar / grid) lives in DemoShell.svelte's `<style>`, which is the opposite of the product's
+ * reason for putting `.shell` in app.css: the product's grid must be global because it has to manage
+ * child components' **root elements** (Sidebar / TabStrip are both components); the demo page's shell is entirely inside its own
+ * file, and nobody needs to position it.
  *
- * 为什么不把这几条塞进 app.css：那一份会进 web/dist、进那个静态二进制。演示页
- * 的样式进了产品产物，就是给每一个用户多发几百字节、并且在 review 时留下一条
- * 「.toast 是谁在用」的死代码。 */
+ * Why not stuff these few rules into app.css: that one goes into web/dist and into that static binary. Demo page
+ * styles in the product artifact would mean a few hundred extra bytes shipped to every user, and a "who uses .toast" piece of
+ * dead code left for review. */
 
-/* 演示页的 .shell 是 `height: 100%` 的网格，它的父级得有确定高度——产品那边靠
-   app.css 那句 `html, body, #app { height: 100% }`，这里再写一遍是**故意的冗余**
-   （见 main.ts：演示页共用产品那份 CSS，但它不 import App.svelte，壳是自己写的）。 */
+/* The demo page's .shell is a grid with `height: 100%`, and its parent needs a definite height - the product relies on
+   app.css's `html, body, #app { height: 100% }`, and writing it again here is **deliberate redundancy**
+   (see main.ts: the demo page shares the product's CSS, but does not import App.svelte, and the shell is its own). */
 #app { height: 100%; }
 
-/* toast：一句说清「这是演示」。
-   固定在屏幕下方、几秒后自己消失——它不是一条要用户处理的错误，只是一句话。 */
+/* toast: one sentence saying clearly "this is a demo".
+   Fixed at the bottom of the screen and gone by itself after a few seconds - it is not an error the user has to handle, just a sentence. */
 .toast {
   position: fixed;
   left: 50%;

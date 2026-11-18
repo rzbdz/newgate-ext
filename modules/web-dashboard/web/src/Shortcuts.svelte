@@ -1,16 +1,16 @@
 <script lang="ts">
-  // 键盘。**一条全局监听**，按出来的是一件事（见 nav.ts 的 Action），不是「哪个
-  // 按钮被点了」——App 拿到那件事再决定发生什么。
+  // Keyboard. **One global listener**, and what it produces is an event (see Action in nav.ts), not "which
+  // button was clicked" - App receives that event and decides what happens.
   //
-  // 为什么要有它：这个界面的验收线是「任何东西 4-5 次操作内到达」，而鼠标走完
-  // 侧栏 → tab → 控件 → 保存是 4 次，没有余量。键盘把「回到某个已知位置」压缩成
-  // 一次按键（Alt+数字 直达某一节、`[`/`]` 在节内换卡、`/` 找东西、⌘S 存）。
+  // Why it exists: this UI's acceptance bar is "anything reachable within 4-5 operations", and by mouse going
+  // sidebar -> tab -> control -> save is 4, with no slack. The keyboard compresses "get back to a known place" into
+  // one keystroke (Alt+digit jumps to a section, `[`/`]` switch cards within a section, `/` finds things, Cmd+S saves).
   //
-  // # 什么时候**不**接
+  // # When **not** to intercept
   //
-  // 单键快捷键在输入框里是普通字符：在配置文件里打不出一个方括号，是这类功能最
-  // 容易造成的坏，而且没人会联想到快捷键身上。所以除 ⌘S 与 Esc 外，一律先过
-  // shortcutAllowed（见 nav.ts）——它认输入框、下拉、contenteditable 与 CodeMirror。
+  // A single-key shortcut is a plain character inside an input box: not being able to type a square bracket into a config file is the worst thing
+  // this kind of feature can do, and nobody would connect it to a shortcut. So except for Cmd+S and Esc, everything first goes through
+  // shortcutAllowed (see nav.ts) - it recognizes input boxes, dropdowns, contenteditable and CodeMirror.
   import { shortcutAllowed, type Action } from "./nav";
 
   let { onAction }: { onAction: (a: Action) => void } = $props();
@@ -18,8 +18,8 @@
   $effect(() => {
     function onKey(e: KeyboardEvent) {
       const mod = e.ctrlKey || e.metaKey;
-      // 保存与「退出输入」是**无条件**接的：它们在编辑器里也只有一个意思，
-      // 而且 ⌘S 不拦下来的话浏览器会弹「保存网页」对话框。
+      // Save and "leave the input" are intercepted **unconditionally**: inside an editor they also have only one meaning,
+      // and if Cmd+S is not intercepted the browser pops up the "save web page" dialog.
       if (mod && (e.key === "s" || e.key === "S")) {
         e.preventDefault();
         onAction({ kind: "save" });
@@ -32,8 +32,8 @@
       }
       if (!shortcutAllowed(e.target)) return;
       if (mod || e.altKey) {
-        // Alt+数字：直达第 N 节。用 e.code 而不是 e.key——很多键盘布局下
-        // Alt+数字打出的是别的字符（macOS 上是 ¡™£…）。
+        // Alt+digit: jump to section N. Use e.code rather than e.key - under many keyboard layouts
+        // Alt+digit produces a different character (on macOS it is ¡™£…).
         const m = /^Digit([1-9])$/.exec(e.code);
         if (m && e.altKey) {
           e.preventDefault();

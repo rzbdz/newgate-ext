@@ -1,18 +1,18 @@
 <script lang="ts">
-  // 皮肤切换：**一个图标按钮**，点了才出选单。
+  // Theme switching: **one icon button**; the menu appears only when clicked.
   //
-  // # 为什么不是一个下拉框
+  // # Why not a dropdown
   //
-  // 之前它是 `<select>`。下拉框是一条**常驻的**控件：一栏宽度、一个方框、一个箭头，
-  // 每时每刻都占着顶栏——而它一年也点不了几次（皮肤是装完挑一次就完了的东西）。
-  // 用户的原话是「主题应该做一个按钮就行了，点击了才 popup 选单，默认不要做选单」，
-  // 以及「尽量减少不常用的控件按钮」。
+  // It used to be a `<select>`. A dropdown is a **permanently present** control: one column wide, a box, an arrow,
+  // taking up the top bar at every moment - and it is clicked a few times a year at most (the theme is something you pick once after install).
+  // The user's own words were "the theme should just be a button, the menu pops up only when clicked, do not make a menu by default",
+  // and "keep rarely used control buttons to a minimum".
   //
-  // # 为什么这个组件有两处调用者
+  // # Why this component has two callers
   //
-  // 产品界面（App.svelte）与演示页（demo/DemoShell.svelte）各有一个壳，之前那里
-  // 各写一遍下拉——而两份实现已经在别处漂过一次（侧栏的排列规则）。选单这种东西
-  // 「长什么样」是纯粹的观感，两处必须逐字一样，所以抽成一份。
+  // The product UI (App.svelte) and the demo page (demo/DemoShell.svelte) each have a shell, and before this they each
+  // wrote their own dropdown - and the two implementations had already drifted once elsewhere (the sidebar ordering rules). For something like a menu,
+  // "what it looks like" is pure appearance and the two must be word for word identical, so it is extracted into one copy.
   import { t } from "./i18n";
   import type { Themes } from "./api";
 
@@ -28,11 +28,11 @@
   let box = $state<HTMLElement | null>(null);
 
   /**
-   * 点别处就收起来。
+   * Clicking elsewhere folds it away.
    *
-   * 只在展开时挂监听（收起时不留一个每点一下都要跑一遍的处理器）。`pointerdown`
-   * 而不是 `click`：它在**按下**时就判，于是「按住拖到选单外面再松开」不会把选单
-   * 关掉又立刻被按钮那一下重新打开。
+   * Only listen while expanded (leave no handler behind that runs on every click when collapsed). `pointerdown`
+   * rather than `click`: it judges on **press**, so "hold, drag outside the menu, release" does not close the menu
+   * and immediately have it reopened by the button's click.
    */
   $effect(() => {
     if (!open) return;
@@ -50,15 +50,15 @@
     };
   });
 
-  /** 现在这一套的名字（空 id = 出厂那套，它不在 doc.themes 里）。 */
+  /** The name of the current theme (empty id = the factory one, which is not in doc.themes). */
   const current = $derived(
     doc.themes.find((x) => x.id === doc.active)?.name ?? t("follow the system"),
   );
 </script>
 
 <div class="wrap" bind:this={box}>
-  <!-- 记号是**对比度**那个（一个圆、右半边实心）：它是「深/浅」这件事的通用画法，
-      不指任何一家品牌，四个选项下都说得通。 -->
+  <!-- The mark is the **contrast** one (a circle, right half solid): it is the common way to draw "dark/light",
+      points at no brand, and makes sense for all four options. -->
   <button
     class="icon"
     aria-haspopup="listbox"
@@ -96,7 +96,7 @@
 <style>
   .wrap { position: relative; }
 
-  /* 图标按钮：与顶栏别的小按钮同高，但只有一格宽。 */
+  /* Icon button: same height as the other small buttons in the top bar, but only one cell wide. */
   .icon {
     display: flex;
     align-items: center;
@@ -120,7 +120,7 @@
   }
   .icon svg path { fill: currentColor; stroke: none; }
 
-  /* 选单：**右对齐**挂在按钮下面（顶栏右边的东西，往左展开才不会顶出屏幕）。 */
+  /* Menu: **right-aligned**, hanging below the button (things on the right of the top bar expand leftwards so they do not run off screen). */
   .menu {
     position: absolute;
     top: calc(100% + 5px);
@@ -148,8 +148,8 @@
     cursor: pointer;
   }
   .opt:hover { background: var(--panel-2); }
-  /* 选中那个用 **对勾** 而不是把整行反白：反白在深色下像「鼠标正停在这」，
-     而对勾说的是「当前是它」——两件事在这一格上会同时成立。 */
+  /* Use a **check mark** for the selected one rather than inverting the whole row: an inverted row looks like "the mouse is hovering here" in dark mode,
+     while the check mark says "this is the current one" - the two things would hold at the same time on this cell. */
   .tick {
     width: 10px;
     color: var(--accent);

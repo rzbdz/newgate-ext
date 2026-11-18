@@ -1,11 +1,11 @@
 <script lang="ts">
-  // 代理日志的尾巴（只读）。
+  // The tail of the proxy log (read-only).
   //
-  // 跟随靠**轮询**，不是 SSE：这一版的通道是「问一次快照」（见 api.ts），而日志
-  // 的尾巴读起来是廉价的（有字节上界，见网关那边的 tailLines）。真到了轮询不够
-  // 用的那天再上流——先上流是把一条协议焊在没验证过的用法上。
+  // Following relies on **polling**, not SSE: this version's channel is "ask for a snapshot" (see api.ts), and reading the log
+  // tail is cheap (there is a byte upper bound, see tailLines on the gateway side). When the day comes that polling is not enough,
+  // then go streaming - going streaming first welds a protocol onto unverified usage.
   //
-  // 自动滚到底：看日志的人要的是最后一行。往上翻的时候不打断他（见 onscroll）。
+  // Auto-scroll to the bottom: someone looking at logs wants the last line. Do not interrupt them when they scroll up (see onscroll).
   type Data = { path: string; lines: string[]; truncated?: boolean; missing?: boolean };
 
   import { t } from "../i18n";
@@ -13,21 +13,21 @@
   let { data }: { data: Data } = $props();
 
   let follow = $state(true);
-  // $state：它被下面的 $effect 读，而 bind:this 是在挂载之后才赋值的——不是响应式
-  // 的话，滚到底那一步永远看到的是 undefined（第一次加载就停在顶部）。
+  // $state: it is read by the $effect below, and bind:this is only assigned after mounting - if it were not reactive,
+  // the scroll-to-bottom step would always see undefined (stopping at the top on first load).
   let box = $state<HTMLDivElement | undefined>(undefined);
 
   $effect(() => {
-    // 依赖 data.lines 让这段在每次刷新后跑一次（Svelte 的 $effect 会追踪它读到的
-    // 响应式值）。
+    // Depend on data.lines so this runs once per refresh (Svelte's $effect tracks the reactive
+    // values it reads).
     void data.lines;
     if (follow && box) box.scrollTop = box.scrollHeight;
   });
 
   function onscroll() {
     if (!box) return;
-    // 「贴底」才继续跟：用户往上翻就是在读历史，这时把他拽回底部是最讨厌的一种
-    // 交互（他正在看的那一行会跑掉）。
+    // Only keep following when "stuck to the bottom": scrolling up means the user is reading history, and dragging them back to the bottom is the most annoying kind of
+    // interaction (the line they were looking at runs away).
     follow = box.scrollHeight - box.scrollTop - box.clientHeight < 24;
   }
 </script>
@@ -57,8 +57,8 @@
     font-family: var(--mono);
     font-size: 11.5px;
     line-height: 1.45;
-    /* 占满卡片剩下的一切（卡片自己撑满窗口，见 app.css 的 .card.fills）：日志多
-       看见一行就是多一行。min-height: 0 是让它**自己滚**而不是把卡片顶高。 */
+    /* Take everything left in the card (the card fills the window itself, see .card.fills in app.css): one more line of log
+       seen is one more line. min-height: 0 is what makes it **scroll itself** instead of pushing the card taller. */
     flex: 1;
     min-height: 0;
     overflow: auto;

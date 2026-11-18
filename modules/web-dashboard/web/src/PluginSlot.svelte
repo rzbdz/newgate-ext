@@ -1,12 +1,12 @@
 <script lang="ts">
-  // 版面上的一个**槽位**：清单里声明要填它的插件，各得一个空容器。
+  // A **slot** in the layout: plugins that declare in the manifest that they fill it each get an empty container.
   //
-  // 这是界面给模块的**框架接口**（与 Kind、皮肤令牌同一类东西）：界面决定「顶栏
-  // 右侧有一格」，模块决定那一格里是什么。这里不认识任何插件——加一个、摘一个，
-  // 这个文件都不用动。
+  // This is the UI's **framework interface** to modules (the same category as Kind and theme tokens): the UI decides "there is
+  // a cell on the right of the top bar", and the module decides what goes in that cell. This knows no plugin - adding or removing one,
+  // this file needs no change.
   //
-  // 一个插件坏了（import 失败、mount 抛错）只丢它自己那一格，并在控制台说一声：
-  // 界面不能因为一个模块的前端写坏了而整页白掉（与卡片 Broken 那条同一个道理）。
+  // A broken plugin (import fails, mount throws) only loses its own cell, and says something in the console:
+  // the UI must not go blank because one module's frontend is broken (same reasoning as the card's Broken case).
   import { onMount } from "svelte";
   import { pluginManifest, pluginHost } from "./api";
 
@@ -40,7 +40,7 @@
         try {
           off();
         } catch {
-          /* 卸载失败不该拦住界面换页 */
+          /* A failed unmount should not block page switching */
         }
       }
     };

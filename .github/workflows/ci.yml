@@ -1,23 +1,23 @@
 name: CI
 
-# 发行版的流水线，三档（对应 docs/10-testing-security.md 的粒度）：
+# The distribution's pipeline, in three tiers (matching the granularity of docs/10-testing-security.md):
 #
-#   core-test  内核的**全部内部测试** —— 发行版带的就是 core 这份依赖，
-#              它绿不绿直接决定这个产品能不能发。单独一个 job 是为了让它在
-#              run 列表里**有自己的名字**（`core-test passed`），而不是混在
-#              「我们自己的测试」里——出错时一眼能看出是内核的事还是发行版的事。
-#   dist-test  发行版自己的：格式、vet、装配清单是否过期、模块测试
-#   e2e        真二进制 + 内核的假上游，跑发行版模块的端到端行为
+#   core-test  **all internal tests** of the kernel -- the distribution ships the core dependency itself,
+#              and whether it is green decides whether this product can ship. A separate job so that it has
+#              **its own name** in the run list (`core-test passed`) instead of being mixed into
+#              "our own tests" -- when something breaks it is obvious whether it is the kernel's problem or the distribution's.
+#   dist-test  the distribution's own: formatting, vet, whether the assembly manifest is stale, module tests
+#   e2e        a real binary + the kernel's fake upstream, exercising the end-to-end behavior of distribution modules
 #
-# 触发条件与内核那边一致：push 到 main、有人开 PR、以及手动（2026-09-20 加回 PR）。
+# Triggers match the kernel's: push to main, someone opens a PR, and manual (PR triggers were added back 2026-09-20).
 #
-# 加 `pull_request` 解决的是「别人的 PR 有没有被检查」——本仓库的 README 现在明着
-# 招人 fork，提上来的 PR 不该是一句「没人检查」。它**不改变本仓库自己的流程**：
-# 直推 main 照样只跑 push 那一次。
+# Adding `pull_request` answers "are other people's PRs checked" -- this repository's README now openly
+# invites forks, and a PR submitted should not be met with "nobody checks it". It **does not change this repository's own flow**:
+# a direct push to main still only runs the push event.
 #
-# 它**不是门禁**：门禁要 main 上开分支保护、把这三个 job 设成 required，而那意味着
-# 以后不能直推 main。当前取舍是不那么做——直推仍是主路径，所以「推之前先本地跑
-# 一遍」依然是流程的一部分（见 CLAUDE.md §4 的两段命令）。
+# It is **not a gate**: a gate means enabling branch protection on main and making these three jobs required, and that means
+# no more direct pushes to main. The current trade-off is not to do that -- direct pushing is still the main path, so "run everything locally
+# before pushing" remains part of the process (see the two command blocks in CLAUDE.md §4).
 on:
   push:
     branches: [main]
@@ -34,9 +34,9 @@ permissions:
 
 jobs:
   core-test:
-    name: core-test（内核的全部内部测试）
+    name: core-test (all internal tests of the kernel)
     runs-on: ubuntu-latest
-    # 与内核 CI 同一个意图：钉住配置目录，别让 runner 上的真实配置漏进来。
+    # Same intent as the kernel CI: pin the config directory so the runner's real config does not leak in.
     env:
       NEWGATE_HOME: /tmp/nc-core
     steps:
@@ -47,17 +47,17 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: core/go.mod
-          # 指 go.mod 而不是 go.sum：内核**没有第三方依赖**，仓库里没有 go.sum，
-          # 指着一个不存在的文件会让 setup-go 算不出缓存键（见内核 CI 的注释）。
+          # Point at go.mod rather than go.sum: the kernel **has no third-party dependencies**, there is no go.sum in the repository,
+          # and pointing at a nonexistent file makes setup-go unable to compute a cache key (see the kernel CI's comment).
           cache-dependency-path: core/go.mod
 
-      # GOPROXY=off：内核的构建与测试**完全离线**（2026-09-20 起，发行版机制搬出
-      # 内核之后成立）。这条把「离线」变成 CI 会红的事实。
-      - name: 内核单测（离线）
+      # GOPROXY=off: the kernel's build and tests are **fully offline** (true since 2026-09-20, when the distribution
+      # mechanisms moved out of the kernel). This turns "offline" into a fact CI goes red on.
+      - name: Kernel unit tests (offline)
         working-directory: core
         run: GOPROXY=off go test ./...
 
-      - name: 内核格式 / 清单 / vet
+      - name: Kernel format / manifests / vet
         working-directory: core
         run: |
           make check-fmt
@@ -65,7 +65,7 @@ jobs:
           go vet ./...
 
   dist-test:
-    name: dist-test（发行版自己的模块）
+    name: dist-test (the distribution's own modules)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -75,45 +75,45 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          # 发行版有第三方依赖（modules/ssh-tunnel → golang.org/x/crypto），所以
-          # 缓存键指 go.sum。**上面那个 core-test job 不动**：内核仍然零依赖。
+          # The distribution has third-party dependencies (modules/ssh-tunnel → golang.org/x/crypto), so
+          # the cache key points at go.sum. **The core-test job above is unaffected**: the kernel still has zero dependencies.
           cache-dependency-path: go.sum
 
-      - name: 格式与 vet
+      - name: Format and vet
         run: |
-          out=$(gofmt -l .); if [ -n "$out" ]; then echo "格式不对，跑 gofmt -w："; echo "$out"; exit 1; fi
+          out=$(gofmt -l .); if [ -n "$out" ]; then echo "Bad formatting, run gofmt -w:"; echo "$out"; exit 1; fi
           go vet ./...
 
-      # 清单是**生成物但进版本控制**：它记着「这份提交装了什么」。过期了就说明
-      # 有人改了规格书或模块目录却没重新生成——那是产物与源码对不上的静默故障。
-      - name: 装配清单是否过期
+      # The manifest is **generated but checked in**: it records "what this commit installs". Being stale means
+      # someone changed a spec or a module directory without regenerating -- a silent mismatch between artifact and source.
+      - name: Is the assembly manifest stale
         run: go run ./tools/distgen -check
 
-      # 本地化：账本是否过期、译文与源文的占位符是否对得上、有没有孤儿译文、
-      # 以及「非测试源码里不许再冒出中文字面量」这条棘轮。
+      # Localization: whether the ledger is stale, whether placeholders line up between translations and source, whether there are orphan translations,
+      # and the ratchet "no more Chinese literals in non-test source".
       #
-      # 判据的实现住内核（core/tools/i18n），发行版用**同一把尺子**——所以命令
-      # 从内核那个包跑，路径参数指发行版自己。扫描器遇到嵌套的 Go module 会停下
-      # （见 core/tools/i18n/scan.SkipDir），所以 `core/` 不会被算进来。
+      # The criterion lives in the kernel (core/tools/i18n), and the distribution uses **the same ruler** -- so the commands
+      # run from that kernel package with the path arguments pointing at the distribution itself. The scanner stops at nested Go modules
+      # (see core/tools/i18n/scan.SkipDir), so `core/` is not counted.
       #
-      # 这里只跑不花钱、不出网的那几条。翻译（`tools/i18n sync`）要调 LLM，
-      # 只能在开发者本地跑——**不进 CI，也不进发版流程**。
-      - name: 本地化（账本与目录）
+      # Only the checks that cost nothing and touch no network run here. Translation (`tools/i18n sync`) calls an LLM,
+      # so it only runs on a developer's machine -- **not in CI, and not in the release flow**.
+      - name: Localization (ledger and catalogs)
         run: |
           go run github.com/rzbdz/newgate/tools/i18n extract -root . -catalogs modules/i18n/catalogs -check
           go run github.com/rzbdz/newgate/tools/i18n check -root . -catalogs modules/i18n/catalogs -allowlist tools/i18n-allowlist.json
-          # 目录表的编译期形态：运行期读的是 .bin，所以「改了 JSON 忘了重生成」的
-          # 后果是译文静默地少几句（测试里另有一条棘轮，这里是流水线那一份）。
+          # The compile-time form of the catalog table: the runtime reads the .bin, so "edited the JSON but forgot to regenerate"
+          # means a few translations silently go missing (there is another ratchet in the tests; this is the pipeline's copy).
           go run github.com/rzbdz/newgate/tools/i18n bundle -root . -catalogs modules/i18n/catalogs -check
 
-      # -race：发行版自己的模块里也有并发路径（porthub 那张表被多个界面同时读、
-      # web-dashboard 的 BFF、arch-diagram 现场那次构建），而这些错的默认表现是
-      # 「平时都对，压一下才崩」——最贵的一种。代价实测 1s → 6s，买得起。
-      - name: 模块测试（带竞态检测）
+      # -race: the distribution's own modules have concurrent paths too (porthub's table read by several UIs at once,
+      # web-dashboard's BFF, arch-diagram's on-the-spot build), and their default failure mode is
+      # "always fine, crashes only under load" -- the most expensive kind. Measured cost 1s → 6s; affordable.
+      - name: Module tests (with race detection)
         run: go test -race ./...
 
   e2e:
-    name: 零 token 端到端（发行版的二进制）
+    name: Zero-token end to end (the distribution's binary)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -123,110 +123,110 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-          # 发行版有第三方依赖（modules/ssh-tunnel → golang.org/x/crypto），所以
-          # 缓存键指 go.sum。**上面那个 core-test job 不动**：内核仍然零依赖。
+          # The distribution has third-party dependencies (modules/ssh-tunnel → golang.org/x/crypto), so
+          # the cache key points at go.sum. **The core-test job above is unaffected**: the kernel still has zero dependencies.
           cache-dependency-path: go.sum
 
-      # 脚本的依赖：python3（内核的假上游）、curl（打代理）、coreutils（md5sum）。
-      - name: 装依赖
+      # Script dependencies: python3 (the kernel's fake upstream), curl (to hit the proxy), coreutils (md5sum).
+      - name: Install dependencies
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq python3 curl coreutils
 
-      # NEWGATE_ALL=1：CI 把**仓库里每一份规格书**都编一遍。本地只编默认那份，
-      # 但「另一份配置编不过」这种故障在本地看不见（谁也不天天编骨架配置），
-      # 所以放到流水线上。Release 只发重点那份（见 release.yml）。
-      - name: 构建全部规格书（走 build/build.sh，与发布同一条路）
+      # NEWGATE_ALL=1: CI builds **every spec in the repository**. Locally only the default one is built,
+      # but "another config does not compile" is invisible locally (nobody builds the skeleton config daily),
+      # so it goes on the pipeline. Release only ships the flagship one (see release.yml).
+      - name: Build every spec (through build/build.sh, the same path as release)
         run: NEWGATE_ALL=1 bash build/build.sh dist
 
-      - name: 发行版模块的端到端（默认配置的二进制）
+      - name: End to end for distribution modules (binary from the default config)
         run: bash mock/e2e_claude_dist.sh
 
-      # 浏览器那条写路径：快照 → 保存 → 拿旧基线再写（必须 409，且不许覆盖磁盘）
-      # → 两道门（Content-Type / Host）。它验的是**这个产品里唯一一处两个写者改
-      # 同一份文件**的安全语义，而那件事只在这一层（真进程 + 真 HTTP）看得见。
-      - name: 控制面的端到端（快照 / 保存 / 冲突 / 两道门）
+      # The browser's write path: snapshot -> save -> write again with a stale baseline (must be 409, and must not overwrite the file on disk)
+      # -> the two gates (Content-Type / Host). It verifies the security semantics of **the only place in this product where two writers change
+      # the same file**, and that is visible only at this layer (real process + real HTTP).
+      - name: End to end for the control plane (snapshot / save / conflict / two gates)
         run: bash mock/e2e_dashboard.sh
 
-      # 模型清单那条路（web 下拉背后）：适配器拼地址、解析分组、缓存/refresh，
-      # 以及「上游没有这个接口」必须是 200 + supported:false 而不是故障。
-      - name: 模型清单的端到端（假上游）
+      # The model-list path (behind the web dropdown): the adapter assembling the address, parsing groups, cache/refresh,
+      # and "the upstream has no such endpoint" must be 200 + supported:false rather than a failure.
+      - name: End to end for the model list (fake upstream)
         run: bash mock/e2e_modellist.sh
 
-      # 第一次拿到一台机器时的那三分钟：`newgate config` 那套向导（选客户端 →
-      # 一个 base/key/模型 → 落盘 → 真装 + 真接管 → 起代理）。它用假终端（pty）
-      # 与假包管理器，所以既不需要人，也不在这台机器上装任何东西。
-      - name: 首次配置向导（newgate config，假终端 + 假 npm + 假上游）
+      # Those first three minutes on a new machine: the `newgate config` wizard (pick a client ->
+      # one base/key/model -> write to disk -> really install + really take over -> start the proxy). It uses a fake terminal (pty)
+      # and a fake package manager, so it needs no human and installs nothing on this machine.
+      - name: First-run setup wizard (newgate config, fake terminal + fake npm + fake upstream)
         run: bash mock/e2e_config.sh
 
-      # 「这个客户端没装」那条路：问一句、best-effort 装、然后照常启动；以及
-      # 它的边界——工具**在**的时候一个字都不碰它的命令行。用**假 npm**，所以这
-      # 条既不上网也不在这台机器上真装东西（沙箱的 PATH 是密闭的）。
-      - name: 没装客户端时的安装路径（假 npm）
+      # The "this client is not installed" path: ask once, install best-effort, then start as usual; and
+      # its boundary -- when the tool **is** there, not one word of its command line is touched. It uses a **fake npm**, so this
+      # path neither goes online nor really installs anything on this machine (the sandbox PATH is sealed).
+      - name: Install path when no client is installed (fake npm)
         run: bash mock/e2e_install.sh
 
-      # 消费侧那条路：`newgate ask`。锁三件会静默错掉的事——正文与思维链分得开、
-      # 真正发出去的问题就是那句话（选项的值不算问题）、--profile 是单次覆盖。
-      # 假上游会记下收到的请求，所以第二条能验死。
-      - name: 直接问一句（newgate ask，假上游）
+      # The consumer path: `newgate ask`. It locks three things that would fail silently -- the body and the chain of thought stay separable,
+      # the question actually sent is that sentence (option values are not part of it), and --profile is a single-call override.
+      # The fake upstream records received requests, so the second one can be verified conclusively.
+      - name: Ask a question directly (newgate ask, fake upstream)
         run: bash mock/e2e_ask.sh
 
-      # codex 的两种接管模式：takeover 写档位名、rename 写 codex 自己的模型名，
-      # 而后者靠一张动态角色表在请求进来时认回档位。锁四件事——模式真的改变了
-      # 写进 config.toml 的值、那些名字真的解析得到（断言的是**上游收到的模型名**，
-      # 不是 HTTP 200）、加一行新模型不用重启、以及切回 takeover 之后那些名字
-      # 不再被认成角色（不让路的人不受影响）。
-      - name: codex 的两种接管模式（假上游）
+      # Codex's two takeover modes: takeover writes tier names, rename writes codex's own model names,
+      # and the latter relies on a dynamic role table to map them back to tiers when a request comes in. It locks four things -- the mode really changes
+      # the value written into config.toml, those names really resolve (what is asserted is **the model name the upstream received**,
+      # not HTTP 200), adding a row for a new model needs no restart, and after switching back to takeover those names
+      # are no longer recognized as roles (people who do not take this path are unaffected).
+      - name: Codex's two takeover modes (fake upstream)
         run: bash mock/e2e_codex_modes.sh
 
-      # hermes 的接管：config.yaml 的字节手术（别人的东西不动、混进 auxiliary 的标量
-      # 不挡路）、两种用法都通（档位名跟着 newgate 走 / `newgate-<profile>` 钉住点名，
-      # 断言的是**上游收到的模型名**）、它对本机 base_url 的服务探测 404 不刷失败数、
-      # 守护进程在跑时新 profile 自动同步进清单而**不改回**用户在 hermes 里选的主模型，
-      # 以及 `off` 按键还原（接管期间用户改的别的东西保留）。
-      - name: hermes 的接管与 /model 清单同步（假上游）
+      # Hermes takeover: byte surgery on config.yaml (other people's things stay put, a scalar mixed into auxiliary
+      # does not get in the way), both usages work (tier names follow newgate / `newgate-<profile>` pins a named one,
+      # asserting **the model name the upstream received**), its service probe against the local base_url returning 404 does not bump the failure count,
+      # a new profile while the daemon is running syncs into the list automatically without **changing back** the main model the user picked in hermes,
+      # and `off` restores (things the user changed during takeover are kept).
+      - name: Hermes takeover and /model list sync (fake upstream)
         run: bash mock/e2e_hermes.sh
 
-      # Codex × DeepSeek 的**工具交叉**：旧版把工具挂在 input[0]（DeepSeek 不读那里）、
-      # 新版放顶层但可能夹着 custom（上游只认 apply_patch），以及响应侧要把降级过的
-      # 调用改回 custom_tool_call。锁的是**不报错**的那一类故障——不抬的话模型看不见
-      # 工具，请求照样 200、正文看着也像模像样，只有一个 tool_result 都拿不到。
-      - name: Codex × DeepSeek 的工具交叉（假上游）
+      # Codex × DeepSeek **tool crossover**: the old version hangs tools under input[0] (DeepSeek does not read there),
+      # the new one puts them at the top level but may mix in custom (the upstream only knows apply_patch), and on the response side degraded
+      # calls must be turned back into custom_tool_call. It locks the class of failure that **reports no error** -- unlifted, the model cannot see
+      # the tools, the request still returns 200, the body even looks plausible, and not one tool_result comes back.
+      - name: Codex × DeepSeek tool crossover (fake upstream)
         run: bash mock/e2e_codex_tools.sh
 
-      # Codex × DeepSeek 的 reasoning 尾部形状：`/responses` 的 input[] 以
-      # function_call_output 收尾、而历史里有别家产的 call_id 时，上游误报
-      # `reasoning_text … must be passed back`（真实 400 → 200 的实测见
-      # docs/06-reasoning.md §1.1 / §2e）。锁三件事——该补时补在 input[] 末尾且
-      # 正文逐字是 continue、全部自产 id 时一个字节都不动（健康链路不被污染，
-      # 2026-09-21 约 1/3 的请求就是在这里被无谓注入的）、以及开关点真的停手。
-      - name: DeepSeek 尾部形状的出身判据（假上游）
+      # Codex × DeepSeek reasoning tail shape: when `/responses`' input[] ends with
+      # function_call_output and history holds call_ids produced by other vendors, the upstream falsely reports
+      # `reasoning_text ... must be passed back` (the real 400 -> 200 measurement is in
+      # docs/06-reasoning.md §1.1 / §2e). It locks three things -- when it should be added it is appended at the end of input[] with
+      # the body verbatim as continue, when all ids are self-produced not one byte changes (a healthy chain is not polluted;
+      # around 1/3 of requests on 2026-09-21 were pointlessly injected here), and the switch really stops it.
+      - name: The provenance criterion for DeepSeek's tail shape (fake upstream)
         run: bash mock/e2e_deepseek_tail_origin.sh
 
-      # Responses 方言与 messages 方言拿到**同一份**适配（用户 2026-09-23 的要求：
-      # 「make sure code adaption is good as claude one」）。锁四件事——思考强度
-      # 不受支持时改写（含**流式**那条「HTTP 200 + 事件流里一条 response.failed」，
-      # 只看状态码的判据在它上面全绿）、重启后第一发靠落盘缓存救回来（流式的失败
-      # 走不到 learnQuirks，所以缓存是唯一那条路）、跨上游接手未闭合 tool loop 时
-      # 往 input[] 末尾有损重建、以及三种「不该动就不动」（上游收下的强度、形状
-      # 认不出的 reasoning、出身不明的 call_id）。
-      - name: Responses 方言的适配（思考强度 / 重启缓存 / 跨上游迁移）
+      # The Responses dialect and the messages dialect get **the same** adaptation (the user's request on 2026-09-23:
+      # "make sure code adaption is good as claude one"). It locks four things -- rewriting an unsupported
+      # thinking effort (including the **streaming** case "HTTP 200 + a response.failed inside the event stream",
+      # where a status-code-only criterion is all green), the first request after a restart being saved by the on-disk cache (streaming failures
+      # never reach learnQuirks, so the cache is the only path), lossy reconstruction at the end of input[]
+      # when taking over an unclosed tool loop across upstreams, and three kinds of "leave it alone when it should be left alone" (an effort the upstream accepted, a reasoning shape
+      # it does not recognize, a call_id of unknown provenance).
+      - name: Responses dialect adaptation (thinking effort / restart cache / cross-upstream migration)
         run: bash mock/e2e_codex_responses.sh
 
-      # 多配置多 bin 的回归守卫：骨架配置（框架 + hello）装出来的 `newgate`
-      # 就该是 hello world。它同时是「内核那条入口申报链在发行版这一侧真的通」
-      # 的证据——这条链断了的话，骨架发行版跑起来只会报一句「没人认领」并退出。
-      - name: 骨架配置的二进制也是 hello world
+      # Regression guard for multiple configs and binaries: the `newgate` built from the skeleton config (framework + hello)
+      # should be hello world. It is also the evidence that "the kernel's entry-declaration chain really works on the distribution side" --
+      # if that chain breaks, the skeleton distribution just reports "nobody claimed it" and exits.
+      - name: The skeleton config's binary is hello world too
         run: |
           export NEWGATE_HOME="$(mktemp -d)/hello"
           out="$(dist/newgate-hello-linux-amd64)"
           echo "$out"
           case "$out" in
             *"hello world"*) : ;;
-            *) echo "骨架配置的 newgate 没跑出 hello world"; exit 1 ;;
+            *) echo "the skeleton config's newgate did not print hello world"; exit 1 ;;
           esac
 
-      - name: 失败时导出日志
+      - name: Dump logs on failure
         if: failure()
         run: |
           for d in /tmp/newgate-dist-e2e.* /tmp/newgate-claude-e2e.* /tmp/newgate-tailorigin.* /tmp/newgate-codexresp.* /tmp/newgate-codextools.* /tmp/newgate-modellist-e2e.*; do
@@ -234,7 +234,7 @@ jobs:
             echo "=== $d ==="
             find "$d" -name '*.log' -exec sh -c 'echo "--- {}"; tail -80 "{}"' \;
           done
-          # 端口被上一轮泄漏的进程占着时，失败长得**与端口无关**（新进程干脆起不来，
-          # 满屏都是「没连上」）。把占用者找出来比读十条超时有用得多。
+          # When the port is held by a process leaked from a previous round, the failure looks **unrelated to the port** (the new process simply cannot start,
+          # and everything on screen says "not connected"). Tracking down the holder is far more useful than reading ten timeouts.
           echo "=== listeners on the e2e ports ==="
           (ss -lntp 2>/dev/null || netstat -lntp 2>/dev/null) | grep -E ':(1809[0-9]|1810[0-9])' || echo "(none)"

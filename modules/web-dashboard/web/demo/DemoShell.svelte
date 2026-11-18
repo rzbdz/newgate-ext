@@ -1,28 +1,28 @@
 <script lang="ts">
-  // 演示页的外壳：**左边一列节，右边那一节的卡**——就是产品界面本来的样子。
+  // The demo page's shell: **a column of sections on the left, that section's cards on the right** - exactly how the product UI looks.
   //
-  // # 它为什么不复用 App.svelte
+  // # Why it does not reuse App.svelte
   //
-  // App.svelte 要全套后端：snapshot / apply / preview 三个端点、每 3 秒一次的自动
-  // 刷新、冲突对话框、跨节过滤、快捷键、URL 路由。这里全都不需要——需要的只有
-  // 「一份快照 + 一点本地状态」。硬塞进 App 的结果是给产品那条路加一堆「如果没后端
-  // 就……」的分支，而那些分支一年也跑不到一次（它们只在演示页上跑）。
+  // App.svelte needs the full backend: the snapshot / apply / preview endpoints, a 3-second auto
+  // refresh, the conflict dialog, cross-section filtering, shortcuts, URL routing. None of that is needed here - all it needs is
+  // "one snapshot + a little local state". Forcing it into App would mean adding a pile of "if there is no backend,
+  // then ..." branches to the product path, and those branches run less than once a year (they only ever run on the demo page).
   //
-  // # 它复用的是**卡片与并排**
+  // # What it reuses is **the cards and the side-by-side layout**
   //
-  // ConceptCard 与七个 kinds 是纯的（给数据就画，没有一处 fetch），SplitView 也是
-  // （它只管把两半摆开）。所以这里直接用它们——屏幕上那些卡与产品里是**同一个组件、
-  // 同一份 CSS**。这正是这个演示页值得存在的地方：它不是一张截图，也不是照着重画
-  // 的一版。
+  // ConceptCard and the seven kinds are pure (give data and they draw, no fetch anywhere), and so is SplitView
+  // (it only lays out the two halves). So use them directly here - the cards on screen are **the same component and
+  // the same CSS** as in the product. That is exactly why this demo page is worth existing: it is not a screenshot, and not a version
+  // redrawn to look like one.
   //
-  // 侧栏与卡片那一列是**自己写的**（照产品的 Sidebar / TabStrip 的外观，但各写一遍）：
-  // 那两个组件吃的是产品的 props（命中数、竖排开关、快捷键…），为了演示页给它们加
-  // 「没有后端时怎么办」的开关，代价与上面那条一样。
+  // The sidebar and the card column are **written here** (following the look of the product's Sidebar / TabStrip, but each written separately):
+  // those two components take the product's props (hit counts, vertical toggle, shortcuts ...), and adding a
+  // "what if there is no backend" switch to them for the demo page costs the same as the rule above.
   //
-  // # 假的那一半
+  // # The fake half
   //
-  // 编辑、切节、切卡、并排都在本地 state 里真生效；点保存 / 动作 / 行上的按钮只弹
-  // 一句「这是演示」。**一行都不落盘**——这里没有后端可落。
+  // Editing, switching section, switching card, and side by side all really take effect in local state; save / action / row buttons only pop
+  // "this is a demo". **Not a line lands on disk** - there is no backend here to land on.
   import SplitView from "../src/SplitView.svelte";
   import ThemePicker from "../src/ThemePicker.svelte";
   import { fileOf } from "../src/nav";
@@ -39,23 +39,23 @@
   const concepts: Concept[] = snap.concepts;
 
   /**
-   * 落点：**声明了 `default` 的那一节**（见 api.ts 的 Section.default）。
+   * Landing spot: **the section that declares `default`** (see Section.default in api.ts).
    *
-   * 与产品的 `defaultRoute()` 同一条判据，只是这里没有它那两条回落——演示页的节与
-   * 卡都是写死的，不会出现「声明了落点但那一节是空的」。产品那边要回落，是因为模块
-   * 可以被关掉、profile 可以被删。
+   * Same rule as the product's `defaultRoute()`, except it has none of that function's two fallbacks - the demo page's sections and
+   * cards are hard-coded, and "a landing spot is declared but that section is empty" cannot happen. The product needs fallbacks because modules
+   * can be turned off and profiles can be deleted.
    */
   const landingSec = sections.find((s) => s.default) ?? sections[0];
   const landing = landingSec.source;
 
   /**
-   * 侧栏的行序：**声明了落点的那一节排第一**（不画分组标题），然后**按各节声明的
-   * 用途分档**，档内按来源序。
+   * The sidebar's row order: **the section that declared a landing spot comes first** (no group heading), then **by the purpose each
+   * section declares**, and within a bucket by source order.
    *
-   * 与产品那份 Sidebar.svelte **同一条规则**（三个标题、同一个先后、没归类的排最后）。
-   * 这里重写一份是当初的取舍（两个组件吃的 props 不同），但规则**分叉过两次**——
-   * 一次是主页没置顶，一次是这里还在按贡献者写的 `group` 自由文本聚堆。演示页值得
-   * 存在的地方正是「它就是那个界面」，所以规则必须逐字一样。
+   * **The same rule** as the product's Sidebar.svelte (three headings, the same order, unclassified last).
+   * Rewriting it here was a tradeoff made at the time (the two components take different props), but the rule **has forked twice** -
+   * once home was not pinned first, once this was still clustering by the contributor's `group` free text. The demo page is worth
+   * existing precisely because "it is that UI", so the rule must be word for word the same.
    */
   function sidebarRows(): ({ kind: "group"; name: string } | { kind: "sec"; s: Section })[] {
     const out: ({ kind: "group"; name: string } | { kind: "sec"; s: Section })[] = [];
@@ -85,37 +85,37 @@
   const rows = sidebarRows();
 
   /**
-   * 主页模式（与产品 App.svelte 的 `route.home` 同一条路）。
+   * Home mode (the same path as the product App.svelte's `route.home`).
    *
-   * **打开就是它**：这一页演的是那个界面，而那个界面今天开屏只剩卡片。进完整界面
-   * 要点左边那颗齿轮（见下面模板里那一颗）——演示页没有地址栏可跳，所以它用状态
-   * 而不是 hash，但两地**摆的东西**必须逐字一样。
+   * **It opens on it**: this page shows that UI, and that UI today only has cards on the opening screen. To enter the full UI
+   * press the gear on the left (see that one in the template below) - the demo page has no address bar to jump with, so it uses state
+   * rather than hash, but what the two places **lay out** must be word for word the same.
    */
   let home = $state(true);
 
   let active = $state<string>(landing);
-  /** 当前这一节里选中的那张卡（空 = 这一节的第一张，与产品一致）。 */
+  /** The selected card in the current section (empty = the section's first card, same as the product). */
   let card = $state<string>("");
   let split = $state<boolean>(true);
-  /** 本地草稿：按概念 id 存，与产品那边 App 的 `drafts` 是同一条路。 */
+  /** Local drafts: stored by concept id, the same path as App's `drafts` in the product. */
   let drafts = $state<Record<string, unknown>>({});
   let toast = $state<string>("");
 
   const section = $derived(sections.find((s) => s.source === active));
   const cards = $derived(concepts.filter((c) => c.source === active));
-  /** 主页模式下画的就是落点那一节的**第一张**卡（与产品 App 的 homeConcept 同一条）。 */
+  /** In home mode it draws **the first** card of the landing section (same as the product App's homeConcept). */
   const homeCard = $derived(concepts.filter((c) => c.source === landing)[0]);
 
   const current = $derived(home ? homeCard : (cards.find((c) => c.id === card) ?? cards[0]));
-  /** 卡片顺序那一栏的形状：卡少就横着一条，多了就左侧竖着列——与产品的阈值同一条。 */
+  /** The shape of the card-order column: a horizontal strip when there are few cards, a vertical column on the left when many - same rule as the product's threshold. */
   const vertical = $derived(cards.length > 8);
 
   /**
-   * 与当前这张卡**说的是同一份文件**的另一半（控件半 ↔ 原文半，见 nav.ts 的 fileOf）。
+   * The other half of **the same file** as the current card (control half <-> original-text half, see fileOf in nav.ts).
    *
-   * 判据与产品里那一段逐字一样（同一份文件、一 code 一非 code）。差别只有一处：产品
-   * 会把原文那一半从导航里收起来（同一份文件只列一张卡），演示页不收起——这里就是要
-   * 让人**看得见**这两半的存在，并排开关才点得明白。
+   * The criterion is word for word the same as that part in the product (same file, one code one non-code). There is only one difference: the product
+   * hides the original-text half from the nav (one card per file), while the demo page does not - here the point is to
+   * make the existence of these two halves **visible**, so the side-by-side switch makes sense.
    */
   const pair = $derived.by(() => {
     if (!current) return undefined;
@@ -130,19 +130,19 @@
     );
   });
 
-  /** 并排时哪一半在左：控件那一半（与产品一致）。 */
+  /** When side by side, which half is on the left: the control half (same as the product). */
   const leftCard = $derived(current?.kind === "code" && pair ? pair : current);
   const rightCard = $derived(current?.kind === "code" && pair ? current : pair);
 
   const dirty = $derived(Object.keys(drafts).length);
 
   /**
-   * 皮肤：演示页**只放在这个浏览器的内存里**。
+   * Theme: the demo page **keeps it only in this browser's memory**.
    *
-   * 真界面上这一格会 POST 回后端、记进 state.json（见 web-dashboard 的 theme.go）；
-   * 演示页没有后端可存，所以挑了只当场生效、刷新回到出厂那套令牌。这是**唯一**
-   * 一处与真界面行为不同的地方，而它不同得合理：演示页的每一处状态都是这种「点着
-   * 玩、不留痕」的性子。
+   * In the real UI this cell POSTs back to the backend and is recorded in state.json (see theme.go in web-dashboard);
+   * the demo page has no backend to store it, so the pick takes effect only on the spot and a refresh returns to the factory token set. This is **the only**
+   * place where behavior differs from the real UI, and it differs reasonably: every piece of state on the demo page has this "poke at it
+   * and leave no trace" nature.
    */
   let theme = $state<Themes>({ ...themes(), active: "" });
 
@@ -150,16 +150,16 @@
     theme = { ...theme, active: id };
   }
 
-  // 与 App.svelte 里那条同一条路（applyTheme 只碰 DOM），所以两边落下去的结果
-  // 逐字一样——演示页演的就是真界面那套颜色。
+  // The same path as the one in App.svelte (applyTheme only touches the DOM), so what the two sides land
+  // is word for word the same - the demo page shows exactly the colors of the real UI.
   $effect(() => {
     applyTheme(theme);
   });
 
   function say(msg: string) {
     toast = msg;
-    // 提示自己消失：演示页不该留下一个要手动关的东西（它只是说一句「这里没有
-    // 后端」，不是一条要用户处理的错误）。
+    // The notice disappears by itself: the demo page should not leave something that must be closed by hand (it only says "there is no
+    // backend here", not an error the user has to handle).
     setTimeout(() => (toast = ""), 2600);
   }
 
@@ -167,14 +167,14 @@
     say(d("this is a demo — “{action}” would go to the real daemon; nothing is written here", { action }));
   }
 
-  /** 切节：换一节就把卡与草稿一起重置（草稿按卡存，但换节时留着只会让人困惑）。 */
+  /** Switch section: switching a section resets the cards and drafts (drafts are stored per card, and keeping them when switching only confuses). */
   function pickSection(source: string) {
     active = source;
     card = "";
     drafts = {};
   }
 
-  /** 切卡（换一张就把草稿清掉——与产品那边切卡的行为一致）。 */
+  /** Switch card (switching clears the draft - same as switching cards in the product). */
   function pickCard(id: string) {
     card = id;
     drafts = {};
@@ -190,7 +190,7 @@
     drafts = next;
   }
 
-  /** SplitView 那条路要带卡 id（它同时拿着两半），签名照产品给。 */
+  /** The SplitView path needs the card id (it holds both halves), and the signature follows the product's. */
   function onAction(id: string, a: ConceptAction) {
     noBackend(a.label);
   }
@@ -208,7 +208,7 @@
     say(d("this is a demo — no file would be deleted"));
   }
 
-  /** 报头上那个保存：真的会写盘，所以这里也只说一句。 */
+  /** The save in the header: it really writes to disk, so here too only a sentence is said. */
   function onSave() {
     say(d("this is a demo — save would write these files; here it writes nothing"));
   }
@@ -216,9 +216,9 @@
 
 <div class="shell" class:home>
   <header class="top">
-    <!-- 与产品那份**同一个版面**：主页模式下左边一颗齿轮（进完整界面），右边是
-         这一节的全局动作 + 皮肤 + 保存；完整界面下左边是牌子 + 过滤框（演示页不给
-         真的过滤，只在产品里才有），右边多一颗房子（回主页）。 -->
+    <!-- **The same layout** as the product's: in home mode a gear on the left (enter the full UI), and on the right
+         this section's global actions + theme + save; in the full UI the left is the brand + filter box (the demo page does not offer
+         real filtering, which only exists in the product), and the right has one more home button (back to home). -->
     {#if home}
       <button class="icon" title={t("settings")} aria-label={t("settings")} onclick={() => (home = false)}>
         <svg class="gear" viewBox="0 0 24 24" aria-hidden="true">
@@ -231,8 +231,8 @@
     {/if}
     <strong class="brand">newgate</strong>
     <span class="spacer"></span>
-    <!-- 主页模式下这一节的全局动作（今天只有 `auto fallback` 一颗）。演示页没有
-         后端，所以点它只弹一句。 -->
+    <!-- This section's global actions in home mode (today just the `auto fallback` one). The demo page has no
+         backend, so clicking it only pops a sentence. -->
     {#if home}
       {#each landingSec?.actions ?? [] as a (a.id)}
         {#if a.id === "fallback"}
@@ -242,7 +242,7 @@
         {/if}
       {/each}
     {/if}
-    <!-- 皮肤切换：与真界面那一格同一个形状，只是它只在这里生效（见 pickTheme）。 -->
+    <!-- Theme switching: the same shape as that cell in the real UI, only it takes effect only here (see pickTheme). -->
     {#if theme.themes.length}
       <ThemePicker doc={theme} onPick={pickTheme} />
     {/if}
@@ -263,7 +263,7 @@
     <p class="head">{t("sections")}</p>
     {#each rows as r, i (`${r.kind}:${r.kind === "group" ? r.name : r.s.source}:${i}`)}
       {#if r.kind === "group"}
-        <!-- 分组标题**不是按钮**（它代表的是一类，不是一节）。 -->
+        <!-- A group heading **is not a button** (it represents a category, not a section). -->
         <div class="group">{r.name}</div>
       {:else}
         <button
@@ -285,8 +285,8 @@
     <div class="secbar">
       <span class="name">{section?.title}</span>
       <span class="spacer"></span>
-      <!-- 这一节注入的动作（「再建一份档位文件」这类）。演示页把它们画出来——
-           它们与卡片上那些按钮是同一类东西，都是贡献者给的。 -->
+      <!-- The actions this section injects (like "create another tier file"). The demo page draws them -
+           they are the same kind of thing as the buttons on cards, both given by the contributor. -->
       {#each section?.actions ?? [] as a (a.id)}
         <button class="tiny ghost" onclick={() => noBackend(a.label)}>{a.label}</button>
       {/each}
@@ -295,7 +295,7 @@
 
     {#if !home && cards.length > 1}
       {#if vertical}
-        <!-- 卡多（config 那种）时：左侧一列，一眼扫完。 -->
+        <!-- When there are many cards (config's kind): one column on the left, scanned at a glance. -->
         <nav class="v">
           {#each cards as c (c.id)}
             <button
@@ -310,7 +310,7 @@
           {/each}
         </nav>
       {:else}
-        <!-- 卡少时：顶上一条横的。 -->
+        <!-- When there are few cards: a horizontal strip on top. -->
         <div class="tabs">
           {#each cards as c (c.id)}
             <button
@@ -354,16 +354,16 @@
 {/if}
 
 <style>
-  /* 演示页的版面自己写一份（产品那份在 app.css 的 .shell 里，是给 App 的网格用
-     的）。形状照它：左边 208px 的目录、顶上一整条报头、右下内容。 */
+  /* The demo page's layout is written here (the product's is in app.css's .shell, for App's grid).
+     Shape follows it: a 208px directory on the left, a full-width header on top, content bottom right. */
   .shell {
     display: grid;
     grid-template-columns: 208px minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);
     height: 100%;
   }
-  /* 主页模式：目录那一栏不画，内容占满整宽（与产品 app.css 的 `.shell.home`
-     同一条）。 */
+  /* Home mode: the directory column is not drawn, and content takes the full width (same as `.shell.home`
+     in the product's app.css). */
   .shell.home { grid-template-columns: minmax(0, 1fr); }
   .shell.home .content { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
 
@@ -426,7 +426,7 @@
     min-height: 0;
     overflow: hidden;
   }
-  /* 卡多的节：多一栏 210px 的卡片目录（与产品同一套版面，判据是 >8 张卡）。 */
+  /* Sections with many cards: one more 210px card directory column (same layout as the product, the rule is >8 cards). */
   .content.subcol {
     grid-template-columns: 210px minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);
@@ -449,7 +449,7 @@
     color: var(--dim);
   }
 
-  /* 竖着的卡片目录（卡多时）。滚动落在它自己身上：它是网格里一行确定高度的容器。 */
+  /* The vertical card directory (when there are many cards). Scrolling lands on it: it is a definitely sized container on a grid row. */
   .v {
     grid-column: 1;
     grid-row: 2;
@@ -480,7 +480,7 @@
   .v .label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--warn); flex: none; }
 
-  /* 横着的卡片条（卡少时）。 */
+  /* The horizontal card strip (when there are few cards). */
   .tabs {
     display: flex;
     align-items: center;
@@ -502,8 +502,8 @@
   .tabs .tab:hover { color: var(--ink); }
   .tabs .tab.on { color: var(--ink); border-bottom-color: var(--accent); }
 
-  /* min-height: 0 与 minmax(0, 1fr) 是这块版面的承重墙（见 app.css 里同一段说明）：
-     不写它们的话，里面会滚的东西会把整页撑高，而不是自己滚。 */
+  /* min-height: 0 and minmax(0, 1fr) are the load-bearing walls of this layout (see the same explanation in app.css):
+     without them, the scrollable thing inside pushes the whole page taller instead of scrolling itself. */
   .pane {
     overflow: auto;
     padding: 14px 16px;
@@ -511,7 +511,7 @@
     min-width: 0;
   }
 
-  /* 窄屏：侧栏收成顶上一条横带，卡片的目录栏也退回叠加（与产品同一套退法）。 */
+  /* Narrow screens: the sidebar folds into a horizontal band on top, and the card directory column stacks too (same fallback set as the product). */
   @media (max-width: 900px) {
     .shell {
       grid-template-columns: minmax(0, 1fr);

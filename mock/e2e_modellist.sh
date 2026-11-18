@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# 零 token 端到端：**模型清单**（前端下拉背后那条路）。
+# Zero-token end to end: **model list** (the path behind the frontend dropdown).
 #
-# 锁的是三件事，它们只在这一层（真二进制 + 真 HTTP + 真上游）看得见：
-#   1  适配器真的按 provider 的 base 拼出了地址、解析出了模型与分组；
-#   2  「不支持」是一个**正常答案**（200 + supported:false + 原因），不是 500；
-#   3  BFF 的扩展端点仍在两道门后面（Host / Content-Type），并且缓存能命中、
-#      refresh 能绕过。
+# It locks three things that are only visible at this layer (real binary + real HTTP + real upstream):
+#   1  the adapter really built the address from the provider's base and parsed the models and groups;
+#   2  "not supported" is a **normal answer** (200 + supported:false + reason), not a 500;
+#   3  the BFF's extension endpoint is still behind the two gates (Host / Content-Type), the cache can hit,
+#      and refresh can bypass it.
 #
-# 不起真上游：`mock/fake_modellist.py` 只实现列模型这一条。全部在临时沙箱里跑，
-# 不碰真实 ~/.config；端口与别的 e2e 错开，可以并行跑。
+# No real upstream: `mock/fake_modellist.py` implements only list-models. Everything runs in a temporary sandbox,
+# never touching the real ~/.config; ports are spaced away from other e2e's, so they can run in parallel.
 
 set -u
 
@@ -29,7 +29,7 @@ BIN="$SANDBOX/bin/newgate"
 PASS=0; FAIL=0
 ok()   { echo "  ✓ $1"; PASS=$((PASS+1)); }
 bad()  { echo "  ✗ $1"; FAIL=$((FAIL+1)); }
-check(){ if [ "$2" = "$3" ]; then ok "$1"; else bad "$1 (期望 '$3'，实际 '$2')"; fi; }
+check(){ if [ "$2" = "$3" ]; then ok "$1"; else bad "$1 (expected '$3', actual '$2')"; fi; }
 
 export NEWGATE_HOME="$SANDBOX/ng"
 export NEWGATE_LANG=en
@@ -40,18 +40,18 @@ cleanup() {
   [ -n "${SRV_PID:-}" ] && kill "$SRV_PID" 2>/dev/null
   [ -n "${UP_PID:-}" ] && kill "$UP_PID" 2>/dev/null
   if [ -n "${NEWGATE_E2E_KEEP:-}" ]; then
-    echo "沙箱保留（NEWGATE_E2E_KEEP）: $SANDBOX"
+    echo "sandbox kept (NEWGATE_E2E_KEEP): $SANDBOX"
   else
     rm -rf "$SANDBOX"
   fi
 }
 trap cleanup EXIT
 
-echo "沙箱: $SANDBOX"
-[ -x "$BIN_SRC" ] || { echo "找不到二进制 $BIN_SRC——先跑 build/build.sh"; exit 1; }
+echo "sandbox: $SANDBOX"
+[ -x "$BIN_SRC" ] || { echo "binary not found $BIN_SRC - run build/build.sh first"; exit 1; }
 cp "$BIN_SRC" "$BIN"
 
-# ---- 假上游：/v1/models 有清单；/none 下 404（演「没有这个接口」）----
+# ---- fake upstream: /v1/models has a list; /none gives 404 (plays "no such endpoint") ----
 python3 "$ROOT/mock/fake_modellist.py" --port "$UP_PORT" >"$SANDBOX/upstream.log" 2>&1 &
 UP_PID=$!
 for _ in $(seq 1 50); do
@@ -59,10 +59,10 @@ for _ in $(seq 1 50); do
   sleep 0.1
 done
 if ! curl -sf -o /dev/null "http://127.0.0.1:$UP_PORT/v1/models"; then
-  echo "假上游没起来，日志："; tail -20 "$SANDBOX/upstream.log"; exit 1
+  echo "fake upstream did not start, log:"; tail -20 "$SANDBOX/upstream.log"; exit 1
 fi
 
-# ---- 沙箱配置 ----
+# ---- sandbox config ----
 cat > "$NEWGATE_HOME/providers.json" <<JSON
 {"providers":{
   "fake":{"protocol":"openai","base_url":"http://127.0.0.1:$UP_PORT","api_key":"sk-modellist"},
@@ -74,7 +74,7 @@ cat > "$NEWGATE_HOME/mappings/demo.json" <<'JSON'
 JSON
 printf '%s' "{\"default_profile\":\"demo\",\"port\":$PORT}" > "$NEWGATE_HOME/state.json"
 
-# ---- 起服务 ----
+# ---- start the service ----
 "$BIN" __serve --port "$PORT" >"$SANDBOX/serve.log" 2>&1 &
 SRV_PID=$!
 for _ in $(seq 1 50); do
@@ -82,18 +82,18 @@ for _ in $(seq 1 50); do
   sleep 0.1
 done
 if ! curl -sf -o /dev/null "http://127.0.0.1:$PORT/ui/api/snapshot"; then
-  echo "服务没起来，日志："; tail -30 "$SANDBOX/serve.log"; exit 1
+  echo "service did not start, log:"; tail -30 "$SANDBOX/serve.log"; exit 1
 fi
 
 API="http://127.0.0.1:$PORT/ui/api"
 RESP="$SANDBOX/resp.json"
 
-# ---- 1. 上游有清单：模型、分组、适配器 ----
+# ---- 1. upstream has a list: models, groups, adapter ----
 echo
-echo "== 1. 有清单 =="
+echo "== 1. has a list =="
 CODE=$(curl -s -o "$RESP" -w '%{http_code}' -X POST "$API/ext/modellist" \
   -H 'Content-Type: application/json' -d '{"provider":"fake"}')
-check "扩展端点返回 200" "$CODE" "200"
+check "the extension endpoint returns 200" "$CODE" "200"
 read -r SUPPORTED N ADAPTER GROUP_LIST <<EOF
 $(python3 - "$RESP" <<'PY'
 import json,sys
@@ -104,28 +104,28 @@ PY
 )
 EOF
 check "supported=true" "$SUPPORTED" "yes"
-check "列出了 3 个模型" "$N" "3"
-check "命中的是 openai 适配器" "$ADAPTER" "openai"
-check "分组按第一次出现排序" "$GROUP_LIST" "alpha,beta"
+check "3 models listed" "$N" "3"
+check "the openai adapter matched" "$ADAPTER" "openai"
+check "groups are ordered by first appearance" "$GROUP_LIST" "alpha,beta"
 
-# ---- 2. 第二次命中缓存，refresh 绕过 ----
+# ---- 2. second call hits the cache, refresh bypasses ----
 echo
-echo "== 2. 缓存 =="
+echo "== 2. cache =="
 curl -s -o "$RESP" -X POST "$API/ext/modellist" -H 'Content-Type: application/json' \
   -d '{"provider":"fake"}' >/dev/null
 CACHED=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("cached",False))' "$RESP")
-check "第二次标注 cached" "$CACHED" "True"
+check "the second call is marked cached" "$CACHED" "True"
 curl -s -o "$RESP" -X POST "$API/ext/modellist" -H 'Content-Type: application/json' \
   -d '{"provider":"fake","refresh":true}' >/dev/null
 CACHED=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("cached",False))' "$RESP")
-check "refresh 绕过缓存" "$CACHED" "False"
+check "refresh bypasses the cache" "$CACHED" "False"
 
-# ---- 3. 没有列表接口：200 + supported:false + 原因 ----
+# ---- 3. no list endpoint: 200 + supported:false + reason ----
 echo
-echo "== 3. 不支持 =="
+echo "== 3. unsupported =="
 CODE=$(curl -s -o "$RESP" -w '%{http_code}' -X POST "$API/ext/modellist" \
   -H 'Content-Type: application/json' -d '{"provider":"none"}')
-check "不支持也是 200（不是故障）" "$CODE" "200"
+check "unsupported is also 200 (not a failure)" "$CODE" "200"
 read -r SUPPORTED NOTE <<EOF
 $(python3 - "$RESP" <<'PY'
 import json,sys
@@ -136,36 +136,36 @@ PY
 EOF
 check "supported=false" "$SUPPORTED" "no"
 case "$NOTE" in
-  *"no model list"*) ok "原因里说了「没有模型清单接口」" ;;
-  *) bad "原因没说清（$NOTE）" ;;
+  *"no model list"*) ok "the reason says there is no model list endpoint" ;;
+  *) bad "the reason is not clear ($NOTE)" ;;
 esac
 
-# ---- 4. 名字不存在是错误（调用方问错了）----
+# ---- 4. a name that does not exist is an error (the caller asked wrong) ----
 echo
-echo "== 4. 名字不存在 =="
+echo "== 4. name does not exist =="
 CODE=$(curl -s -o "$RESP" -w '%{http_code}' -X POST "$API/ext/modellist" \
   -H 'Content-Type: application/json' -d '{"provider":"typo"}')
-check "未知 provider 返回 400" "$CODE" "400"
-if grep -q 'no provider named' "$RESP"; then ok "报错点名了那个名字"; else bad "报错没说清: $(cat "$RESP")"; fi
+check "unknown provider returns 400" "$CODE" "400"
+if grep -q 'no provider named' "$RESP"; then ok "the error names that name"; else bad "the error is not clear: $(cat "$RESP")"; fi
 
-# ---- 5. BFF 的两道门 + 方法 ----
+# ---- 5. the BFF's two gates + verbs ----
 echo
-echo "== 5. 两道门与动词 =="
+echo "== 5. two gates and verbs =="
 CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/ext/modellist" \
   -H 'Content-Type: text/plain' -d '{"provider":"fake"}')
-check "没声明 application/json → 415" "$CODE" "415"
+check "application/json not declared -> 415" "$CODE" "415"
 CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/ext/modellist" \
   -H 'Host: evil.com' -H 'Content-Type: application/json' -d '{"provider":"fake"}')
-check "Host 不是本机 → 403（挡 DNS rebinding）" "$CODE" "403"
+check "Host is not loopback -> 403 (blocks DNS rebinding)" "$CODE" "403"
 CODE=$(curl -s -o /dev/null -w '%{http_code}' "$API/ext/modellist")
 check "GET → 405" "$CODE" "405"
 CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/ext/modellist" \
   -H 'Content-Type: application/json' -d '{')
-check "坏 JSON → 400" "$CODE" "400"
+check "bad JSON -> 400" "$CODE" "400"
 CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$API/ext/nope" \
   -H 'Content-Type: application/json' -d '{}')
-check "没登记的扩展 → 404" "$CODE" "404"
+check "unregistered extension -> 404" "$CODE" "404"
 
 echo
-echo "== 结果：$PASS 通过，$FAIL 失败 =="
+echo "== result: $PASS passed, $FAIL failed =="
 [ "$FAIL" -eq 0 ]

@@ -1,48 +1,48 @@
 #!/usr/bin/env bash
-# 零 token 端到端：**Codex × DeepSeek 的工具交叉**——请求侧抬/降级，响应侧改回。
+# Zero-token end to end: **Codex × DeepSeek tool crossover** -- lift/degrade on the request side, turn back on the response side.
 #
-# 背景（2026-09-21，打真实 smt-deepseek/deepseek-flash 逐格实测）：两家的形状各自
-# 都对，只有放在一起才坏。
+# Background (2026-09-21, measured cell by cell against the real smt-deepseek/deepseek-flash): each vendor's shape is
+# fine on its own; they only break when put together.
 #
-#   Codex 旧版把工具树挂在 `input[0].additional_tools` 里，而 DeepSeek 的
-#   `/responses` **只从顶层 `tools` 读工具**。两边各按自己的规矩办事，结果模型一个
-#   工具都看不见——它会退回训练里的文本格式去「调工具」，客户端解析不出来，于是
-#   **一个 tool_result 都没有**（现场原话：「从来没成功获取 tool_result」）。
-#   这条不报错、请求 200、正文看着也像模像样，所以只能靠端到端锁。
+#   The old Codex hangs the tool tree under `input[0].additional_tools`, while DeepSeek's
+#   `/responses` **only reads tools from the top-level `tools`**. Each side follows its own rules, so the model cannot see a single
+#   tool -- it falls back to the text format from training to "call tools", the client cannot parse that, and so
+#   **not one tool_result comes back** (the customer's words: "never successfully got a tool_result").
+#   This reports no error, the request returns 200, the body even looks plausible, so only an end-to-end test can lock it.
 #
-#   新版 Codex 把工具直接放顶层 `tools`（含 `namespace` 分组与 `web_search`）。
-#   那份是 DeepSeek 已经在读的，但它对 `custom` 只认 `apply_patch` 一个，其余一律
-#   400；藏在 `namespace` 里的 custom 还会换一句 400
+#   The new Codex puts tools directly at the top level `tools` (including `namespace` grouping and `web_search`).
+#   That is what DeepSeek already reads, but it only knows `apply_patch` among `custom` and 400s on everything else;
+#   a custom hidden inside `namespace` gets a different 400 message.
 #   （`Currently custom tools are not allowed inside a namespace`）。
 #
-# 它锁的是五件会**静默**错掉的事：
+# It locks five things that would go wrong **silently**:
 #
-#   1  **旧版形状会被抬上来**。不抬的症状是「模型看不见工具」，而不是报错——见上；
-#   2  **两处 custom 都会被降级**（顶层那条、namespace 里那条）。降不掉的症状是
-#      上游 400，而 400 在这里恰好**不会**静默：假上游按真实判据拦，所以「仍然
-#      200」本身就是降级生效的证据；
-#   3  **响应侧改得回来**。降级过的工具在响应里必须变回 `custom_tool_call`（外加
-#      `custom_tool_call_input.*` 那套事件名，以及 `{"input": …}` 那层壳要拆掉）；
-#      **没降级过的**（原生 function）一个字节都不许动。改不回来的症状是客户端拿
-#      一段它认不出的形状去 eval；
-#   4  **没有 custom 时一个字节都不动**。「没有要修的就不动手」是这条路上最容易
-#      被顺手破坏的规矩，而破坏了看不出来（请求照样 200）；
-#   5  **两个开关点真的被读**，而且是**两件事**。抬工具（把 additional_tools 搬到
-#      顶层）与降级（把上游不收的 custom 改成 function）2026-09-23 之前挤在同一个
-#      开关底下，叫 `codex-deepseek.lift-tools`——于是「Codex 配 Ark」那条路上根本
-#      没有开关可关，而同一个行为在同一份二进制里有两个名字。现在它们分开了：
-#      `codex.lift-tools`（客户端方言，modules/codex）与
-#      `codex-deepseek.degrade-tools`（上游怪癖，modules/codex_deepseek）。
-#      两侧都必须真的被读——2026-09-21 实测到「报了『已关闭』而请求照改不误」，
-#      那比没有开关更糟；而两个开关里只要有一个不被读，关掉它就会变成空操作，
-#      或者变成「请求没降级、响应却被改成 custom_tool_call」这种把客户端弄坏的不对称。
+#   1  **Old shapes get lifted**. The symptom without lifting is "the model cannot see the tools", not an error -- see above;
+#   2  **Both custom sites get degraded** (the top-level one and the one in a namespace). The symptom without degrading is
+#      a 400 upstream, and a 400 here happens **not** to be silent: the fake upstream enforces the real criterion, so "still
+#      200" is itself the evidence that degrading worked;
+#   3  **The response side is turned back**. A degraded tool must become `custom_tool_call` again in the response (plus
+#      the `custom_tool_call_input.*` event name family, and the `{"input": ...}` wrapper must be stripped);
+#      **ones that were never degraded** (native functions) must not change by a single byte. The symptom without turning back is the client taking
+#      a shape it does not recognize and eval'ing it;
+#   4  **Not one byte changes when there is no custom**. "Do nothing when there is nothing to fix" is the rule most easily
+#      broken by accident on this path, and breaking it is invisible (the request still returns 200);
+#   5  **Both switch points are really read**, and they are **two things**. Lifting tools (moving additional_tools to
+#      the top level) and degrading (turning an upstream-rejected custom into a function) were crammed under the same
+#      switch before 2026-09-23, called `codex-deepseek.lift-tools` -- so the "Codex with Ark" path had no
+#      switch to turn off at all, and the same behavior had two names in the same binary. Now they are separate:
+#      `codex.lift-tools` (client dialect, modules/codex) and
+#      `codex-deepseek.degrade-tools` (upstream quirk, modules/codex_deepseek).
+#      Both sides must really be read -- on 2026-09-21 it was measured that a switch reported "off" while requests were still rewritten,
+#      which is worse than no switch; and if only one of the two switches is unread, turning it off becomes a no-op,
+#      or becomes an asymmetry that breaks the client ("the request was not degraded, but the response was turned into custom_tool_call").
 #
-# 假上游按路径复用内核的 `core/mock/fake_upstream.py`（不复制：它是逐字节复刻真实
-# 上游行为的产物，复制必然漂移，而漂移出来的是「绿的假测试」）。它对 `/responses`
-# 的那一支同样按实测写：工具调用从 output_index 1 起（前面有个 reasoning item）、
-# 参数是一串 delta、custom 工具按真实判据 400。
+# The fake upstream is reused by path from the kernel's `core/mock/fake_upstream.py` (not copied: it is a byte-for-byte replica of real
+# upstream behavior, a copy would inevitably drift, and what drifts out is a "green fake test"). Its `/responses`
+# branch is likewise written from measurement: tool calls start at output_index 1 (a reasoning item comes first),
+# arguments arrive as a series of deltas, and custom tools get a 400 by the real criterion.
 #
-# 全部在临时沙箱里跑，不碰真实 ~/.config 与 ~/.codex。
+# Everything runs in a temporary sandbox, touching neither the real ~/.config nor ~/.codex.
 
 set -u
 
@@ -57,7 +57,7 @@ case "$(uname -m)" in
 esac
 BIN_SRC="${NEWGATE_E2E_BIN:-$ROOT/dist/newgate-$DIST_NAME-$(uname -s | tr 'A-Z' 'a-z')-$host_arch}"
 SANDBOX="${NEWGATE_E2E_SANDBOX:-$(mktemp -d /tmp/newgate-codextools.XXXXXX)}"
-# 端口与另外几条 e2e 错开：几条可以同时跑。
+# Ports are offset from the other e2e scripts: several can run at once.
 UP_PORT="${NEWGATE_E2E_UP_PORT:-18097}"
 PORT="${NEWGATE_E2E_CODEXTOOLS_PORT:-18098}"
 BIN="$SANDBOX/bin/newgate"
@@ -65,14 +65,14 @@ BIN="$SANDBOX/bin/newgate"
 PASS=0; FAIL=0
 ok()   { echo "  ✓ $1"; PASS=$((PASS+1)); }
 bad()  { echo "  ✗ $1"; FAIL=$((FAIL+1)); }
-check(){ if [ "$2" = "$3" ]; then ok "$1"; else bad "$1 (期望 '$3'，实际 '$2')"; fi; }
-has()  { if command grep -q "$2" "$3" 2>/dev/null; then ok "$1"; else bad "$1（$3 里找不到 $2）"; fi; }
-hasnt(){ if command grep -q "$2" "$3" 2>/dev/null; then bad "$1（$3 里不该有 $2）"; else ok "$1"; fi; }
+check(){ if [ "$2" = "$3" ]; then ok "$1"; else bad "$1 (expected '$3', got '$2')"; fi; }
+has()  { if command grep -q "$2" "$3" 2>/dev/null; then ok "$1"; else bad "$1 (no $2 in $3)"; fi; }
+hasnt(){ if command grep -q "$2" "$3" 2>/dev/null; then bad "$1 (should not be $2 in $3)"; else ok "$1"; fi; }
 
 export NEWGATE_HOME="$SANDBOX/ng"
 export NEWGATE_LANG=en
-# 沙箱要密闭：跑 e2e 的会话自己可能带着 newgate 注入的窗口声明（嵌套启动时父进程
-# env 会漏给子进程）。
+# The sandbox must be sealed: the session running the e2e may itself carry window declarations injected by newgate (when started nested, the parent's
+# env leaks into child processes).
 unset CLAUDE_CODE_MAX_CONTEXT_TOKENS CLAUDE_CODE_AUTO_COMPACT_WINDOW
 unset LC_ALL LC_MESSAGES LANG LANGUAGE 2>/dev/null || true
 mkdir -p "$NEWGATE_HOME/mappings" "$(dirname "$BIN")"
@@ -81,23 +81,23 @@ cleanup() {
   [ -n "${UP_PID:-}" ] && kill "$UP_PID" 2>/dev/null
   "$BIN" stop >/dev/null 2>&1 || true
   if [ -n "${NEWGATE_E2E_KEEP:-}" ]; then
-    echo "沙箱保留（NEWGATE_E2E_KEEP）: $SANDBOX"
+    echo "Sandbox kept (NEWGATE_E2E_KEEP): $SANDBOX"
   else
     rm -rf "$SANDBOX"
   fi
 }
 trap cleanup EXIT
 
-echo "沙箱: $SANDBOX"
-[ -x "$BIN_SRC" ] || { echo "找不到二进制 $BIN_SRC——先跑 build/build.sh"; exit 1; }
+echo "Sandbox: $SANDBOX"
+[ -x "$BIN_SRC" ] || { echo "Binary not found: $BIN_SRC -- run build/build.sh first"; exit 1; }
 [ -f "$CORE/mock/fake_upstream.py" ] || {
-  echo "找不到内核的假上游 $CORE/mock/fake_upstream.py"
-  echo "core/ 是个 submodule，先：git submodule update --init --recursive"
+  echo "The kernel's fake upstream was not found: $CORE/mock/fake_upstream.py"
+  echo "core/ is a submodule; first: git submodule update --init --recursive"
   exit 1
 }
 cp "$BIN_SRC" "$BIN"
 
-# ---- 假上游 ----
+# ---- fake upstream ----
 python3 "$CORE/mock/fake_upstream.py" --port "$UP_PORT" >"$SANDBOX/upstream.log" 2>&1 &
 UP_PID=$!
 for _ in $(seq 1 50); do
@@ -105,10 +105,10 @@ for _ in $(seq 1 50); do
   sleep 0.1
 done
 
-# ---- 配置 ----
-# provider 名里带 deepseek，DeepSeek 那个模型家族的 MatchTarget 才认（它看的是
-# 模型名 / provider 名 / base URL 任一处）。这是**交叉插件会认领**这一次请求的
-# 前提，也是这条 e2e 与「上游是谁」无关的原因。
+# ---- config ----
+# The provider name contains deepseek, which is what DeepSeek's model-family MatchTarget recognizes (it looks at any
+# of model name / provider name / base URL). This is the precondition for the **crossover plugin claiming** this request,
+# and also why this e2e does not care which upstream it is.
 cat > "$NEWGATE_HOME/providers.json" <<EOF
 {"providers":{"deepseek":{"protocol":"openai","base_url":"http://127.0.0.1:$UP_PORT/v1","api_key":"sk-demo"}}}
 EOF
@@ -125,17 +125,17 @@ for _ in $(seq 1 50); do
 done
 LOG="$NEWGATE_HOME/newgate.log"
 
-# POST <请求体文件> <输出文件> → HTTP 状态码。
-# codex 的真实路径带上 /a/codex/——`special.Request.Agent` 就是从那一段来的，
-# 少了它交叉插件根本不认领（2026-09-21 实测踩过：走 /p/<profile>/ 时请求原样
-# 发出去，看起来像「补丁没生效」）。
+# POST <request body file> <output file> → HTTP status code.
+# codex's real path carries /a/codex/ -- `special.Request.Agent` comes from that segment, and without it
+# the crossover plugin does not claim it at all (measured 2026-09-21: going through /p/<profile>/ sends the request
+# as is, which looks like "the patch did not take effect").
 POST() {
   curl -sS -o "$2" -w '%{http_code}' -X POST \
     "http://127.0.0.1:$PORT/a/codex/p/ds/v1/responses" \
     -H 'Content-Type: application/json' --data-binary @"$1"
 }
 RESET() { curl -s -X POST "http://127.0.0.1:$UP_PORT/__mock/reset" >/dev/null; }
-# UPSAW <表达式> — 对上游收到的**最后一条**请求体求值（表达式里 body 就是它）。
+# UPSAW <expression> -- evaluate against the **last** request body the upstream received (body is that one inside the expression).
 UPSAW() {
   curl -s "http://127.0.0.1:$UP_PORT/__mock/requests" | python3 -c '
 import json, sys
@@ -144,11 +144,11 @@ body = d[-1]["body"] if d else {}
 print(eval(sys.argv[1], {"json": json}, {"body": body}))
 ' "$1"
 }
-# 一份工具表的形状摘要：[(type, name), …]，顶层顺序。
+# A shape summary of one tool table: [(type, name), ...], top-level order.
 SHAPE='json.dumps([[t.get("type"), t.get("name")] for t in (body.get("tools") or [])])'
 
 echo
-echo "== 1. 旧版形状：工具挂在 input[0].additional_tools 里，顶层一个都没有 =="
+echo "== 1. Old shape: tools hang under input[0].additional_tools, nothing at the top level =="
 cat > "$SANDBOX/req-old.json" <<'JSON'
 {"model":"normal","stream":true,"tool_choice":"auto",
  "input":[{"type":"additional_tools","id":"at_1","role":"developer","tools":[
@@ -158,31 +158,31 @@ cat > "$SANDBOX/req-old.json" <<'JSON'
    {"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}]}]}
 JSON
 RESET
-check "旧版形状 200（不抬的话模型看不见工具，但**不会**报错）" \
+check "old shape returns 200 (unlifted, the model cannot see tools, but it does **not** error)" \
   "$(POST "$SANDBOX/req-old.json" "$SANDBOX/out-old.sse")" "200"
-check "上游收到了顶层 tools：两条，一条 function 一条从 custom 降下来的" \
+check "the upstream received top-level tools: two, one function and one degraded from custom" \
   "$(UPSAW "$SHAPE")" '[["function", "exec"], ["function", "wait"]]'
-check "降级出来的那条带着 parameters（上游的 function 要求这个字段）" \
+check "the degraded one carries parameters (the upstream's function requires this field)" \
   "$(UPSAW 'json.dumps(body["tools"][0].get("parameters"))')" \
   '{"type": "object", "properties": {"input": {"type": "string"}}, "required": ["input"]}'
-has "日志里报了抬了 2 条" "lifted 2 tool declarations" "$LOG"
-has "日志里报了降级 1 条" "degraded 1 custom tool to a standard function" "$LOG"
+has "the log reports 2 lifted" "lifted 2 tool declarations" "$LOG"
+has "the log reports 1 degraded" "degraded 1 custom tool to a standard function" "$LOG"
 
 echo
-echo "== 2. 响应侧：降级过的改回 custom_tool_call，原生的一个字节不动 =="
-# 上游给两个工具各回一条 function_call（参数是一串 delta 吐的，与真实形态一致），
-# 出站改写按 output_index 记账：exec 该变成 custom_tool_call，wait 该原样。
-has "被降级的那条在流里是 custom_tool_call" '"type":"custom_tool_call"' "$SANDBOX/out-old.sse"
-has "它的 arguments 事件名换成了 custom_tool_call_input" \
+echo "== 2. Response side: the degraded one comes back as custom_tool_call, the native one changes not one byte =="
+# The upstream answers one function_call per tool (arguments arrive as a series of deltas, matching the real shape),
+# and the outbound rewrite is accounted by output_index: exec should become custom_tool_call, wait should stay as is.
+has "the degraded one is custom_tool_call in the stream" '"type":"custom_tool_call"' "$SANDBOX/out-old.sse"
+has "its arguments event name changed to custom_tool_call_input" \
   '"type":"response.custom_tool_call_input.delta"' "$SANDBOX/out-old.sse"
-has "收尾那条 item 也换名了" '"type":"response.custom_tool_call_input.done"' "$SANDBOX/out-old.sse"
-has "原生那条仍是 function_call（没有被顺手改掉）" '"type":"function_call"' "$SANDBOX/out-old.sse"
-has "参数外面那层 {\"input\": …} 的壳被拆掉了（codex 要的是里面那串原文）" \
+has "the closing item is renamed too" '"type":"response.custom_tool_call_input.done"' "$SANDBOX/out-old.sse"
+has "the native one is still function_call (not changed along the way)" '"type":"function_call"' "$SANDBOX/out-old.sse"
+has "the outer {\"input\": ...} wrapper is stripped (codex wants the raw string inside)" \
   '"input":"MOCK-TOOL-exec"' "$SANDBOX/out-old.sse"
-hasnt "拆壳之后 input 不该还包着 JSON 对象" '"input":"{\\"input\\"' "$SANDBOX/out-old.sse"
+hasnt "after unwrapping, input should not still wrap a JSON object" '"input":"{\\"input\\"' "$SANDBOX/out-old.sse"
 
 echo
-echo "== 3. 新版形状：顶层 tools 里夹着一条 custom =="
+echo "== 3. New shape: a custom mixed into the top-level tools =="
 cat > "$SANDBOX/req-top.json" <<'JSON'
 {"model":"normal","stream":false,
  "input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}]}],
@@ -190,14 +190,14 @@ cat > "$SANDBOX/req-top.json" <<'JSON'
           {"type":"custom","name":"exec","description":"Run JS"}]}
 JSON
 RESET
-check "顶层夹 custom 也 200（不降级的话上游 400 Unsupported custom tool）" \
+check "a custom at the top level also returns 200 (without degrading, the upstream 400s Unsupported custom tool)" \
   "$(POST "$SANDBOX/req-top.json" "$SANDBOX/out-top.json")" "200"
-check "顶层那条 custom 被降成了 function，原生那条一字不动" \
+check "the top-level custom was degraded to a function, the native one untouched" \
   "$(UPSAW "$SHAPE")" '[["function", "exec_command"], ["function", "exec"]]'
-has "日志里报了这次降级" "degraded 1 custom tool to a standard function" "$LOG"
+has "the log reports this degradation" "degraded 1 custom tool to a standard function" "$LOG"
 
 echo
-echo "== 4. 藏在 namespace 里的 custom（上游那句 400 是另一句） =="
+echo "== 4. A custom hidden inside a namespace (the upstream's 400 is a different sentence) =="
 cat > "$SANDBOX/req-ns.json" <<'JSON'
 {"model":"normal","stream":false,
  "input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}]}],
@@ -206,14 +206,14 @@ cat > "$SANDBOX/req-ns.json" <<'JSON'
     {"type":"custom","name":"exec","description":"Run JS"}]}]}
 JSON
 RESET
-check "namespace 里的 custom 也 200（漏掉就是 Currently custom tools are not allowed inside a namespace）" \
+check "a custom inside a namespace also returns 200 (miss it and you get Currently custom tools are not allowed inside a namespace)" \
   "$(POST "$SANDBOX/req-ns.json" "$SANDBOX/out-ns.json")" "200"
-check "namespace 的外壳还在（DeepSeek 真的把它当分组用），里面两条都是 function" \
+check "the namespace shell is still there (DeepSeek really uses it as a grouping), and both entries inside are functions" \
   "$(UPSAW 'json.dumps([body["tools"][0]["type"], [[t.get("type"), t.get("name")] for t in body["tools"][0]["tools"]]])')" \
   '["namespace", [["function", "wait"], ["function", "exec"]]]'
 
 echo
-echo "== 5. 没有 custom 时一个字节都不动 =="
+echo "== 5. Not one byte changes when there is no custom =="
 cat > "$SANDBOX/req-clean.json" <<'JSON'
 {"model":"normal","stream":false,
  "input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"hi"}]}],
@@ -221,67 +221,67 @@ cat > "$SANDBOX/req-clean.json" <<'JSON'
           {"type":"namespace","name":"multi_agent_v1","tools":[{"type":"function","name":"spawn_agent","description":"s","parameters":{"type":"object","properties":{}}}]},
           {"type":"web_search","external_web_access":false}]}
 JSON
-# 这一发该**一条 note 都没有**。日志是整条 e2e 共用的，所以先记下当下的行数，
-# 再比「这几发之间没有新的 lifted/degraded 行」——按文件名抓日志会抓错人。
+# This request should produce **not one note**. The log is shared by the whole e2e, so first record the current line count,
+# then compare "no new lifted/degraded lines between these requests" -- grabbing the log by file name would catch the wrong one.
 BEFORE=$(command grep -c 'lifted \|degraded ' "$LOG" 2>/dev/null || echo 0)
 RESET
-check "干净的顶层 tools 也 200" "$(POST "$SANDBOX/req-clean.json" "$SANDBOX/out-clean.json")" "200"
+check "clean top-level tools also return 200" "$(POST "$SANDBOX/req-clean.json" "$SANDBOX/out-clean.json")" "200"
 AFTER=$(command grep -c 'lifted \|degraded ' "$LOG" 2>/dev/null || echo 0)
-check "这一发一条「抬/降级」的日志都没有（没有要修的就不动手）" "$AFTER" "$BEFORE"
-# 对照：上游收到的那份必须与客户端发出去的那一份**同形**（含 namespace 与
-# web_search）。比 sort_keys 的形态而不是字节：假上游记的是解析后的对象。
-check "上游收到的那份与客户端发的一模一样" \
+check "not one lift/degrade log line for this request (do nothing when there is nothing to fix)" "$AFTER" "$BEFORE"
+# Control: what the upstream received must be **the same shape** as what the client sent (including namespace and
+# web_search). Compare the sort_keys shape rather than bytes: the fake upstream records the parsed object.
+check "what the upstream received is identical to what the client sent" \
   "$(UPSAW 'json.dumps(body["tools"], sort_keys=True)')" \
   "$(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))["tools"], sort_keys=True))' "$SANDBOX/req-clean.json")"
-# 响应侧也一个字都不该动：没有降级过的东西，就不该被改成 custom_tool_call。
-hasnt "干净的流里没有 custom_tool_call（响应侧没被认领）" "custom_tool_call" "$SANDBOX/out-clean.json"
+# Nothing should move on the response side either: something never degraded should not be turned into custom_tool_call.
+hasnt "no custom_tool_call in the clean stream (the response side did not claim it)" "custom_tool_call" "$SANDBOX/out-clean.json"
 
 echo
-echo "== 6. 降级的开关点：关掉之后 custom 原样发出去，上游按真实判据拦 =="
-# 这一关只停**下游**那一半：抬照抬（那是客户端的事，见第 7 节），但抬上来的 custom
-# 不再被降成 function——于是上游照它真实的判据 400。这就是「关掉降级的症状」，
-# 写得出来才说明这个开关真的被读。
+echo "== 6. The degrade switch: with it off, custom goes out as is and the upstream blocks it by the real criterion =="
+# This one stops only **the downstream** half: lifting still happens (that is the client's business, see section 7), but a lifted custom
+# is no longer degraded to a function -- so the upstream 400s by its real criterion. That is "the symptom of turning degrade off",
+# and being able to write it down is what proves the switch is really read.
 "$BIN" plugin codex-deepseek.degrade-tools off 5m >"$SANDBOX/off-degrade.log" 2>&1
-sleep 1.5   # 等一次配置重载（开关与 providers.json 走同一条路）
+sleep 1.5   # wait for one config reload (switches and providers.json take the same path)
 RESET
-check "关掉降级之后上游 400（那条 custom 原样发出去了）" \
+check "with degrade off the upstream 400s (that custom went out as is)" \
   "$(POST "$SANDBOX/req-old.json" "$SANDBOX/out-off-degrade.json")" "400"
-has "400 的正文是上游那句 Unsupported custom tool（不是我们自己编的话）" \
+has "the 400 body is the upstream's own Unsupported custom tool (not a line we made up)" \
   "Unsupported custom tool" "$SANDBOX/out-off-degrade.json"
-check "抬没停：上游仍然收到了顶层 tools，只是里面还躺着那条 custom" \
+check "lifting did not stop: the upstream still received top-level tools, they just still contain that custom" \
   "$(UPSAW "$SHAPE")" '[["custom", "exec"], ["function", "wait"]]'
-hasnt "响应侧没有认领（请求没降级、响应却被改成 custom_tool_call 是把客户端弄坏的不对称）" \
+hasnt "the response side did not claim it (a request that was not degraded but a response turned into custom_tool_call is the asymmetry that breaks clients)" \
   "custom_tool_call" "$SANDBOX/out-off-degrade.json"
 "$BIN" plugin codex-deepseek.degrade-tools on >"$SANDBOX/on-degrade.log" 2>&1
 sleep 1.5
 RESET
-check "打开之后又是 200" "$(POST "$SANDBOX/req-old.json" "$SANDBOX/out-on-degrade.sse")" "200"
-check "两条都是 function 了" \
+check "turning it back on gives 200 again" "$(POST "$SANDBOX/req-old.json" "$SANDBOX/out-on-degrade.sse")" "200"
+check "both are functions now" \
   "$(UPSAW "$SHAPE")" '[["function", "exec"], ["function", "wait"]]'
 
 echo
-echo "== 7. 抬的开关点：关掉之后工具根本不上去，两侧都停手 =="
-# 与第 6 节正交：这一关停的是「从 input[0] 抬到顶层」这件事本身（与上游无关，
-# 所以在 modules/codex 手里）。关掉之后 DeepSeek 的兜底那一支也必须跟着停——
-# 否则「关掉 codex.lift-tools」在这条路上是空操作，而开关报了名却没人读比没有
-# 开关更糟（2026-09-21 在 live 上实测过同一族的事）。
+echo "== 7. The lift switch: with it off the tools do not go up at all, and both sides stop =="
+# Orthogonal to section 6: this one stops "lifting from input[0] to the top level" itself (unrelated to the upstream,
+# so it is in modules/codex's hands). Once off, DeepSeek's fallback branch must stop too --
+# otherwise "turn codex.lift-tools off" is a no-op on this path, and a switch that announces itself but is unread is worse than no
+# switch at all (the same family of problem was measured on live on 2026-09-21).
 "$BIN" plugin codex.lift-tools off 5m >"$SANDBOX/off-lift.log" 2>&1
 sleep 1.5
 BEFORE=$(command grep -c 'lifted ' "$LOG" 2>/dev/null || echo 0)
 RESET
-check "关掉之后照常 200" "$(POST "$SANDBOX/req-old.json" "$SANDBOX/out-off-lift.sse")" "200"
-check "上游**没有**收到顶层 tools（抬这一手真的停了）" \
+check "with it off, still 200 as usual" "$(POST "$SANDBOX/req-old.json" "$SANDBOX/out-off-lift.sse")" "200"
+check "the upstream **did not** receive top-level tools (lifting really stopped)" \
   "$(UPSAW 'json.dumps(body.get("tools"))')" "null"
-hasnt "响应也没被改写（只停一边会把客户端弄坏）" "custom_tool_call" "$SANDBOX/out-off-lift.sse"
+hasnt "the response was not rewritten either (stopping only one side breaks the client)" "custom_tool_call" "$SANDBOX/out-off-lift.sse"
 AFTER=$(command grep -c 'lifted ' "$LOG" 2>/dev/null || echo 0)
-check "这一发一条「抬」的日志都没有" "$AFTER" "$BEFORE"
+check "not one lift log line for this request" "$AFTER" "$BEFORE"
 "$BIN" plugin codex.lift-tools on >"$SANDBOX/on-lift.log" 2>&1
 sleep 1.5
 RESET
-check "打开之后照常抬上来" "$(POST "$SANDBOX/req-old.json" "$SANDBOX/out-on-lift.sse")" "200"
-check "又看见了顶层 tools" \
+check "turning it back on lifts as usual" "$(POST "$SANDBOX/req-old.json" "$SANDBOX/out-on-lift.sse")" "200"
+check "top-level tools are visible again" \
   "$(UPSAW "$SHAPE")" '[["function", "exec"], ["function", "wait"]]'
 
 echo
-echo "结果: $PASS 通过, $FAIL 失败"
+echo "Result: $PASS passed, $FAIL failed"
 [ "$FAIL" = "0" ]

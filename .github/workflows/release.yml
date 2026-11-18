@@ -1,56 +1,56 @@
 name: release
 
-# 发行版自己的发布流水线。它在**这个仓库**里，不在内核仓库里——发行节奏是发行版
-# 作者的事：内核今天合了什么，不该决定你的产品什么时候发新版。
+# The distribution's own release pipeline. It lives in **this repository**, not the kernel repository -- the release cadence
+# is the distribution author's business: what the kernel merged today should not decide when your product ships a new version.
 #
-# 它做的就是把 build/build.sh 跑一遍（一个平台矩阵），然后把产物**发布成 GitHub
-# Release**——这样产物是「可下载的」而不只是躺在 Actions 的 artifact 里（artifact
-# 有保留期、还要登录才能下）。本地与 CI 走的是同一条构建路径，区别只有
-# NEWGATE_PLATFORMS 这一项。
+# All it does is run build/build.sh once (a platform matrix), then **publish the artifacts as a GitHub
+# Release** -- so they are downloadable instead of just sitting in Actions artifacts (artifacts
+# have a retention period and require a login to download). Local and CI take the same build path; the only difference
+# is NEWGATE_PLATFORMS.
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
 
-# 发布 Release 要写权限（原来只读，那时只上传 artifact）。
+# Publishing a Release needs write permission (it used to be read-only, back when it only uploaded artifacts).
 permissions:
   contents: write
 
 jobs:
   build:
-    name: 编译并发布静态二进制
+    name: Build and publish the static binaries
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          # core/ 是 submodule（内核源码钉在那一发上），构建要用它——go.mod 里
-          # 那条 replace 指的就是 ./core。
+          # core/ is a submodule (the kernel source is pinned to that release), and the build needs it -- that
+          # replace line in go.mod points at ./core.
           submodules: recursive
-          # fetch-depth 0：版本号来自 `git describe --tags`，浅克隆上它退化成一串
-          # 提交号（发出来的二进制会报不出 tag）。这个仓库不大，全量取值得。
+          # fetch-depth 0: the version comes from `git describe --tags`; on a shallow clone it degrades to a bare
+          # commit id (the binary shipped would not be able to report a tag). This repository is small, a full fetch is worth it.
           fetch-depth: 0
 
       - uses: actions/setup-go@v5
         with:
-          # 跟 go.mod 走，不写死版本——否则升级 toolchain 时这里会静默落后。
+          # Follow go.mod, do not hardcode a version -- otherwise this silently falls behind when the toolchain is upgraded.
           go-version-file: go.mod
-          # 指 go.sum：发行版**有**第三方依赖（modules/ssh-tunnel 用 golang.org/x/crypto），
-          # 而 go.sum 才是那份依赖集合的指纹。内核仍然零依赖（它的 go.mod 只有三行），
-          # 但那与这个 job 无关——这里编的是发行版。
+          # Point at go.sum: the distribution **has** third-party dependencies (modules/ssh-tunnel uses golang.org/x/crypto),
+          # and go.sum is the fingerprint of that dependency set. The kernel is still dependency-free (its go.mod is three lines),
+          # but that is irrelevant to this job -- what is built here is the distribution.
           cache-dependency-path: go.sum
 
-      # 只发**重点那份**（发行版的主配置）：骨架配置（dist-hello.json）是给人 fork
-      # 的样板，不是产品，不需要挂在 Release 上。要发哪几份由这里的 NEWGATE_DISTS
-      # 决定——build/build.sh 的能力是「一次编多份」，发什么是流水线的事。
-      - name: 构建（平台矩阵）
+      # Publish only **the flagship one** (the distribution's main config): the skeleton config (dist-hello.json) is a template
+      # for people to fork, not a product, and has no reason to hang off the Release. Which ones to ship is decided by
+      # NEWGATE_DISTS here -- build/build.sh can build several at once; what to ship is the pipeline's business.
+      - name: Build (platform matrix)
         env:
           NEWGATE_DISTS: dist.json
           NEWGATE_PLATFORMS: linux/amd64 linux/arm64 darwin/amd64 darwin/arm64
         run: bash build/build.sh dist
 
-      # 产物必须能跑、版本必须对得上。多调用型二进制（argv0 决定入口）——所以
-      # 先按正确的名字落一份再跑，否则 `newgate version` 会被当成 profile 名。
-      - name: 自检：产物能跑
+      # The artifact must run, and the version must match. A multi-invocation binary (argv0 decides the entry point) -- so
+      # drop a copy under the correct name before running it, or `newgate version` gets treated as a profile name.
+      - name: Self-check: the artifact runs
         run: |
           mkdir -p /tmp/bin
           cp dist/newgate-*-linux-amd64 /tmp/bin/newgate
@@ -66,15 +66,15 @@ jobs:
             dist/SHA256SUMS
           if-no-files-found: error
 
-      # 打 tag 推上来 = 发一版：产物挂到 Release 上，谁都能直接下。
-      # 手动触发（workflow_dispatch）只上传 artifact，不发 Release。
+      # Pushing a tag = shipping a version: the artifacts go onto the Release, and anyone can download them directly.
+      # A manual trigger (workflow_dispatch) only uploads artifacts, it does not publish a Release.
       #
-      # Release notes 来自 CHANGELOG.md 里与 tag 对应的那一节（`v0.8.1` →
-      # `## [0.8.1]`）。**没有那一节就红**，不退回自动生成的提交列表：
-      # 自动 notes 只会把「改了什么」摊成一串 commit subject，而发版说明是给人
-      # 读的。2026-11-04 的 v0.8.1 就是这个形状的反面教材（Release 上只有一条
-      # compare 链接）。补 changelog 是发版的一部分，不是发版之后的文档工作。
-      - name: 从 CHANGELOG.md 取这一版的说明
+      # The release notes come from the CHANGELOG.md section matching the tag (`v0.8.1` ->
+      # `## [0.8.1]`). **No such section means red**, with no fallback to the auto-generated commit list:
+      # auto notes only lay out "what changed" as a list of commit subjects, and release notes are meant to be
+      # read. v0.8.1 on 2026-11-04 was the counterexample (its Release had only one
+      # compare link). Filling in the changelog is part of shipping, not documentation work after it.
+      - name: Take this version's notes from CHANGELOG.md
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
           ver="${GITHUB_REF_NAME#v}"
@@ -84,11 +84,11 @@ jobs:
             on { print }
           ' CHANGELOG.md > RELEASE_NOTES.md
           if ! grep -q '[^[:space:]]' RELEASE_NOTES.md; then
-            echo "CHANGELOG.md 里没有 [${ver}] 这一节——发版前先补上（Release notes 就是它）" >&2
+            echo "CHANGELOG.md has no [${ver}] section -- add it before releasing (it is the release notes)" >&2
             exit 1
           fi
 
-      - name: 发布 Release
+      - name: Publish the Release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}

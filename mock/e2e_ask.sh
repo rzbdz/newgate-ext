@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
-# 零 token 端到端：**`newgate ask` 这条消费侧的路**——一句话进，正文出。
+# Zero-token end to end: **`newgate ask`, the consumer path** -- one sentence in, the body out.
 #
-# 它锁的是三件会**静默**错掉的事：
+# It locks three things that would go wrong **silently**:
 #
-#   1  **正文与思维链分得开**。`answer=$(newgate ask …)` 拿到的必须是干净的正文；
-#      reasoning 模型的一发回答里思维链常常比正文长好几倍（见 docs/06-reasoning.md），
-#      混进去的话脚本拿到的东西没法用。假上游对**流式**请求先吐 thinking 块再吐
-#      正文，所以这一条在这里能验死；
-#   2  **真正发出去的问题就是那句话**。`cliapi.Positional` 不跳过选项的**值**，
-#      于是 `ask --tier normal 今天天气` 很容易变成把 "normal 今天天气" 发出去——
-#      它不报错、不红，只答得莫名其妙。用假上游记下的请求体断言；
-#   3  **`--profile` 是单次覆盖**，不动全局默认。
+#   1  **The body and the chain of thought stay separable**. What `answer=$(newgate ask ...)` gets must be the clean body;
+#      in a reasoning model's answer the chain of thought is often several times longer than the body (see docs/06-reasoning.md),
+#      and if it leaks in, what the script gets is unusable. The fake upstream emits a thinking block first and then the
+#      body for **streaming** requests, so this one can be verified conclusively here;
+#   2  **The question actually sent is that sentence**. `cliapi.Positional` does not skip option **values**,
+#      so `ask --tier normal <question>` easily turns into sending "normal <question>" -- it reports no error, goes red nowhere, and just answers
+#      nonsense. Assert against the request body the fake upstream recorded;
+#   3  **`--profile` is a single-call override** that does not touch the global default.
 #
-# 假上游按路径复用内核的 `core/mock/fake_upstream.py`（不复制：它是逐字节复刻真实
-# 上游行为的产物，复制必然漂移，而漂移出来的是「绿的假测试」）。
+# The fake upstream is reused by path from the kernel's `core/mock/fake_upstream.py` (not copied: it is a byte-for-byte replica of real
+# upstream behavior, a copy would inevitably drift, and what drifts out is a "green fake test").
 #
-# 全部在临时沙箱里跑，不碰真实 ~/.config。
+# Everything runs in a temporary sandbox, touching neither the real ~/.config.
 
 set -u
 
@@ -30,7 +30,7 @@ case "$(uname -m)" in
 esac
 BIN_SRC="${NEWGATE_E2E_BIN:-$ROOT/dist/newgate-$DIST_NAME-$(uname -s | tr 'A-Z' 'a-z')-$host_arch}"
 SANDBOX="${NEWGATE_E2E_SANDBOX:-$(mktemp -d /tmp/newgate-ask-e2e.XXXXXX)}"
-# 端口与另外几条 e2e 错开：几条可以同时跑。
+# Ports are offset from the other e2e scripts: several can run at once.
 UP_PORT="${NEWGATE_E2E_UP_PORT:-18093}"
 PORT="${NEWGATE_E2E_ASK_PORT:-18094}"
 BIN="$SANDBOX/bin/newgate"
@@ -38,7 +38,7 @@ BIN="$SANDBOX/bin/newgate"
 PASS=0; FAIL=0
 ok()   { echo "  ✓ $1"; PASS=$((PASS+1)); }
 bad()  { echo "  ✗ $1"; FAIL=$((FAIL+1)); }
-check(){ if [ "$2" = "$3" ]; then ok "$1"; else bad "$1 (期望 '$3'，实际 '$2')"; fi; }
+check(){ if [ "$2" = "$3" ]; then ok "$1"; else bad "$1 (expected '$3', got '$2')"; fi; }
 
 export NEWGATE_HOME="$SANDBOX/ng"
 export NEWGATE_LANG=en
@@ -49,23 +49,23 @@ cleanup() {
   [ -n "${UP_PID:-}" ] && kill "$UP_PID" 2>/dev/null
   "$BIN" stop >/dev/null 2>&1 || true
   if [ -n "${NEWGATE_E2E_KEEP:-}" ]; then
-    echo "沙箱保留（NEWGATE_E2E_KEEP）: $SANDBOX"
+    echo "Sandbox kept (NEWGATE_E2E_KEEP): $SANDBOX"
   else
     rm -rf "$SANDBOX"
   fi
 }
 trap cleanup EXIT
 
-echo "沙箱: $SANDBOX"
-[ -x "$BIN_SRC" ] || { echo "找不到二进制 $BIN_SRC——先跑 build/build.sh"; exit 1; }
+echo "Sandbox: $SANDBOX"
+[ -x "$BIN_SRC" ] || { echo "Binary not found: $BIN_SRC -- run build/build.sh first"; exit 1; }
 [ -f "$CORE/mock/fake_upstream.py" ] || {
-  echo "找不到内核的假上游 $CORE/mock/fake_upstream.py"
-  echo "core/ 是个 submodule，先：git submodule update --init --recursive"
+  echo "The kernel's fake upstream was not found: $CORE/mock/fake_upstream.py"
+  echo "core/ is a submodule; first: git submodule update --init --recursive"
   exit 1
 }
 cp "$BIN_SRC" "$BIN"
 
-# ---- 假上游 ----
+# ---- fake upstream ----
 python3 "$CORE/mock/fake_upstream.py" --port "$UP_PORT" >"$SANDBOX/upstream.log" 2>&1 &
 UP_PID=$!
 for _ in $(seq 1 50); do
@@ -73,9 +73,9 @@ for _ in $(seq 1 50); do
   sleep 0.1
 done
 curl -sf "http://127.0.0.1:$UP_PORT/__mock/requests" >/dev/null \
-  && ok "假上游在 127.0.0.1:$UP_PORT" || { bad "假上游没起来"; exit 1; }
+  && ok "fake upstream on 127.0.0.1:$UP_PORT" || { bad "the fake upstream did not start"; exit 1; }
 
-# ---- 配置：一条链打假上游；另有一条 profile 用来验单次覆盖 ----
+# ---- config: one chain hitting the fake upstream; another profile for single-call override ----
 cat > "$NEWGATE_HOME/providers.json" <<EOF
 {"providers":{"demo":{"protocol":"anthropic","base_url":"http://127.0.0.1:$UP_PORT/v1","api_key":"sk-demo"}}}
 EOF
@@ -95,7 +95,7 @@ for _ in $(seq 1 50); do
 done
 
 RESETUP() { curl -sf "http://127.0.0.1:$UP_PORT/__mock/reset" -X POST >/dev/null; }
-# 上游收到的第一条请求里的 user 内容——用来验「真正发出去的是不是那句话」。
+# The user content in the first request the upstream received -- used to verify "what was really sent is that sentence".
 SENT() { curl -s "http://127.0.0.1:$UP_PORT/__mock/requests" | python3 -c '
 import json,sys
 r = json.load(sys.stdin)
@@ -105,71 +105,71 @@ c = m[0].get("content") if m else ""
 print(c if isinstance(c, str) else json.dumps(c, ensure_ascii=False))'; }
 
 echo
-echo "== 1. 正文进 stdout、思维链进 stderr =="
+echo "== 1. The body goes to stdout, the chain of thought to stderr =="
 RESETUP
-out=$("$BIN" ask --tier normal "只回一句话" 2>"$SANDBOX/think.txt")
-check "stdout 就是正文（假上游流式回的那句）" "$out" "MOCK-STREAM mock-model"
+out=$("$BIN" ask --tier normal "answer in one sentence" 2>"$SANDBOX/think.txt")
+check "stdout is the body (the sentence the fake upstream streamed back)" "$out" "MOCK-STREAM mock-model"
 err=$(cat "$SANDBOX/think.txt")
 case "$err" in
-  *MOCK-THINKING-ORIGINAL*) ok "思维链在 stderr（人看得见，脚本捕获不到）";;
-  *) bad "思维链没走 stderr，实际: $(echo "$err" | head -c 120)";;
+  *MOCK-THINKING-ORIGINAL*) ok "the chain of thought is on stderr (a human sees it, the script cannot capture it)";;
+  *) bad "the chain of thought did not go to stderr, actual: $(echo "$err" | head -c 120)";;
 esac
 case "$out" in
-  *MOCK-THINKING*) bad "思维链混进了 stdout——\$(newgate ask …) 拿到的就不干净了";;
-  *) ok "stdout 里一个字节的思维链都没有";;
+  *MOCK-THINKING*) bad "the chain of thought leaked into stdout -- what \$(newgate ask ...) gets is no longer clean";;
+  *) ok "not one byte of chain of thought in stdout";;
 esac
 
 echo
-echo "== 2. 真正发出去的问题就是那句话（选项的值不算问题） =="
+echo "== 2. The question really sent is that sentence (option values are not part of it) =="
 RESETUP
 "$BIN" ask --tier normal "今天天气如何" >/dev/null 2>&1
-check "上游收到的 user 内容" "$(SENT)" "今天天气如何"
+check "the user content the upstream received" "$(SENT)" "今天天气如何"
 
 echo
-echo "== 3. --profile 是单次覆盖，不动全局默认 =="
+echo "== 3. --profile is a single-call override and does not touch the global default =="
 RESETUP
-out=$("$BIN" ask --profile alt --tier normal "换个链" 2>/dev/null)
-check "这一发走了 alt 那条链" "$out" "MOCK-STREAM other-model"
-check "全局默认没被动过" "$(python3 -c 'import json;print(json.load(open("'"$NEWGATE_HOME"'/state.json"))["default_profile"])')" "demo"
+out=$("$BIN" ask --profile alt --tier normal "switch chains" 2>/dev/null)
+check "this request took alt's chain" "$out" "MOCK-STREAM other-model"
+check "the global default was not touched" "$(python3 -c 'import json;print(json.load(open("'"$NEWGATE_HOME"'/state.json"))["default_profile"])')" "demo"
 
 echo
-echo "== 4. 管道喂进来 =="
+echo "== 4. Fed in through a pipe =="
 RESETUP
 out=$(printf '从管道来的问题' | "$BIN" ask --tier light 2>/dev/null)
-check "管道那一发也答了" "$out" "MOCK-STREAM mock-model"
-check "上游收到的是管道里那句话" "$(SENT)" "从管道来的问题"
+check "the piped request was answered too" "$out" "MOCK-STREAM mock-model"
+check "the upstream received the sentence from the pipe" "$(SENT)" "从管道来的问题"
 
 echo
-echo "== 5. 没给问题：说清楚，不是发一个空请求 =="
+echo "== 5. No question given: say so, do not send an empty request =="
 out=$("$BIN" ask </dev/null 2>&1); rc=$?
 case "$rc" in
-  0) bad "没给问题却以 0 退出";;
-  *) ok "非零退出（$rc）";;
+  0) bad "exited 0 with no question given";;
+  *) ok "non-zero exit ($rc)";;
 esac
 case "$out" in
-  *"nothing to ask"*) ok "说清了「没有要问的东西」";;
-  *) bad "没说清，实际: $out";;
+  *"nothing to ask"*) ok "it said clearly that there is nothing to ask";;
+  *) bad "did not say clearly, actual: $out";;
 esac
 
 echo
-echo "== 6. 代理没在跑：说清楚要跑什么，而不是自己把它拉起来 =="
+echo "== 6. The proxy is not running: say what to run, instead of starting it yourself =="
 "$BIN" stop >/dev/null 2>&1
 sleep 0.3
 out=$("$BIN" ask "hi" 2>&1); rc=$?
 case "$rc" in
-  0) bad "代理没在跑却以 0 退出";;
-  *) ok "非零退出（$rc）";;
+  0) bad "proxy is not running but exited 0";;
+  *) ok "non-zero exit ($rc)";;
 esac
 case "$out" in
-  *"proxy is not running"*) ok "点名了「代理没在跑」";;
-  *) bad "没说清，实际: $out";;
+  *"proxy is not running"*) ok "named 'proxy is not running'";;
+  *) bad "not clear enough, actual: $out";;
 esac
 if "$BIN" status >/dev/null 2>&1 && curl -sf -o /dev/null "http://127.0.0.1:$PORT/__newgate/status"; then
-  bad "ask 把代理拉起来了——一次提问不该变成一次状态改变"
+  bad "ask brought the proxy up - a question should not become a state change"
 else
-  ok "ask 没有偷偷把代理拉起来"
+  ok "ask did not secretly bring the proxy up"
 fi
 
 echo
-echo "结果: $PASS 通过, $FAIL 失败"
+echo "result: $PASS passed, $FAIL failed"
 [ "$FAIL" = "0" ]

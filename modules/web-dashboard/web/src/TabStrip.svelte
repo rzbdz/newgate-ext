@@ -1,26 +1,26 @@
 <script lang="ts">
-  // 一节内部的导航：卡片不多时是**横向 tab 条**，很多时（config 那种十几张卡）是
-  // **左侧一个竖向栏**。
+  // Navigation within a section: **a horizontal tab strip** when there are few cards, and when there are many (config's dozen cards)
+  // **a vertical column on the left**.
   //
-  // 为什么要有第二种形状：十几张横 tab 只能挤在一条横向滚动里，滚起来比翻目录还
-  // 累——「找一张卡」本该是竖着浏览一眼的事。阈值是一处常量（App 的 TAB_OVERFLOW），
-  // App 拿它决定布局，这里只负责渲染；只有一张卡的节两者都不出——一条只有一个按钮
-  // 的工具条是纯噪音，还会把内容往下推。
+  // Why a second shape: a dozen horizontal tabs can only be squeezed into one horizontal scroll, and scrolling through it is more tiring than paging through a directory
+  // - "find a card" should be a one-glance vertical browse. The threshold is one constant (App's TAB_OVERFLOW),
+  // App uses it to decide the layout and this only renders; a section with one card shows neither - a toolbar with only one button
+  // is pure noise, and pushes content down too.
   //
-  // # 分组：两级的标题
+  // # Grouping: two-level headings
   //
-  // 卡可以带 `group`，两级、用 "/" 分开（见 lib/view 的 Concept.Group）：前一段是
-  // **大档**（`档位`——把「一天天加出来的一堆」与「装完就要配的那两项」在版面上
-  // 分开），后一段是**族**（`claude` 底下缩着 `claude-cheap`）。
+  // A card can carry `group`, two levels separated by "/" (see Concept.Group in lib/view): the first segment is
+  // the **major bucket** (`tiers` - separating "the pile added one day at a time" from "the two things you configure right after install"
+  // in the layout), and the second segment is the **family** (`claude-cheap` tucked under `claude`).
   //
-  // 判据只有一条：**某一段底下有 ≥2 张卡时，那一段才画标题**——一个人的「族」加
-  // 一行标题是纯噪音，还会把那一行往下推。所以贡献者尽管给每张卡都写分组，不必
-  // 自己先数一遍。一张卡缩进几格 = 它有几个**画出来了的**祖先（`ark` 在大档下缩
-  // 一格，`claude-cheap` 在大档和族下缩两格）。
+  // There is only one rule: **a segment draws a heading only when it has >=2 cards under it** - a "family" of one plus
+  // a line of heading is pure noise, and pushes that line down too. So contributors may write a group on every card without
+  // counting first. A card is indented by a few cells = how many **drawn** ancestors it has (`ark` is indented
+  // one cell under the major bucket, `claude-cheap` two cells under the major bucket and the family).
   //
-  // 两种形状同用一份事件与同一份 rows：点一下切那张卡。卡片顺序都跟着后端来
-  // （`(Source, Order, ID)` 排序，见 lib/view 的 Snapshot）：同一份装配跑两次，
-  // 位置必须一样——否则「第 3 行是哪个档位」这件事每次刷新都在变。
+  // Both shapes share one event and one set of rows: one click switches that card. Card order follows the backend
+  // (`(Source, Order, ID)` ordering, see Snapshot in lib/view): run the same assembly twice, and the
+  // position must be the same - otherwise "which tier is on row 3" changes on every refresh.
   import type { Concept } from "./api";
   import { t } from "./i18n";
 
@@ -38,7 +38,7 @@
     onPick: (id: string) => void;
   } = $props();
 
-  /** 一张卡的分组路径（`档位/claude` → `["档位", "claude"]`）。空 = 不归任何一档。 */
+  /** A card's group path (`tiers/claude` -> `["tiers", "claude"]`). Empty = not in any bucket. */
   function segsOf(c: Concept): string[] {
     return (c.group ?? "").split("/").filter(Boolean);
   }
@@ -49,10 +49,10 @@
 
   const rows = $derived.by<Row[]>(() => {
     const join = (segs: string[], n: number) => segs.slice(0, n).join("/");
-    // 先量一次：每一段前缀底下有几张卡（含后代）。只数不画。
+    // Count once first: how many cards are under each prefix segment (descendants included). Count only, do not draw.
     //
-    // 为什么是「含后代」而不是「正好这一段」：`档位` 底下那十七张卡全都属于某个族，
-    // 按「正好」数的话大档永远只有 0 张卡，标题一辈子画不出来。
+    // Why "including descendants" rather than "exactly this segment": all seventeen cards under `tiers` belong to some family,
+    // and counting by "exactly" would leave the major bucket with 0 cards forever, and its heading never drawn.
     const size = new Map<string, number>();
     for (const c of cards) {
       const segs = segsOf(c);
@@ -65,8 +65,8 @@
     const drawn = new Set<string>();
     for (const c of cards) {
       const segs = segsOf(c);
-      // 会画出来的祖先。**一旦某一段不够两张，再往下更不可能够**（更深的段是它的
-      // 子集），所以这里是 break 不是 continue。
+      // The ancestors that will be drawn. **Once a segment has fewer than two, deeper ones certainly cannot have two** (deeper segments are its
+      // subset), so this is break, not continue.
       const shown: string[] = [];
       for (let i = 1; i <= segs.length; i++) {
         const p = join(segs, i);
@@ -83,15 +83,15 @@
     return out;
   });
 
-  /** 缩进：每一级 12px，基准 12px（与 .group 的 padding 同一个基数）。 */
+  /** Indentation: 12px per level, base 12px (the same base as .group's padding). */
   const indent = (depth: number) => `${12 + depth * 12}px`;
   const key = (r: Row, i: number) => (r.kind === "head" ? `h:${r.name}:${i}` : r.c.id);
 </script>
 
 {#if cards.length > 1}
   {#if vertical}
-    <!-- 竖向栏：固定一列、纵向滚。行 = 卡标题（后端翻好的），title 是卡片 id——
-         标题会撞名（十几个 `mt-xx — Gallium`），id 才是稳定的定位。 -->
+    <!-- Vertical column: one fixed column, scrolling vertically. A row = the card title (translated by the backend), title is the card id -
+         titles collide (a dozen `mt-xx — Gallium`), and only the id is a stable locator. -->
     <nav class="v">
       {#each rows as r, i (key(r, i))}
         {#if r.kind === "head"}
@@ -112,8 +112,8 @@
       {/each}
     </nav>
   {:else}
-    <!-- 横条：同一个 rows，但标题缩成一段分隔（横条上摆不下缩进，也没必要——
-         它只在卡少的节里出现，一眼看得完）。 -->
+    <!-- Horizontal strip: the same rows, but the titles shrink to a separator (indentation does not fit on a strip, and is unnecessary -
+         it only appears in sections with few cards, which can be seen at a glance). -->
     <div class="tabs">
       {#each rows as r, i (key(r, i))}
         {#if r.kind === "head"}
@@ -136,8 +136,8 @@
 {/if}
 
 <style>
-  /* ---- 横向 tab 条 ---- */
-  /* 不换行（横向滚动）：一节多一张卡就换行的话，内容会被往下推一行。 */
+  /* ---- horizontal tab strip ---- */
+  /* No wrapping (horizontal scroll): if the strip wrapped each time a section gained a card, content would be pushed down a row. */
   .tabs {
     display: flex;
     align-items: center;
@@ -162,7 +162,7 @@
   }
   .tab:hover { color: var(--ink); }
   .tab.on { color: var(--ink); border-bottom-color: var(--accent); }
-  /* 横条里的分组标题：一小段竖线加一行小字，读作「下面这几张是一类」。 */
+  /* Group headings inside the strip: a small vertical line plus a line of small text, read as "the cards below are one category". */
   .sep {
     display: flex;
     align-items: center;
@@ -177,7 +177,7 @@
     flex: none;
   }
 
-  /* ---- 竖向栏（卡多时） ---- */
+  /* ---- vertical column (when there are many cards) ---- */
   .v {
     overflow-y: auto;
     border-right: 1px solid var(--line);
@@ -207,8 +207,8 @@
     box-shadow: inset 2px 0 0 var(--accent);
   }
 
-  /* 分组标题：小一号、全大写式的分组感，但**不是按钮**——点它不该切卡
-     （它代表的是一类，不是一张）。缩进由模板按层级给（见 indent）。 */
+  /* Group heading: one size smaller, with an all-caps grouping feel, but **not a button** - clicking it must not switch cards
+     (it represents a category, not a card). Indentation is given by the template per level (see indent). */
   .group {
     margin: 8px 0 2px;
     padding: 0 12px;

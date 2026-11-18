@@ -1,20 +1,20 @@
 <script lang="ts">
-  // 指纹那一屏（形状见内核 lib/view 的 KindFingerprints）。
+  // The fingerprints screen (shape in the core lib/view's KindFingerprints).
   //
-  // 它回答的问题只有一句：**这条 binding 写的模型，上游此刻真的在用它吗？**
+  // It answers one question: **is the upstream really using the model this binding names right now?**
   //
-  // 两种用法：
-  //   - 「按 profile」：把配置里的每一条 binding 摊开，一行一个上次验到的结论，
-  //     每一行都能现场再验一次；
-  //   - 「挑一个模型」：不经过任何 profile，直接选一家上游、一个模型，拿一份指纹。
-  //     排查「这个新模型是不是冒充的」时，配置里还没有它。
+  // Two uses:
+  //   - "by profile": lay out every binding in the config, one line per last verified conclusion,
+  //     and each line can be verified again on the spot;
+  //   - "pick a model": bypass every profile, pick one upstream and one model directly, and get a fingerprint.
+  //     When investigating "is this new model impersonating another", the config does not have it yet.
   //
-  // # 它不认识任何模块
+  // # It knows no modules
   //
-  // 素材来自概念的数据（后端 verify 的 State）；「验一次」走 BFF 的扩展端点
-  // `/api/ext/fingerprint`——端点名不是模块名，前端要知道的只是「有一个指纹端点」。
-  // 没有这个端点时，所有按钮会报 404，而这一屏照常打开（这是「没装那个模块」的
-  // 正常形态，不是白屏）。
+  // The material comes from the concept's data (the backend verify's State); "verify once" goes through the BFF's extension endpoint
+  // `/api/ext/fingerprint` - the endpoint name is not a module name, and all the frontend needs to know is "there is a fingerprint endpoint".
+  // Without that endpoint, all buttons report 404, and this screen still opens (that is the normal
+  // shape of "that module is not installed", not a white screen).
   import { untrack } from "svelte";
   import { t } from "../i18n";
   import ModelPicker from "../ModelPicker.svelte";
@@ -29,26 +29,26 @@
   let { data }: { data: FingerprintState } = $props();
 
   const empty: FingerprintState = { profiles: [], providers: [], entries: [], loaded: false };
-  /** 后端每次快照都会给一个新对象；这里只在没有覆盖时用它。 */
+  /** The backend gives a new object on every snapshot; use it here only when there is no override. */
   const initial: FingerprintState = untrack(() => data ?? empty);
   let snap = $state<FingerprintState>(initial);
   let seen: FingerprintState = initial;
   $effect(() => {
     if (seen === data) return;
     seen = data;
-    // 新快照可能已经包含终端里刚验出来的那一条；不整个替换，交给下面的合并
-    // （按 checked_at 取新的），所以这里只更新配置视图那一半。
+    // A new snapshot may already include the one just verified in the terminal; do not replace wholesale, leave it to the merge below
+    // (take the newer by checked_at), so only the config view half is updated here.
     snap = data ?? empty;
   });
 
   /**
-   * 这个页面自己验出来的结论。与快照里的那份**按 checked_at 合并**：
+   * Conclusions verified by this page itself. Merged **by checked_at** with the one in the snapshot:
    *
-   *   - 网页上刚点完按钮 → 这里的更新；
-   *   - 终端里刚跑过 `newgate verify` → 下一次快照里的更新。
+   *   - just clicked the button on the web -> the update here;
+   *   - just ran `newgate verify` in the terminal -> the update in the next snapshot.
    *
-   * 两边都可能在对方之后发生。按时间取新的，才能既不被 3 秒一次的快照盖掉，
-   * 也不把终端里更新的一条挡在外面。
+   * Either side may happen after the other. Taking the newer by time is the only way to avoid being overwritten by the 3-second snapshot
+   * and to avoid shutting out a newer entry from the terminal.
    */
   let fresh = $state<FingerprintEntry[]>([]);
 
@@ -66,7 +66,7 @@
     return m;
   });
 
-  /** 「按 profile」的筛选：空 = 全部。 */
+  /** The "by profile" filter: empty = all. */
   let filter = $state("");
   const shown = $derived(filter ? profiles.filter((p) => p.name === filter) : profiles);
 
@@ -137,12 +137,12 @@
         await runOne(tg.provider, tg.model);
       }
     };
-    // 两条并发：每条本身已经在并发打 3 个挑战。再多会把上游的限流与超时
-    // 混进结论里，而这一屏要的是「模型是谁」，不是「谁先回」。
+    // Two in parallel: each one is already hitting 3 challenges concurrently. More would mix the upstream's rate limiting and timeouts
+    // into the conclusions, and this screen wants "who is the model", not "who answered first".
     await Promise.all([worker(), worker()]);
   }
 
-  // ---- 自由验证（子页） ----
+  // ---- free verification (sub-page) ----
   let tab = $state<"profiles" | "pick">("profiles");
   let pickProvider = $state("");
   let pickModel = $state("");
@@ -177,8 +177,8 @@
     pickBusy = true;
     pickError = "";
     try {
-      // 自由验证走自己的请求，不经过 runOne：那一份的 busy 表是按行共享的，
-      // 同一个 binding 正好也在 profile 行上验着的时候，这里不该被它挡掉。
+      // Free verification goes through its own request, not runOne: that one's busy table is shared per row,
+      // and when the same binding happens to be verifying on a profile row too, this one should not be blocked by it.
       const e = await fingerprintRun(pickProvider, model, pickAPI, pickCount);
       pickEntry = e;
       fresh = mergeEntries(fresh, [e]);
@@ -190,7 +190,7 @@
     }
   }
 
-  // ---- 展示 ----
+  // ---- display ----
   function errText(err: unknown): string {
     return err instanceof Error ? err.message : String(err);
   }
@@ -485,6 +485,6 @@
   .cell { display: flex; flex-direction: column; gap: 2px; }
   .cands table { margin-top: 4px; }
   .notice { padding: 8px 11px; border-radius: var(--radius-sm); border: 1px solid var(--warn); background: color-mix(in srgb, var(--warn) 10%, transparent); }
-  /* notice 也可能是请求失败（bad）：同一条横幅，语气跟着原因走。 */
+  /* notice may also be a request failure (bad): the same banner, with the tone following the cause. */
   .notice.bad { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
 </style>

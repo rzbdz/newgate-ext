@@ -1,12 +1,12 @@
 <script lang="ts">
-  // 源文件编辑器（硬核用户那条 tab）：CodeMirror 6。
+  // Source file editor (the hardcore user's tab): CodeMirror 6.
   //
-  // 编的是**磁盘上那份原文**，不是「配置模型」——界面不懂 profile 的字段，它只
-  // 把字节摆出来让人改。所以这里没有 schema 校验、没有字段级补全之外的东西：
-  // 加一层语义就等于界面开始认识那个文件。
+  // It edits **the raw text on disk**, not the "config model" - the UI does not understand a profile's fields, it just
+  // lays out the bytes for a person to change. So there is no schema validation here, nothing beyond field-level completion:
+  // adding a layer of semantics would mean the UI starts knowing about that file.
   //
-  // 带凭据的文件是**只读**的（`redacted`）：它的 text 里 api_key 已经被换成 ***，
-  // 写回去就是把 *** 落盘——那是数据丢失，比「不能编辑」严重得多。
+  // Files with credentials are **read-only** (`redacted`): in their text api_key is already replaced with ***,
+  // and writing back would land *** on disk - that is data loss, far worse than "cannot edit".
   import { untrack } from "svelte";
   import { basicSetup } from "codemirror";
   import { EditorState } from "@codemirror/state";
@@ -40,15 +40,15 @@
     "&.cm-focused": { outline: "none", borderColor: "var(--accent)" },
   });
 
-  // 编辑器**只建一次**——而这件事必须用 untrack 明确说出来。
+  // The editor is **created once** - and this must be said explicitly with untrack.
   //
-  // 不 untrack 的话，下面那句 `new EditorView({ doc: value, … })` 会把 value
-  // 登记成这个 effect 的依赖，于是**每敲一个字符**（value 跟着 draft 变）effect
-  // 就重跑一遍：旧编辑器 destroy、新建一个、doc 从头灌进去——光标回到第 0 行，
-  // 撤销栈清零。现场的症状是「在文本编辑框里按一下 d，它跳到第一行，根本没法
-  // 编辑」（2026-09-20 实测）。data.language / readonly 同理：它们是**建的时候**
-  // 才需要的参数，不是「变了要重建」的信号（换文件时 ConceptCard 的 `{#key}`
-  // 已经把这个组件整个重建了）。
+  // Without untrack, the `new EditorView({ doc: value, ... })` below would register value
+  // as a dependency of this effect, so **on every character typed** (value follows draft) the effect
+  // re-runs: destroy the old editor, create a new one, pour doc in from the start - the cursor goes back to line 0,
+  // and the undo stack is cleared. The live symptom was "pressing d in the text editor jumps to the first line, and it is impossible to
+  // edit" (measured 2026-09-20). Same for data.language / readonly: they are parameters needed **when creating it**,
+  // not signals that "this changed so rebuild" (when switching files ConceptCard's `{#key}`
+  // already rebuilds this whole component).
   $effect(() => {
     const target = host;
     if (!target) return;
@@ -62,8 +62,8 @@
       EditorView.lineWrapping,
       theme,
       EditorView.updateListener.of((u) => {
-        // `!applying`：程序性的替换（下面那个 effect）也会走这里，而它不是用户
-        // 输入——见 applying 的注释。
+        // `!applying`: a programmatic replacement (the effect below) also goes through here, and it is not user
+        // input - see the comment on applying.
         if (u.docChanged && !applying) onEdit({ text: u.state.doc.toString() });
       }),
     ];
@@ -77,23 +77,23 @@
     };
   });
 
-  // 外部换了内容（revert、重新拉快照、**同一份文件的另一半动了手**）才覆盖文档；
-  // 相同就什么都不做，否则打字到一半会被自己刚发出去的那份草稿顶回去。
+  // Only overwrite the document when the content was changed externally (revert, a fresh snapshot pull, **the other half of the same file acted**);
+  // if identical do nothing, otherwise typing halfway gets pushed back by the draft we just sent out.
   //
-  // # applying：这一下替换**必须**标记成程序性的
+  // # applying: this replacement **must** be marked as programmatic
   //
-  // dispatch 同样会走上面的 updateListener，而那条路会把新内容当成一次**用户输入**
-  // 再交出去——于是一次「外部换内容」变成了一次「用户刚编辑过」，回声不断。
+  // dispatch also goes through the updateListener above, and that path treats the new content as a **user input**
+  // and submits it again - so one "external content change" becomes one "the user just edited", an endless echo.
   //
-  // 后果实测过（2026-09-21，一份文件的两半）：原文改完、再去动控件 →
-  //   1. App 按 lastEdit 把原文那份草稿丢掉（那是对的：控件那一半的编辑载荷是
-  //      整份文件，留着必然撞过期基线）；
-  //   2. 这里的 `value` 于是回落成盘上内容，触发这一下替换；
-  //   3. 替换被当成用户输入交回去 → 原文草稿**复活**，还把 lastEdit 抢回 raw；
-  //   4. 保存写的是原文那一半，内容 = 盘上原样 —— **两笔编辑一起没了**，而且屏幕上
-  //      连一句报错都没有（只看到「未保存」自己消失了）。
+  // The consequence was measured (2026-09-21, the two halves of one file): change the original text, then touch a control ->
+  //   1. App drops the original text's draft by lastEdit (which is right: the control half's edit payload is
+  //      the whole file, and keeping it necessarily hits a stale baseline);
+  //   2. here `value` then falls back to the disk content, triggering this replacement;
+  //   3. the replacement is treated as user input and submitted back -> the original-text draft **comes back to life**, and grabs lastEdit back to raw;
+  //   4. saving writes the original-text half, with content = the disk as is - **both edits are gone**, and on screen
+  //      there is not even an error (you only see "unsaved" disappear by itself).
   //
-  // 只在替换期间置位：CodeMirror 的 dispatch 是同步的，updateListener 就在里面跑完。
+  // Set only during replacement: CodeMirror's dispatch is synchronous, and the updateListener runs inside it.
   let applying = false;
   $effect(() => {
     const next = value;

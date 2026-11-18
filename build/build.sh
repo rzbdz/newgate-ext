@@ -1,58 +1,58 @@
 #!/usr/bin/env bash
-# 从本发行版编出静态二进制。可以一次编**多份配置**（规格书）→ 多个二进制。
+# Build a static binary from this distribution. Can build **several configs** (specs) at once -> several binaries.
 #
-# 这是**唯一的构建入口**：本地怎么编、CI 怎么编、fork 的人怎么编，都是这一条命令。
-# 它做四件事：
+# This is **the only build entry point**: how to build locally, how CI builds, how a forker builds, all the same command.
+# It does four things:
 #
-#   1. 检查 core/ 这个 submodule 在不在——它是内核源码，也是 go.mod 里那条
-#      `replace github.com/rzbdz/newgate => ./core` 的目标；
-#   2. 生成装配清单（manifest/modules_gen.go，按仓库根的**全部**规格书）；
-#   3. 每份规格书 × 每个平台各编一个全静态二进制；
-#   4. 拷到 dist/，附一份 SHA256SUMS。
+#   1. check that the core/ submodule is present -- it is the kernel source, and the target of that
+#      `replace github.com/rzbdz/newgate => ./core` line in go.mod;
+#   2. generate the assembly manifest (manifest/modules_gen.go, from **all** specs at the repository root);
+#   3. build one fully static binary per spec per platform;
+#   4. copy them to dist/, with a SHA256SUMS alongside.
 #
-# 用法
-#   build/build.sh [输出目录]                 默认只编 dist.json（日常开发要的就是它）
-#   NEWGATE_DISTS="dist.json dist-hello.json" 一次编多份规格书 → 多个二进制
-#   NEWGATE_ALL=1                             仓库根所有 dist*.json
-#   NEWGATE_DIST=dist-hello.json              单份（= NEWGATE_DISTS 里只有它）
-#   NEWGATE_PLATFORMS="linux/amd64 linux/arm64"  平台矩阵（发布时由 CI 给）
+# Usage
+#   build/build.sh [output dir]               by default only builds dist.json (what day-to-day development needs)
+#   NEWGATE_DISTS="dist.json dist-hello.json" build several specs at once -> several binaries
+#   NEWGATE_ALL=1                             every dist*.json at the repository root
+#   NEWGATE_DIST=dist-hello.json              just one (= a NEWGATE_DISTS with only that one)
+#   NEWGATE_PLATFORMS="linux/amd64 linux/arm64"  platform matrix (provided by CI at release time)
 #
-# # 为什么要多份（2026-09-20）
+# # Why several (2026-09-20)
 #
-# `dist-hello.json` 是「整个框架 + 一个 hello」的骨架配置。调试发行版机制本身时，
-# 编一个这样的二进制比切到 `template` 分支去调有用得多：切分支会让主分支上的改动
-# 和骨架配置没法同时验证（而「改完在两边各编一次」正是最容易漏的那一步）。多编
-# 一份的代价是几秒钟，所以本地调试直接 `NEWGATE_DISTS="dist.json dist-hello.json"`。
+# `dist-hello.json` is the skeleton config "the whole framework + one hello". When debugging the distribution mechanisms themselves,
+# building such a binary is far more useful than switching to the `template` branch: switching branches keeps changes on the main branch
+# and the skeleton config from being verified at the same time (and "build once on each side after a change" is exactly the step most easily skipped). One extra
+# build costs a few seconds, so for local debugging just do `NEWGATE_DISTS="dist.json dist-hello.json"`.
 #
-# GitHub Release 只发**重点的那份**（发行版的主配置）——那是产品，骨架是给人 fork
-# 的样板，不需要挂在 Release 上。这件事由 CI 的 release.yml 用 NEWGATE_DISTS 决定，
-# 不在本脚本里写死：脚本只回答「怎么编」，回答「发什么」是流水线的事。
+# GitHub Release ships only **the flagship one** (the distribution's main config) -- that is the product; the skeleton is a template
+# for people to fork and has no reason to hang off the Release. That is decided by release.yml in CI via NEWGATE_DISTS,
+# not hardcoded in this script: the script only answers "how to build"; answering "what to ship" is the pipeline's business.
 #
-# # 产物名
+# # Artifact names
 #
-#   newgate-<规格书里的 distribution>-<平台>-<架构>
+#   newgate-<distribution in the spec>-<platform>-<arch>
 #
-# 例如 `newgate-default-linux-amd64`、`newgate-hello-darwin-arm64`。注意它是**多调用
-# 型**的（argv0 决定入口：newgate / claude / opencode…），拿去跑之前先按正确的名字
-# 落一份（见 README 与 CLAUDE.md §3）。
+# For example `newgate-default-linux-amd64`, `newgate-hello-darwin-arm64`. Note that it is **multi-invocation**
+# (argv0 decides the entry point: newgate / claude / opencode...), so before running it, drop a copy under the correct name
+# (see the README and CLAUDE.md §3).
 #
-# # 与 2026-09-20 之前那版的区别
+# # How this differs from the version before 2026-09-20
 #
-# 旧版写一张临时 Pin、然后 `cd core && make static`——真正的组装机制住在内核
-# 仓库里，代价是编一次发行版就把**内核 checkout 改脏**（生成的清单被重写成发行版
-# 那份），而且编的是发行版的已提交状态（改完必须先 commit）。
+# The old version wrote a temporary Pin and ran `cd core && make static` -- the real assembly machinery lived in the kernel
+# repository, at the cost of making the kernel checkout dirty every time a distribution was built (the generated manifest was rewritten into the distribution's
+# copy), and of building the distribution's committed state (you had to commit before building).
 #
-# 现在发行版是**自己的 Go module**：编的是自己的 main，内核只是它的一份依赖
-# （replace 到 submodule）。于是三件事一起消失：内核工作区不再被改写、构建读的是
-# 工作区（不必先 commit）、发行版的测试与内核的测试各跑各的。
+# Now the distribution is **its own Go module**: it builds its own main, and the kernel is just one of its dependencies
+# (replaced by the submodule). So three things disappear together: the kernel worktree is no longer rewritten, the build reads the
+# worktree (no need to commit first), and the distribution's tests and the kernel's tests each run on their own.
 set -euo pipefail
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 out=${1:-$here/dist}
-# 输出目录**先转成绝对路径**：脚本中途要 `cd "$gomod"`，那之后的相对路径会指到别处。
-# 2026-09-20 CI 实测踩过：`build/build.sh dist` 把产物写进了 `dist/`，而端到端脚本
-# 在仓库根找它，报「找不到二进制」——构建那个 job 还是绿的，所以红在隔壁那步。
-# 相对路径按**调用者当时的工作目录**解释（不是仓库根，也不是脚本自己所在的那层）。
+# Turn the output directory **into an absolute path first**: the script does `cd "$gomod"` partway through, and relative paths after that would point elsewhere.
+# Measured in CI on 2026-09-20: `build/build.sh dist` wrote artifacts into `dist/`, while the end-to-end script
+# looked for them at the repository root and reported "binary not found" -- the build job was green, so the red appeared one step over.
+# Relative paths are interpreted **relative to the caller's current working directory** (not the repository root, and not the script's own directory).
 case "$out" in
   /*) : ;;
   *)  out="$(pwd)/$out" ;;
@@ -60,7 +60,7 @@ esac
 core=$here/core
 gomod=$here
 
-# 编哪几份。三个开关的优先顺序：全都要 > 点名几份 > 就一份（默认 dist.json）。
+# Which ones to build. Priority of the three switches: all > a named few > just one (dist.json by default).
 if [ -n "${NEWGATE_ALL:-}" ]; then
   specs=$(cd "$here" && ls dist*.json)
 elif [ -n "${NEWGATE_DISTS:-}" ]; then
@@ -70,54 +70,54 @@ else
 fi
 
 if [ ! -f "$core/go.mod" ]; then
-  echo "core/ 里没有内核源码。它是个 submodule，先：" >&2
+  echo "No kernel source in core/. It is a submodule; first:" >&2
   echo "  git submodule update --init --recursive" >&2
   exit 1
 fi
 for s in $specs; do
-  [ -f "$here/$s" ] || { echo "找不到规格书 $here/$s" >&2; exit 1; }
+  [ -f "$here/$s" ] || { echo "Spec not found: $here/$s" >&2; exit 1; }
 done
 
-# 内核的提交**推上去了才算数**。submodule 平时是 detached 的：在 core/ 里改完、
-# 提交、忘了 `git push`，编出来的二进制就基于一个只存在于本机的提交——别人拿到
-# （CI 拿到）的是一个指向不存在提交的指针，发行版的流水线会在 checkout 那一步
-# **整体**死掉：`fatal: remote error: upload-pack: not our ref`（2026-09-20 实测）。
+# The kernel commit **only counts once it is pushed**. The submodule is normally detached: you change things in core/,
+# commit, and forget `git push`, and the binary you build is based on a commit that exists only on your machine -- everyone else
+# (including CI) gets a pointer to a commit that does not exist, and the distribution's pipeline dies **wholesale**
+# at the checkout step: `fatal: remote error: upload-pack: not our ref` (measured 2026-09-20).
 #
-# 只警告不报错：本地开发时从「还没推的内核提交」编一份出来是合理的（正是要试它），
-# 但必须说出来——那份产物谁也复现不了，推上去的那一刻 CI 就会替你说。
+# Warn only, do not fail: during local development, building from "a kernel commit not yet pushed" is reasonable (that is exactly what you want to try),
+# but it must be said -- nobody else can reproduce that artifact, and CI will say so for you the moment it is pushed.
 if core_head=$(git -C "$core" rev-parse --verify -q HEAD); then
   if [ -z "$(git -C "$core" for-each-ref --contains "$core_head" --format='%(refname)' refs/remotes/)" ]; then
     {
-      echo "⚠ core/ 的 HEAD ${core_head:0:7} 不在任何**已获取的**远端分支上。"
-      echo "  要么忘了 push（git -C core push origin main），要么本地没 fetch"
-      echo "  （git -C core fetch）。这份产物别人复现不了，CI 也过不了 checkout。"
+      echo "Warning: core/ HEAD ${core_head:0:7} is not on any **fetched** remote branch."
+      echo "  Either you forgot to push (git -C core push origin main), or this machine has not fetched"
+      echo "  (git -C core fetch). Nobody else can reproduce this artifact, and CI will not get past checkout."
     } >&2
   fi
 fi
 
-# 版本号带上工作区状态。旧版在工作区脏时只**警告一句**，而二进制的版本仍然记成
-# 那个提交号——两个说法对不上。现在直接写进二进制：`newgate version` 自己会说
-# 「这是 dirty 的」，谎报不了。
+# Put the worktree state into the version. The old version only **warned** when the worktree was dirty, while the binary's version still recorded
+# that commit id -- the two stories disagreed. Now it is written into the binary directly: `newgate version` itself says
+# "this is dirty", and it cannot lie.
 rev=$(git -C "$here" describe --tags --always --dirty 2>/dev/null || echo unknown)
 if [ -n "$(git -C "$here" status --porcelain -- go 'dist*.json')" ]; then
-  echo "⚠ 发行版有未提交的改动：版本号带 -dirty，内容与任何提交都不完全一致" >&2
+  echo "Warning: the distribution has uncommitted changes: the version carries -dirty, and the contents match no commit exactly" >&2
 fi
 
-echo "── 内核：$core @ $(git -C "$core" rev-parse --short HEAD)"
-echo "── 发行版规格书：$specs"
+echo "-- kernel: $core @ $(git -C "$core" rev-parse --short HEAD)"
+echo "-- distribution specs: $specs"
 
-# 清单只生成一次：distgen 扫的是仓库根的全部规格书，一次就写全（选哪份是链接期的事）。
+# The manifest is generated once: distgen scans every spec at the repository root, writing them all in one pass (which one is used is decided at link time).
 cd "$gomod"
 go run ./tools/distgen
 
-# 本发行版自己的目录表也要编成运行期直接读的那一份（见内核 lib/i18n/bundle.go）：
-# go:embed 要的是 .bin，所以这一步必须在编译之前。内核那一份由内核的 `make generate`
-# 管（build.sh 前面已经跑过 make），这里管的是发行版自己带的那几张表。
+# This distribution's own catalog tables must also be compiled into the one the runtime reads directly (see the kernel's lib/i18n/bundle.go):
+# go:embed wants the .bin, so this step must come before compilation. The kernel's copy is handled by the kernel's `make generate`
+# (build.sh has already run make above); what is handled here is the handful of tables this distribution ships itself.
 #
-# 先 extract 再 bundle（2026-09-21）：账本是**纯静态扫描**的产物，与清单同一类东西，
-# 却曾经是唯一一个要人记得手动生成的——忘了就是构建红，而红的那句话（「账本已过期」）
-# 与手上的改动毫无关系。现在构建自己重建它，人不必记得。`check-i18n` 里那条
-# `extract -check` 照旧拦「重建了但没提交」。
+# extract then bundle (2026-09-21): the ledger is the product of a **purely static scan**, the same kind of thing as the manifest,
+# yet it used to be the only one that a human had to remember to regenerate -- forgetting turned the build red, and the red message ("the ledger is stale")
+# had nothing to do with the change in hand. Now the build rebuilds it itself and nobody has to remember. The `extract -check`
+# in `check-i18n` still catches "regenerated but not committed".
 go run github.com/rzbdz/newgate/tools/i18n extract -root . -catalogs modules/i18n/catalogs
 go run github.com/rzbdz/newgate/tools/i18n bundle -root . -catalogs modules/i18n/catalogs
 
@@ -125,22 +125,22 @@ mkdir -p "$out"
 build_time=$(date '+%Y-%m-%d_%H:%M:%S%z')
 commit_time=$(git -C "$here" log -1 --date=format:'%Y-%m-%d_%H:%M:%S%z' --format=%cd 2>/dev/null || echo unknown)
 
-# 编一个平台。linux 额外要求全静态（跨机器部署靠它：snode1 那台 glibc 旧，
-# 动态链接的二进制直接起不来）。darwin 不要求——macOS 上不存在「全静态」这种
-# 东西，CGO_ENABLED=0 才是那条保证。
+# Build one platform. Linux additionally requires fully static (cross-machine deployment depends on it: snode1 has an old glibc,
+# and a dynamically linked binary simply will not start). Darwin does not require it -- "fully static" does not exist on macOS,
+# CGO_ENABLED=0 is that guarantee.
 build_one() {
   local goos=$1 goarch=$2 artifact=$3 ldflags=$4
   CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -trimpath -tags netgo,osusergo \
     -ldflags "$ldflags" -o "$artifact" ./cmd/newgate
 }
 
-# 平台矩阵：默认只编本机（日常开发要的就是它）。发布时由 CI 给一份清单，
-# 例如 NEWGATE_PLATFORMS="linux/amd64 linux/arm64 darwin/arm64"。
+# Platform matrix: by default only build the local one (what day-to-day development needs). At release time CI supplies a list,
+# for example NEWGATE_PLATFORMS="linux/amd64 linux/arm64 darwin/arm64".
 host_os=$(uname -s | tr 'A-Z' 'a-z')
-# uname -m 给的是机器自己的叫法，Go 用的是另一套：x86_64 → amd64、aarch64 → arm64。
-# 不映射的话**默认这条路**（不给 NEWGATE_PLATFORMS）会直接失败：
+# uname -m gives the machine's own naming, Go uses another set: x86_64 → amd64, aarch64 → arm64.
+# Without the mapping, **the default path** (no NEWGATE_PLATFORMS) fails outright:
 #   go: unsupported GOOS/GOARCH pair linux/x86_64
-# 2026-09-20 实测踩过——上一版脚本只把 uname -m 用在文件名上，所以从没暴露。
+# measured on 2026-09-20 -- the previous script only used uname -m in file names, so it never showed up.
 case "$(uname -m)" in
   x86_64)        host_arch=amd64 ;;
   aarch64|arm64) host_arch=arm64 ;;
@@ -153,11 +153,11 @@ failed=""
 host_artifacts=""
 for spec in $specs; do
   dist=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["distribution"])' "$here/$spec")
-  # 规格书里的 distribution 同时是**版本号的前缀**和产物名里的那一段。两者是同一个
-  # 事实，所以从同一处读——手工拼一个产物名去跑 e2e，最容易在这里对不上。
+  # The distribution in the spec is both **the version prefix** and that segment of the artifact name. They are the same
+  # fact, so both are read from the same place -- hand-assembling an artifact name to run the e2e is where they most easily disagree.
   ldflags_common="-s -w -X main.version=$dist-$rev -X main.buildTime=$build_time"
-  # 规格书名与源码树注入的是 distinfo（不是 main）：模块也要读它们——self-update
-  # 据此决定下哪个产物、第一次装时走 Release 还是走本地仓库（见那个包的注释）。
+  # The spec name and the source tree are injected into distinfo (not main): modules read them too -- self-update
+  # uses them to decide which artifact to download and whether the first install goes through the Release or the local repository (see that package's comments).
   ldflags_common="$ldflags_common -X main.commitTime=$commit_time"
   ldflags_common="$ldflags_common -X github.com/rzbdz/newgate-ext/manifest/distinfo.spec=$spec"
   ldflags_common="$ldflags_common -X github.com/rzbdz/newgate-ext/manifest/distinfo.source=$here"
@@ -171,7 +171,7 @@ for spec in $specs; do
     if build_one "$goos" "$goarch" "$artifact" "$ldflags"; then
       echo "  ok  $spec  $goos/$goarch  $artifact"
     else
-      echo "  --  $spec  $goos/$goarch  编不出来（本机工具链不支持这个目标？）" >&2
+      echo "  --  $spec  $goos/$goarch  cannot build (toolchain does not support this target?)" >&2
       failed="$failed $spec:$goos/$goarch"
       rm -f "$artifact"
     fi
@@ -181,12 +181,12 @@ for spec in $specs; do
   done
 done
 
-# 本机平台的静态断言：写坏一处引号就会退化成动态链接，而那个症状要到**另一台
-# 机器上**才出现——所以在这里就红。（交叉编出来的没法用 ldd 看，跳过。）
+# Static assertion for the local platform: one broken quote degrades it to dynamic linking, and that symptom only shows up **on another
+# machine** -- so go red here instead. (Cross-compiled ones cannot be checked with ldd, so skip those.)
 #
-# 先取输出再判断，不要写成 `ldd … | grep -q`：脚本开着 pipefail，而 ldd 对静态
-# 二进制**返回非零**（"not a dynamic executable" 是它的失败输出），管道于是整体
-# 算失败——正好把唯一成功的那一格判成失败。2026-09-20 实测踩过。
+# Capture the output first and then decide; do not write `ldd ... | grep -q`: the script runs with pipefail, and ldd on a static
+# binary **returns non-zero** ("not a dynamic executable" is its failure output), so the pipeline as a whole
+# counts as failed -- judging the only successful cell as a failure. Measured 2026-09-20.
 if [ "$host_os" = linux ] && command -v ldd >/dev/null; then
   for artifact in $host_artifacts; do
     [ -x "$artifact" ] || continue
@@ -194,7 +194,7 @@ if [ "$host_os" = linux ] && command -v ldd >/dev/null; then
     case "$ldd_out" in
       *"not a dynamic executable"*|*"statically linked"*) : ;;
       *)
-        echo "本机产物 $artifact 不是静态二进制（跨机器会起不来）：" >&2
+        echo "The local artifact $artifact is not a static binary (it will not start on another machine):" >&2
         echo "$ldd_out" >&2
         exit 1
         ;;
@@ -203,7 +203,7 @@ if [ "$host_os" = linux ] && command -v ldd >/dev/null; then
 fi
 
 if [ -n "$failed" ]; then
-  echo "这些组合没编出来:$failed" >&2
+  echo "These combinations were not built:$failed" >&2
   exit 1
 fi
 

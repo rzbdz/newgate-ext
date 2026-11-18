@@ -1,9 +1,9 @@
 <script lang="ts">
-  // 一张卡片 = 一个概念。它只做三件事：按 Kind 挑渲染器、显示「读不出来」的原因、
-  // 标出「这张有没保存的改动」。
+  // One card = one concept. It does only three things: pick a renderer by Kind, show the reason for "cannot read",
+  // mark "this one has unsaved changes".
   //
-  // 它**不认识任何模块**：`source` 只是个用来分组的字符串。加一个模块的界面意味着
-  // 加一个 Kind 的渲染器（或者复用已有的），而不是在这张卡片里加一个 if。
+  // It **knows no modules**: `source` is just a string used for grouping. Adding a module's UI means
+  // adding a renderer for a Kind (or reusing an existing one), not adding an if to this card.
   import type { Concept, ConceptAction, RowAction } from "./api";
   import { t } from "./i18n";
   import CodeEditor from "./kinds/CodeEditor.svelte";
@@ -32,67 +32,67 @@
     concept: Concept;
     draft: unknown;
     /**
-     * 「同一份文件**另一半**的草稿长这样时，这张卡该显示成什么」（见 App.svelte
-     * 的 previews 与内核的 Concept.Preview）。有它就用它，没有就用快照里那份。
+     * "What this card should show when the **other half** of the same file has a draft like this" (see App.svelte's
+     * previews and the core's Concept.Preview). Use it if present, otherwise use the one in the snapshot.
      *
-     * 走 data 这条路（而不是另开一个 prop 给渲染器）是刻意的：渲染器本来就只认
-     * `data` 一个形状，多一条路等于每个渲染器都要再学一遍「两份数据谁优先」。
-     * 而且它**换了新对象**这件事本身就够渲染器清掉自己那份本地编辑缓存了
-     * （见 MappingEditor 里 `seen === data` 那个 effect）——那正是我们要的：
-     * 原文改过之后，控件那一半必须重新照着新内容画。
+     * Going through the data path (rather than opening a separate prop for renderers) is deliberate: renderers already only recognize
+     * one shape, `data`, and one more path means every renderer has to learn "which of the two data sources wins" again.
+     * And the fact that it **is a new object** is by itself enough for renderers to clear their own local edit cache
+     * (see the `seen === data` effect in MappingEditor) - which is exactly what we want:
+     * after the original text changes, the control half must be redrawn from the new content.
      */
     preview?: unknown;
     onEdit: (v: unknown) => void;
     onRevert: () => void;
-    // 删/建这一份文件（不带参数：作用在这张卡自己身上，见 kinds/MappingEditor）。
+    // Delete/create this file (no argument: acts on this card itself, see kinds/MappingEditor).
     onDeleteFile?: () => void;
     /**
-     * 跑这张卡上的一个动作（见 api.ts 的 ConceptAction）。
+     * Run an action on this card (see ConceptAction in api.ts).
      *
-     * 与 `onDeleteFile` 那条同一个形状、同一条理由：动作作用在**这张卡**身上，
-     * 所以界面不需要传「是哪张卡」——App 手里就有这张卡的 id。
+     * Same shape and same reason as `onDeleteFile`: the action acts on **this card**,
+     * so the UI does not need to pass "which card" - App already has this card's id.
      *
-     * 也**不需要传它要改什么**：那件事住在贡献者那边（lib/view 的
-     * Concept.Actions），界面只把点击转回去，然后重读一遍快照。
+     * Nor does it **need to pass what to change**: that lives on the contributor's side (lib/view's
+     * Concept.Actions), and the UI only forwards the click and then re-reads the snapshot.
      */
     onAction?: (a: ConceptAction) => void;
     /**
-     * 跑**表格里某一行**上的一个按钮（见 api.ts 的 runRowAction）。
+     * Run a button on **a row in a table** (see runRowAction in api.ts).
      *
-     * 比 `onAction` 多一层「哪一行」，理由与它多一层「哪张卡」是同一条：行是
-     * **数据长出来的**（今天哪些 binding 在健康表里，取决于跑过哪些请求），
-     * 所以「这一行能做什么」只有造出那一行的人知道，而界面得把行的身份带回去。
+     * One more layer of "which row" than `onAction`, for the same reason as its extra layer of "which card": rows are
+     * **grown from the data** (which bindings are in the health table today depends on which requests have run),
+     * so only whoever produced that row knows "what this row can do", and the UI must carry the row's identity back.
      *
-     * 只有 table 这一种 Kind 会用到它——但它挂在卡片上而不是塞进渲染器的
-     * props 里：卡片的职责就是「把 App 的手递给它选中的那个渲染器」。
+     * Only the table Kind uses it - but it hangs on the card rather than being stuffed into the renderer's
+     * props: a card's job is "to hand App's hand to the renderer it picked".
      */
     onRowAction?: (row: string, a: RowAction) => void;
     /**
-     * 跳到**编辑这份文件**的那张卡上（见 App.svelte 的 openFile）。
+     * Jump to the card that **edits this file** (see openFile in App.svelte).
      *
-     * 它不是「动作」：动作会改盘上的东西、跑完要重读，而这一跳只换一张卡看。
-     * 混进 `onAction` 里的话，用户点一下「编辑」会发现草稿被清掉了——那是
-     * 卡片动作的副作用（它改盘，重读之后基线全过期），而这里什么都没改。
+     * It is not an "action": an action changes things on disk and needs a re-read when done, while this jump only swaps to a different card.
+     * Mixed into `onAction`, clicking "edit" would clear the draft - that is the side effect of
+     * card actions (they change the disk, so after the re-read every baseline is stale), and here nothing was changed.
      */
     onOpenFile?: (file: string) => void;
-    /** 这一张是那一屏唯一的东西时，标题与概念 ID 不画（见模板里那一段）。 */
+    /** When this one is the only thing on that screen, the title and concept ID are not drawn (see that part of the template). */
     bare?: boolean;
   } = $props();
 
   const isDirty = $derived(draft !== undefined);
-  /** 渲染器看到的那份数据：草稿预览优先于快照。 */
+  /** The data the renderer sees: draft preview takes priority over the snapshot. */
   const shown = $derived(preview !== undefined ? preview : concept.data);
 
   /**
-   * 这几种 Kind 的渲染器**是表单**（输入框、开关、下拉），`writable` 为 false 时
-   * 它们全部禁掉——那时才需要一句话说清「为什么点不动」（并给一个理由）。
+   * The renderers for these Kinds **are forms** (input boxes, switches, dropdowns), and when `writable` is false
+   * they are all disabled - only then is a sentence needed to explain "why it cannot be operated" (and give a reason).
    *
-   * 其余 Kind（overview / chains / table / series / log）**根本没有可编辑的东西**：
-   * 它们改的是那一份数据，靠卡片上、行上的**动作**（按钮）。给它们挂一个「只读」，
-   * 说的是「你没法保存这张卡」——而这张卡上本来就没有能保存的东西。实测过这一屏：
-   * 9 张卡被挂上它，其中 7 张是这种（健康表、日志、计数器、插件表、接管表、总览、
-   * 候选链），而且鼠标停上去还给一句 `可能带凭据` ——那是**编出来的理由**，
-   * 那些卡上没有任何凭据。真该说话的是 providers.json / state.json 那两张。
+   * The other Kinds (overview / chains / table / series / log) **have nothing editable at all**:
+   * they change that data through **actions** (buttons) on the card and on rows. Hanging a "read-only" on them
+   * says "you cannot save this card" - and there is nothing on this card that could be saved in the first place. Measured on this screen:
+   * 9 cards got it, 7 of which are this kind (health table, logs, counters, plugin table, takeover table, overview,
+   * candidate chains), and hovering showed "may hold credentials" - a **made-up reason**,
+   * and none of those cards had any credentials. The two that should really say something are providers.json / state.json.
    */
   const EDITOR_KINDS = new Set(["mapping-editor", "code", "toggles", "records"]);
   const canEdit = $derived(EDITOR_KINDS.has(concept.kind));
@@ -102,9 +102,9 @@
   }
 </script>
 
-<!-- `fills`：这一种 Kind 要占满可用高度（今天只有 log，理由见 app.css）。判据挂在
-     卡片上而不是让 CSS 去猜，因为「我要多高」是**这一种 Kind 的属性**，不是它碰巧
-     画出来的形状。 -->
+<!-- `fills`: this Kind should fill the available height (today only log, see app.css for why). The criterion hangs on
+     the card rather than letting CSS guess, because "how tall I want to be" is **a property of this Kind**, not the shape it happens
+     to be drawn as. -->
 <section
   class="card"
   class:dirty={isDirty}
@@ -114,22 +114,22 @@
 >
   {#if !bare || concept.note}
   <header>
-    <!-- `bare` = 这一张是**那一屏唯一的东西**（主页模式），标题与概念 ID 是废话：
-         它们回答的是「我正在看哪一张卡」，而那里没有第二张可挑。留下来的只有那句
-         状态说明——那句话说的是**数据本身**（fallback 关着、某份档位读不出来），
-         与「有几张卡」无关。 -->
+    <!-- `bare` = this one is **the only thing on that screen** (home mode); the title and concept ID are noise:
+         they answer "which card am I looking at", and there is no second one to pick there. What remains is just that
+         status note - that sentence is about **the data itself** (fallback is off, some tier cannot be read),
+         unrelated to "how many cards there are". -->
     {#if !bare}
       <h3>{concept.title}</h3>
       <span class="meta">{concept.id}</span>
     {/if}
     <span class="spacer"></span>
-    <!-- 一句状态说明（见 lib/view 的 Concept.Note）。**它不是按钮**：没有 onclick，
-         也不该长得像按钮——点了没有任何事发生，而一个点了没反应的按钮比没有按钮
-         更让人困惑。
-         它补的是一个信息缺口：档位卡上「已经在生效的那一份」不挂那对 apply 按钮
-         （挂了是噪音），于是十六张卡里十五张有两个按钮、一张什么都没有，两张卡
-         长得几乎一样，用户看不出哪一份在生效——而那恰恰是他打开这一节最想知道的
-         事。「不画那个按钮」与「什么都不说」是两件事。 -->
+    <!-- A status note (see Concept.Note in lib/view). **It is not a button**: no onclick,
+         and it should not look like one - clicking it does nothing, and a button that does nothing when clicked is more confusing
+         than no button at all.
+         It fills an information gap: the tier card "already in effect" does not get that pair of apply buttons
+         (having them would be noise), so of sixteen cards fifteen have two buttons and one has none, and the two kinds of card
+         look almost the same, so the user cannot tell which one is in effect - and that is exactly what they most want to know when opening this section.
+         "Not drawing that button" and "saying nothing" are two different things. -->
     {#if concept.note}
       <span
         class="pill note"
@@ -141,10 +141,10 @@
         {concept.note.text}
       </span>
     {/if}
-    <!-- 这张卡上的动作（「把这一份设为默认」这类）。**由贡献者注入**，界面只画
-         按钮、把点击转回去——它不知道那个按钮会改什么，也不需要知道。
-         锁死或读不出来时不画：那些动作多半也做不成，而一个点了没反应的按钮比
-         没有按钮更让人困惑。 -->
+    <!-- The actions on this card (like "make this one the default"). **Injected by the contributor**; the UI only draws
+         the buttons and forwards the click - it does not know what that button will change, and does not need to.
+         Not drawn when locked or unreadable: those actions mostly cannot be done either, and a button that does nothing when clicked is more confusing
+         than no button at all. -->
     {#if !concept.locked && !concept.error}
       {#each concept.actions ?? [] as a (a.id)}
         <button class="tiny ghost" data-action={a.id} onclick={() => onAction?.(a)}>{a.label}</button>
@@ -155,7 +155,7 @@
       <button class="tiny ghost" onclick={onRevert}>{t("revert")}</button>
     {/if}
     {#if concept.locked}
-      <!-- 锁灰的理由就在卡片头上：整张卡禁掉了，不说为什么等于让用户猜。 -->
+      <!-- The reason for the gray lock is in the card header: the whole card is disabled, and not saying why makes the user guess. -->
       <span class="pill locked-pill" title={concept.locked}>{t("locked")}</span>
     {:else if !concept.writable && canEdit && !concept.error}
       <span
@@ -168,24 +168,24 @@
   </header>
   {/if}
 
-  <!-- `{#key concept.id}`：**换一张卡就把渲染器整个重建**。
-       MappingEditor / Toggles / Records 都各有一份「我改过没有」的本地状态
-       （`edited`），而它优先于 props 与 draft。Svelte 在同一个位置复用组件实例，
-       所以切卡时那份本地状态会**跟着活下来**——于是「在 A 档改了没保存 → 切到 B
-       档」会看到 B 的文件名配 A 的档位，再点保存就把 A 写进了 B 的文件。
-       加 key 之后本地状态随卡重建；而**真正的未保存改动不会丢**——它在 App 的
-       `drafts`（按概念 id 存）里，切回去照样在。 -->
+  <!-- `{#key concept.id}`: **switching to another card rebuilds the renderer entirely**.
+       MappingEditor / Toggles / Records each have local "have I edited this" state
+       (`edited`), and it takes priority over props and draft. Svelte reuses the component instance in the same position,
+       so when switching cards that local state **survives with it** - and then "changed A tier without saving -> switched to B"
+       shows B's file name with A's tier, and clicking save writes A into B's file.
+       With the key, local state is rebuilt with the card; and **real unsaved changes are not lost** - they are in App's
+       `drafts` (stored by concept id), and switching back still has them. -->
   {#if concept.locked}
-    <!-- 锁死的卡**照常画出来**：藏掉的话用户会以为那个功能不存在，而真相是
-         「它在，只是这台机器上用不上」。控件全部禁掉（见下面 readonly 那条），
-         这一条横幅说清「为什么」与「怎么办」——只灰不说，用户只会以为界面坏了。 -->
+    <!-- A locked card **is still drawn as usual**: hiding it would make the user think that feature does not exist, when the truth is
+         "it is there, just not usable on this machine". All controls are disabled (see the readonly part below),
+         and this banner explains "why" and "what to do" - gray with no explanation only makes the user think the UI is broken. -->
     <div class="locked-bar">{concept.locked}</div>
   {/if}
 
   <div class="body">
    {#key concept.id}
     {#if concept.error}
-      <!-- 读不出来也要占一张卡片：不报它，用户会以为这东西不存在。 -->
+      <!-- Unreadable also takes a card: not reporting it would make the user think the thing does not exist. -->
       <p class="dim">{concept.error}</p>
     {:else if concept.kind === "mapping-editor"}
       <MappingEditor
@@ -204,29 +204,29 @@
     {:else if concept.kind === "table"}
       <Table data={shown} onAction={(row, a) => onRowAction?.(row, a)} />
     {:else if concept.kind === "chains"}
-      <!-- 行上的按钮走 `onRowAction`（与 table 同一条），不是卡上的 `onAction`：
-           它改的是**这张卡里的一行**，跑完卡还在，重读快照就对；而卡上的动作是给
-           「把这一份设为默认」那种改完要换卡的事情用的。理由写在 Chains.svelte 里。 -->
+      <!-- Row buttons go through `onRowAction` (same as table), not the card's `onAction`:
+           it changes **a row inside this card**, the card is still there when done, and a snapshot re-read fixes it; while card actions are for things
+           like "make this one the default" that need a different card after they finish. The reason is written in Chains.svelte. -->
       <Chains data={shown} onAction={(row, a) => onRowAction?.(row, a)} />
     {:else if concept.kind === "overview"}
-      <!-- 首屏那一张：客户端标签 + 一份 profile 一张卡。它只有**卡片头**上的动作
-           （「就用它」与「整张卡探一遍」），没有行上的——单条 binding 的探活在健康表
-           那一节，理由见 kinds/Overview.svelte 的 props 说明。 -->
+      <!-- The first-screen card: client tabs + one card per profile. It only has actions on **the card header**
+           ("use this one" and "probe the whole card"), none on rows - probing a single binding lives in the health table
+           section, see the props notes in kinds/Overview.svelte. -->
       <Overview data={shown} onAction={(a) => onAction?.(a)} {onOpenFile} />
     {:else if concept.kind === "series"}
       <Series data={shown} />
     {:else if concept.kind === "fingerprints"}
-      <!-- 指纹那一屏：数据是这一节的全部素材（profile / provider / 上次结论），
-           现场再验一次走它自己的扩展端点（见 kinds/Fingerprints.svelte）。
-           它没有 Apply：这一屏不改任何配置，只回答「对面是谁」。 -->
+      <!-- The fingerprints screen: the data is all the material for this section (profile / provider / last conclusion),
+           and verifying once on the spot goes through its own extension endpoint (see kinds/Fingerprints.svelte).
+           It has no Apply: this screen changes no config, it only answers "who is over there". -->
       <Fingerprints data={shown} />
     {:else if concept.kind === "log"}
       <LogView data={shown} />
     {:else}
-      <!-- 还没有渲染器的 Kind（将来加的那种）：把原文摆出来，而不是假装它不
-           存在。加渲染器是前端的事，不该由后端等。
-           （2026-09-20 更正：这条注释原来把 table 与 log 也列成没渲染器的，
-           那两位各自的分支就在上面十几行、渲染器也都在 kinds/ 里。） -->
+      <!-- A Kind with no renderer yet (the kind added later): lay out the original text rather than pretend it does not
+           exist. Adding a renderer is the frontend's job, and the backend should not wait for it.
+           (Correction 2026-09-20: this comment used to list table and log as having no renderer too;
+           their branches are a dozen lines above and their renderers are both in kinds/.) -->
       <p class="dim">{t("no renderer for kind “{kind}” yet — raw data:", { kind: concept.kind })}</p>
       <pre class="raw">{JSON.stringify(concept.data, null, 2)}</pre>
     {/if}
@@ -242,9 +242,9 @@
     overflow: auto;
     margin: 0;
   }
-  /* 状态说明的语气（见 Concept.Note）：**只换颜色，不换形状**——它是陈述，不是
-     按钮，也不该长得像警告条。`ok` 是「一切正常，这就是现在生效的那一份」，与健康
-     表里那一格是同一个绿。边框跟着淡一点，免得这一格比卡片上真能点的东西还显眼。 */
+  /* The tone of the status note (see Concept.Note): **change only the color, not the shape** - it is a statement, not a
+     button, and should not look like a warning bar. `ok` is "everything is fine, this is the one in effect", the same green as
+     that cell in the health table. The border is lighter too, so this cell does not stand out more than the things on the card you can really click. */
   .note-ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
   .note-warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
   .note-bad { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, transparent); }

@@ -1,12 +1,12 @@
 <script lang="ts">
-  // 一组记录：每条几个字段，字段自己声明类型（text / select / secret / lines）。
+  // A group of records: each has a few fields, and the fields declare their own type (text / select / secret / lines).
   //
-  // 与 Toggles 的分工：那个是「一组同构的开关」，每条一个值；这里每条是一张**小
-  // 表单**，条数还会增减。两者都要，因为把 provider 那种形状塞进 toggles 的结果
-  // 是两边都别扭。
+  // Division of labor with Toggles: that one is "a group of homogeneous switches", one value each; here each one is a **small
+  // form**, and the count can grow or shrink. Both are needed, because stuffing the provider shape into toggles comes out
+  // awkward on both sides.
   //
-  // 改动就地完成、点保存才落盘（与这套界面的别处一致）。交出去的是**全部记录**：
-  // 没交的就是删掉了——所以删除不需要第二个接口（见 config 的 applyProviders）。
+  // Changes are made in place and land only on save (consistent with the rest of this UI). What is submitted is **all records**:
+  // whatever is not submitted was deleted - so deleting needs no second endpoint (see applyProviders in config).
   import { untrack } from "svelte";
   import { t } from "../i18n";
 
@@ -20,9 +20,9 @@
     placeholder?: string;
     why?: string;
   };
-  // 名字不叫 Record：那是 TypeScript 自带的泛型，撞上之后报错报在别处，
-  // 排查起来像见鬼。base 是这一条代表的那份文件加载时的基线（可写记录集才有，
-  // 删它时要 CAS 判断，见 view.Record.Base）。
+  // The name is not Record: that is TypeScript's built-in generic, and a collision reports errors elsewhere,
+  // making it look like a ghost when tracked down. base is the baseline of the file this record represents at load (only for writable record sets;
+  // deleting it needs a CAS check, see view.Record.Base).
   type Rec = { id: string; label: string; fields: Field[]; removable?: boolean; base?: string };
   type Data = {
     file?: string;
@@ -30,7 +30,7 @@
     items: Rec[];
     can_add?: boolean;
     add_label?: string;
-    // 新增一条时的字段形状（贡献者给，见 view.Records.Blank）。
+    // The field shape when adding a record (given by the contributor, see view.Records.Blank).
     blank?: Field[];
   };
 
@@ -46,40 +46,40 @@
     onEdit: (v: unknown) => void;
   } = $props();
 
-  // key 是**渲染身份**，id 是**后端身份**。两者分开，是因为「同一行」这件事在
-  // 整段生命周期里必须稳定，而 id 有一段时间是空的（新加的行还没保存，后端此刻
-  // 还不知道它）。拿数组下标当身份是这张卡之前的做法，代价实测过：删掉一行之后
-  // Svelte 按 key 复用 DOM，而 spec（取自 data.items[i]）与 values（取自 items[i]）
-  // 来自两个不同的数组，一旦长度不一致就错位——最刺眼的症状是**卡片标题还写着
-  // 已删掉的那个文件名，底下的字段却是下一个文件的**。
+  // key is **render identity**, id is **backend identity**. They are separate because "the same row" must be
+  // stable over the whole lifecycle, while id is empty for a while (a newly added row is not saved yet, and the backend does not
+  // know it yet). Using the array index as identity was this card's previous approach, and the cost was measured: after deleting a row
+  // Svelte reuses DOM by key, while spec (taken from data.items[i]) and values (taken from items[i])
+  // come from two different arrays, and once the lengths differ they misalign - the most glaring symptom is **the card title still says
+  // the filename that was deleted, while the fields below belong to the next file**.
   type Item = { key: string; id: string; base?: string; values: globalThis.Record<string, string> };
 
-  // 与 MappingEditor/Toggles 同一条：存「我改过没有」，没改过就跟着 props 走——
-  // 否则后台刷新之后界面显示的还是一份旧值。
+  // Same as MappingEditor/Toggles: store "have I edited this", and if not, follow props -
+  // otherwise after a background refresh the UI still shows an old value.
   //
-  // 交出去的形状是 `{"items": [...], "removed": [...]}`，不是光秃秃一个数组：
-  // `edit` 这坨 JSON 是**概念自己定的**，而它迟早要能装下第二种动作（「这一条
-  // 要删」之类）。`removed` 显式报删掉的 id+base——不靠「少交一条被推断成删」，
-  // 因为那份记录被删的代价可能是删一个文件（profiles 卡），推断出来太危险。
-  // 已知只读记录集（providers）无视 removed，也不要求 base（apply 时按 id 找）。
+  // The submitted shape is `{"items": [...], "removed": [...]}`, not a bare array:
+  // this `edit` blob is **defined by the concept itself**, and it will eventually need to hold a second kind of action (like "this one
+  // should be deleted"). `removed` explicitly reports the deleted id+base - not relying on "one fewer submitted is inferred as a delete",
+  // because deleting that record may cost deleting a file (the profiles card), and an inference is too dangerous.
+  // Known read-only record sets (providers) ignore removed and do not require base (apply finds by id).
   let edited = $state<Item[] | null>(null);
   let removedAccum = $state<{ id: string; base?: string }[]>([]);
   const items = $derived(
     edited ?? (draft as { items?: Item[] } | undefined)?.items ?? fromData(data),
   );
-  /** 初始化时把后端快照里已经被删的也带回来（按 base 取），刷新之间不会丢它们。 */
+  /** On init, carry back the already-deleted ones from the backend snapshot too (taken by base), so they are not lost between refreshes. */
   const removed = $derived(
     removedAccum.length
       ? removedAccum
       : (draft as { removed?: { id: string; base?: string }[] } | undefined)?.removed ?? [],
   );
 
-  /** 眼睛：把某一格的密码型输入变成明文。**只为「我刚粘了什么」**——值本身
-      （已存在的那一份）根本不在这边，所以点亮它不会reveal 出任何东西来。 */
+  /** Eye: turn a password-type input in one cell into plaintext. **Only for "what I just pasted"** - the value itself
+      (the already existing one) is not on this side at all, so lighting it up reveals nothing. */
   let shown = $state<Record<string, boolean>>({});
 
-  /** 新行的渲染身份：一个进程内单调的计数器就够（它不必跨刷新稳定——新行本来
-      就没保存过，刷新之后它该消失）。 */
+  /** The render identity of a new row: a monotonic in-process counter is enough (it need not be stable across refreshes - a new row was
+      never saved, and it should disappear after a refresh). */
   let seq = 0;
 
   function fromData(d: Data): Item[] {
@@ -92,33 +92,33 @@
   }
 
   /**
-   * 新行的字段形状 = **已有第一条的形状**（同一种记录集里每条字段一样）。
-   * 之前新行没有字段可画：spec 取自 `data.items[i]`，而新行的下标已经越过了那个
-   * 数组——于是「新增」出来一张只有标题、没有一个输入框的空卡片，等于新增不了。
-   * 这里不带 value（新行从空开始），Options 原样沿用（比如档位的「继承自」下拉
-   * 该列出别的档位）。
+   * A new row's field shape = **the shape of the existing first one** (every record in the same record set has the same fields).
+   * Before this, a new row had no fields to draw: spec was taken from `data.items[i]`, and the new row's index was already past that
+   * array - so "add" produced an empty card with only a title and no input box, which is as good as not being able to add.
+   * No value is carried here (a new row starts empty), and Options are reused as is (for example a tier's "inherits from" dropdown
+   * should list the other tiers).
    */
   function blankFields(): Field[] {
-    // 形状优先取**贡献者显式给的那一份**（`data.blank`）。为什么要留这个口子：
-    // 字段的形状长在每一条记录上，所以「新的一条长什么样」过去只能去抄一条现成
-    // 的——而**一条都没有**的时候无处可抄，点「新增」得到的是一张一个输入框都
-    // 没有的空卡片，用户没有任何办法把内容填进去。装机就是这个状态（一份还没配
-    // 过任何东西的配置），所以它不是边角。
+    // Shape takes **the one the contributor explicitly gives** first (`data.blank`). Why leave this opening:
+    // the field shape lives on each record, so "what a new one looks like" could previously only be copied from an existing
+    // one - and when there is **not a single one**, there is nothing to copy, and clicking "add" gives an empty card with not one input box,
+    // and the user has no way to fill anything in. Install state is exactly this (a config that has not
+    // configured anything yet), so it is not a corner case.
     const shape = data.blank?.length ? data.blank : data.items?.[0]?.fields;
     return (shape ?? []).map((f) => ({ ...f, value: "" }));
   }
 
   /**
-   * 后端**重读过**（`data` 换了一个新对象）就把本地这份缓存清掉。
+   * When the backend has **re-read** (`data` got a new object), clear this local cache.
    *
-   * 不清的代价实测过：删掉一行 → 保存成功 → App 全局重读 → `data` 是新的，可
-   * `removedAccum` 里还留着那条 `(id, base)`。于是**下一次任何一次保存**都会把它
-   * 再交一遍，而后端一看那份文件已经不在盘上了 → StaleError「别人改过，重载后再
-   * 试」。用户看到的是「我删 extra，它报 claude-cheap.kv」——一条与自己刚才动作
-   * 无关的报错。
+   * The cost of not clearing was measured: delete a row -> save succeeds -> App re-reads globally -> `data` is new, but
+   * `removedAccum` still holds that `(id, base)`. So **every next save** submits it
+   * again, and the backend sees that file is no longer on disk -> StaleError "someone else changed it, reload and
+   * retry". What the user sees is "I deleted extra, and it reports claude-cheap.kv" - an error unrelated to
+   * what they just did.
    *
-   * 清掉不会丢东西：**没保存的改动住在 App 的 `drafts` 里**（按概念 id 存），
-   * `items`/`removed` 的派生链会立刻回落到它，屏幕上一点变化都没有。
+   * Clearing loses nothing: **unsaved changes live in App's `drafts`** (stored by concept id), and the
+   * `items`/`removed` derivation chain falls back to it immediately, with no visible change on screen.
    */
   let seen = untrack(() => data);
   $effect(() => {
@@ -131,7 +131,7 @@
 
   function specOf(it: Item): Rec {
     const found = data.items.find((r) => r.id === it.id);
-    // 新行（id 为空）后端此刻还不知道它，用同类第一条的字段形状补一张空白表单。
+    // A new row (empty id) is not known to the backend yet; fill a blank form using the first record's field shape.
     if (found) return found;
     return { id: "", label: "", fields: blankFields(), removable: false };
   }
@@ -147,13 +147,13 @@
 
   function remove(key: string) {
     const it = items.find((x) => x.key === key);
-    // 把删掉这条的 (id, base) 攒住——后端用它做 CAS 删，盘上别人刚改的不会被删。
+    // Keep the (id, base) of this deleted row - the backend uses it for a CAS delete, so what someone else just changed on disk is not deleted.
     if (it?.id) removedAccum = [...removedAccum, { id: it.id, base: it.base }];
     push(items.filter((x) => x.key !== key));
   }
 
   function add() {
-    // 新记录没有 id（贡献者据此认「这是新增的」），字段全空——用户从零填一张。
+    // A new record has no id (the contributor recognizes "this is new" by that), and all fields are empty - the user fills a blank form from scratch.
     push([...items, { key: "new:" + ++seq, id: "", values: {} }]);
   }
 </script>
@@ -192,8 +192,8 @@
             oninput={(e) => setValue(it.key, f.id, e.currentTarget.value)}
           ></textarea>
         {:else if f.kind === "secret"}
-          <!-- 值不在这一侧：这一格来时是空的，敲了才是改（见 lib/view 的 FieldSecret）。
-               眼睛只对「我刚敲/刚粘的那一串」有用——那正是最常见的核对动作。 -->
+          <!-- The value is not on this side: this cell is empty when it arrives, and typing is the change (see lib/view's FieldSecret).
+               The eye only helps with "the string I just typed/pasted" - which is exactly the most common verification action. -->
           <div class="row">
             <input
               id="f-{it.key}-{f.id}"

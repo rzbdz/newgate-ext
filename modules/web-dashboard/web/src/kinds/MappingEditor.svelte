@@ -1,10 +1,10 @@
 <script lang="ts">
-  // 档位 ↔ 候选的绑定编辑器。**顺序就是 fallback 顺序**，所以每一行左边有上下
-  // 移动——顺序是这里唯一的语义，不给它一个显眼的位置，用户会以为那是列表装饰。
+  // Tier <-> candidate binding editor. **Order is the fallback order**, so each row has up/down on the left
+  // to move it - order is the only semantics here, and without a prominent place for it the user would think it is list decoration.
   //
-  // 产出的 edit 形状由贡献者定义（core/modules/config/view.go 的
-  // applyProfileRoles）：`{"roles": {"<档位>": [{"provider","model"} | {"ref"}]}}`。
-  // 关键一条：**整个 roles 一起交**，不是增量——后端是「替换 roles 这一个键」。
+  // The edit shape produced is defined by the contributor (applyProfileRoles in
+  // core/modules/config/view.go): `{"roles": {"<tier>": [{"provider","model"} | {"ref"}]}}`.
+  // One key point: **submit the whole roles at once**, not an increment - the backend is "replace the roles key".
   import { untrack } from "svelte";
   import { t } from "../i18n";
   import ModelPicker from "../ModelPicker.svelte";
@@ -28,17 +28,17 @@
     pinned?: boolean;
     excluded?: boolean;
     extends?: string;
-    /** 可选的父档位（别的档位文件名，第一项是空串 = 不继承）。由后端给：界面
-        不认识「有哪些档位文件」，它只知道这一格的下拉该列什么。 */
+    /** Optional parent tier (another tier file name; the first entry is an empty string = no inheritance). Given by the backend: the UI
+        does not know "which tier files exist", it only knows what this cell's dropdown should list. */
     extends_options?: string[];
     roles: Role[];
     providers: Provider[];
   };
   type Roles = Record<string, Binding[]>;
 
-    // 这一张卡交出去的是**整份文件**：档位表 + 名字 + 继承。三者同属一份 .kv，分开
-  // 成两张卡就会「你说你的、我说我的」（2026-09-20 之前正是那样：另一张「档位文件」
-  // 卡管名字与继承，而它列的文件与这里的卡一一对应——用户的原话是「多余的啊」）。
+    // What this card submits is **the whole file**: the tier table + name + inheritance. All three belong to one .kv, and split
+  // into two cards they would "you say yours, I say mine" (before 2026-09-20 that is exactly how it was: another "tier file"
+  // card handled names and inheritance, and the files it listed correspond one to one with the cards here - the user's own words were "that is redundant").
   type Payload = { roles: Roles; name: string; extends: string };
 
   let {
@@ -52,19 +52,19 @@
     draft: unknown;
     readonly: boolean;
     onEdit: (v: unknown) => void;
-    // 删除**立刻生效**（不走「改完再点保存」）：它动的是磁盘上的文件本身，让用户
-    // 先点一次删除、再点一次保存，等于给一个不可撤销的动作配一道没用的仪式。
-    // 它作用在**这一张卡自己**的文件上，所以不需要参数。
+    // Delete **takes effect immediately** (no "change then click save"): it changes the file on disk itself, and making the user
+    // click delete once and then save once is a useless ritual attached to an irreversible action.
+    // It acts on **this card's own** file, so no argument is needed.
     //
-    // 「新建」不在这里（见下面模板里那段注释）：它属于**这一节的工具条**。
+    // "Create" is not here (see the comment in the template below): it belongs to **this section's toolbar**.
     onDeleteFile?: () => void;
   } = $props();
 
-  // 本地编辑（null = 还没动过）。**为什么不是「挂载时拷一份副本」**：副本只在
-  // 挂载那一刻取一次值，之后 props 换了（用户在冲突里选了「用磁盘上那份」、或者
-  // 点了 reload）它还是旧的——界面于是显示一份磁盘上已经不存在的档位表。
+  // Local edit (null = not touched yet). **Why not "copy a snapshot on mount"**: the copy only takes
+  // a value at the moment of mounting, and afterwards when props change (the user picked "use the disk copy" in a conflict, or
+  // clicked reload) it is still the old one - so the UI shows a tier table that no longer exists on disk.
   //
-  // 所以这里存的是「我改过没有」：没改过就跟着 props 走，改过就以本地为准。
+  // So what is stored here is "have I edited this": if not, follow props; if so, local wins.
   let edited = $state<Payload | null>(null);
   const cur = $derived<Payload>(
     edited ??
@@ -77,12 +77,12 @@
   const roles = $derived(cur.roles);
   let newRole = $state("");
 
-  // 后端重读过（data 换了新对象）就清掉本地缓存，回落到 draft/props。
+  // When the backend has re-read (data got a new object), clear the local cache and fall back to draft/props.
   //
-  // 为什么必须清：这份缓存优先于 draft 与 props，而**一次成功保存之后 App 会全局
-  // 重读**——不清的话，界面显示的仍是保存前那一份，下一次保存又把它写回去，把
-  // 别处刚落盘的内容盖掉（Records.svelte 里同一段注释记着实测到的症状）。
-  // 清掉不丢东西：没保存的改动住在 App 的 `drafts`（按概念 id 存），回落到它就是。
+  // Why it must be cleared: this cache takes priority over draft and props, and **after one successful save App re-reads
+  // globally** - without clearing, the UI still shows the version from before the save, and the next save writes it back, overwriting
+  // what just landed elsewhere (the same comment in Records.svelte records the symptom measured).
+  // Clearing loses nothing: unsaved changes live in App's `drafts` (stored by concept id), and it falls back to them.
   let seen = untrack(() => data);
   $effect(() => {
     if (seen === data) return;
@@ -96,9 +96,9 @@
     return out;
   }
 
-  // 每一次改动都：拷一份 → 在上面改 → 交出去。**不就地改 cur**：那可能是在改
-  // props 里的对象（Svelte 的响应式看不见别人家的对象），改完界面不动，用户以为
-  // 自己没点到。
+  // Every change: copy one -> change the copy -> submit it. **Do not change cur in place**: that may be changing
+  // the object in props (Svelte's reactivity cannot see other people's objects), and the UI would not move after the change, and the user would think
+  // they missed the click.
   function push(mutate: (p: Payload) => void) {
     const next = JSON.parse(JSON.stringify(cur)) as Payload;
     mutate(next);
@@ -110,10 +110,10 @@
     return data.providers.find((p) => p.name === provider)?.models ?? [];
   }
 
-  // 新候选的初值取**第一个 provider**（绝大多数情况下就是用户要的那家），但
-  // **没有 provider 时留空**——`provider: ""` 写下去就是 `/模型名` 这种绑定，
-  // 解析不出任何东西，而它在文件里看着还挺像样（2026-09-20 现场：一个 profile
-  // 的档位变成了 `mid=/gemini-…`）。后端现在也拒这种绑定，这里是不让它发生。
+  // A new candidate's initial value takes **the first provider** (in the vast majority of cases that is the one the user wants), but
+  // **leave it empty when there is no provider** - writing `provider: ""` gives a binding like `/model-name`,
+  // which resolves to nothing while looking quite plausible in the file (2026-09-20 scene: a profile's
+  // tier became `mid=/gemini-...`). The backend now rejects such bindings too; this is to keep it from happening.
   function addCandidate(id: string) {
     const first = data.providers[0];
     push((p) => {
@@ -146,8 +146,8 @@
       delete p.roles[id];
     });
   }
-  // 引用与「provider+model」互斥（见 domain.Binding）：一条引用是「跟那一档走」，
-  // 同时留着 provider 只会让解析路径出现两种解释。
+  // A reference and "provider+model" are mutually exclusive (see domain.Binding): a reference means "follow that tier",
+  // and keeping provider at the same time would only give the resolution path two interpretations.
   function setRef(id: string, i: number, ref: string) {
     if (ref) push((p) => { p.roles[id][i] = { ref }; });
     else {
@@ -163,8 +163,8 @@
 
 <div class="head">
   {#if !readonly}
-    <!-- 名字与继承就在卡片头上：它们和下面的档位表同属**这一份文件**。改完点保存
-         一起落盘（与档位表同一条：一次 CAS 写一份文件）。 -->
+    <!-- Name and inheritance sit in the card header: they and the tier table below belong to **this one file**. After editing, click save
+         and they land together (same as the tier table: one CAS writes one file). -->
     <label class="meta">
       {t("name")}
       <input
@@ -193,9 +193,9 @@
   {#if data.excluded}<span class="pill">{t("excluded")}</span>{/if}
   <span class="spacer"></span>
   <span class="mono dim file">{data.file}</span>
-  <!-- 「再建一份」**不在这张卡上**：新建出来的那一份此刻还没有概念，没有哪张卡能
-       挂它。它挂在**这一节的工具条**上（见 App.svelte 的 .secbar 与
-       core/lib/view 的 Section.Actions），那儿永远够得着。 -->
+  <!-- "Create another" **is not on this card**: a newly created one has no concept yet, and no card can
+       host it. It hangs on **this section's toolbar** (see .secbar in App.svelte and
+       Section.Actions in core/lib/view), which is always reachable. -->
   {#if !readonly && onDeleteFile}
     <button
       class="tiny ghost danger"
@@ -212,8 +212,8 @@
   <div class="role">
     <div class="row">
       <b class="mono">{id}</b>
-      <!-- 空档位是「没写」：继承父 / 回落阶梯（2026-09-20 修复后它与没写等价）。
-           不喊「解析不出任何东西」——那看着像硬错误，其实只是落回继承。 -->
+      <!-- An empty tier means "not written": inherit from the parent / fall down the ladder (after the 2026-09-20 fix it is equivalent to not written).
+           Do not shout "resolves to nothing" - that looks like a hard error, but in fact it just falls back to inheritance. -->
       {#if !roles[id].length}<span class="dim">{t("no candidates — inherits or falls back")}</span>{/if}
       <span class="spacer"></span>
       {#if !readonly}
@@ -262,9 +262,9 @@
             value={b.model ?? ""}
             {readonly}
             onchange={(m) => {
-              // 选择器**同时**承担「手打一个上游没列出的模型」：它交回来的就是
-              // 输入框里那一串。所以这里只有一条写路径，没有「选中」与「输入」
-              // 两种语义要区分。
+              // The picker **also** handles "hand-typing a model the upstream did not list": what it returns is
+              // the string in the input box. So there is only one write path here, with no "selected" versus "typed"
+              // two semantics to distinguish.
               push((p) => { p.roles[id][i].model = m; });
             }}
           />
@@ -308,7 +308,7 @@
   .idx { width: 14px; }
   .danger { color: var(--danger, #c0392b); }
   label.tiny { display: flex; align-items: center; gap: 4px; font-size: 11px; }
-  /* 名字与继承排在卡片最前面（它们是这一份文件的身份），文件路径退到右端当注脚。 */
+  /* Name and inheritance come first in the card (they are this file's identity), and the file path retreats to the right end as a footnote. */
   .meta { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--dim); }
   .meta .name { min-width: 130px; }
   .file { font-size: 11px; }

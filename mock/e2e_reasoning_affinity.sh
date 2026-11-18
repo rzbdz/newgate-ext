@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Real-upstream regression for DeepSeek taking over a foreign tool loop.
 #
-# 2026-09-20 从内核仓库搬过来：它断言的是**本发行版那个模块**的补丁契约
-# （deepseek 插件的 RebaseToolLoop），住在内核那边等于让内核的测试依赖一个
-# 发行版模块。内核侧的同类断言现在由 mock/e2e_claude.sh 用内核自己的
-# claude-bg / schema-repair 当探针。
+# Moved here from the core repo on 2026-09-20: it asserts the patch contract of **this distribution's module**
+# (the deepseek plugin's RebaseToolLoop), and living in the core repo would make the core's tests depend on a
+# distribution module. The equivalent assertion on the core side now uses the core's own
+# claude-bg / schema-repair as probes in mock/e2e_claude.sh.
 #
 # This is intentionally NOT part of `go test ./...`: unit tests must never use
 # the network. It spends a few real tokens through the running newgate daemon.

@@ -1,26 +1,26 @@
 <script lang="ts">
-  // 一组开关 / 选择器。每一项都带一句**为什么**（贡献者写的 `why`）——这是这套
-  // 界面最省时间的一处：不用翻文档才知道这个开关是干什么的。
+  // A group of switches / pickers. Every item carries a **why** (the contributor's `why`) - this is the place in this
+  // UI that saves the most time: no need to dig through docs to know what a switch does.
   import { untrack } from "svelte";
 
   //
-  // 改动就地完成（下拉一选就是一次编辑），点保存才落盘。不弹模态、不默认收起：
-  // 弹窗的意义是「打断」，而这里没有需要打断的决定。
+  // Changes are made in place (picking a dropdown is one edit), and land only on save. No modal, no collapsed-by-default:
+  // the meaning of a popup is "interrupt", and there is no decision here that needs interrupting.
   type Item = {
     id: string;
     label: string;
     kind: "select" | "bool" | "text";
     value: string | boolean;
     options?: string[];
-    /** 取值 → 给人看的说法（见 lib/view 的 OptionLabels）。缺的按取值本身显示。 */
+    /** Value -> the wording for people to read (see OptionLabels in lib/view). Missing ones show the value itself. */
     option_labels?: Record<string, string>;
-    /** 空格子里的提示（「空 = 只听回环」这类）。空值格子靠它说清空着是什么意思。 */
+    /** The hint in an empty cell ("empty = loopback only" and the like). The empty-value cell relies on it to say what empty means. */
     placeholder?: string;
     why?: string;
-    /** 分组（模块名这类）。同一份列表里可以有好几组——见下面的分组小标题。 */
+    /** The group (module name and the like). There can be several groups in one list - see the group subheadings below. */
     group?: string;
-    /** 危险级别（safe / quirk / footgun）。只影响显示：footgun 由贡献者放进
-        另一张只读卡片，不会出现在这里。 */
+    /** Danger level (safe / quirk / footgun). It only affects display: footgun is put by the contributor into
+        another read-only card, and does not appear here. */
     danger?: string;
   };
   type Data = { file: string; base: string; items: Item[] };
@@ -37,8 +37,8 @@
     onEdit: (v: unknown) => void;
   } = $props();
 
-  // 与 MappingEditor 同一条：存「我改过没有」，没改过就跟着 props 走——否则
-  // reload 之后界面显示的还是上一份值（见那边的注释）。
+  // Same as MappingEditor: store "have I edited this", and if not, follow props - otherwise
+  // after reload the UI still shows the previous value (see the comment there).
   let edited = $state<Record<string, unknown> | null>(null);
   const values = $derived(
     edited ?? (draft as Record<string, unknown>) ?? fromItems(data.items),
@@ -50,16 +50,16 @@
     return out;
   }
 
-  // 交出**全部**项（不是只交改的那一项）：贡献者按 id 取自己认识的字段，多出来的
-  // 键它不看，但少了的键它就当没写过——那会变成「改了一个开关，另一个被重置」。
+  // Submit **all** items (not only the changed one): the contributor takes the fields it recognizes by id and ignores extra
+  // keys, but a missing key is treated as never written - which would become "change one switch, another gets reset".
   function set(id: string, v: unknown) {
     edited = { ...values, [id]: v };
     onEdit({ ...edited });
   }
 
-  // 后端重读过（data 换了新对象）就清掉本地缓存，回落到 draft/props——否则这份
-  // 旧值会在下一次保存时把**别处已经落盘的新值**盖回去（见 Records.svelte 里
-  // 同一段注释：那边不清的后果是删除被重复提交）。
+  // When the backend has re-read (data got a new object), clear the local cache and fall back to draft/props - otherwise this
+  // old value would overwrite **the new value already landed elsewhere** on the next save (see the same comment in
+  // Records.svelte: the consequence of not clearing there was deletes being submitted repeatedly).
   let seen = untrack(() => data);
   $effect(() => {
     if (seen === data) return;
@@ -82,10 +82,10 @@
       {/if}
       <span class="spacer"></span>
       {#if it.kind === "bool"}
-        <!-- 开关就是开关：一个方框加个钩读起来像「表单项」，而这里表达的是
-             「这个能力此刻开着没有」——一块能拨的轨道一眼就懂，也不用去数
-             打钩和没打钩的区别。input 还是 checkbox：屏幕阅读器与键盘（空格）
-             靠它，样式只负责把它画成开关。 -->
+        <!-- A switch is a switch: a box with a check reads like a "form item", while what is expressed here is
+             "is this capability on right now" - a slidable track is understood at a glance, and you do not have to count
+             the difference between checked and unchecked. The input is still a checkbox: screen readers and the keyboard (space)
+             rely on it, and the styling only draws it as a switch. -->
         <label class="sw">
           <input
             type="checkbox"
@@ -102,11 +102,11 @@
           disabled={readonly}
           onchange={(e) => set(it.id, e.currentTarget.value)}
         >
-          <!-- 空值 = 「跟随缺省」这类语义，得有个看得见的名字：空 <option>
-               在界面上就是一个没有任何字的选项，用户不知道它是什么。
-               说法优先用贡献者给的那一份（`option_labels`）：有的取值的意思只有它
-               知道——链头的空取值是「跟随全局缺省」，而「缺省是谁」得由后端填进去
-               （「—」两个字说不清这件事，也没法与「我就是要选 ds」区分开）。 -->
+          <!-- Empty value = semantics like "follow the default", and it needs a visible name: an empty <option>
+               is an option with no text in the UI, and the user does not know what it is.
+               The wording prefers what the contributor gives (`option_labels`): for some values only that one
+               knows the meaning - the chain head's empty value is "follow the global default", and "who is the default" must be filled in by the backend
+               (the two characters "-" cannot say this, nor distinguish it from "I want ds specifically"). -->
           {#each it.options ?? [] as o (o)}<option value={o}>{it.option_labels?.[o] ?? (o || "—")}</option>{/each}
           {#if values[it.id] !== undefined && !(it.options ?? []).includes(String(values[it.id]))}
             <option value={String(values[it.id])}>{String(values[it.id])} (not in the list)</option>
@@ -138,9 +138,9 @@
   .item { padding: 7px 0; border-top: 1px dashed var(--line); }
   .item:first-of-type { border-top: 0; }
   .why { font-size: 12px; margin-top: 2px; }
-  /* 开关：真 input 藏在轨道下面（键盘与读屏器照常），可见的是 .track/.knob。
-     用 :focus-visible 给键盘用户一个焦点环——把 input 藏起来之后系统默认那个
-     焦点框也一起没了，不补回来等于只有鼠标能用。 */
+  /* Switch: the real input is hidden under the track (keyboard and screen readers work as usual), and what is visible is .track/.knob.
+     Use :focus-visible to give keyboard users a focus ring - once the input is hidden, the system's default
+     focus box disappears with it, and not restoring it means only the mouse can be used. */
   .sw { display: inline-flex; cursor: pointer; }
   .sw input {
     position: absolute;

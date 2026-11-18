@@ -1,36 +1,36 @@
 #!/usr/bin/env bash
-# 零 token 端到端：**本发行版那几个模块**的行为——DeepSeek 的推理原文回填、
-# 尾部形状修补、跨上游迁移的补丁契约。
+# Zero-token end to end: the behavior of **this distribution's modules** - DeepSeek's reasoning-original-text backfill,
+# tail shape patching, and the patch contract for cross-upstream migration.
 #
-# 这些章节原来住在内核仓库的 mock/e2e_claude.sh 里，2026-09-20 跟着模块搬过来。
-# 理由是**测试跟着拥有者走**：它们断言的是发行版模块的策略，住在内核那边会让
-# 内核的测试依赖一个发行版模块——摘掉那个模块，内核就红，而内核本该能自己测干净。
-# 内核自己的 e2e 留在 core/mock/e2e_claude.sh，跑的是接管、转发、控制端点、
-# 优雅交接那些**机制**。
+# These sections used to live in the core repo's mock/e2e_claude.sh; they moved here with the modules on 2026-09-20.
+# The reason is **tests follow their owner**: they assert the policy of a distribution module, and living in the core repo would make
+# the core's tests depend on a distribution module - remove that module and the core goes red, while the core should be able to test itself cleanly.
+# The core's own e2e stays in core/mock/e2e_claude.sh, covering takeover, forwarding, control endpoints,
+# and graceful handover - those **mechanisms**.
 #
-# 验证（章号沿用内核那版，方便两边对账）：
-#   7/8/9  思考模式：Claude Code 会把 thinking 块剥掉，代理补回 thinkcache 里那轮
-#          的真实原文（tool id 找回）；**查不到就一个字节都不补**（2026-09-18 起：
-#          上游自己没给过推理，我们凭什么替它编）。
-#   17     形状 400：上游 400 原样透传 + 熔断器只计数、永不摘牌。
-#   18     补丁侧的三个契约：不编、措辞最小、原因分类。
-#   25     全局不思考开关：开着的时候客户端写的 thinking（主循环那条 adaptive）
-#          被覆盖成 disabled，OpenAI 方言的请求一个字节都不动，关掉即恢复。
+# Verification (section numbers follow the core version, to make reconciling the two sides easy):
+#   7/8/9  thinking mode: Claude Code strips the thinking blocks, and the proxy backfills the real original text of that round from the thinkcache
+#          (tool id lookup); **if it cannot find it, it adds not one byte** (since 2026-09-18:
+#          the upstream itself never gave any reasoning, so what right do we have to make some up for it).
+#   17     shape 400: upstream 400 passed through verbatim + breaker only counts, never trips.
+#   18     the three contracts on the patch side: never fabricate, minimal wording, cause classification.
+#   25     global no-think switch: when on, the thinking the client wrote (the adaptive one in the main loop)
+#          is overwritten to disabled, OpenAI-dialect requests are not touched by a single byte, and turning it off restores them.
 #
-# 假上游**按路径复用**内核的 core/mock/fake_upstream.py，不复制一份：它是逐字节
-# 复刻真实上游行为的产物，复制必然漂移，而漂移出来的是「绿的假测试」。所以跑之前
-# core/ 这个 submodule 必须在（`git submodule update --init --recursive`）。
+# The fake upstream is **reused by path** from the core's core/mock/fake_upstream.py rather than copied: it is a byte-for-byte
+# replica of real upstream behavior; a copy inevitably drifts, and what drifts out is a "green fake test". So before running,
+# the core/ submodule must be present (`git submodule update --init --recursive`).
 #
-# 全部在临时沙箱里跑，不碰真实 ~/.config / ~/.claude / shell rc。
+# Everything runs in a temporary sandbox, never touching the real ~/.config / ~/.claude / shell rc.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CORE="${NEWGATE_E2E_CORE:-$ROOT/core}"
-# 二进制来自本仓库的构建入口（build/build.sh），文件名里带发行版名与平台。
+# The binary comes from this repo's build entry (build/build.sh), and its filename carries the distribution name and platform.
 DIST_NAME="${NEWGATE_E2E_DIST:-default}"
-# 产物名里的架构用 **Go 的叫法**（amd64），不是 uname 的叫法（x86_64）——build.sh
-# 就是按 Go 的叫法命名的，两边必须一致，否则这里会找不到二进制。映射与 build.sh
-# 里那段是同一份判据（那一段的注释写了为什么需要它）。
+# The architecture in the artifact name uses **Go's naming** (amd64), not uname's (x86_64) - build.sh
+# names it the Go way, so the two sides must agree, otherwise this will not find the binary. The mapping is the same rule as
+# that section in build.sh (the comment there explains why it is needed).
 case "$(uname -m)" in
   x86_64)        host_arch=amd64 ;;
   aarch64|arm64) host_arch=arm64 ;;
@@ -38,34 +38,34 @@ case "$(uname -m)" in
   *)             host_arch=$(uname -m) ;;
 esac
 BIN_SRC="${NEWGATE_E2E_BIN:-$ROOT/dist/newgate-$DIST_NAME-$(uname -s | tr 'A-Z' 'a-z')-$host_arch}"
-# 端口默认值与内核那版错开：两边可以同时跑（对照着调试时很有用）。
+# Port defaults are spaced away from the core version: both can run at once (handy when debugging side by side).
 SANDBOX="${NEWGATE_E2E_SANDBOX:-$(mktemp -d /tmp/newgate-dist-e2e.XXXXXX)}"
 UP_PORT="${NEWGATE_E2E_UP_PORT:-18091}"
 PROXY_PORT="${NEWGATE_E2E_PROXY_PORT:-18899}"
-# 「暂时不通、后来恢复」的上游：第 26 章用它造一条真熔断，再证明 probe 成功
-# 之后请求**马上**能走（2026-11-04 的现场）。先不开，等熔断建立之后再起来。
+# Upstream that is "temporarily unreachable, then recovers": section 26 uses it to build a real circuit break, then proves that after a successful probe
+# requests can go **immediately** (the 2026-11-04 incident). It is not started yet; bring it up after the break is established.
 REVIVE_PORT="${NEWGATE_E2E_REVIVE_PORT:-18093}"
 FAKEBIN="$SANDBOX/fakebin"
-# 二进制是**多调用型**的：argv0 决定这次调用归谁（newgate / claude / opencode …）。
-# 发布产物叫 newgate-<发行版>-<平台>-<架构>，直接拿它当 newgate 用会被当成
-# 「profile 名」——2026-09-20 实测的报错是
-# `同时给了 profile "newgate-default-linux-x86_64" 和 "ds"，不一致`。
-# 所以先按正确的名字落一份到沙箱里，再拿它跑。
+# The binary is **multi-call**: argv0 decides who the invocation belongs to (newgate / claude / opencode ...).
+# The release artifact is called newgate-<distribution>-<platform>-<arch>, and using it directly as newgate makes it treat that as a
+# "profile name" - the error measured on 2026-09-20 was
+# `both profile "newgate-default-linux-x86_64" and "ds" given, inconsistent`.
+# So first drop a copy under the right name into the sandbox, then run that.
 BIN="$SANDBOX/bin/newgate"
 
 PASS=0; FAIL=0
 ok()   { echo "  ✓ $1"; PASS=$((PASS+1)); }
 bad()  { echo "  ✗ $1"; FAIL=$((FAIL+1)); }
-check(){ if [ "$2" = "$3" ]; then ok "$1"; else bad "$1 (期望 '$3'，实际 '$2')"; fi; }
+check(){ if [ "$2" = "$3" ]; then ok "$1"; else bad "$1 (expected '$3', actual '$2')"; fi; }
 
 export NEWGATE_HOME="$SANDBOX/ng"
 mkdir -p "$NEWGATE_HOME/mappings" "$FAKEBIN"
-# 沙箱要密闭：跑 e2e 的会话自己可能带着 newgate 注入的窗口声明（嵌套
-# 启动时父进程 env 会漏给子进程），不 unset 会让「没声明的 profile」
-# 用例读到父会话的值、假失败。
+# The sandbox must be sealed: the session running e2e may itself carry newgate-injected window declarations (nested
+# startup leaks the parent's env to the child), and not unsetting them makes the "undeclared profile"
+# case read the parent session's values and fail falsely.
 unset CLAUDE_CODE_MAX_CONTEXT_TOKENS CLAUDE_CODE_AUTO_COMPACT_WINDOW
-# 语言要密闭：脚本断言的是**源语言原文**（英文），而跑它的机器可能是 zh-Hans
-# （我们自己的机器就是）。不钉住的话，「界面上是英文」这类断言在中文机器上假红。
+# The language must be sealed too: the script asserts on **source-language text** (English), while the machine running it may be zh-Hans
+# (our own machines are). Without pinning it, assertions like "the UI is English" go falsely red on Chinese machines.
 export NEWGATE_LANG=en
 unset LC_ALL LC_MESSAGES LANG LANGUAGE 2>/dev/null || true
 
@@ -73,27 +73,27 @@ cleanup() {
   "$BIN" stop >/dev/null 2>&1 || true
   [ -n "${UP_PID:-}" ] && kill "$UP_PID" 2>/dev/null
   [ -n "${REVIVE_PID:-}" ] && kill "$REVIVE_PID" 2>/dev/null
-  # 调试用：NEWGATE_E2E_KEEP=1 保留沙箱（日志、假上游收到的 body 都在里面），
-  # 出红的时候不至于对着一个删掉的目录猜。
+  # For debugging: NEWGATE_E2E_KEEP=1 keeps the sandbox (logs, the bodies the fake upstream received are all in there),
+  # so when something goes red you are not guessing at a directory that has been deleted.
   if [ -n "${NEWGATE_E2E_KEEP:-}" ]; then
-    echo "沙箱保留（NEWGATE_E2E_KEEP）: $SANDBOX"
+    echo "sandbox kept (NEWGATE_E2E_KEEP): $SANDBOX"
   else
     rm -rf "$SANDBOX"
   fi
 }
 trap cleanup EXIT
 
-echo "沙箱: $SANDBOX"
-[ -x "$BIN_SRC" ] || { echo "找不到二进制 $BIN_SRC——先跑 build/build.sh"; exit 1; }
+echo "sandbox: $SANDBOX"
+[ -x "$BIN_SRC" ] || { echo "binary not found $BIN_SRC - run build/build.sh first"; exit 1; }
 mkdir -p "$(dirname "$BIN")"
 cp "$BIN_SRC" "$BIN"
 [ -f "$CORE/mock/fake_upstream.py" ] || {
-  echo "找不到内核的假上游 $CORE/mock/fake_upstream.py"
-  echo "core/ 是个 submodule，先：git submodule update --init --recursive"
+  echo "cannot find the core's fake upstream $CORE/mock/fake_upstream.py"
+  echo "core/ is a submodule, first: git submodule update --init --recursive"
   exit 1
 }
 
-# ---- 假 claude：像 Claude Code 那样发请求。E2E_SCENARIO 选形态 ----
+# ---- fake claude: sends requests the way Claude Code does. E2E_SCENARIO picks the shape ----
 cat > "$FAKEBIN/claude" <<'PY'
 #!/usr/bin/env python3
 import json, os, urllib.request, urllib.error
@@ -132,9 +132,9 @@ if scenario == "plain":
                         "messages": [{"role": "user", "content": "ping"}]})
         print(f"HTTP={code}")
 elif scenario in ("think1", "think2", "think3"):
-    # Claude Code 主循环形态：**流式** + thinking 显式开着 + 带 tools，
-    # 历史里的 assistant 消息被客户端剥掉了 thinking 块——只剩 tool_use。
-    # （流式是关键：claude-bg 只改写非流式的后台调用，主循环不碰。）
+    # Claude Code main-loop shape: **streaming** + thinking explicitly on + carries tools,
+    # the assistant messages in the history have had their thinking blocks stripped by the client - only tool_use is left.
+    # (streaming is key: claude-bg only rewrites non-streaming background calls, the main loop is untouched.)
     tid = "toolu_mock_1" if scenario == "think2" else "toolu_UNSEEN_999"
     msgs = [{"role": "user", "content": "go"}]
     if scenario != "think1":
@@ -152,9 +152,9 @@ elif scenario in ("think1", "think2", "think3"):
     if code != 200:
         print(body[:200])
 elif scenario == "count_tokens":
-    # Claude Code 的 count_tokens：不带 model 字段的形态也要能活
+    # Claude Code's count_tokens: the shape without a model field must survive too
     code, body = post(base.rstrip("/") + "/v1/messages/count_tokens",
-                      {"messages": [{"role": "user", "content": "数一下 token"}],
+                      {"messages": [{"role": "user", "content": "count the tokens"}],
                        "tools": TOOLS})
     print(f"HTTP={code}")
     try:
@@ -162,17 +162,17 @@ elif scenario == "count_tokens":
     except Exception:
         print("INPUT_TOKENS=PARSE_FAIL")
 elif scenario in ("bg_plain", "bg_adaptive", "bg_other", "bg_realname"):
-    # Claude Code 后台小调用的形态（实抓 2026-09，cc 2.1.263）：非流式、
-    # model 就是档位名 mid、不带 tools、max_tokens 2112。
-    #   bg_plain / bg_adaptive / bg_realname = Bash 分类器本体：system ~126KB
-    #     开头是 "You are a security monitor…"（bg_plain 连 thinking 都没写，
-    #     bg_adaptive 显式要求 adaptive）→ 都切 light；只给没写 thinking 的
-    #     bg_plain 注入 disabled，显式意图不覆盖。
-    #   bg_other = 其他后台调用（compact 总结这类）：system 没有那句自报
-    #     家门 → 保留 mid，只禁思考。
-    #   bg_realname = 真实模型名时代的回归现场（2026-09-09 实抓）：分类器
-    #     用主循环槽位的真实名（glm-4-plus）点名，它同时绑 heavy+mid、按
-    #     Roles 顺序反解成 heavy——tier 闸门版本会整个跳过。仍要切 light。
+    # Claude Code's background small-call shape (captured live 2026-09, cc 2.1.263): non-streaming,
+    # model is just the tier name mid, no tools, max_tokens 2112.
+    #   bg_plain / bg_adaptive / bg_realname = the Bash classifier proper: system ~126KB
+    #     starts with "You are a security monitor..." (bg_plain does not even write thinking,
+    #     bg_adaptive explicitly asks for adaptive) -> all switch to light; only the one with no thinking written,
+    #     bg_plain, gets disabled injected, explicit intent is not overridden.
+    #   bg_other = other background calls (compact summarization and the like): the system does not have that self-identifying
+    #     line -> keep mid, only disable thinking.
+    #   bg_realname = the regression scene from the real-model-name era (captured live 2026-09-09): the classifier
+    #     names it with the real name of the main-loop slot (glm-4-plus), which is bound to both heavy+mid and, resolved in
+    #     Roles order, comes out as heavy - the tier-gate version would skip it entirely. It must still switch to light.
     payload = {"model": "mid", "max_tokens": 2112,
                "messages": [{"role": "user", "content": "classify this command"},
                             {"role": "user", "content": "and this one"}]}
@@ -193,9 +193,9 @@ elif scenario in ("bg_plain", "bg_adaptive", "bg_other", "bg_realname"):
 PY
 chmod +x "$FAKEBIN/claude"
 
-# ---- 配置：ds + glm + rev 三个 provider，指向假上游 ----
-# rev 是第 26 章那条「暂时不通」的上游：它的端口此刻没有监听，探活会失败并
-# 建立一条真熔断；章节后面才在那个端口上起一个假上游。
+# ---- config: three providers ds + glm + rev, pointing at the fake upstream ----
+# rev is the "temporarily unreachable" upstream from section 26: nothing is listening on its port right now, so the probe fails and
+# builds a real circuit break; the section starts a fake upstream on that port later.
 cat > "$NEWGATE_HOME/providers.json" <<EOF
 {
   "providers": {
@@ -217,8 +217,8 @@ cat > "$NEWGATE_HOME/mappings/glm.json" <<'EOF'
     "heavy": "glm/glm-4-plus", "mid": "glm/glm-4-plus",
     "light": "glm/glm-4.5-air", "vision": "glm/glm-4.5-air" } }
 EOF
-# rev-model **只绑在这一份 profile 里**：正是 2026-11-04 现场的形状（deepseek-flash
-# 只绑在 ds 里）。它不可用时，反查若跟着准入过滤一起走，就会被误报成「不认识」。
+# rev-model is **bound only in this one profile**: that is exactly the shape of the 2026-11-04 incident (deepseek-flash
+# bound only in ds). When it is unavailable, if the reverse lookup follows the admission filter, it gets misreported as "unknown".
 cat > "$NEWGATE_HOME/mappings/rev.json" <<'EOF'
 { "name": "rev", "priority": 30, "roles": { "mid": "rev/rev-model" } }
 EOF
@@ -227,69 +227,69 @@ cat > "$NEWGATE_HOME/state.json" <<EOF
 EOF
 
 
-echo; echo "== 0. 启动假上游（严格 DeepSeek 口径） =="
-# 假上游来自**内核**仓库（core/ 这个 submodule）：它是逐字节复刻真实上游行为的
-# 产物——判据是尾部形状而不是推理字段，本发行版的补丁正是针对那套口径写的。
-# 所以这里**按路径复用**、不复制一份：复制必然漂移，而漂移出来的是「绿的假测试」。
+echo; echo "== 0. start the fake upstream (strict DeepSeek rules) =="
+# The fake upstream comes from the **core** repo (the core/ submodule): it is a byte-for-byte replica of real upstream
+# behavior - the rule is the tail shape, not the reasoning field, and this distribution's patch is written exactly for those rules.
+# So here it is **reused by path**, not copied: a copy inevitably drifts, and what drifts out is a "green fake test".
 python3 "$CORE/mock/fake_upstream.py" --port "$UP_PORT" >"$SANDBOX/upstream.log" 2>&1 &
 UP_PID=$!
 for _ in $(seq 30); do
   curl -sf "http://127.0.0.1:$UP_PORT/__mock/requests" >/dev/null && break; sleep 0.1
 done
 curl -sf "http://127.0.0.1:$UP_PORT/__mock/requests" >/dev/null \
-  && ok "假上游在 127.0.0.1:$UP_PORT" || { bad "假上游没起来"; exit 1; }
+  && ok "fake upstream at 127.0.0.1:$UP_PORT" || { bad "fake upstream did not start"; exit 1; }
 
-# PATH 里 fakebin 在最前，newgate claude 会 exec 我们的假 claude（它在头部生成，
-# 模拟 Claude Code 的请求形态）。
+# fakebin is first in PATH, so newgate claude will exec our fake claude (generated at the top of the file,
+# which mimics Claude Code's request shape).
 export PATH="$FAKEBIN:$PATH"
 
-# 清空假上游记下的请求。内核那版把它定义在中段的章节里，而本脚本只搬了末尾几章，
-# 所以定义跟着搬过来——它是**这一层的基础设施**（每个用例都从「上游没收到过东西」
-# 开始），不是哪一章的私有物。
+# Clears the requests recorded by the fake upstream. The core version defines it in the middle sections, while this script only carried over the last few,
+# so the definition came along - it is **infrastructure for this layer** (every case starts from "the upstream has received nothing"),
+# not the private property of any one section.
 RESETUP() { curl -sf "http://127.0.0.1:$UP_PORT/__mock/reset" -X POST >/dev/null; }
-echo; echo "== 7. 思考模式第一轮（客户端剥块场景的起点） =="
+echo; echo "== 7. thinking mode round one (the starting point of the client block-stripping scenario) =="
 curl -sf "http://127.0.0.1:$UP_PORT/__mock/reset" -X POST >/dev/null
 OUT="$(E2E_SCENARIO=think1 "$BIN" claude --profile=ds 2>"$SANDBOX/t1.err")"
 echo "$OUT" | sed 's/^/    /'
-check "think1 首轮 200" "$(echo "$OUT" | grep '^HTTP=' | cut -d= -f2)" "200"
+check "think1 first round 200" "$(echo "$OUT" | grep '^HTTP=' | cut -d= -f2)" "200"
 
-echo; echo "== 8. 第二轮：thinkcache 命中，回填那轮真实推理原文 =="
+echo; echo "== 8. round two: thinkcache hit, backfill that round's real reasoning original text =="
 curl -sf "http://127.0.0.1:$UP_PORT/__mock/reset" -X POST >/dev/null
 OUT="$(E2E_SCENARIO=think2 "$BIN" claude --profile=ds 2>"$SANDBOX/t2.err")"
 echo "$OUT" | sed 's/^/    /'
-check "think2 严格上游放行（回填生效）" "$(echo "$OUT" | grep '^HTTP=' | cut -d= -f2)" "200"
+check "think2 strict upstream lets it through (backfill took effect)" "$(echo "$OUT" | grep '^HTTP=' | cut -d= -f2)" "200"
 GOT=$(curl -s "http://127.0.0.1:$UP_PORT/__mock/requests" | python3 -c '
 import json,sys
 r=json.load(sys.stdin)
 m=r[0]["body"]["messages"][1] if r else {}
 print(m.get("reasoning_content","MISSING"))')
-check "reasoning_content 是缓存里的原文" "$GOT" "MOCK-THINKING-ORIGINAL"
+check "reasoning_content is the original text from the cache" "$GOT" "MOCK-THINKING-ORIGINAL"
 GOT=$(curl -s "http://127.0.0.1:$UP_PORT/__mock/requests" | python3 -c '
 import json,sys
 r=json.load(sys.stdin)
 m=r[0]["body"]["messages"][1] if r else {}
 c=m.get("content")
 print(c[0].get("thinking","") if isinstance(c,list) and c else "NO_BLOCK")')
-check "thinking 块也是缓存里的原文" "$GOT" "MOCK-THINKING-ORIGINAL"
+check "thinking block is also the original text from the cache" "$GOT" "MOCK-THINKING-ORIGINAL"
 
-echo; echo "== 9. 缓存未命中（模拟重启后的旧会话）：一个字节都不补 =="
-# 这一章锁的是 2026-09-18 定下来的那条**最基本**的逻辑：上游自己那一轮就没
-# 给过推理，那「must be passed back」要求回传的东西根本不存在，我们凭什么
-# 替它编一个。原来这里补的是 "No thinking in this round"，是错的：
-# 编出来的字会进上游、进对话历史、每轮烧 token，而信息量是零。
+echo; echo "== 9. cache miss (an old session after a restart): not one byte is added =="
+# This section locks the **most basic** logic set on 2026-09-18: the upstream's own round never
+# gave any reasoning, so the thing the "must be passed back" requirement asks to pass back does not exist at all, and what right do we
+# have to make one up for it. What used to be added here was "No thinking in this round", which was wrong:
+# fabricated words go into the upstream, into the conversation history, and burn tokens every round, with zero information content.
 #
-# 正确动作是**跳过这条消息**，并且把「为什么没有原文」分好类报进日志
-# （notool / nocache / nokey）——跳过是结果，光报个数没法反查。
+# The correct action is to **skip this message**, and classify "why there is no original text" into the log
+# (notool / nocache / nokey) - skipping is the outcome, a bare count cannot be traced back.
 #
-# 但**尾部形状**那一手（第 4 手）在这一发上照样要动：think3 的历史正好是
-# 「裸 tool_result 收尾」，上游对那个形状报的正是这条 400。两件事互不冲突，
-# 所以这里同时断言：
-#   assistant 消息：rc 缺席、没有 thinking 块（不编）
-#   尾部 user 轮：多了一条 `continue`（修形状）
+# But the **tail shape** move (move 4) still has to act on this request: think3's history happens to be
+# "ends with a bare tool_result", and that is exactly the shape the upstream reports this 400 for. The two things do not conflict,
+# so here we assert both at once:
+#   assistant message: rc absent, no thinking block (no fabrication)
+#   tail user turn: one extra `continue` (shape fixed)
 curl -sf "http://127.0.0.1:$UP_PORT/__mock/reset" -X POST >/dev/null
 OUT="$(E2E_SCENARIO=think3 "$BIN" claude --profile=ds 2>"$SANDBOX/t3.err")"
 echo "$OUT" | sed 's/^/    /'
-check "think3 严格上游放行（尾部形状被修好）" "$(echo "$OUT" | grep '^HTTP=' | cut -d= -f2)" "200"
+check "think3 strict upstream lets it through (tail shape was fixed)" "$(echo "$OUT" | grep '^HTTP=' | cut -d= -f2)" "200"
 GOT=$(curl -s "http://127.0.0.1:$UP_PORT/__mock/requests" | python3 -c '
 import json,sys
 r=json.load(sys.stdin)
@@ -301,130 +301,130 @@ rc="PRESENT" if (a and "reasoning_content" in a[0]) else "ABSENT"
 lastu=[m for m in msgs if m.get("role")=="user"][-1].get("content")
 tailb=[b.get("type") for b in lastu] if isinstance(lastu,list) else [lastu]
 print("rc="+rc+" blocks="+",".join(blk)+" tail="+",".join(tailb))')
-check "不编占位符（rc 缺席、无 thinking 块），但尾部形状被修" \
+check "no placeholder fabricated (rc absent, no thinking block), but the tail shape was fixed" \
   "$GOT" "rc=ABSENT blocks=tool_use tail=tool_result,text"
 GOT=$(curl -s "http://127.0.0.1:$UP_PORT/__mock/requests" | python3 -c '
 import json,sys
 r=json.load(sys.stdin)
 lastu=[m for m in r[0]["body"]["messages"] if m.get("role")=="user"][-1]["content"]
 print([b.get("text") for b in lastu if isinstance(b,dict) and b.get("type")=="text"][0])')
-check "追加的就是最简那句「continue」" "$GOT" "continue"
-# 跳过的原因必须分类报出来（这条 tool_use id 从没进过 thinkcache ⇒ nocache）。
+check "what was appended is literally the word continue (the minimal one)" "$GOT" "continue"
+# The reason for skipping must be reported by category (this tool_use id never entered thinkcache => nocache).
 LOGTAIL=$(tail -40 "$NEWGATE_HOME/newgate.log")
 case "$LOGTAIL" in
-  *"left untouched"*"nocache"*) ok "日志把「没有原文可补」的原因分成 nocache 并说明跳过" ;;
-  *) bad "日志没说清跳过原因（该有 \"left untouched\" + \"nocache\"）：$(echo "$LOGTAIL" | tail -2)" ;;
+  *"left untouched"*"nocache"*) ok "the log classifies no-original-text-to-backfill as nocache and explains the skip" ;;
+  *) bad "the log does not explain the skip reason (should have \"left untouched\" + \"nocache\"): $(echo "$LOGTAIL" | tail -2)" ;;
 esac
 
-echo; echo "== 17. 形状 400：上游 400 原样透传 + 熔断器只计数、永不摘牌 =="
-# 这份 body 要满足两个条件，缺一条这个用例就不是它要测的东西：
+echo; echo "== 17. shape 400: upstream 400 passed through verbatim + breaker only counts, never trips =="
+# This body must satisfy two conditions; miss one and the case no longer tests what it is meant to test:
 #
-#   1. **尾部形状违规、而且插件修不了**。实测判据是「最后一条 role:user 的
-#      content[] 里全是 tool_result 块」（详见第 6 章与 mock/fake_upstream.py），
-#      而 deepseek 插件对其中**修得好**的那一族（那个 user 轮就是数组末尾）
-#      会追加一句 `continue` 把它修掉、返回 200——那是第 9 章在锁的事。
-#      所以这里用的是**修不好**的那一族：裸 tool_result 之后**还有一条
-#      assistant**。插件故意不碰它（往用户的对话里塞一句模型看不见效果的
-#      噪音比 400 更糟），实测这一族在原样追加 `continue` 之后 3/3 还是 400。
-#      于是链上**每一个**候选都 400，链走到头，客户端才拿得到上游原文。
-#   2. **走 glm profile**，让 glm 那一发先吃 400：deepseek 插件的 MatchTarget
-#      看 model/provider/baseURL，glm/glm-4-plus 三处都没有「deepseek」字样，
-#      于是插件不去碰它。（这一点是冗余保险：就算 Match 判错，条件 1 也兜住了。）
+#   1. **tail shape violation, and the plugin cannot fix it**. The measured rule is "the last role:user's
+#      content[] is all tool_result blocks" (see section 6 and mock/fake_upstream.py),
+#      and the deepseek plugin, for the family it **can fix** (that user turn is the end of the array),
+#      appends a `continue` to fix it and returns 200 - that is what section 9 locks down.
+#      So here we use the family it **cannot fix**: right after the bare tool_result there is **still one more
+#      assistant**. The plugin deliberately leaves it alone (stuffing a line whose effect the model cannot see into the user's conversation
+#      is worse than a 400), and measured, this family is still 400 3/3 after appending `continue` verbatim.
+#      So **every** candidate on the chain gets 400, the chain runs out, and only then does the client get the upstream's original text.
+#   2. **Go through the glm profile**, so the glm request eats the 400 first: the deepseek plugin's MatchTarget
+#      looks at model/provider/baseURL, and glm/glm-4-plus has no "deepseek" string in any of the three,
+#      so the plugin leaves it alone. (This is a redundant safeguard: even if Match gets it wrong, condition 1 catches it.)
 #
-# 形状判据（modules/deepseek/shape.go）认领它 → classify 判 BucketShape →
-# 账本只涨 ShapeSkips、永不进 Open。所以「客户端拿到 400」和「glm 没被摘牌」
-# 必须**同时**成立：这正是这轮重构要的那个行为。
+# The shape rule (modules/deepseek/shape.go) claims it -> classify yields BucketShape ->
+# the ledger only bumps ShapeSkips and never enters Open. So "the client gets a 400" and "glm was not tripped"
+# must hold **at the same time**: that is exactly the behavior this round of refactoring is after.
 RESETUP
 SHAPE_BODY='{"model":"glm-4-plus","max_tokens":16,"stream":true,'\
 '"thinking":{"type":"enabled","budget_tokens":1024},'\
 '"tools":[{"name":"Bash","description":"d","input_schema":{"type":"object","properties":{}}}],'\
 '"messages":['\
-'{"role":"user","content":[{"type":"text","text":"跑一下"}]},'\
+'{"role":"user","content":[{"type":"text","text":"run it"}]},'\
 '{"role":"assistant","content":[{"type":"tool_use","id":"toolu_shape_17","name":"Bash","input":{}}]},'\
 '{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_shape_17","content":"ok"}]},'\
-'{"role":"assistant","content":[{"type":"text","text":"好"}]}]}'
+'{"role":"assistant","content":[{"type":"text","text":"ok"}]}]}'
 
-# (1) 直打假上游：证明这条规则真的部署到位（不是被代理偷偷改过）。
+# (1) hit the fake upstream directly: prove this rule is really deployed (not secretly altered by the proxy).
 CODE=$(curl -s -o "$SANDBOX/shape_direct.out" -w '%{http_code}' -X POST \
   "http://127.0.0.1:$UP_PORT/v1/messages" \
   -H 'Content-Type: application/json' -d "$SHAPE_BODY")
-check "直打上游：400 must be passed back" \
+check "direct to upstream: 400 must be passed back" \
   "$( [ "$CODE" = "400" ] && command grep -q 'must be passed back' "$SANDBOX/shape_direct.out" && echo y || echo n)" "y"
 
-# (2) 同 body 经代理：链上每一站都 400 → 客户端必须收到上游原文（不静默）。
+# (2) same body through the proxy: every stop on the chain gets 400 -> the client must receive the upstream's original text (no silence).
 RESETUP
 RES_CODE=$(curl -s -o "$SANDBOX/shape_proxy.out" -w '%{http_code}' -X POST \
   "http://127.0.0.1:$PROXY_PORT/a/claude/p/glm/v1/messages" \
   -H 'Content-Type: application/json' \
   -H 'anthropic-version: 2023-06-01' -H 'x-api-key: e2e' -d "$SHAPE_BODY")
-check "经代理：客户端仍 400" "$RES_CODE" "400"
+check "through proxy: client still 400" "$RES_CODE" "400"
 command grep -q 'must be passed back' "$SANDBOX/shape_proxy.out" \
-  && ok "经代理：上游原文原样透传（不静默）" \
-  || bad "经代理：被吞了；body=$(head -c 200 "$SANDBOX/shape_proxy.out")"
+  && ok "through proxy: upstream original text passed through verbatim (no silence)" \
+  || bad "through proxy: swallowed; body=$(head -c 200 "$SANDBOX/shape_proxy.out")"
 
-# 日志里那行 [shape-400] 是判据认领的**唯一**证据（转发路径不认识任何上游
-# 专有字符串，它只读 Result.Shape 那个名字）。
+# The [shape-400] line in the log is the **only** evidence that the rule claimed it (the forwarding path knows no upstream
+# proprietary strings, it only reads the Result.Shape name).
 LOG="$NEWGATE_HOME/newgate.log"
 for _ in $(seq 20); do
   command grep -q '\[shape-400\]' "$LOG" 2>/dev/null && break; sleep 0.1
 done
 command grep -aq '\[shape-400\].*detector deepseek' "$LOG" \
-  && ok "日志有 [shape-400] 判据 deepseek（认领留痕）" \
-  || bad "日志里没有 [shape-400] 判据 deepseek"
+  && ok "log has [shape-400] rule deepseek (claim recorded)" \
+  || bad "log has no [shape-400] rule deepseek"
 
-# (3) 熔断器只计数、绝不摘牌。`newgate breaker` 把问题 binding 分两段，这条
-#     shape-400 只能出现在「只计数、没摘牌」那一段。
+# (3) the breaker only counts, never trips. `newgate breaker` splits the problem bindings into two sections, and this
+#     shape-400 can only appear in the "counted only, not tripped" section.
 BRK_OUT="$("$BIN" breaker 2>/dev/null)"
 echo "$BRK_OUT" | sed 's/^/    /'
 echo "$BRK_OUT" | command grep -q 'counted only, not tripped' \
-  && ok "breaker 表里有「只计数、没摘牌」段（shape-400 的归属）" \
-  || bad "breaker 表里找不到 counted-only 段"
+  && ok "breaker table has a counted-only-not-tripped section (where shape-400 belongs)" \
+  || bad "breaker table has no counted-only section"
 echo "$BRK_OUT" | command grep -q 'glm/glm-4-plus' \
-  && ok "breaker 表里能找到 glm/glm-4-plus（被记账了）" \
-  || bad "breaker 表里找不到 glm/glm-4-plus"
+  && ok "breaker table contains glm/glm-4-plus (it was accounted)" \
+  || bad "breaker table does not contain glm/glm-4-plus"
 echo "$BRK_OUT" | command grep -qE '· 0 tripped' \
-  && ok "没有任何 binding 被摘牌（形状 400 只计数）" \
-  || bad "有 binding 被摘牌了（形状 400 不该摘牌）：$(echo "$BRK_OUT" | command grep 'tripped' | head)"
+  && ok "no binding was tripped (shape 400 only counts)" \
+  || bad "a binding was tripped (shape 400 should not trip): $(echo "$BRK_OUT" | command grep 'tripped' | head)"
 
-# (4) metrics 端的形状计数要涨。
+# (4) the shape counter on the metrics side must go up.
 "$BIN" metrics 2>/dev/null | command grep -q 'breaker.skipped.shape_error' \
-  && ok "metrics 有 breaker.skipped.shape_error" \
-  || bad "metrics 缺 breaker.skipped.shape_error"
+  && ok "metrics has breaker.skipped.shape_error" \
+  || bad "metrics is missing breaker.skipped.shape_error"
 
-echo; echo "== 18. 补丁侧的三个契约：不编、措辞最小、原因分类 =="
-# 这一章锁 2026-09-18 定下来的三件事，全在 deepseek 插件的改写路径上。
-# 这里直打**代理**、读假上游收到的 body：这些是纯字节手术，假上游收到的
-# 就是上游会收到的字节。
+echo; echo "== 18. the three contracts on the patch side: never fabricate, minimal wording, cause classification =="
+# This section locks the three things set on 2026-09-18, all on the deepseek plugin's rewrite path.
+# Here we hit the **proxy** directly and read the body the fake upstream received: these are pure byte surgery, and what the fake upstream receives
+# is exactly the bytes the upstream would receive.
 #
-# (a) **绝不编**。上游那一轮没给过推理，那「must be passed back」要求回传的
-#     东西根本不存在，我们凭什么替它编一个——编出来的字会进上游、进对话
-#     历史、每轮烧 token，信息量是零。原来补的是 "No thinking in this round"，
-#     现在是**跳过这条消息，一个字节都不加**。这条请求里那条 assistant 的
-#     tool_use id 从没进过 thinkcache ⇒ 没有原文 ⇒ 必须原样不动。
+# (a) **Never fabricate**. The upstream's round never gave any reasoning, so the thing the "must be passed back" requirement asks for
+#     does not exist at all, and what right do we have to make one up - fabricated words go into the upstream, into the conversation
+#     history, and burn tokens every round, with zero information content. What used to be added was "No thinking in this round",
+#     now it is **skip this message, add not one byte**. The assistant's
+#     tool_use id in this request never entered thinkcache => no original text => must stay untouched.
 #
-# (b) **尾部修复的措辞最小**。第 4 手往尾部追加的那句话会进上游、也会进用户
-#     下一轮的对话历史，越长越像「有人在替我说话」。用户的原话是「只用最少字，
-#     比如（"继续"）这种」。所以断言的是**逐字**等于 `continue`，不是「非空且短」
-#     ——后者换个长句子照样能过。
+# (b) **the tail fix uses minimal wording**. The sentence move 4 appends to the tail goes into the upstream, and also into the user's
+#     next round's conversation history, and the longer it is the more it looks like "someone is speaking for me". The user's own words were "use the fewest words,
+#     like ("continue") this". So the assertion is that it equals `continue` **word for word**, not "non-empty and short"
+#     - the latter would still pass with a long sentence.
 #
-# (c) **原因必须分类报出来**。跳过是**结果**，光报个数没法反查：是「上游本来就
-#     没给」还是「给了但我们没存住」，处置完全相反（前者只能接受，后者要去
-#     查 thinkcache 的命中率）。分三类：
-#       notool   纯文本轮，靠正文哈希找回，miss
-#       nocache  有 tool_use，但它的 id 在 thinkcache 里查不到
-#       nokey    既无 tool_use 也无正文，认不出这条消息
-#     这条请求的 tool_use id 从没被缓存过，所以必然是 nocache。
+# (c) **the cause must be reported by category**. Skipping is the **outcome**, a bare count cannot be traced: was it "the upstream never
+#     gave it" or "it gave it but we did not store it", and the remedies are exact opposites (the former can only be accepted, the latter requires
+#     checking the thinkcache hit rate). Three categories:
+#       notool   plain text turn, looked up by body hash, miss
+#       nocache  has tool_use, but its id is not found in thinkcache
+#       nokey    neither tool_use nor body, the message cannot be identified
+#     The tool_use id in this request was never cached, so it must be nocache.
 #
-# 请求里显式写 reasoning_content「这一轮本来就有推理，插件不许碰」：插件只补
-# **缺**的字段，已经有了的一个字节都不碰（既有契约）。所以同一条请求同时给出
-# 两个样本：第一条 assistant 有原文（不许碰）、尾部那个 user 轮是裸 tool_result
-# （必须修）。
+# The request explicitly writes reasoning_content "this round already has reasoning, the plugin must not touch it": the plugin only fills in
+# **missing** fields, and does not touch a single byte of fields already present (existing contract). So the same request gives two
+# samples at once: the first assistant has original text (must not be touched), and the tail user turn is a bare tool_result
+# (must be fixed).
 PH_BODY='{"model":"deepseek-flash","max_tokens":16,"stream":false,'\
 '"thinking":{"type":"enabled"},'\
 '"messages":['\
-'{"role":"user","content":[{"type":"text","text":"跑一下"}]},'\
-'{"role":"assistant","reasoning_content":"这一轮本来就有推理，插件不许碰",'\
-'"content":[{"type":"text","text":"好"},{"type":"tool_use","id":"t-never-cached-e2e","name":"Bash","input":{}}]},'\
+'{"role":"user","content":[{"type":"text","text":"run it"}]},'\
+'{"role":"assistant","reasoning_content":"this round already has reasoning, the plugin must not touch it",'\
+'"content":[{"type":"text","text":"ok"},{"type":"tool_use","id":"t-never-cached-e2e","name":"Bash","input":{}}]},'\
 '{"role":"user","content":[{"type":"tool_result","tool_use_id":"t-never-cached-e2e","content":"ok"}]}]}'
 
 RESETUP
@@ -432,10 +432,10 @@ CODE=$(curl -s -o "$SANDBOX/ph_proxy.out" -w '%{http_code}' -X POST \
   "http://127.0.0.1:$PROXY_PORT/a/claude/p/ds/v1/messages" \
   -H 'Content-Type: application/json' \
   -H 'anthropic-version: 2023-06-01' -H "x-api-key: e2e" -d "$PH_BODY")
-check "经代理：思考开着、尾部裸 tool_result → 200（形状修好了）" "$CODE" "200"
+check "through proxy: thinking on, bare tool_result at tail -> 200 (shape fixed)" "$CODE" "200"
 
-# 逐条把契约打成一行一行的 key=value，再一条条 check——不用 read 拆词
-# （read -r A B 是按空白切分，正文里带空格就错位），也不做子串匹配。
+# Turn the contract into key=value lines one by one, then check each one - no read word splitting
+# (read -r A B splits on whitespace, and text with spaces in it misaligns), and no substring matching.
 PH_SUM=$(curl -s "http://127.0.0.1:$UP_PORT/__mock/requests" | python3 -c '
 import json,sys
 r=json.load(sys.stdin)
@@ -456,41 +456,41 @@ print("tail_text=" + (tailtext[0] if tailtext else "<NONE>"))')
 echo "$PH_SUM" | sed 's/^/    /'
 ph_get() { echo "$PH_SUM" | command grep "^$1=" | cut -d= -f2-; }
 
-# (a) 绝不编：这条 assistant 没有原文 ⇒ 不插 thinking 块、不加 reasoning_content。
-check "没有原文 ⇒ 不插 thinking 块（不编占位符）" "$(ph_get thinking_blocks)" "0"
-check "没有原文 ⇒ 已经写着的 reasoning_content 逐字不动" \
-  "$(ph_get reasoning_content)" "这一轮本来就有推理，插件不许碰"
-# (b) 尾部形状被修好，而且追加的是**逐字**那句最简指令。
-check "尾部从裸 tool_result 变成 tool_result+text" "$(ph_get tail)" "tool_result,text"
-check "追加的指令逐字是「continue」（最少字）" "$(ph_get tail_text)" "continue"
+# (a) never fabricate: this assistant has no original text => no thinking block inserted, no reasoning_content added.
+check "no original text => no thinking block inserted (no placeholder fabricated)" "$(ph_get thinking_blocks)" "0"
+check "no original text => the reasoning_content already written stays word for word" \
+  "$(ph_get reasoning_content)" "this round already has reasoning, the plugin must not touch it"
+# (b) the tail shape was fixed, and what was appended is **word for word** that minimal instruction.
+check "tail went from bare tool_result to tool_result+text" "$(ph_get tail)" "tool_result,text"
+check "the appended instruction is literally the word continue (fewest words)" "$(ph_get tail_text)" "continue"
 
-# (c) 原因分类。日志里那句必须同时说清「跳过了」和「为什么」（nocache）。
+# (c) cause classification. The line in the log must state both "skipped" and "why" (nocache).
 LOGTAIL=$(tail -60 "$NEWGATE_HOME/newgate.log")
 case "$LOGTAIL" in
-  *"left untouched"*"nocache"*) ok "日志说明跳过、且把原因分成 nocache（有 tool_use、缓存查不到）" ;;
-  *) bad "日志没说清跳过原因（该有 \"left untouched\" + \"nocache\"）：$(echo "$LOGTAIL" | tail -2)" ;;
+  *"left untouched"*"nocache"*) ok "the log says it skipped, and classifies the cause as nocache (has tool_use, cache lookup fails)" ;;
+  *) bad "the log does not explain the skip reason (should have \"left untouched\" + \"nocache\"): $(echo "$LOGTAIL" | tail -2)" ;;
 esac
-# 这里原本还有一条断言：「日志里不许出现『占位符』字样——编占位符那条路应该已经
-# 删掉了」。**它是一条空断言**：它查的那句话是那条已被删掉的路留下的，所以它从写
-# 下的那天起就没有红过（恒真）。2026-09-20 迁移时先把它换成正面断言（日志要明说
-# 「不编占位符」），一跑就发现那句属于 `newgate deepseek` 的审计输出，**这个场景
-# 不走**——于是它变成另一条假断言。
+# There used to be another assertion here: "the log must not contain the word placeholder - the placeholder fabrication path should already be
+# deleted". **It was an empty assertion**: the sentence it looked for was left behind by that already-deleted path, so from the day it was written
+# it never went red (always true). During the 2026-09-20 migration it was first turned into a positive assertion (the log must say
+# "no placeholder fabricated"), and as soon as it ran it turned out that sentence belongs to `newgate deepseek`'s audit output, **which this scenario
+# does not go through** - so it became another fake assertion.
 #
-# 不留样子：真正的保证在两头——这条脚本上面那两条（跳过要说清、原因要分成
-# nocache），以及 modules/deepseek 自己的单测。「编占位符」这件事今天没有可断言
-# 的界面输出，硬留一条只会让下一个人以为这里有人看着。
+# No keeping up appearances: the real guarantees are at both ends - the two assertions above (skipping must be explained, the cause must be classified as
+# nocache), and modules/deepseek's own unit tests. "Placeholder fabrication" has no assertable
+# output to the UI today, and keeping a fake one would only make the next person think someone is watching here.
 
-echo; echo "== 25. 全局不思考开关（newgate nothink） =="
-# 这一章锁的是**开关真的改了上游收到的字节**。它改的是客户端**写出来的意图**：
-# Claude Code 主循环每一条请求都带 thinking:{"type":"adaptive"}（2026-09-29 的
-# 现场 dump err-400-req000010：stream=true、28 个 tools、model=heavy），所以
-# 「尊重客户端写着的 thinking」那条规矩在这里正好是反面——不覆盖它，这个开关就
-# 等于没开。判据只能落在上游收到的 body 上，不能落在「命令没报错」上。
+echo; echo "== 25. global no-think switch (newgate nothink) =="
+# This section locks that **the switch really changed the bytes the upstream receives**. It changes the client's **written intent**:
+# every Claude Code main-loop request carries thinking:{"type":"adaptive"} (the 2026-09-29
+# live dump err-400-req000010: stream=true, 28 tools, model=heavy), so
+# the rule "respect the thinking the client wrote" is exactly the opposite here - without overriding it, this switch
+# would be as good as off. The rule can only rest on the body the upstream receives, not on "the command did not error".
 NK_BODY='{"model":"deepseek-flash","max_tokens":16,"stream":false,'\
 '"thinking":{"type":"adaptive"},'\
-'"messages":[{"role":"user","content":[{"type":"text","text":"你好"}]}]}'
+'"messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]}'
 
-# nk_thinking 打一发 Anthropic 方言，打印**上游收到的** thinking 值。
+# nk_thinking fires one Anthropic-dialect request and prints the thinking value **the upstream received**.
 nk_thinking() {
   RESETUP
   curl -s -o /dev/null -X POST "http://127.0.0.1:$PROXY_PORT/p/ds/v1/messages" \
@@ -504,120 +504,120 @@ b=r[-1]["body"]
 print("ABSENT" if "thinking" not in b else json.dumps(b["thinking"], sort_keys=True))'
 }
 
-check "关着（缺省）：客户端写的 adaptive 原样发给上游" "$(nk_thinking)" '{"type": "adaptive"}'
+check "off (default): the adaptive the client wrote is sent to the upstream as is" "$(nk_thinking)" '{"type": "adaptive"}'
 
 "$BIN" nothink forever >/dev/null 2>&1
-# 配置热加载：命令写 state.json 之后 NotifyProxy 发 SIGHUP，watcher 换页。
+# config hot reload: after the command writes state.json, NotifyProxy sends SIGHUP and the watcher reloads.
 sleep 0.5
-check "newgate nothink forever：adaptive 被覆盖成 disabled" "$(nk_thinking)" '{"type": "disabled"}'
+check "newgate nothink forever: adaptive is overwritten to disabled" "$(nk_thinking)" '{"type": "disabled"}'
 
-# 不静默：开着的时候 status 该看得见（它改的是模型行为，症状不会自己说是谁干的），
-# 日志里也该留下这一发改了什么。
+# Not silent: when it is on, status should show it (it changes model behavior, and the symptom will not say who did it),
+# and the log should record what this request changed.
 #
-# 先收进变量再按 case 匹配，**不要**写 `… | grep -q`：`grep -q` 命中第一处就退出，
-# 上游那个进程还没写完就吃到 SIGPIPE，而脚本开着 pipefail——于是命中了也判成失败
-# （2026-10-14 实测：这一条第一次跑就是这么红的）。
+# First capture into a variable and then match with case, **do not** write `… | grep -q`: `grep -q` exits on the first hit,
+# the upstream process gets SIGPIPE before it finishes writing, and the script runs with pipefail on - so even a hit is judged a failure
+# (measured 2026-10-14: this assertion went red exactly this way the first time it ran).
 STATUS_OUT="$("$BIN" status 2>&1)"
 case "$STATUS_OUT" in
-  *Nothink*) ok "status 里打出这一行（不静默）" ;;
-  *) bad "status 没提这个开关：$(echo "$STATUS_OUT" | head -6 | tr '\n' ' ')" ;;
+  *Nothink*) ok "status prints this line (not silent)" ;;
+  *) bad "status does not mention this switch: $(echo "$STATUS_OUT" | head -6 | tr '\n' ' ')" ;;
 esac
 case "$(tail -40 "$NEWGATE_HOME/newgate.log")" in
-  *"nothink:"*"disabled"*) ok "日志写明这一发改了什么（不静默）" ;;
-  *) bad "日志里没有 nothink 那条 note（改写必须留痕）" ;;
+  *"nothink:"*"disabled"*) ok "the log states what this request changed (not silent)" ;;
+  *) bad "no nothink note in the log (a rewrite must leave a trace)" ;;
 esac
 
-# OpenAI 方言**没有 thinking 这个字段可写**（opencode / codex 走那条路）：开着
-# 也不许往里塞一个人家不认识的字段——替它们补 disabled 的现场是「deepseek 不
-# 思考了」（2026-09-15，见 modules/claudecode_glm）。所以开关按**方言**认领。
+# OpenAI dialect **has no thinking field to write** (opencode / codex go that way): even when it is on
+# we must not stuff in a field it does not know - the scene where we added disabled for them was "deepseek no
+# longer thinks" (2026-09-15, see modules/claudecode_glm). So the switch claims by **dialect**.
 RESETUP
 curl -s -o /dev/null -X POST "http://127.0.0.1:$PROXY_PORT/p/ds/v1/chat/completions" \
   -H 'Content-Type: application/json' \
-  -d '{"model":"deepseek-flash","max_tokens":16,"messages":[{"role":"user","content":"你好"}]}'
+  -d '{"model":"deepseek-flash","max_tokens":16,"messages":[{"role":"user","content":"hello"}]}'
 GOT=$(curl -s "http://127.0.0.1:$UP_PORT/__mock/requests" | python3 -c '
 import json,sys
 r=json.load(sys.stdin)
 if not r: print("NO_REQUEST")
 else: print("ABSENT" if "thinking" not in r[-1]["body"] else "PRESENT")')
-check "OpenAI 方言的请求一个字节都不动" "$GOT" "ABSENT"
+check "OpenAI-dialect requests are not touched by a single byte" "$GOT" "ABSENT"
 
 "$BIN" nothink off >/dev/null 2>&1
 sleep 0.5
-check "newgate nothink off：回到客户端写的 adaptive" "$(nk_thinking)" '{"type": "adaptive"}'
+check "newgate nothink off: back to the adaptive the client wrote" "$(nk_thinking)" '{"type": "adaptive"}'
 
-echo; echo "== 26. 点名 profile 与熔断恢复（2026-11-04 现场） =="
-# 现场形状：全局 profile 不是 ds、唯一绑定了 deepseek-flash 的 ds binding 被
-# 熔断，客户端发来 ds 注入的真实模型名。旧行为三件事都不对：
-#   - 反查跟着准入过滤走 → 模型从链上被摘掉 → 404「既不是档位，也不在任何
-#     profile 的绑定里」，而它明明绑在 ds 里；
-#   - 点名（--profile）只在解析后截断 → 被点名 profile 的候选全灭时，链头已经
-#     是别人的 profile，截断留下的就是「静默换 profile」；
-#   - probe 成功之后还要等 60s 隔离期满才回链 → 用户唯一的恢复动作变成安慰剂。
-# 这一章用一条**先不通、后恢复**的上游（rev，端口上面没有服务）把三件事分开验。
+echo; echo "== 26. named profile and breaker recovery (the 2026-11-04 scene) =="
+# Scene shape: the global profile is not ds, and the only ds binding bound to deepseek-flash has been
+# tripped, and the client sends the real model name ds injected. Old behavior got all three things wrong:
+#   - the reverse lookup followed the admission filter -> the model was removed from the chain -> 404 "neither a tier nor in any
+#     profile's bindings", while it was clearly bound in ds;
+#   - naming (--profile) only truncated after resolution -> when every candidate of the named profile is gone, the chain head is already
+#     someone else's profile, and the truncation leaves a silent profile switch;
+#   - after a successful probe one still had to wait out the 60s isolation before returning to the chain -> the user's only recovery action became a placebo.
+# This section uses an upstream that is **down first, up later** (rev, nothing serving on its port) to verify the three things separately.
 check_port_busy() { curl -sf "http://127.0.0.1:$REVIVE_PORT/__mock/requests" >/dev/null 2>&1; }
 if check_port_busy; then
-  bad "端口 $REVIVE_PORT 已经有服务在听，这一章的前提不成立（换 NEWGATE_E2E_REVIVE_PORT）"
+  bad "something is already listening on port $REVIVE_PORT, the premise of this section fails (change NEWGATE_E2E_REVIVE_PORT)"
 else
-  ok "rev 上游此刻不通（端口 $REVIVE_PORT 没有监听）"
+  ok "the rev upstream is unreachable right now (nothing is listening on port $REVIVE_PORT)"
 fi
 
-# 一次失败的主动探活就够摘牌（探活不受连续失败阈值约束）。
+# One failed active probe is enough to trip a binding (probes are not bound by the consecutive-failure threshold).
 "$BIN" probe rev >/dev/null 2>&1 || true
 BRK="$("$BIN" breaker 2>&1)"
 case "$BRK" in
-  *"rev/rev-model"*) ok "失败的 probe 当场摘掉 rev/rev-model" ;;
-  *) bad "probe 失败后 breaker 表里找不到 rev/rev-model" ;;
+  *"rev/rev-model"*) ok "the failed probe tripped rev/rev-model on the spot" ;;
+  *) bad "rev/rev-model not found in the breaker table after the failed probe" ;;
 esac
 
-# 1) 点名 rev：rev 没候选时**不许**拿 ds 的候选顶上。
+# 1) name rev: when rev has no candidates we **must not** fall back to ds's.
 RESETUP
 CODE=$(curl -s -o "$SANDBOX/pin_unavailable.out" -w '%{http_code}' -X POST \
   "http://127.0.0.1:$PROXY_PORT/a/claude/p/rev/v1/messages" \
   -H 'Content-Type: application/json' \
   -d '{"model":"rev-model","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}')
-check "点名 rev、rev 被熔断：404" "$CODE" "404"
+check "name rev, rev is tripped: 404" "$CODE" "404"
 case "$(cat "$SANDBOX/pin_unavailable.out")" in
-  *"bound to tier mid"*) ok "404 认出模型所属档位（不再说「不在任何 profile 的绑定里」）" ;;
-  *) bad "404 文案没认出档位：$(cat "$SANDBOX/pin_unavailable.out")" ;;
+  *"bound to tier mid"*) ok "the 404 recognizes the model's tier (it no longer says the model is in no profile's bindings)" ;;
+  *) bad "the 404 text does not recognize the tier: $(cat "$SANDBOX/pin_unavailable.out")" ;;
 esac
 N_UP=$(curl -s "http://127.0.0.1:$UP_PORT/__mock/requests" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')
-check "点名 rev 时没有静默换到 ds 的上游" "$N_UP" "0"
+check "naming rev did not silently switch to ds's upstream" "$N_UP" "0"
 
-# 2) 不点名：模型名仍然认识，只是那条 binding 不可用 → 按同档位链 fallback。
+# 2) no naming: the model name is still recognized, only that binding is unavailable -> fall back on the same-tier chain.
 RESETUP
 CODE=$(curl -s -o "$SANDBOX/fallback.out" -w '%{http_code}' -X POST \
   "http://127.0.0.1:$PROXY_PORT/v1/messages" \
   -H 'Content-Type: application/json' \
   -d '{"model":"rev-model","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}')
-check "没点名时模型不可用：按 mid 链 fallback 回 200" "$CODE" "200"
+check "model unavailable when not named: falls back on the mid chain and returns 200" "$CODE" "200"
 GOT=$(curl -s "http://127.0.0.1:$UP_PORT/__mock/requests" | python3 -c '
 import json,sys
 r=json.load(sys.stdin)
 print(r[-1]["body"].get("model") if r else "NO_REQUEST")')
-check "fallback 落到 ds 的 mid 候选" "$GOT" "deepseek-flash"
+check "fallback lands on ds's mid candidate" "$GOT" "deepseek-flash"
 
-# 3) 上游恢复 + 一次成功的 probe → 点名请求**立刻**能走（不等 60s 隔离期）。
+# 3) upstream recovers + one successful probe -> the named request can go **immediately** (no waiting for the 60s isolation).
 python3 "$CORE/mock/fake_upstream.py" --port "$REVIVE_PORT" >"$SANDBOX/revive_upstream.log" 2>&1 &
 REVIVE_PID=$!
 for _ in $(seq 30); do
   check_port_busy && break; sleep 0.1
 done
-check_port_busy || { bad "恢复用的假上游没在 $REVIVE_PORT 起来"; }
-# 探活是权威证据：成功即合闸。冷却期（60s）还没到，所以这一条只有在 probe
-# 能提前解封时才绿——正是 2026-11-04 那次「probe 完还是 404」的回归。
+check_port_busy || { bad "the fake upstream for recovery did not come up on $REVIVE_PORT"; }
+# The probe is authoritative evidence: success closes the breaker. The cooldown (60s) has not passed, so this line goes green only if the probe
+# can lift the isolation early - exactly the 2026-11-04 regression of "still 404 after the probe".
 "$BIN" probe rev >/dev/null 2>&1 || true
 curl -sf "http://127.0.0.1:$REVIVE_PORT/__mock/reset" -X POST >/dev/null 2>&1 || true
 CODE=$(curl -s -o "$SANDBOX/pin_recovered.out" -w '%{http_code}' -X POST \
   "http://127.0.0.1:$PROXY_PORT/a/claude/p/rev/v1/messages" \
   -H 'Content-Type: application/json' \
   -d '{"model":"rev-model","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}')
-check "成功的 probe 之后点名请求立刻回 200（不等 60s）" "$CODE" "200"
+check "after a successful probe the named request immediately returns 200 (no waiting 60s)" "$CODE" "200"
 GOT=$(curl -s "http://127.0.0.1:$REVIVE_PORT/__mock/requests" | python3 -c '
 import json,sys
 r=json.load(sys.stdin)
 print(r[-1]["body"].get("model") if r else "NO_REQUEST")')
-check "恢复后走的就是被点名 profile 的那条 binding" "$GOT" "rev-model"
+check "after recovery it goes through the binding of the named profile" "$GOT" "rev-model"
 
 echo
-echo "结果: $PASS 通过, $FAIL 失败"
+echo "result: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

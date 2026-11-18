@@ -1,11 +1,11 @@
 <script lang="ts">
-  // 冲突：你手里那份基线已经不是磁盘上那份了（CLI 在你看页面的时候改过同一个
-  // 文件）。**两边原文都摆出来**，因为只有当事人能判断该怎么办：
+  // Conflict: the baseline you hold is no longer the one on disk (the CLI changed the same
+  // file while you were looking at the page). **Both sides' original text are laid out**, because only the person involved can judge what to do:
   //
-  //   - 你改的是 A 段、他改的是 B 段 → 大部分情况下「保留我的」是对的；
-  //   - 你们碰的是同一段 → 得看一眼才知道谁的更新。
+  //   - you changed section A, they changed section B -> "keep mine" is right in most cases;
+  //   - you both touched the same section -> you have to look before knowing whose is newer.
   //
-  // 「保存失败，请重试」把这件事交给用户去猜，而猜错的代价是丢数据。
+  // "Save failed, please retry" leaves this to the user to guess, and guessing wrong costs data.
   import type { Conflict } from "./api";
   import { t } from "./i18n";
 

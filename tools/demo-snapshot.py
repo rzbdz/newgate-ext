@@ -1,42 +1,42 @@
 #!/usr/bin/env python3
-"""把一份真快照摘成演示页能用的假数据。
+"""Redact a real snapshot into fake data the demo page can use.
 
     curl -s http://127.0.0.1:8899/ui/api/snapshot -o /tmp/snap.json
     python3 tools/demo-snapshot.py /tmp/snap.json \
         modules/web-dashboard/web/demo/snapshot.json
 
-# 为什么要有这一步
+# Why this step has to exist
 
-站点上的演示页嵌的是**真组件**、喂的是假数据（见
-`modules/web-dashboard/web/demo/data.ts` 的文件头）。手写一份「差不多的」假数据
-必然会漂——形状一偏，屏幕上就是「这张卡画不出来」，而没有东西会红。所以那份数据
-是从真快照摘下来的，这个脚本就是摘的那一步，写在仓库里而不是留在某个人的 shell
-历史里。
+The demo page on the site embeds **real components** and feeds them fake data (see
+the file header of `modules/web-dashboard/web/demo/data.ts`). Hand-writing a "roughly similar" set of fake data
+would inevitably drift - once the shape is off, the screen says "this card cannot be drawn", and nothing goes red. So that data
+is redacted from a real snapshot, and this script is the redaction step, kept in the repo rather than left in someone's shell
+history.
 
-# 它换掉了什么，为什么
+# What it replaces, and why
 
-1. **本机的上游地址**。`api.rvcompute.com:60000` 与 `ark.cn-beijing.volces.com`
-   是这台机器真的在用的聚合器与厂商地址 → 换成 `*.example-*` 示例地址。地址本身
-   不是凭据，但它指着一个真实的服务、且带着内部端口，没有理由出现在公开站上。
-2. **磁盘路径**：`/root/.config/newgate` → `~/.config/newgate`。
-3. **CAS 指纹**（`base: "sha256:…"`）。那是磁盘上那份文件的稳定标识：同一份配置
-   在任何机器上算出来都一样，把它公开等于把「这个人的配置长这样」也一并给出去了。
-   换成按文件名派生的假指纹——形状与长度不变（界面上那格只是在比「还是不是原来
-   那份」），同一份文件每次摘出来都一样（免得重摘一次就是满屏 diff）。
-4. **上游的 call id**（推理回填那几行日志里的 `call_00_…`）：同一条推理链的 id 会
-   反复出现在日志里，它是上游侧的标识。换成固定的 `call_mock_*`。
-5. **`generated_at`** 固定成一个常量：它每跑一次都会变，而这份数据进版本控制。
+1. **Local upstream addresses**. `api.rvcompute.com:60000` and `ark.cn-beijing.volces.com`
+   are the aggregator and vendor addresses this machine really uses -> replaced with `*.example-*` example addresses. The address itself
+   is not a credential, but it points at a real service and carries internal ports, and there is no reason for it to appear on a public site.
+2. **Disk paths**: `/root/.config/newgate` -> `~/.config/newgate`.
+3. **CAS fingerprints** (`base: "sha256:…"`). That is a stable identifier of the file on disk: the same config
+   computes to the same value on any machine, and publishing it also gives away "what this person's config looks like".
+   Replaced with a fake fingerprint derived from the file name - the shape and length stay the same (that cell on the screen only compares "is it still the same
+   one"), and the same file redacts to the same thing every time (so re-redacting does not produce a diff on every line).
+4. **Upstream call ids** (the `call_00_…` in the reasoning-backfill log lines): the same reasoning chain's id appears
+   repeatedly in the log, and it is an upstream-side identifier. Replaced with a fixed `call_mock_*`.
+5. **`generated_at`** is fixed to a constant: it changes on every run, and this data goes into version control.
 
-# 它**没有**换掉什么（有意保留）
+# What it does **not** replace (deliberately kept)
 
-模型名与 provider 名（`smt-deepseek` / `gpt-5.6-sol` / `MiniMax-M3` …）。演示页要
-演的正是「这些名字落到哪家模型上」，抹掉它这张链卡就没有内容了。它们不是凭据。
+Model names and provider names (`smt-deepseek` / `gpt-5.6-sol` / `MiniMax-M3` ...). What the demo page
+shows is exactly "which vendor's model these names land on", and erasing it would leave this chain card with no content. They are not credentials.
 
-# 摘完还会自检
+# After redacting it also self-checks
 
-脚本最后按几条正则复扫一遍产物（真的主机名、`sk-` 开头的 key、`Bearer`、
-`control_token` 的值、`/root/`）。扫到任何一条就**非零退出**、一个字节都不写——
-摘录这种事出错的样子是「悄悄把不该公开的东西写进了公开站」，那不能靠人记得看一眼。
+At the end the script rescans the output with a few regexes (real host names, keys starting with `sk-`, `Bearer`,
+the value of `control_token`, `/root/`). Any single hit means **non-zero exit** and not a byte written -
+the failure mode of redaction is "quietly writing something that should not be public into a public site", and that cannot rely on someone remembering to look.
 """
 
 import hashlib
@@ -45,7 +45,7 @@ import os
 import re
 import sys
 
-# 替换表：左列是这台机器上真的东西，右列是演示页上该看到的东西。
+# Replacement table: the left column is what really exists on this machine, the right column is what the demo page should show.
 SUBS = [
     ("https://api.rvcompute.com:60000/v1", "https://api.example-gateway.com/v1"),
     (
@@ -55,15 +55,15 @@ SUBS = [
     ("/root/.config/newgate", "~/.config/newgate"),
 ]
 
-# 自检：这些东西不该出现在产物里（逐条对应上面那张表，外加凭据）。
+# Self-check: these things must not appear in the output (one by one corresponding to the table above, plus credentials).
 FORBIDDEN = [
-    (r"rvcompute", "真的聚合器主机名"),
-    (r"volces", "真的厂商主机名"),
-    (r"/root/", "绝对的 home 路径"),
-    (r"sk-[A-Za-z0-9_\-]{10,}", "看起来像 API key 的串"),
-    (r"Bearer [A-Za-z0-9]", "Bearer 令牌"),
-    (r'"control_token"\s*:\s*"(?!\*\*\*)', "控制令牌的值"),
-    (r"call_00_[A-Za-z0-9]{10,}", "上游的 call id"),
+    (r"rvcompute", "the real aggregator host name"),
+    (r"volces", "the real vendor host name"),
+    (r"/root/", "an absolute home path"),
+    (r"sk-[A-Za-z0-9_\-]{10,}", "a string that looks like an API key"),
+    (r"Bearer [A-Za-z0-9]", "a Bearer token"),
+    (r'"control_token"\s*:\s*"(?!\*\*\*)', "the value of the control token"),
+    (r"call_00_[A-Za-z0-9]{10,}", "an upstream call id"),
 ]
 
 TAIL_LOG_LINES = 60
@@ -95,10 +95,10 @@ def walk(value):
 
 
 def swap_digests(concept: dict) -> None:
-    """把这一张卡里所有的 CAS 指纹换成按文件派生的假指纹。
+    """Replace every CAS fingerprint in this card with a fake one derived from the file.
 
-    只认 `sha256:` 开头的那种串，别的字符串一个不碰（界面上那些「为什么」是散文，
-    随手改一个字都可能改掉它的意思）。
+    Only strings starting with `sha256:` are matched, and no other string is touched (the "why" text on the screen is prose,
+    and changing one character at random can change its meaning).
     """
 
     def visit(node):
@@ -119,7 +119,7 @@ def swap_digests(concept: dict) -> None:
 
 
 def scan(out: str) -> list[str]:
-    """按禁词表复扫一遍产物，返回「发现了什么」。"""
+    """Rescan the output against the forbidden-word list and return "what was found"."""
     bad = []
     for pattern, what in FORBIDDEN:
         hits = sorted(set(re.findall(pattern, out)))[:3]
@@ -130,14 +130,14 @@ def scan(out: str) -> list[str]:
 
 def main() -> int:
     if len(sys.argv) not in (3, 4):
-        print(__doc__.split("# 为什么")[0].strip(), file=sys.stderr)
+        print(__doc__.split("# Why")[0].strip(), file=sys.stderr)
         return 2
     src, dst = sys.argv[1], sys.argv[2]
-    # 第三个数是 `GET /ui/api/themes` 的原文（可选）。给的话就在同一个目录里写出
-    # `themes.json`——演示页要演皮肤，而皮肤**不在快照里**（它是界面自己的偏好，
-    # 见 modules/web-dashboard/api.go）。与快照同一条规矩：**从真后端摘，不手抄**，
-    # 手抄一份「差不多的皮肤表」等于留一份没有守卫的副本，而它的漂移方式恰恰是
-    # 「演示页上的皮肤和真界面的对不上」——那种错没人会报成 bug。
+    # The third argument is the raw text of `GET /ui/api/themes` (optional). If given, write `themes.json` in the same directory -
+    # the demo page needs to show themes, and themes are **not in the snapshot** (they are the UI's own preference,
+    # see modules/web-dashboard/api.go). Same rule as the snapshot: **redact from the real backend, do not hand-copy**,
+    # hand-copying a "roughly similar theme table" is keeping an unguarded copy, and its drift mode is exactly
+    # "the theme on the demo page does not match the real UI" - nobody reports that kind of error as a bug.
     themes_src = sys.argv[3] if len(sys.argv) == 4 else None
 
     snap = json.load(open(src, encoding="utf-8"))
@@ -152,18 +152,18 @@ def main() -> int:
 
     out = json.dumps(snap, ensure_ascii=False, indent=2) + "\n"
 
-    # 皮肤也过**同一张禁词表**：它是一份新的内容来源，而那份表存在的理由是
-    # 「摘录出错的样子是悄悄把不该公开的东西写进了公开站」——多一个来源就要多扫一遍，
-    # 不能假定「皮肤里不会有那些东西」（今天确实没有，但那是事实、不是保证）。
+    # Themes go through **the same forbidden-word list** too: it is a new source of content, and the reason that list exists is
+    # "the failure mode of redaction is quietly writing something that should not be public into a public site" - one more source means one more scan,
+    # and we cannot assume "themes will not contain those things" (today they indeed do not, but that is a fact, not a guarantee).
     themes_out = None
     if themes_src:
         doc = json.load(open(themes_src, encoding="utf-8"))
         themes_out = json.dumps(doc, ensure_ascii=False, indent=2) + "\n"
 
-    # 先自检再写盘：发现了东西就一个字节都不写。
+    # Self-check before writing: if anything was found, not a byte is written.
     bad = scan(out) + (scan(themes_out) if themes_out else [])
     if bad:
-        print("摘录失败——产物里还有不该公开的东西（一个字节都没写）：", file=sys.stderr)
+        print("redaction failed - the output still has things that should not be public (not a byte was written):", file=sys.stderr)
         print("\n".join(bad), file=sys.stderr)
         return 1
 
@@ -171,12 +171,12 @@ def main() -> int:
         f.write(out)
     concepts = len(snap.get("concepts") or [])
     sections = len(snap.get("sections") or [])
-    print(f"写出 {dst}：{sections} 节 / {concepts} 张卡 / {len(out.encode())} 字节")
+    print(f"wrote {dst}: {sections} sections / {concepts} cards / {len(out.encode())} bytes")
     if themes_out:
         tpath = os.path.join(os.path.dirname(dst), "themes.json")
         with open(tpath, "w", encoding="utf-8") as f:
             f.write(themes_out)
-        print(f"写出 {tpath}：{len((doc.get('themes') or []))} 套皮肤 / {len(themes_out.encode())} 字节")
+        print(f"wrote {tpath}: {len((doc.get('themes') or []))} themes / {len(themes_out.encode())} bytes")
     return 0
 
 

@@ -1,22 +1,22 @@
 <script lang="ts">
-  // 首屏：**让哪个客户端走哪一份档位**（形状见内核 lib/view 的 Overview）。
+  // First screen: **which client uses which tier** (shape in the core lib/view's Overview).
   //
-  // # 这一屏和 chains 那一屏的分工
+  // # Division of labor between this screen and the chains screen
   //
-  // 它在同一节里排在 Chains 前面。那一张是「逐条读」——每一档的完整链、被跳过的是
-  // 谁、为什么；这一张是「拿它做决定」：顶上一条客户端标签，下面一份 profile 一张
-  // 卡，卡上是**此刻会走的那几步**加上每一站的健康（延迟、颜色、上次探活的结论）。
+  // It sorts before Chains in the same section. That one is "read one by one" - the full chain of each tier, who got skipped and
+  // why; this one is "use it to decide": a client tab at the top, one card per profile below,
+  // and on the card are **the steps that would be taken right now** plus the health of each stop (latency, color, last probe conclusion).
   //
-  // # 三条约定，与 chains 那边同源
+  // # Three conventions, same origin as the chains side
   //
-  //  1. **不认识任何模块**。`agents` 是后端给的机器标记 + 显示名，`cards` 是每一份
-  //     profile 的链结论。这一屏不 import 任何 config/breaker 的东西。
-  //  2. **颜色是语义，不是数值**。延迟那一格的颜色由后端给（`latency_tone`）——
-  //     多少毫秒算慢是 breaker 的判据，只有一处实现。写死阈值在这一屏会让改阈值的
-  //     那一天有两处要改，而漏掉的那处不会有任何东西变红。
-  //  3. **`use:` 前缀是契约**。卡片动作里 id 以 `use:` 开头的那些是「就用它」，
-  //     后面那段是 agent 的机器标记；其余（今天就是探活）原样画成按钮。这条拼法是
-  //     后端写死的（见 view.OverviewCard.Actions），两边各拼一次就得拼成同一个串。
+  //  1. **Knows no modules**. `agents` is a machine marker + display name from the backend, `cards` is each
+  //     profile's chain conclusion. This screen imports nothing from config/breaker.
+  //  2. **Color is semantics, not a value**. The color of the latency cell is given by the backend (`latency_tone`) -
+  //     how many milliseconds counts as slow is breaker's rule, implemented in one place. Hard-coding a threshold on this screen means on the day the threshold changes
+  //     there are two places to change, and the one that is missed turns nothing red.
+  //  3. **The `use:` prefix is a contract**. Card actions whose id starts with `use:` are "use this one",
+  //     and the part after it is the agent's machine marker; the rest (today just probing) is drawn as a button. This concatenation is
+  //     hard-coded by the backend (see view.OverviewCard.Actions), and both sides must build the same string.
   type Step = {
     provider: string;
     model: string;
@@ -39,12 +39,12 @@
   type Card = {
     profile: string;
     /**
-     * 这一张是不是**「默认」那张**（见内核 view.OverviewCard.Auto）。
+     * Whether this is **the "default" card** (see the core view.OverviewCard.Auto).
      *
-     * 它与 profile 卡长得几乎一样，说的却是两件事：在这一张上点「给 claude 用」
-     * 是让 claude **跟着全局默认走**；在 ds 那张上点同一句话是把 claude **固定**在
-     * ds 上。两者的路由此刻相同，改掉全局之后一个跟着变、一个不变——所以它们必须
-     * 是两张卡（Clash 里一个 group 既能直接选节点、又能引用另一个 group）。
+     * It looks almost the same as a profile card, but says two different things: clicking "use for claude" on this one
+     * makes claude **follow the global default**; clicking the same sentence on the ds card pins claude **to
+     * ds**. The two resolve identically right now, and after the global is changed one follows while the other does not - so they must
+     * be two cards (in Clash a group can both pick a node directly and reference another group).
      */
     auto?: boolean;
     file?: string;
@@ -55,7 +55,7 @@
   type Agent = {
     id: string;
     name: string;
-    /** 客户端自带的图标（SVG path 的 `d`，24 视口；空 = 没给，见后端 overview.go）。 */
+    /** The client's own icon (the `d` of an SVG path, 24 viewport; empty = not given, see the backend overview.go). */
     icon?: string;
     profile?: string;
     own?: boolean;
@@ -73,32 +73,32 @@
   }: {
     data: Data;
     /**
-     * 卡片头上的按钮（「就用它」/「整张卡探一遍」），见 api.ts 的 ConceptAction。
+     * Buttons on the card header ("use this one" / "probe the whole card"), see ConceptAction in api.ts.
      *
-     * **没有 `onRowAction`**：这一屏的行上没有动作。单条 binding 的探活在健康表
-     * 那一节（`breaker.health` 每行一个按钮），而这里是按卡与按屏的——理由见
-     * modules/home/overview.go 的 probeSet。
+     * **No `onRowAction`**: rows on this screen have no actions. Probing a single binding lives in the health table
+     * section (`breaker.health`, one button per row), while here it is per card and per screen - see
+     * probeSet in modules/home/overview.go.
      */
     onAction?: (a: ConceptAction) => void;
     /**
-     * 跳到**编辑这份文件**的那张卡上（配置那一节里对应 profile 的那张）。
+     * Jump to the card that **edits this file** (the profile's card in the config section).
      *
-     * 一趟导航，不是动作：它不改盘上的东西，所以不该走 `onAction`（那条路跑完会
-     * 清草稿、整份重读——对「我只是想去看看那个文件」这件事来说全是副作用）。
+     * A navigation trip, not an action: it changes nothing on disk, so it should not go through `onAction` (that path clears
+     * drafts and re-reads everything when done - all side effects for "I just wanted to look at that file").
      */
     onOpenFile?: (file: string) => void;
   } = $props();
 
   const agents = $derived(data?.agents ?? []);
   const cards = $derived(data?.cards ?? []);
-  /** 「默认」那张卡（见 Card.auto）。没有可选的 profile 时后端不报它。 */
+  /** The "default" card (see Card.auto). The backend does not report it when there is no selectable profile. */
   const auto = $derived<Card | undefined>(data?.auto);
 
   /**
-   * 现在看的是哪一栏（agent 的机器标记；空串 = 那一档「全部客户端」）。
+   * Which tab is being viewed now (the agent's machine marker; empty string = the "all clients" tier).
    *
-   * 默认落在**第一个装了的**客户端上：一个都没装时落在那档空的上面（那时它是唯一
-   * 能把链换掉的手段，见 overview.go 的 useActions）。
+   * The default lands on **the first installed** client: when none is installed it lands on that empty tier (then it is the only
+   * way to swap the chain, see useActions in overview.go).
    */
   let tab = $state<string | undefined>(undefined);
   const current = $derived<Agent | undefined>(
@@ -106,66 +106,66 @@
   );
 
   /**
-   * 这一栏此刻**是不是跟着默认走**。
+   * Whether this tab **follows the default** right now.
    *
-   * 两件不同的事都落在这里：`own` 为假 = 这一家没自己设过、跟着全局；而「全部客户端」
-   * 那一档**本身就是全局默认**，所以它也在跟着（它没有「上一级」可跟，那个默认就是
-   * 它自己）。
+   * Two different things land here: `own` false = this one has never set its own, and follows the global; while the "all clients"
+   * tier **is itself the global default**, so it follows too (it has no "parent level" to follow - that default is
+   * itself).
    */
   const follows = $derived(!current?.id || !current?.own);
 
   /**
-   * 这一张卡是不是**这一栏此刻在用的**那一个。
+   * Whether this card is **the one this tab is using right now**.
    *
-   * 高亮落在**哪一张上**，正是「跟着」与「固定」的区别所在：跟着默认时高亮在「默认」
-   * 那张上，固定住时高亮在被固定的那一份上。两张卡的内容可能一模一样（默认恰好指向
-   * 它），而那正是需要这条规则的原因——颜色说的是**关系**，不是内容。
+   * Which card gets **the highlight** is exactly where "following" and "pinned" differ: when following the default, the highlight is on the
+   * "default" card; when pinned, the highlight is on the pinned one. The two cards' content may be identical (the default happens to point at
+   * it), and that is exactly why this rule is needed - the color says **relation**, not content.
    */
   function isActive(c: Card): boolean {
-    // 「自动」那一档：选中的是**一份 profile 卡**（它定义了自动指向谁）。
+    // The "auto" tier: what is selected is **a profile card** (it defines who auto points at).
     if (!current?.id) return !c.auto && c.profile === current?.profile;
-    // 客户端那一档：跟着自动时选中「自动」那张，固定住时选中被固定的那一份。
+    // The client tier: when following auto it selects the "auto" card, and when pinned it selects the pinned one.
     return follows ? !!c.auto : !c.auto && c.profile === current?.profile;
   }
 
   /**
-   * 这一张卡上该画哪几个按钮。
+   * Which buttons to draw on this card.
    *
-   * `use:` 那一族是「把这份 profile 指给某个客户端」，而一次只该画**一个**：当前
-   * 这一栏的那个。指给它自己的那个后端根本不报（见 useActions：已经用着它的不
-   * 出现），所以「这一栏已经用它」这件事由下面那句陈述说出来。
+   * The `use:` family is "point this profile at some client", and only **one** should be drawn at a time: the one for the current
+   * column. The one pointing it at itself is not reported by the backend at all (see useActions: it does not
+   * appear for a client already using it), so "this column already uses it" is said by the statement below.
    *
-   * ID 是 `use:<agent>:<profile>`（见内核 view.OverviewCard.Actions）：**profile
-   * 那一段是必须的**——同一个 agent 的同一个动作在十几张卡上各有一个，而账本按 ID
-   * 找人取的是第一个匹配。界面于是按「当前这一栏的 agent + 这张卡的 profile」拼出
-   * 唯一那一个（与链卡那边拼行 ID 是同一条规矩）。
+   * The ID is `use:<agent>:<profile>` (see the core view.OverviewCard.Actions): **the profile
+   * segment is required** - the same action for the same agent exists on a dozen cards, and the ledger looks people up by ID
+   * and takes the first match. So the UI builds the one unique
+   * from "the current column's agent + this card's profile" (the same rule as building row IDs on the chains card).
    *
-   * 空 id 那一档（没装任何客户端，或者用户点了「全部客户端」）画的是全局那一个。
+   * The empty-id tier (no client installed, or the user clicked "all clients") draws the global one.
    */
   function actions(c: Card): Act[] {
-    // 这一排按钮里**只留「不是选择」的那些**（今天就是探活）。
+    // Of this row of buttons, **keep only those that are not "selecting"** (today just probing).
     //
-    // 「用它」那一族（`use:` / `auto:`）不再画成按钮：**点卡片本身就是那个动作**
-    // （见 pick）。一张卡上再摆一个与自己同名的按钮，是把同一件事说两遍——而用户
-    // 的原话是「给 xx 用这个多余的，直接点卡就切换了」。
+    // The "use it" family (`use:` / `auto:`) is no longer drawn as buttons: **clicking the card itself is that action**
+    // (see pick). Placing a button with the same name on the card says the same thing twice - and the user's
+    // own words were "that 'use this for xx' is redundant, clicking the card switches it directly".
     return (c.actions ?? []).filter((a) => !isPick(a.id));
   }
 
-  /** 这一族动作是「选它」——它们由**点卡片**触发，不画成按钮。 */
+  /** This family of actions is "select it" - they are triggered by **clicking the card**, not drawn as buttons. */
   function isPick(id: string): boolean {
     return id.startsWith("use:") || id.startsWith("auto:");
   }
 
   /**
-   * 这一张卡被点中时该跑哪个动作。
+   * Which action should run when this card is clicked.
    *
-   * 没有 = **它已经选着了**（后端不给「把这一份指给它自己」那个动作，见
-   * overview.go 的 useActions），于是那一下什么都不该发生——而不是让界面替它编一个
-   * 结果出来。
+   * None = **it is already selected** (the backend does not give the action "point this one at itself", see
+   * useActions in overview.go), so nothing should happen - rather than having the UI make up a
+   * result for it.
    *
-   * 挑 ID 的判据与以前画按钮时**逐字相同**：同一张卡上那句话的含义由当前这一档
-   * 决定（`use:global:*` 在「自动」档、`use:<agent>:*` 在客户端档），所以这里还是
-   * 拿 `who` 去拼。
+   * The criterion for picking the ID is **word for word the same** as when it used to draw buttons: the meaning of that sentence on the same card is decided by the current
+   * tier (`use:global:*` on the "auto" tier, `use:<agent>:*` on a client tier), so `who` is still used
+   * to build it here.
    */
   function pickAction(c: Card): Act | undefined {
     const who = current?.id ? current.id : "global";
@@ -174,26 +174,26 @@
   }
 
   /**
-   * 正在探的那几张卡（键是 keyOf）。
+   * The cards currently being probed (the key is keyOf).
    *
-   * 探活是一次**要等几秒**的动作，而它返回的正是这一屏上那些延迟数字——等的时候
-   * 如果还挂着旧数字，用户看到的是「点了没反应」，然后那几个数字**突然**跳一下。
-   * 用户的原话：「探测的时候，记得要把当前的延迟给盖掉（显示为...）。更新结果再刷新」。
-   * 所以探的期间把那几格盖成「…」，等重读回来自然换成新值。
+   * Probing is an action that **takes a few seconds**, and what it returns is exactly the latency numbers on this screen - while waiting,
+   * if the old numbers were still shown, the user would see "nothing happened when I clicked", and then those numbers would **suddenly** jump.
+   * The user's own words: "when probing, remember to cover the current latency (show it as...). Refresh after new results".
+   * So during probing those cells are covered with "...", and when the re-read comes back they naturally become the new values.
    */
   let probing = $state<Record<string, boolean>>({});
 
-  /** 这一张卡此刻在探吗。 */
+  /** Whether this card is being probed right now. */
   function isProbing(c: Card): boolean {
     return !!probing[keyOf(c)];
   }
 
   /**
-   * 跑一颗动作；是探活的话，期间把这张卡标成「在探」。
+   * Run an action; if it is probing, mark this card as "probing" for the duration.
    *
-   * 只对**探活**那一族这样做：别的动作（换链头那种）不产出延迟数字，给它们盖一层
-   * 「…」是在说一件不存在的事。判据是动作 id 那一族（`probe` / `probe-auto`）——
-   * 它是「跑完会重读快照」的唯一一支。
+   * Do this only for the **probing** family: other actions (the switch-chain-head kind) produce no latency numbers, and covering them with
+   * "..." would be saying something that does not exist. The criterion is the action id family (`probe` / `probe-auto`) -
+   * the only branch that "re-reads the snapshot when done".
    */
   async function run(a: Act, c: Card) {
     if (!a.id.startsWith("probe")) {
@@ -212,71 +212,71 @@
   }
 
   /**
-   * 网格里摆的几张卡。
+   * The cards laid out in the grid.
    *
-   * 客户端那一档：「自动」在最前（它的内容 = 自动此刻 resolve 到的那一份），后面是
-   * 每一份 profile。
+   * The client tier: "auto" comes first (its content = the one auto currently resolves to), followed by
+   * every profile.
    *
-   * **「自动」那一档下不摆它**：那一档里**选中的就是一张 profile 卡本身**——点哪一张
-   * 就把自动指到哪一张。再摆一张「自动」卡，屏幕上就有两个东西在说同一件事，而且
-   * 那张卡的内容正是「此刻选中的那一张」的副本。
+   * **Do not lay it out under the "auto" tier**: in that tier **what is selected is a profile card itself** - clicking whichever one
+   * points auto at it. Laying out another "auto" card would put two things saying the same thing on screen, and
+   * that card's content is exactly a copy of "the currently selected one".
    */
   const shown = $derived<Card[]>(auto && current?.id ? [auto, ...cards] : cards);
 
   /**
-   * 一张卡的键（each 的 key、摊开状态按它存）。
+   * A card's key (each's key, the expanded state is stored by it).
    *
-   * 「默认」那张**没有 profile 名可用**——它的 profile 是它此刻指向的那一份，会跟着
-   * 变；拿它当键的话，切一次成员整张卡就被当成另一张重建了（摊开状态当场丢掉）。
-   * 所以它用固定的一个记号。
+   * The "default" one **has no profile name to use** - its profile is whatever it points at right now, and that changes;
+   * using it as a key would rebuild the whole card as a different one each time the member changes (the expanded state is lost on the spot).
+   * So it uses a fixed marker.
    */
   function keyOf(c: Card): string {
     return c.auto ? "\u0000auto" : c.profile;
   }
 
   /**
-   * 链上要展开的那几站：**链头之后的头三站**，链头自己单独占一格。
+   * The stops to expand on the chain: **the first three after the chain head**, with the chain head taking a cell of its own.
    *
-   * 用户要的是「链头是谁、后面还排着谁」——排到第四站以后在读这一屏时没有意义
-   * （那是 `newgate tier` 与 Chains 那一张的事），而每张卡多三行就是几十行。
+   * What the user wants is "who is the chain head, and who is queued behind it" - stops past the fourth mean nothing when reading this screen
+   * (that is `newgate tier`'s and the Chains card's business), and three extra rows per card is dozens of rows.
    */
   const FALLBACKS = 3;
   function rest(r: Row): Step[] {
     return (r.steps ?? []).slice(1, 1 + FALLBACKS);
   }
 
-  /** 链上还有几站没画出来（`+N` 那个角标）。 */
+  /** How many stops on the chain are not drawn (`+N` badge). */
   function hidden(r: Row): number {
     return Math.max(0, (r.steps?.length ?? 0) - 1 - FALLBACKS);
   }
 
   /**
-   * 哪几张卡摊开了。**默认全收着**（见下面 groups 的说明）。
+   * Which cards are expanded. **All collapsed by default** (see the groups note below).
    *
-   * 摊开是**按卡**的，不是按档的：这一屏上要摊开一张卡时的那个问题永远是「这条链
-   * 到底怎么走」，而那条链的五档是一起读的（比着看才知道哪档先掉下去）。按档摊开
-   * 一次只能看一档，反而要开五次。
+   * Expanding is **per card**, not per tier: the question when expanding a card on this screen is always "how does this chain
+   * actually go", and that chain's five tiers are read together (only by comparing do you see which tier drops first). Expanding per tier
+   * lets you see only one tier at a time, and you would have to open five.
    */
   let open = $state<Record<string, boolean>>({});
 
-  /** 系统的「减少动效」偏好。它只影响**滚过去的方式**，不影响滚不滚（见 toggle）。 */
+  /** The system's "reduce motion" preference. It only affects **how it scrolls**, not whether it scrolls (see toggle). */
   function reduceMotion(): boolean {
     return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
   }
 
   /**
-   * 摊开/收起一张卡。
+   * Expand/collapse a card.
    *
-   * # 摊开之后要滚一下
+   * # Scroll a bit after expanding
    *
-   * 摊开的那一张会**高好几倍**（实测 5 档全摊开约 900px，收起来约 200px），而且它
-   * 占满整行——于是它自己那一行会往下推、它上方的卡也跟着挪，用户点开的那一条的
-   * 标题很容易就跑到视野外面去。所以摊开之后把它顶到视野里。
+   * The expanded card is **several times taller** (measured, all 5 tiers expanded is about 900px, collapsed about 200px), and it
+   * spans the whole row - so its own row is pushed down, the cards above it move too, and the title of the one the user just
+   * opened easily runs out of view. So after expanding, bring it into view.
    *
-   * 为什么要等一帧：这一刻 DOM 还是收起的样子，`scrollIntoView` 量到的是**旧的**
-   * 位置（收起时 200px 高、摊开后 900px，差出好几百像素）。下一帧才量得对。
+   * Why wait a frame: at that moment the DOM is still collapsed, and `scrollIntoView` measures the **old**
+   * position (200px tall collapsed, 900px expanded, hundreds of pixels apart). Only the next frame measures right.
    *
-   * 为什么收起时**不滚**：收起是一个「我不看了」的动作，把人从原地挪走正好相反。
+   * Why **not scroll** when collapsing: collapsing is an "I am done looking" action, and moving the person away is exactly the opposite.
    */
   function toggle(profile: string, ev: MouseEvent) {
     const next = !open[profile];
@@ -293,10 +293,10 @@
   }
 
   /**
-   * 链头后面还站着几站（收起时那个 `+N`）。
+   * How many stops still stand behind the chain head (that `+N` when collapsed).
    *
-   * 收起时给的是**深度**，不是那几站是谁——那几站的归属是摊开才读的东西（也是
-   * `newgate tier` 与 Chains 那一屏的东西）。摊开后 `rest()` / `hidden()` 接手。
+   * When collapsed it gives the **depth**, not who those stops are - who they belong to is only read when expanded (and is
+   * `newgate tier`'s and the Chains screen's business). After expanding, `rest()` / `hidden()` take over.
    */
   function depth(r: Row): number {
     return Math.max(0, (r.steps?.length ?? 0) - 1);
@@ -307,11 +307,11 @@
   }
 
   /**
-   * 延迟那一格：数字 + 颜色。没样本时**什么都不画**（不是画 0ms）——「没有样本」
-   * 与「快得没有延迟」是两句话，而这一屏正是拿它比快慢的。
+   * The latency cell: number + color. When there is no sample, **draw nothing** (not 0ms) - "no sample"
+   * and "so fast there is no latency" are two different statements, and this screen is exactly for comparing speed.
    *
-   * 上一次探活的结论（fluent / laggy / …）走 title：它是机器标记，是这一格背后的
-   * 判据，鼠标停上去该看得到，但不该占版面（那一列是拿来竖着比数字的）。
+   * The last probe conclusion (fluent / laggy / ...) goes into title: it is a machine marker and the criterion behind this cell,
+   * and hovering should show it, but it should not take layout space (that column is for comparing numbers vertically).
    */
   function msTitle(s: Step): string {
     const key = `${s.provider}/${s.model}`;
@@ -319,8 +319,8 @@
   }
 </script>
 
-<!-- 客户端标签。没有客户端模块时 agents 是**一档空的**（后端补的），这里照常画
-     一个标签——它不是装饰，它决定了卡片上那个「就用它」写的是哪个客户端。 -->
+<!-- Client tabs. When there are no client modules, agents is **one empty tier** (added by the backend), and it is drawn as usual
+     as one tab - it is not decoration, it decides which client the "use it" on the cards says. -->
 {#if agents.length}
   <div class="agents" role="tablist">
     {#each agents as a (a.id)}
@@ -333,16 +333,16 @@
         onclick={() => (tab = a.id)}
       >
         {#if a.icon}
-          <!-- 客户端**自己带的**图标（见 confighook.Agent.Icon）：这一格不认识它是
-               谁，只把那一串路径放进一个 24 视口的方框里。颜色走 currentColor，
-               于是四套皮肤下都对；「没装」那档由 .agent.off 的透明度压下去。 -->
+          <!-- The **client's own** icon (see confighook.Agent.Icon): this cell does not know who it is,
+               it just puts that path string into a 24-viewport box. Color goes through currentColor,
+               so it is right under all four themes; the "not installed" tier is dimmed by .agent.off's opacity. -->
           <svg class="ico brand" viewBox="0 0 24 24" aria-hidden="true">
             <path d={a.icon} />
           </svg>
         {:else}
-          <!-- 没给图标（或者这一档根本不是客户端，比如「自动」）：画一个终端形状的
-               通用记号。**空着不画**是不行的——一排标签里少一个图标，看起来像加载
-               失败。 -->
+          <!-- No icon given (or this tier is not a client at all, like "auto"): draw a generic
+               terminal-shaped mark. **Drawing nothing** is not an option - one missing icon in a row of tabs looks like a loading
+               failure. -->
           <svg class="ico" viewBox="0 0 16 16" aria-hidden="true">
             <rect x="1.5" y="2.5" width="13" height="11" rx="2.5" />
             <path d="M4.6 6.2 6.6 8l-2 1.8M8.4 10.2h3" />
@@ -350,9 +350,9 @@
         {/if}
         <span class="nm">{a.name}</span>
         {#if a.profile}
-          <!-- 标签上只写它此刻实际走的那一份。**不在这里说「自动/固定」**：那是
-               「选了哪一个」这件事，而它由下面网格里**高亮落在哪一张卡上**回答
-               （见 isActive）——两处各说一遍，迟早会有一处说错。 -->
+          <!-- The tab only shows the one it is actually going through right now. **Do not say "auto/pinned" here**: that is
+               the "which one is selected" question, and it is answered by **which card the highlight falls on** in the grid below
+               (see isActive) - saying it in two places will sooner or later get one of them wrong. -->
           <span class="cur mono">{a.profile}</span>
         {/if}
         {#if a.ready === false}
@@ -366,13 +366,13 @@
 <div class="grid">
   {#each shown as c (keyOf(c))}
     <section class="pc" class:on={isActive(c)} class:folded-open={!!open[keyOf(c)]}>
-      <!-- 铺满整张卡的一个**真按钮**：点卡片任意处 = 选它（见 pickAction）。
-           为什么是这样而不是给 <section> 挂 onclick：那样键盘上根本做不出这个动作
-           （屏幕阅读器也读不出「这里可以点」），而给它编一个 role 又会与「卡里本来
-           就有别的按钮」打架（按钮不能套按钮）。一个铺底的按钮两样都解决：它是真
-           控件，Tab 到得了、回车点得动，而卡里那几个按钮压在它上面各管各的。
-           没有可做的动作（已经选着它了）时**不铺**——一个点了没反应的控件比没有控件
-           更糟，它会让用户以为界面卡了。 -->
+      <!-- A **real button** covering the whole card: clicking anywhere on the card = selecting it (see pickAction).
+           Why this rather than putting onclick on <section>: that way this action cannot be done from the keyboard at all
+           (screen readers cannot read "this is clickable" either), and giving it a role would clash with "the card already
+           has other buttons" (buttons cannot nest buttons). An underlay button solves both: it is a real
+           control, Tab reaches it and Enter clicks it, while the few buttons in the card sit on top of it and handle their own.
+           When there is no action to do (it is already selected) **do not lay it** - a control that does nothing when clicked is worse
+           than no control; it would make the user think the UI is frozen. -->
       {#if pickAction(c)}
         {@const pa = pickAction(c)!}
         <button
@@ -384,11 +384,11 @@
         ></button>
       {/if}
       <header class="phead">
-        <!-- 链名（= profile 名）是这一张卡上最大的一行字：用户在这一屏上做的唯一
-             一个决定是「用哪一份」，而名字就是那个决定的宾语。
-             它同时是**摊开/收起**的开关（仿 Clash 的组头）：整行都点得动，比在角落
-             放一个 12px 的小三角好按得多，而这一屏上最频繁的动作就是「扫一遍」和
-             「摊开看这条」。 -->
+        <!-- The chain name (= profile name) is the largest line of text on this card: the only decision the user makes on this screen
+             is "which one to use", and the name is that decision's object.
+             It is also the **expand/collapse** switch (mimicking Clash's group header): the whole line is clickable, which is much easier to hit than a 12px
+             triangle in the corner, and the most frequent actions on this screen are "scan through" and
+             "expand to look at this chain". -->
         <button
           class="tog"
           data-nopick
@@ -399,10 +399,10 @@
             <path d="M6 4l4 4-4 4" />
           </svg>
           {#if c.auto}
-            <!-- 「默认」那张：名字是**默认**，后面括着它此刻指向哪一份。
-                 括号里那个值会跟着全局默认变——这正是它与 ds 那张卡的分别：
-                 两张此刻显示同一条链，但这一张说的是「大家都跟着它」，那一张说的是
-                 「这一份本身」。 -->
+            <!-- The "default" one: the name is **default**, followed in parentheses by which one it points at right now.
+                 That value in parentheses follows the global default - and that is exactly how it differs from the ds card:
+                 both show the same chain right now, but this one says "everyone follows it", and that one says
+                 "this one itself". -->
             <span class="pname">{t("auto")}</span>
             {#if c.profile}
               <span class="cur">{t("(currently {profile})", { profile: c.profile })}</span>
@@ -413,20 +413,20 @@
         </button>
         <span class="spacer"></span>
         {#if isActive(c)}
-          <!-- 「这一栏正用着它」是一句**陈述**，不是按钮：把它指给它是没有意义的
-               事（所以后端根本不报那个动作）。与 Concept.Note 那条同源——「不画
-               那个按钮」与「什么都不说」是两件事。 -->
-          <!-- 「正在使用」是**同一句话**，两张卡上都这么写——谁被选中不是靠这张纸上
-               的字，而是靠**高亮落在哪一张卡上**（见 isActive）。这样读的人看到的
-               是「这一栏选了哪一个」，而不是两句要互相比较才分得出差别的话。 -->
+          <!-- "This column is using it" is a **statement**, not a button: pointing it at itself is meaningless
+               (so the backend does not report that action at all). Same origin as the Concept.Note rule - "not drawing
+               that button" and "saying nothing" are two different things. -->
+          <!-- "In use" is **the same sentence**, written the same on both cards - who is selected is not decided by the words
+               on this paper, but by **which card the highlight falls on** (see isActive). This way the reader sees
+               "which one this column selected", rather than two sentences that must be compared to tell apart. -->
           <span class="pill ok-pill" data-using="1">
             {current?.id ? t("in use by {client}", { client: current.name }) : t("in use")}
           </span>
         {/if}
         {#each actions(c) as a (a.id)}
-          <!-- 纯图标：这一颗按钮在**每一张卡上**都有一个（十几张卡就是十几颗），
-               带文字时它比卡片名字还显眼，而它做的是一件顺手的事。文字挪进
-               title/aria-label——看得见的地方留记号，说得出话的地方留字。 -->
+          <!-- Icon only: this button exists on **every card** (a dozen cards is a dozen of them),
+               and with text it would stand out more than the card name, while it does an incidental thing. The text moves into
+               title/aria-label - keep the mark where it is visible, keep the words where they can speak. -->
           <button
             class="tiny ghost iconbtn"
             data-nopick
@@ -446,11 +446,11 @@
       </header>
 
       {#if c.file}
-        <!-- 文件路径同时是**去编辑它**的入口：这一屏说的是「此刻走哪条链」，改链要
-             去配置那一节里这份文件的那张卡。路径本身是最自然的落点——用户看着它想
-             的就是「我要改的就是这个文件」。
-             不能跳时（没有这个回调，或者那份文件此刻没有可编辑的卡）就照旧画成一
-             行字，而不是一个点了没反应的链接。 -->
+        <!-- The file path is also **the entry to edit it**: this screen says "which chain it goes through right now", and changing the chain means
+             going to that file's card in the config section. The path itself is the most natural landing point - looking at it, the user thinks
+             "what I want to change is this file".
+             When it cannot jump (no such callback, or that file has no editable card right now), draw it as a line of text as before,
+             not as a link that does nothing when clicked. -->
         {#if onOpenFile}
           <button
             class="meta mono link"
@@ -468,20 +468,20 @@
 
       <ul class="roles" class:flat={!open[keyOf(c)]}>
         {#if !open[keyOf(c)]}
-          <!-- 收起来的样子：**一档一行**，只说这一档从谁起、后面还垫着几站、多快。
-               那几站是谁是摊开才读的东西（也是 `newgate tier` 与 Chains 那一屏的
-               东西）；把它画在默认视图里，一张卡就是三十行，一屏放不下两张卡。
+          <!-- The collapsed look: **one row per tier**, saying only who this tier starts from, how many stops are queued behind it, and how fast.
+               Who those stops are is only read when expanded (and is `newgate tier`'s and the Chains screen's
+               business); drawing it in the default view makes one card thirty rows, and two cards do not fit on one screen.
 
-               这里**不把共享链头的档位并成一行**：并起来更短，但每个组占几行是变的，
-               于是卡片高度参差、行也参差——而这一屏是拿来**竖着比**的（同一张卡里
-               哪档快、两张卡之间谁快）。等高、等宽的行比少几行值钱。 -->
+               Here tiers sharing a chain head are **not merged into one row**: merging is shorter, but how many rows each group takes varies,
+               so card heights vary and rows vary - and this screen is for **comparing vertically** (which tier is fast within a card,
+               who is faster between two cards). Equal-height, equal-width rows are worth more than a few fewer rows. -->
           {#each c.roles as r (r.id ?? r.tier)}
             <li class="grp">
               <span class="tname" title={r.tier}>{r.label ?? r.tier}</span>
               <span class="headline">
                 {#if r.head}
-                  <!-- 窄卡里链头会被截掉（`minimax/MiniMax-M2.7-hig…`），而它是这一行
-                       最要紧的那个值——全名走 title，鼠标停上去看得到。 -->
+                  <!-- The chain head gets truncated in a narrow card (`minimax/MiniMax-M2.7-hig...`), and it is the most
+                       important value in this row - the full name goes into title, visible on hover. -->
                   <span class="head mono {toneClass(r.tone)}" title={r.head}>{r.head}</span>
                   {#if depth(r)}
                     <span class="depth mono" title={t("+{n} more on the chain", { n: depth(r) })}>
@@ -489,15 +489,15 @@
                     </span>
                   {/if}
                 {:else}
-                  <!-- 一档都没有候选举不起来：那**为什么**举不起来才是这一行的内容
-                       （空档位在界面上不能只显示一个「空」字，那看起来像加载失败）。 -->
+                  <!-- A tier with no candidates cannot be lifted: **why** it cannot be lifted is what this row is about
+                       (an empty tier must not just show "empty" in the UI, that looks like a loading failure). -->
                   <span class="dim">{t("no steps")}</span>
                   {#if r.note}<span class="dim note" title={r.note}>{r.note}</span>{/if}
                 {/if}
               </span>
               {#if isProbing(c)}
-                <!-- 正在探：把旧数字盖掉（见 isProbing）。留着旧值的话，用户点完
-                     看到的是「没反应」，几秒后数字突然一跳。 -->
+                <!-- Probing: cover the old number (see isProbing). Keeping the old value would make the user click and then
+                     see "nothing happened", with the number suddenly jumping a few seconds later. -->
                 <span class="ms mono dim">…</span>
               {:else if r.steps?.[0]?.latency_ms}
                 <span
@@ -521,9 +521,9 @@
                     <span class="dim">{t("no steps")}</span>
                   {/if}
                 </span>
-                <!-- 延迟单独占一列、右对齐：这一列是**拿来竖着比**的（同一张卡里哪一档
-                     快、两张卡之间谁快），所以它得像表格里的数字列那样对齐。跟在链头
-                     后面会随名字长短左右横跳，也就没法比了。 -->
+                <!-- Latency gets its own column, right-aligned: this column is **for comparing vertically** (which tier is fast within a card,
+                     who is faster between two cards), so it must align like the number column in a table. Following the chain head
+                     would make it jump left and right with name lengths, and comparison would be impossible. -->
                 {#if isProbing(c)}
                   <span class="ms mono dim">…</span>
                 {:else if r.steps?.[0]?.latency_ms}
@@ -533,8 +533,8 @@
                 {/if}
               </div>
 
-              <!-- 链头之后的前三站：小一号、缩进，与链头对齐。链头自己已经在上面那
-                   一行了，所以这里从第二站开始（不是把链头再说一遍）。 -->
+              <!-- The first three stops after the chain head: one size smaller, indented, aligned with the chain head. The chain head is already on the row above,
+                   so this starts at the second stop (not saying the chain head again). -->
               {#if rest(r).length}
                 <ol class="steps">
                   {#each rest(r) as s, i (i)}
@@ -552,8 +552,8 @@
                           {s.latency_ms}{t("ms")}
                         </span>
                       {:else if s.probe}
-                        <!-- 没有延迟样本但有探活结论（比如刚探过、样本还没落）。
-                             画结论而不是留空：这两件事都是「这条站此刻怎么样」。 -->
+                        <!-- No latency sample but there is a probe conclusion (for example just probed and the sample has not landed).
+                             Draw the conclusion rather than leaving it blank: both say "how is this stop right now". -->
                         <span class="dim grade mono" title={msTitle(s)}>{s.probe}</span>
                       {/if}
                     </li>
@@ -582,7 +582,7 @@
 {/if}
 
 <style>
-  /* ---- 客户端标签 ---- */
+  /* ---- client tabs ---- */
   .agents {
     display: flex;
     align-items: center;
@@ -601,14 +601,14 @@
     color: var(--dim);
   }
   .agent:hover { color: var(--ink); border-color: var(--line); }
-  /* 选中那一栏：底色 + 强调边，与侧栏/TabStrip 的 `.on` 同一套语气。 */
+  /* The selected tab: background tint + accent border, the same tone as `.on` in the sidebar/TabStrip. */
   .agent.on {
     color: var(--ink);
     background: var(--panel-2);
     border-color: var(--accent);
   }
-  /* 没装的客户端**照常画出来**，只是暗一档：藏掉的话用户会以为它不被支持，而真相
-     是「它在，只是这台机器上没有」（与 Concept.Locked 那条规矩同源）。 */
+  /* Not-installed clients **are still drawn**, just one step dimmer: hiding them would make the user think they are unsupported, when the truth
+     is "it is there, this machine just does not have it" (same origin as the Concept.Locked rule). */
   .agent.off { opacity: 0.55; }
   .ico {
     width: 14px;
@@ -620,8 +620,8 @@
     stroke-linecap: round;
     stroke-linejoin: round;
   }
-  /* 探活那颗图标按钮：一个方格子里一颗「信号发散」的记号（网络语义，不指任何
-     一家品牌）。线细一点、端点圆一点——它在十几张卡上各出现一次，粗了整屏都在响。 */
+  /* The probe icon button: a "signal spreading" mark in a square cell (network semantics, pointing at no
+     brand). Thinner lines, rounder endpoints - it appears once on each of a dozen cards, and if heavy the whole screen is noisy. */
   .iconbtn {
     display: flex;
     align-items: center;
@@ -640,10 +640,10 @@
   }
   .net circle { fill: currentColor; stroke: none; }
 
-  /* 品牌图标与上面那个通用记号**不是一套画法**：lobehub 那一套是填充的
-     （`fill="currentColor" fill-rule="evenodd"`），通用记号是描边的。分成两个
-     class 而不是在一个 `.ico` 里互相覆盖——两者的 fill/stroke 是互斥取值，
-     混在一起总有一边要写 `none` 去压另一边，而那是会写漏的。 */
+  /* Brand icons and the generic mark above are **not drawn the same way**: the lobehub set is filled
+     (`fill="currentColor" fill-rule="evenodd"`), and the generic mark is stroked. Two separate
+     classes rather than overriding each other inside one `.ico` - their fill/stroke values are mutually exclusive, and
+     mixing them always leaves one side needing `none` to suppress the other, and that gets missed. */
   .ico.brand {
     width: 15px;
     height: 15px;
@@ -655,9 +655,9 @@
   .cur { font-size: 11px; color: var(--dim); }
   .off { font-size: 10px; }
 
-  /* ---- 卡片 ---- */
-  /* 自适应网格：一份 profile 一张卡，窄屏一列、宽屏两列。360px 是「档位名 + 链头
-     + 延迟 + 一个按钮」排得下、又不会让一行长得读不完的那个宽度。 */
+  /* ---- cards ---- */
+  /* Responsive grid: one card per profile, one column on narrow screens, two on wide. 360px is the width where "tier name + chain head
+     + latency + one button" fits, without a row getting so long it cannot be read. */
   .grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
@@ -669,25 +669,25 @@
     border: 1px solid var(--line);
     border-radius: var(--radius);
     padding: 8px 10px 9px;
-    /* 摊开时滚到它这里（见 toggle）：留一点空，别让卡边贴着滚动区上沿——贴住了
-       看起来像被裁掉了一截。 */
+    /* Scroll to it when expanded (see toggle): leave a little space, do not let the card edge touch the top of the scroll area - touching
+       looks like it got cut off. */
     scroll-margin-top: 8px;
   }
-  /* 摊开的那一张**占满整行**。
-     为什么：它是网格里的一员，而摊开之后它比邻居高好几倍——留在自己那一列的话，
-     同一行的另外两张卡下面会空出一大片（实测约 1400px 宽、几百像素高的空洞），
-     而且那几站的名字挤在 360px 里还要截断。占满整行之后洞没有了，链也读得开。
-     代价是下面所有卡会往下挪——但那本来就是「我要读这一条」这个动作该有的样子。 */
+  /* The expanded one **spans the whole row**.
+     Why: it is a member of the grid, and when expanded it is several times taller than its neighbors - left in its own column,
+     the other two cards in the same row would leave a large gap below (measured about 1400px wide and several hundred pixels tall),
+     and the names of those stops would be squeezed into 360px and truncated. Spanning the row removes the hole, and the chain reads well.
+     The cost is that all cards below move down - but that is what "I want to read this one" should look like. */
   .pc.folded-open { grid-column: 1 / -1; }
-  /* 这一栏正在用的那一份：左边一条强调色 + 一圈亮一点的边。**只有一条线索**
-     （颜色）不够——下面还有一句 `in use by …` 的陈述（见 .ok-pill）。 */
+  /* The one this column is using: an accent line on the left + a brighter border. **One clue**
+     (color) is not enough - there is also a statement `in use by ...` below (see .ok-pill). */
   .pc.on {
     border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
     box-shadow: inset 3px 0 0 var(--accent);
   }
   .phead { display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap; }
-  /* 卡名那一格同时是摊开/收起开关。做成按钮之后要**把浏览器给按钮的默认样子全
-     退掉**，否则它会变成一个小方块，而这行字在这张卡上是最大的那一行。 */
+  /* The card-name cell is also the expand/collapse switch. As a button it must **strip all the browser's
+     default button styling**, otherwise it becomes a small box, and this line of text is the largest line on this card. */
   .tog {
     display: flex;
     align-items: center;
@@ -712,17 +712,17 @@
     stroke-linejoin: round;
     transition: transform 120ms ease;
   }
-  /* 尖角指哪边 = 点了会往哪边去：收着时指右（摊开），摊开时指下。 */
+  /* Which way the caret points = which way clicking goes: right when collapsed (expand), down when expanded. */
   .tog[aria-expanded="true"] .chev { transform: rotate(90deg); }
-  /* 动效只用来交代「这一下点到了」，所以两种状态都尊重系统的减少动效偏好。 */
+  /* Motion is only used to say "this click landed", so both states respect the system's reduce-motion preference. */
   @media (prefers-reduced-motion: reduce) {
     .chev { transition: none; }
   }
   .pname { font-size: 13.5px; font-weight: 700; }
   .meta { font-size: 10.5px; color: var(--dim); margin: 0 0 5px; }
-  /* 路径那一行做成按钮，但要**长得跟原来那行字一样**：它是这一张卡上最不起眼的
-     东西，而它现在是入口了——把它做成一个显眼的按钮，会让每一张卡上多出一个比
-     「给谁用」还抢眼的东西。悬停时才加下划线。 */
+  /* The path line becomes a button, but must **look like the line of text it was**: it is the least conspicuous thing on this card,
+     and now it is an entry point - making it a conspicuous button would add to every card something that competes for attention
+     more than "use for whom". Only underline on hover. */
   .meta.link {
     display: block;
     padding: 0;
@@ -734,9 +734,9 @@
   }
   .meta.link:hover { color: var(--ink); text-decoration: underline; }
 
-  /* 铺底的「选它」按钮：铺满整张卡、压在内容下面（见模板里那一段）。
-     内容那一层设 pointer-events: none，点击于是**穿过去**落到它身上；里面的真按钮
-     再单独打开——这样点卡片任意空白处都是选它，点小三角/探活/路径各是各的。 */
+  /* The underlay "select it" button: covers the whole card and sits under the content (see that part of the template).
+     The content layer sets pointer-events: none, so clicks **pass through** to it; the real buttons inside
+     are enabled separately - this way clicking any blank part of the card selects it, and clicking the small triangle/probe/path each does its own thing. */
   .pc { position: relative; }
   .surface {
     position: absolute;
@@ -748,35 +748,35 @@
     border-radius: inherit;
     cursor: pointer;
   }
-  /* 悬停只**提一下**：边框亮一档就够了，整块变色会让一屏十几张卡都在闪。 */
+  /* Hover only **lifts it a little**: one step brighter border is enough; recoloring the whole block would make a screen of a dozen cards all flash. */
   .pc:has(.surface:hover) { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
   .pc:has(.surface:focus-visible) { outline: 2px solid var(--accent); outline-offset: 1px; }
   .pc > :not(.surface) { position: relative; z-index: 1; pointer-events: none; }
   .pc > :not(.surface) button,
-  /* 自己就是按钮、且直接挂在卡片上的那些（文件路径那一格）也**要单独放开**：
-     上面那条 `:not(.surface) button` 说的是「某个非按钮子元素**里面**的按钮」，
-     而 `.meta.link` 自己就是那个直接子元素——不补这一条，它会被判成
-     `pointer-events: none`，点不动（实测：鼠标停在上面没有任何反应，看起来像
-     那行字本来就是死的）。 */
+  /* Those that are themselves buttons and hang directly on the card (the file path cell) **must also be enabled separately**:
+     the rule above, `:not(.surface) button`, is about "a button **inside** some non-button child element",
+     while `.meta.link` is itself that direct child - without this extra rule it would be judged
+     `pointer-events: none` and not clickable (measured: hovering over it did nothing, looking like
+     that line was dead to begin with). */
   .pc > button:not(.surface) { pointer-events: auto; }
 
   .roles { list-style: none; margin: 0; padding: 0; }
   .roles > li + li { margin-top: 8px; }
-  /* 收起来的一行：[档位] [链头 +N] [延迟]，三列。
-     档位那一列**固定宽**：它是这一屏竖着对位的那条基准线，跟着名字长短走就散了。 */
+  /* A collapsed row: [tier] [chain head +N] [latency], three columns.
+     The tier column has a **fixed width**: it is the baseline this screen aligns vertically against, and following name lengths would break it. */
   .grp {
     display: grid;
     grid-template-columns: 52px minmax(0, 1fr) auto;
     align-items: center;
     gap: 7px;
-    /* 固定行高，不是 padding：两张卡的同一档要落在同一水平线上，卡的高度也要能算
-       （头部 + 19px × 档位数）。 */
+    /* Fixed row height, not padding: the same tier of two cards must land on the same horizontal line, and the card height must be computable
+       (header + 19px x number of tiers). */
     height: 19px;
   }
-  /* **每张卡收起来时一样高**：标准档位是五档（heavy/normal/mid/light/vision），
-     而少写几档的 profile（只写 normal+light 那种）本来会矮一截，几张卡摆在一起就
-     参差不齐——而这一屏正是拿来横向比的。按五档留够，少的那几张底下空着。
-     比「每张都刚好贴合内容」值钱：参差的高度会让眼睛每次都要重新找行。 */
+  /* **Every card is the same height when collapsed**: the standard tiers are five (heavy/normal/mid/light/vision),
+     and a profile that writes fewer tiers (only normal+light, say) would naturally be shorter, and several cards side by side would look ragged
+     - and this screen is exactly for comparing horizontally. Reserve room for five; the missing ones are left blank at the bottom.
+     Worth more than "each one snugly fits its content": ragged heights make the eye find the row again every time. */
   .roles.flat { min-height: 95px; }
   .headline { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
   .headline .head {
@@ -785,18 +785,18 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  /* 链头之后还有几站。它是**深度**，不是内容——摊开才知道那几站是谁，所以这里
-     只给个数（与摊开时那个 `+N more on the chain` 同一句话）。 */
+  /* How many stops remain after the chain head. It is **depth**, not content - you only know who they are when expanded, so here
+     only a count is given (the same sentence as the `+N more on the chain` when expanded). */
   .depth { font-size: 10px; color: var(--dim); opacity: 0.7; flex: none; }
   .note { font-size: 10px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  /* 一行 = [档位 + 链头] [延迟]，两列。
-     - 前两样**必须包在一个格子里**（.tierline）：三样平铺进两列时，第三个（延迟）
-       会被挤到下一行去，而那一行看起来像「这一档有两个链头」。
-     - 延迟单独占一列、**右对齐**：这一列是拿来竖着比的（这一档比那一档快），跟着
-       链头走就会随名字长短左右横跳，也就没法比了。min-width 让几张卡的这一列也
-       对得上，tabular-nums 让数字本身对齐。
-     - 链头不许被拆成两截（`nowrap`）：拆开之后那一行变成两行，一行高矮不齐。
-       provider/model 中间那个斜杠是分隔符，读的时候是**两个**可以分别去查的名字。 */
+  /* A row = [tier + chain head] [latency], two columns.
+     - The first two **must be wrapped in one cell** (.tierline): laid out flat into two columns, the third (latency)
+       gets pushed to the next row, and that row looks like "this tier has two chain heads".
+     - Latency gets its own column, **right-aligned**: this column is for comparing vertically (this tier is faster than that one), and following
+       the chain head would make it jump left and right with name lengths, making comparison impossible. min-width makes this column line up across cards,
+       and tabular-nums makes the numbers themselves align.
+     - The chain head must not be split into two pieces (`nowrap`): split, that row becomes two rows, with uneven heights.
+       The slash between provider/model is a separator; when reading it is **two** names that can be looked up separately. */
   .tier {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
@@ -804,12 +804,12 @@
     gap: 8px;
   }
   .tierline { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
-  /* 档位名占固定宽度：不固定的话每行的链头会参差不齐，同上。 */
+  /* The tier name takes a fixed width: unfixed, each row's chain head would be ragged, same as above. */
   .tname { color: var(--dim); font-size: 11.5px; min-width: 52px; white-space: nowrap; }
   .head { font-size: 11.5px; white-space: nowrap; }
-  /* 延迟那一格：一个**度量**，所以给它一点底色把它从文字里分出来，但只用最小
-     的手段（没有边框、没有圆角之外的东西）。数字用等宽 + 表格数字，几行竖着比
-     的时候位是对齐的。 */
+  /* The latency cell: a **measurement**, so give it a little background to separate it from the text, but use only the most minimal
+     means (no border, nothing beyond the corner radius). Numbers use monospace + tabular figures, so a few rows compare vertically
+     with their digits aligned. */
   .ms {
     font-size: 10.5px;
     white-space: nowrap;
@@ -825,7 +825,7 @@
   .steps {
     list-style: none;
     margin: 3px 0 0;
-    padding: 0 0 0 59px; /* 与上面的链头对齐：缩进量 = tname 的宽度 + 那个 gap */
+    padding: 0 0 0 59px; /* align with the chain head above: the indent = the width of tname + that gap */
   }
   .steps > li {
     display: flex;
@@ -843,7 +843,7 @@
   .more { font-size: 10px; padding-left: 16px; }
   .skip { font-size: 11px; margin: 3px 0 0 59px; }
 
-  /* 状态说明那套语气（与 ConceptCard 的 note 同一份）：**只换颜色，不换形状**。 */
+  /* The tone of the status note (same set as ConceptCard's note): **change only the color, not the shape**. */
   .ok-pill { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
   .t-ok { color: var(--ok); }
   .t-warn { color: var(--warn); }

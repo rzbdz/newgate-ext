@@ -1,17 +1,17 @@
 <script lang="ts">
-  // 界面壳：拉快照、按 Kind 渲染卡片、把改动**攒起来**、点保存才落盘。
+  // The UI shell: fetch the snapshot, render cards by Kind, **accumulate** changes, and only land on disk on save.
   //
-  // 为什么是「攒起来 + 一次保存」而不是「改一个字段发一次」：每个概念背后是一份
-  // 文件，而写文件是一次 CAS（比对基线 → 原子写）。逐字段写会把一次编辑拆成
-  // 几次互相看不见的提交，中间任何一次撞上别人的改动，文件就停在半路。攒起来
-  // 一次写，前端手里的基线与文件之间只有一次比对。
+  // Why "accumulate + one save" rather than "send once per field change": each concept is backed by one
+  // file, and writing a file is one CAS (compare the baseline -> atomic write). Field-by-field writing would split one edit into
+  // several submissions that cannot see each other, and if any one of them collides with someone else's change, the file stops halfway. Accumulating
+  // and writing once means there is only one comparison between the frontend's baseline and the file.
   //
-  // # 版面：左目录 / 右内容 / 中间分栏
+  // # Layout: directory on the left / content on the right / a splitter in the middle
   //
-  // 第一版是把所有卡片按来源一条瀑布铺下来（实测 4303px ≈ 4.8 屏），于是「改一个
-  // 开关」这件四步就能做完的事，第一步是滚三屏。现在：**左侧是节的目录**（点一下
-  // 切一节）、**一节里多张卡走 tab**、**同一份文件的控件与原文并排**。验收线是
-  // 「任何东西 4-5 次操作内到达」，操作数在下面每个动作旁边写着。
+  // The first version laid all cards out as one waterfall by source (measured 4303px ≈ 4.8 screens), so "change one
+  // switch", a four-step job, started with scrolling three screens. Now: **sections are a directory on the left** (click
+  // to switch section), **multiple cards in one section go through tabs**, **the controls and original text of the same file sit side by side**. The acceptance bar is
+  // "anything reachable within 4-5 operations", and the operation count is written next to each action below.
   import {
     apply,
     preview,
@@ -50,55 +50,55 @@
 
   let concepts = $state<Concept[]>([]);
   let sections = $state<Section[]>([]);
-  /** 每个概念**攒着**的改动。空 = 没有未保存的东西。 */
+  /** The **accumulated** changes for each concept. Empty = nothing unsaved. */
   let drafts = $state<Record<string, unknown>>({});
   let conflicts = $state<Conflict[]>([]);
   let error = $state("");
   let busy = $state(false);
   let filter = $state("");
   /**
-   * 自动刷新**永远开着**（2026-09-29 去掉那个勾选框）。
+   * Auto refresh is **always on** (the checkbox was removed on 2026-09-29).
    *
-   * 用户的原话是「自动刷新这个功能也很垃圾啊，不要了吧，直接默认自动刷新得了」，
-   * 以及「尽量减少不常用的控件按钮」。那个框是个只关不用的开关：这一屏是拿来
-   * **放着看**的（探活回来的延迟、命令行那边改过的配置都要落上来），关掉它之后
-   * 唯一的补救是手点「重载」，而那颗按钮也一起去掉了——两颗为同一件事服务的控件。
+   * The user's own words were "the auto-refresh feature is pretty lame too, let's not have it, just auto refresh by default",
+   * and "keep rarely used control buttons to a minimum". That box was a switch that could only be turned off and never used: this screen is for
+   * **leaving up and watching** (probe latencies, config changed from the command line must all land here), and with it off
+   * the only remedy was to press "reload" by hand, and that button was removed too - two controls serving the same thing.
    *
-   * 两条节奏见下面那个 effect：会自己变的那几位 3 秒，首屏那一节 15 秒（它贵）。
+   * The two cadences are in the effect below: the parts that change by themselves every 3 seconds, the first-screen section every 15 seconds (it is expensive).
    */
   const auto = true;
   let note = $state("");
   let filterBox = $state<HTMLInputElement | undefined>(undefined);
   /**
-   * lang 是**后端解析出来的**语言（快照带来的）。它在这里单独存一份的原因见
-   * 模板外面那个 `{#key}`：`t()` 读的语言住在 i18n.ts 的模块级变量里，而那
-   * 不是 Svelte 的响应式状态——所以换语言这件事必须由**重新渲染整棵树**来落地。
+   * lang is the language **resolved by the backend** (carried in the snapshot). Why it is stored separately here is explained by
+   * the `{#key}` outside the template: the language `t()` reads lives in a module-level variable in i18n.ts, and that
+   * is not Svelte reactive state - so switching language must land by **re-rendering the whole tree**.
    */
   let lang = $state("");
 
   /**
-   * themeDoc 是这一刻装着的皮肤表（见 api.ts 的 Themes 与后端
+   * themeDoc is the theme table loaded at this moment (see Themes in api.ts and the backend
    * modules/web-dashboard/api.go）。
    *
-   * 它**不进快照**：皮肤是界面自己的偏好，不是任何一个模块的贡献（谁贡献了
-   * 「这一屏用什么颜色」？）。所以它走自己那条口，而且**读失败不是错误**——一个
-   * 读不出皮肤表的后端（老版本）不该让整个界面打不开：空表就是「只有出厂那套」，
-   * 界面照常画。
+   * It **does not go into the snapshot**: themes are the UI's own preference, not any module's contribution (who contributes
+   * "what colors this screen uses"?). So it goes through its own endpoint, and **a read failure is not an error** - a
+   * backend that cannot read the theme table (an old version) must not make the whole UI fail to open: an empty table means "only the factory theme",
+   * and the UI renders as usual.
    */
   let themeDoc = $state<Themes>({ active: "", themes: [] });
 
   /**
-   * 现在在看哪一节、哪一张卡、并排还是折叠。
+   * Which section, which card, side by side or collapsed, is being viewed now.
    *
-   * 它住在 App 而不是某个子组件里，有一个很硬的理由：外面那个 `{#key lang}` 会在
-   * 语言变化时**重建整棵子树**，子组件里存的东西全部会没。App 自己的状态活得下来
-   * （`drafts` 就是靠这条活到今天的）。
+   * It lives in App rather than some child component for a hard reason: the `{#key lang}` outside
+   * **rebuilds the whole subtree** when the language changes, and everything stored in child components is lost. App's own state survives
+   * (`drafts` has survived to this day thanks to this).
    */
   let route = $state<Route>({ ...emptyRoute });
 
   const dirty = $derived(Object.keys(drafts));
 
-  /** 过滤是**跨节**的：一处输入，处处生效（忘了某张卡在哪一节时，这是最快的一条路）。 */
+  /** Filtering is **cross-section**: type in one place, it applies everywhere (when you forget which section a card is in, this is the fastest route). */
   function matches(c: Concept): boolean {
     if (!filter) return true;
     const hay = (c.id + " " + c.title + " " + c.source + " " + c.kind).toLowerCase();
@@ -106,22 +106,22 @@
   }
 
   /**
-   * 导航单元 = 每份文件**一张**卡。同一份文件经常有两半：控件半（mapping-editor /
-   * toggles / records）与原文半（code）——那是 SplitView 的左栏和右栏。把原文半
-   * （`config.file.*`）也列成独立 tab，config 那节就会堆出一片 `config.file.*.json`
-   * / `*.kv`，看着像同一个东西出现了两次，而且占了导航一大片——它不是一份应用户的
-   * 配置，它是那份配置的**并排右栏**，只有当控件被打开、split 打开时才出现。
+   * A nav unit = **one** card per file. The same file often has two halves: the control half (mapping-editor /
+   * toggles / records) and the original-text half (code) - those are SplitView's left and right columns. Listing the original-text half
+   * (`config.file.*`) as its own tab too would make the config section pile up a screenful of `config.file.*.json`
+   * / `*.kv`, looking like the same thing appears twice and taking up a large part of the nav - it is not a config that belongs to the user
+   * on its own, it is the **side-by-side right column** of that config, and appears only when the control is opened and split is open.
    *
-   * 所以：这份文件有「非 code 的控制卡」时，只列控制卡，原文半隐藏（split 打开它自
-   * 然出现）；这份文件只有一张卡（目录卡、table、log…）照列。不认识的模块照样成立
-   * ——本条不 import 任何模块名，判据就是「同一相对路径 + kind 是不是 code」。
+   * So: when this file has a "non-code control card", list only the control card and hide the original-text half (open split and it
+   * appears on its own); when this file has only one card (directory card, table, log ...), list it as usual. Unknown modules work the same way
+   * - this rule imports no module name, the criterion is just "same relative path + is the kind code".
    */
   /**
-   * **首屏那一节**（声明了落点的那一节，见 api.ts 的 Section.default）。
+   * **The first-screen section** (the section that declared a landing spot, see Section.default in api.ts).
    *
-   * 主页模式画的就是它，而且只画它的**第一张卡**：那一节今天是只有一张（`home.chains`
-   * 2026-09-29 删了），而就算将来多回来几张，主页模式也不该有标签条——它是「一屏看完」
-   * 的那个模式。要看别的，去完整界面。
+   * Home mode draws exactly it, and only draws its **first card**: that section has only one today (`home.chains`
+   * was deleted on 2026-09-29), and even if a few more come back later, home mode should not have a tab strip - it is the "see it all on one screen"
+   * mode. To see anything else, go to the full UI.
    */
   const homeSection = $derived(sections.find((s) => s.default) ?? sections[0]);
   const homeConcept = $derived(
@@ -147,15 +147,15 @@
       }
       const group = byFile.get(c.source + "|" + f)!;
       const control = group.find((g) => g.kind !== "code");
-      // 有控制卡时，原文只是它的右栏，不占导航位。
+      // When there is a control card, the original text is just its right column and takes no nav slot.
       if (control && c.kind === "code") continue;
       out.push(c);
     }
     return out;
   });
 
-  /** 侧栏徽标：命中数 + 未保存数。过滤时显示的是命中数——不然搜到一个 3 张卡的
-   *  节，徽标还写着 12，看着像搜索没生效。用 navUnits 数（原文半不单独算一张）。 */
+  /** Sidebar badge: hit count + unsaved count. While filtering it shows the hit count - otherwise searching into a section with 3 cards
+   *  would still show 12 on the badge, looking like the search did not work. Count with navUnits (the original-text half is not counted as a separate card). */
   const counts = $derived.by(() => {
     const m = new Map<string, { total: number; dirty: number; locked: number }>();
     for (const s of sections) m.set(s.source, { total: 0, dirty: 0, locked: 0 });
@@ -169,27 +169,27 @@
     return m;
   });
 
-  /** 当前这一节的卡片（过滤之后）。顺序跟着后端来（(Source, ID) 排序）。 */
+  /** The cards of the current section (after filtering). The order follows the backend ((Source, ID) ordering). */
   const sectionCards = $derived(navUnits.filter((c) => c.source === route.section && matches(c)));
 
   /**
-   * 一节的卡多到横向 tab 条滚不动时，改用**左侧第二个竖栏**（见 TabStrip）。
+   * When a section has too many cards for the horizontal tab strip to scroll, switch to the **second vertical column on the left** (see TabStrip).
    *
-   * 阈值按下限取：超过这条就该竖着列——config 有 38 张卡，横条要滚好几屏才能扫
-   * 完，而竖着的一列是一眼的事。少于此的节（plugin-manager 两张、gateway 一张）
-   * 横条更省行高。这名字是个玄学数字，所以写这句在这里解释；改它不需要其它地方动。
+   * The threshold is taken at the lower bound: above it, list vertically - config has 38 cards, and a horizontal strip needs several screens
+   * to scan through, while a vertical column is one glance. Sections below it (plugin-manager has two, gateway one)
+   * are more compact as a horizontal strip. This name is a magic number, so this sentence is here to explain it; changing it needs no other change.
    */
   const TAB_OVERFLOW = 8;
   const verticalTabs = $derived(sectionCards.length > TAB_OVERFLOW);
 
-  /** 当前这张卡。route.card 为空（或者落在一个已经不在的 id 上）时取第一张——
-   *  「一节的第一张」是这一节的默认视图，键盘与 URL 都依赖它是确定的。 */
+  /** The current card. When route.card is empty (or lands on an id that no longer exists), take the first one -
+   *  "the section's first card" is the section's default view, and the keyboard and the URL both depend on it being deterministic. */
   /**
-   * 此刻画的是哪一张卡。
+   * Which card is being drawn right now.
    *
-   * 主页模式下就是**首屏那一节的第一张**，而且不经 `sectionCards`——那一份要过
-   * `matches()`（顶栏那个过滤器），而主页模式里没有过滤器；它也不看 `route.card`
-   * （那一节只有一张卡，见 homeConcept）。
+   * In home mode it is **the first card of the first-screen section**, and it does not go through `sectionCards` - that one has to pass
+   * `matches()` (the top-bar filter), and home mode has no filter; it also does not look at `route.card`
+   * (that section has only one card, see homeConcept).
    */
   const active = $derived(
     route.home
@@ -198,10 +198,10 @@
   );
 
   /**
-   * 与当前这张卡**说的是同一份文件**的另一半（见 nav.ts 的 fileOf）。
+   * The other half of the **same file** as the current card (see fileOf in nav.ts).
    *
-   * 从哪一半进来看到的都一样：进来的若是原文（code），配给它的就是控件那一半，
-   * 于是并排永远是「左控件、右原文」。配不上就单栏——没有错误、没有空栏。
+   * It looks the same no matter which half you come in from: if you come in on the original text (code), it is paired with the control half,
+   * so side by side is always "controls on the left, original text on the right". If there is no pair, it is a single column - no error, no empty column.
    */
   const pair = $derived.by(() => {
     if (!active) return undefined;
@@ -216,71 +216,71 @@
     );
   });
 
-  /** 当前这一节：它的名字与它注入的动作（见 api.ts 的 SectionAction）。 */
+  /** The current section: its name and the actions it injects (see SectionAction in api.ts). */
   /**
-   * 此刻那一栏（完整界面里由 route.section 指，主页模式下就是落点那一节）。
+   * The column at this moment (in the full UI it is pointed at by route.section; in home mode it is the landing section).
    *
-   * **主页模式下必须回落到落点那一节**：那时 route.section 是空的，所以 `sections.find`
-   * 找不到任何东西——于是那一栏上的动作（`全部探一遍` / `auto fallback`）的**地址**
-   * 也丢了。按钮照常画（它们直接读 homeSection），点下去却带着空来源发出去，后端回
-   * 一句「没有叫 fallback 的动作」——一个只有点击时才炸的错。
+   * **In home mode it must fall back to the landing section**: at that point route.section is empty, so `sections.find`
+   * finds nothing - and then the **addresses** of the actions on that column (`probe everything` / `auto fallback`)
+   * are lost too. The buttons are still drawn (they read homeSection directly), but clicking sends with an empty source, and the backend replies
+   * "no action named fallback" - an error that only explodes on click.
    */
   const section = $derived(
     route.home ? homeSection : sections.find((s) => s.source === route.section),
   );
   const sectionActions = $derived(section?.actions ?? []);
 
-  /** 并排时哪一半在左：控件那一半。 */
+  /** When side by side, which half is on the left: the control half. */
   const leftCard = $derived(active?.kind === "code" && pair ? pair : active);
   const rightCard = $derived(active?.kind === "code" && pair ? active : pair);
 
-  /** 概念的基线（内容哈希）。概念的数据是它自己定义形状的，基线住在里面。 */
+  /** A concept's baseline (content hash). A concept's data defines its own shape, and the baseline lives inside it. */
   function baseOf(c: Concept): string {
     const b = (c.data as { base?: unknown } | null)?.base;
     return typeof b === "string" ? b : "";
   }
 
-  /** 只有**自己会变**的那几位值得每几秒刷一次。谁算「会变」由贡献者声明
-      （`Concept.Live`），界面不再按 Kind 猜：那个猜法把「读一次贵不贵」——
-      只有贡献者知道的事——写成了渲染形状的附庸，而且没给别的 Kind 留口子
-      （一张显示「还有多久自动关闭」的表，页面开着不动就永远停在那个数字上）。
-      配置那一位不声明：它要重读并重新解析每一份 profile 与每一个源文件，
-      让「刷一下计数器」顺带付那笔账，是把钱花在没人看的地方（见 api.ts 的 snapshot）。 */
+  /** Only the parts that **change by themselves** deserve a refresh every few seconds. What counts as "changing" is declared by the contributor
+      (`Concept.Live`); the UI no longer guesses by Kind: that guess turned "is reading expensive" -
+      something only the contributor knows - into a by-product of the render shape, and left no room for other Kinds
+      (a table showing "how long until auto-close" would stay stuck on that number as long as the page is left open).
+      The config one does not declare it: it has to re-read and re-parse every profile and every source file,
+      and making "refresh a counter" pay that bill is spending money where nobody is looking (see snapshot in api.ts). */
   const liveSources = $derived([
     ...new Set(concepts.filter((c) => c.live).map((c) => c.source)),
   ]);
 
   /**
-   * **首屏那一节**的来源（声明了落点的那一节，见 lib/view 的 Section.Default）。
+   * The source of **the first-screen section** (the section that declared a landing spot, see Section.Default in lib/view).
    *
-   * 它单独列出来是因为它要按**另一条节奏**刷：那一屏的产出要重读并重新解析每一份
-   * profile（见 core/lib/view 的 Concept.Live——声明的判据是「读一次贵不贵」，配置
-   * 那一位因此不声明 Live）。跟着计数器那条 3 秒的路走，等于把「看一眼请求数」变成
-   * 「每 3 秒解析一次全部配置」，而这一屏开着不动的时候，那笔钱换不到任何新信息。
+   * It is listed separately because it refreshes on **another cadence**: that screen's output must re-read and re-parse every
+   * profile (see Concept.Live in core/lib/view - the criterion for declaring it is "is reading expensive", and the config
+   * one therefore does not declare Live). Following the counter's 3-second path would turn "glance at the request count" into
+   * "parse all config every 3 seconds", and while this screen sits open and idle, that money buys no new information.
    *
-   * 但它**也确实会变**，而且是这个界面自己的动作让它变的：探活回来的延迟落在健康表
-   * 里，而首屏每一站的颜色就读那张表。所以它得有自己的节奏，不能只靠「用户手动点
-   * 重载」——那一屏是拿来放着看的。
+   * But it **does change**, and it is this UI's own actions that change it: probe latencies land in the health table,
+   * and the color of every stop on the first screen reads that table. So it must have its own cadence, and cannot rely only on "the user manually clicking
+   * reload" - that screen is meant to be left up and watched.
    */
   const homeSources = $derived(sections.filter((s) => s.default).map((s) => s.source));
 
   /**
-   * 把一列概念排成**后端那份顺序**：`(source, order, id)`。
+   * Sort a column of concepts into **the backend's order**: `(source, order, id)`.
    *
-   * 只在局部刷新（`load(sources)`）合并之后用：那时手里是「旧的没动的 + 刚拿到的」
-   * 两拨拼起来的，后端排好的数组顺序在拼接这一步没了，必须自己再排一次。
+   * Only used after a partial refresh (`load(sources)`) merges: at that point we hold "the old untouched ones + the ones just received"
+   * stitched together, and the backend's sorted array order is lost in that step, so it must be sorted again here.
    *
-   * 三个键与 `lib/view` 的 Snapshot 逐字对齐——**同一份顺序必须有同一个判据**。
-   * 少一个都不行：只按 `(source, id)` 排（这是它以前的样子），`Order` 为 0/1 的
-   * 「全局设置」「上游」会在每次静默刷新之后掉到十几张档位卡底下（Order 是 10），
-   * 而这两个恰好是**装完就要配**的那两张，用户看到的症状是「它们经常会自己跑到
-   * 下面」。`order` 缺省 0 与内核一致（没声明 Order 的贡献者排最前）。
+   * The three keys align word for word with `lib/view`'s Snapshot - **the same order must have the same criterion**.
+   * None may be missing: sorting only by `(source, id)` (which is what it used to do) sends "global settings" and "upstream",
+   * whose `Order` is 0/1, below a dozen tier cards (Order is 10) after every silent refresh,
+   * and those two happen to be **the two you configure right after install**; the symptom the user sees is "they keep moving
+   * down by themselves". A missing `order` defaults to 0, the same as the core (contributors that do not declare Order sort first).
    */
   function bySourceId(list: Concept[]): Concept[] {
-    // 用 `<` 而不是 localeCompare：后端排的是 **Go 的字节序**（`Source < Source`），
-    // 而 localeCompare 是 locale 敏感的——ICU 排序把 `-` 当可变字符，于是
-    // `plugin-manager` 与 `pluginmanager` 的相对位置在两边可能不一样。模块名是机器
-    // 标记，按字节比才是同一个判据；两条判据一致正是这个函数存在的理由。
+    // Use `<` rather than localeCompare: the backend sorts by **Go's byte order** (`Source < Source`),
+    // and localeCompare is locale-sensitive - ICU collation treats `-` as a variable character, so
+    // the relative position of `plugin-manager` and `pluginmanager` may differ between the two sides. Module names are machine
+    // markers, and comparing by bytes is the same criterion; the two criteria agreeing is exactly why this function exists.
     const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
     return [...list].sort(
       (a, b) => cmp(a.source, b.source) || (a.order ?? 0) - (b.order ?? 0) || cmp(a.id, b.id),
@@ -288,21 +288,21 @@
   }
 
   /**
-   * localTime 把后端给的时间戳按**看页面那个人的时区**显示。
+   * localTime displays the timestamp the backend gives in **the timezone of the person viewing the page**.
    *
-   * 后端给的是带 `Z` 的 RFC3339（UTC）。原样摆出来的话，本机 +08:00 的人会读到
-   * 「10:34」而墙上钟是 18:34——一个会让人怀疑数据是不是旧了的显示，而这条
-   * 存在的全部意义正是回答「这份快照有多新」。时区换算属于渲染层：后端只知道
-   * 自己的时区，而看页面的人可能在别处。
+   * The backend gives RFC3339 with `Z` (UTC). Shown as is, someone at +08:00 locally reads
+   * "10:34" while the wall clock says 18:34 - a display that makes people wonder if the data is stale, and the whole point of this line
+   * is to answer "how fresh is this snapshot". Timezone conversion belongs to the render layer: the backend only knows
+   * its own timezone, and the viewer may be elsewhere.
    *
-   * 不是今天的话把日期也带上：页面可以开着不动（自动刷新关掉时），只显示一个
-   * 钟点会读成「刚刚」。
+   * If it is not today, include the date too: the page can sit open and idle (with auto refresh off), and showing only a
+   * clock time reads as "just now".
    *
-   * 解析不了就原样返回——显示一个看不懂的字符串，也比显示 `Invalid Date` 强。
+   * If it cannot be parsed, return it as is - showing a string you cannot read is better than showing `Invalid Date`.
    *
-   * **格式跟随界面语言，不跟随浏览器**：tag 传的是后端解析出来的那门语言（与旁边
-   * 那些字同一门）。两者的差别是看得见的——浏览器 en-US 而界面中文时，不传 tag
-   * 会渲染成 `6:35:10 PM`，夹在「数据时间」后面很突兀。
+   * **The format follows the UI language, not the browser**: tag is the language the backend resolved (the same
+   * one as the text around it). The difference is visible - with a browser at en-US and the UI in Chinese, passing no tag
+   * renders `6:35:10 PM`, which looks out of place after "data time".
    */
   function localTime(iso: string, tag?: string): string {
     const d = new Date(iso);
@@ -313,18 +313,18 @@
   }
 
   /**
-   * 默认位置：**声明了落点的那一节**（见 lib/view 的 Section.Default）。
+   * Default location: **the section that declared a landing spot** (see Section.Default in lib/view).
    *
-   * 在这之前它是「第一个有卡片的那一节」，而节的顺序按 Source 字母序——于是首屏
-   * 落在哪一栏纯粹取决于谁的名字排前面（今天是 `breaker`）。想让「一屏全能」那一节
-   * 先出现，唯一的办法是把 source 起成 `aaa-home` 之类来插队。
+   * Before this it was "the first section with cards", and section order follows Source alphabetically - so where the first screen
+   * lands depended purely on whose name sorted first (today it is `breaker`). To make the "everything on one screen" section
+   * appear first, the only way was to name its source `aaa-home` or the like to jump the queue.
    *
-   * 两条回落，都是真会发生的：
-   *   - 没有哪一节声明落点（没装那个模块的装配，以及内核自己的测试图）——回到老
-   *     规矩，第一个有卡片的。**逐字节与改动前一样**，那是这次改动的安全绳；
-   *   - 声明了落点、但那一节此刻一张卡都没有（比如它唯一的卡是某个客户端没装才
-   *     出现的）——空节进去只会看到一句「这里什么都没有」，所以让给第一个有卡片的。
-   *     「落点」是偏好，不是强制：宁可落在别处，也别把用户扔进一张空页。
+   * Two fallbacks, both of which really happen:
+   *   - no section declares a landing spot (an assembly without that module, and the core's own test charts) - go back to the old
+   *     rule, the first one with cards. **Byte for byte the same as before the change**, which is the safety rope for this change;
+   *   - a landing spot is declared, but that section has no card at this moment (for example its only card appears only when some client is not
+   *     installed) - entering an empty section only shows "there is nothing here", so give way to the first one with cards.
+   *     "Landing spot" is a preference, not a mandate: better to land elsewhere than to throw the user into an empty page.
    */
   function defaultRoute(): Route {
     const withCards = sections.filter((s) => concepts.some((c) => c.source === s.source));
@@ -335,16 +335,16 @@
   }
 
   /**
-   * 把位置修正到一个**真实存在**的地方，并把它写回地址栏。
+   * Correct the position to a place that **really exists**, and write it back to the address bar.
    *
-   * 三种失效都要接住，它们都不是故障而是日常：模块被关掉（那一节没了）、profile
-   * 被删（那张卡没了）、手敲/被截断的链接。回落之后**改写 hash**——URL 不该说着
-   * 一个屏幕上没有的东西（刷新一下又跳回来，那才叫费解）。
+   * All three kinds of invalidation must be caught, and all three are routine, not failures: a module is turned off (that section is gone), a profile
+   * is deleted (that card is gone), a hand-typed/truncated link. After falling back, **rewrite the hash** - the URL should not say
+   * something that is not on screen (refresh and it jumps back, which is the confusing part).
    */
   function resolveRoute() {
-    // **主页模式不走这条修正**：它的 `section` 本来就是空的（那一屏由落点那一节
-    // 决定，见 homeSection），而这条修正会把「空 section」判成「那一节没了」，随手
-    // 挑一个落点写成完整界面——主页模式于是一开屏就被自己顶掉。实测踩过。
+    // **Home mode does not go through this correction**: its `section` is empty to begin with (that screen is decided by the landing
+    // section, see homeSection), and this correction would judge "empty section" as "that section is gone", casually
+    // pick a landing spot and write it as the full UI - so home mode is displaced by itself the moment it opens. Measured, hit this.
     if (route.home) {
       writeHash(route);
       return;
@@ -364,35 +364,35 @@
     error = "";
     try {
       const doc = await snapshot(sources);
-      // 语言跟着后端走（每次快照都设一次：用户在命令行 `newgate lang zh-Hans`
-      // 之后刷新页面就该变）。概念标题是后端翻译的，这一步只管界面骨架。
+      // The language follows the backend (set on every snapshot: after the user runs `newgate lang zh-Hans` on the command line,
+      // refreshing the page should show the change). Concept titles are translated by the backend; this step only handles the UI skeleton.
       setLang(doc.lang);
-      // 赋值给 $state 才会让下面那个 `{#key}` 换掉整棵树（值相同时不换）。
+      // Assigning to $state is what makes the `{#key}` below swap the whole tree (it does not swap when the value is the same).
       lang = doc.lang;
-      // <html lang> 也要跟着走：它不参与渲染，但屏幕阅读器靠它选发音、浏览器靠它
-      // 选断行与拼写检查——写成 en 而界面是中文，等于对辅助技术说错了话。
+      // <html lang> must follow too: it does not take part in rendering, but screen readers pick pronunciation by it, and browsers pick
+      // line breaking and spell checking by it - writing en while the UI is Chinese is telling assistive technology the wrong thing.
       document.documentElement.lang = doc.lang;
-      // 栏目表**每次都换**（两种刷新都带它）：模块是可以被关掉的，「这一节还在
-      // 不在」正是刷新最该跟上的东西。
+      // The section table **changes every time** (both kinds of refresh carry it): modules can be turned off, and "is this section still
+      // here" is exactly what a refresh should track best.
       sections = doc.sections;
       if (sources) {
         const byId = new Map(concepts.map((c) => [c.id, c]));
-        // 有草稿的卡片不换：那可能是只读概念之外的意外（读数与写数撞在同一张
-        // 卡上），而用户正在改的东西被后台刷新顶掉是最不可原谅的一种丢失。
+        // Cards with drafts are not swapped: that may be something unexpected beyond read-only concepts (reads and writes colliding on the same
+        // card), and having what the user is editing displaced by a background refresh is the most unforgivable kind of loss.
         for (const c of doc.concepts) if (drafts[c.id] === undefined) byId.set(c.id, c);
         concepts = bySourceId([...byId.values()]);
       } else {
         concepts = doc.concepts;
-        // 整份重读之后，磁盘上已经不存在的概念（模块被关掉）没有地方可去了，
-        // 它的草稿也该跟着走——留着它只会让「保存」按一个已经不存在的 id 发。
+        // After a full re-read, concepts that no longer exist on disk (module turned off) have nowhere to go,
+        // and their drafts should go too - keeping one only makes "save" fire at an id that no longer exists.
         const alive = new Set(doc.concepts.map((c) => c.id));
         for (const id of Object.keys(drafts)) if (!alive.has(id)) delete drafts[id];
         drafts = { ...drafts };
         conflicts = [];
-        // 整份重读之后，两半都从盘上重新读了一遍——「另一半的草稿被挤掉」这件事
-        // 已经过去了（该看的人看过这一眼了），留着那句话只会变成一条永远擦不掉的
-        // 提示（它描述的是一个已经不存在的情况）。预览同理：盘上的内容已经就是
-        // 「草稿生效之后」的样子，再拿草稿去覆盖显示就成了显示一份不存在的东西。
+        // After a full re-read, both halves have been re-read from disk - "the other half's draft got displaced" is
+        // already past (whoever needed to see it has seen it), and keeping that sentence only turns it into a notice that can never be erased
+        // (it describes a situation that no longer exists). Same for previews: the content on disk is already
+        // what it looks like "after the draft takes effect", and overlaying the draft on it again shows something that does not exist.
         dropped = "";
         previews = {};
       }
@@ -406,14 +406,14 @@
   }
 
   /**
-   * 重载 = **把手里这份全丢掉，重新从 BFF 读一份**。
+   * Reload = **throw away everything in hand and read a fresh one from the BFF**.
    *
-   * 草稿（未保存的改动）也要丢——这正是「重载」这个动作的意思：屏幕上的一切回到
-   * 盘上此刻的样子。之前重载只换 concepts、把 drafts 留着，于是「我点了重载，界面
-   * 还是我刚才改的样子」——那个感觉像重载没生效，其实是我们把用户的改动又盖了回去。
+   * Drafts (unsaved changes) are thrown away too - that is exactly what "reload" means: everything on screen returns
+   * to what is on disk right now. Before, reload only swapped concepts and kept drafts, so "I clicked reload and the UI
+   * still looks like my edits" - that feels like reload did not work, when in fact we put the user's changes back on top.
    *
-   * 保存过的那些早就从 drafts 里删掉了（见 saveAll），所以这里丢掉的**只有没存出去
-   * 的东西**，而丢它们是用户按这个按钮时明确要求的。
+   * Saved ones were already removed from drafts (see saveAll), so what is dropped here is **only what was not saved**,
+   * and dropping them is exactly what the user asked for by pressing this button.
    */
   function reloadAll() {
     drafts = {};
@@ -422,52 +422,52 @@
   }
 
   /**
-   * 一份文件的两半：**最后被改的是哪一半**（`"ui"` 控件 / `"raw"` 原文）。
+   * The two halves of one file: **which half was changed last** (`"ui"` control / `"raw"` original text).
    *
-   * 为什么必须有它：控件半与原文半是两个概念、两份草稿、两个基线，而它们写的是
-   * **同一份文件**。改了原文之后控件那边手里还是「改之前那份盘上内容」——两边一起
-   * 保存，后写的那一半必然撞在过期基线上（报「这个文件在页面加载之后被别人改过」），
-   * 用户看到的是「怎么改都保存不了」。
+   * Why it must exist: the control half and the original-text half are two concepts, two drafts, two baselines, and they write
+   * **the same file**. After editing the original text, the control side still holds "the disk content from before the edit" - saving both
+   * together means the one written later necessarily hits a stale baseline (reporting "this file was changed by someone else after the page loaded"),
+   * and what the user sees is "no matter how I change it, it will not save".
    *
-   * 所以：谁后改，谁说了算。另一半的草稿在**这边一改**的时候就作废丢掉——它是照着
-   * 改动之前那份盘上内容渲染的，留着只会把人送进冲突。保存完的整份重读（见
-   * saveAll）就是「编辑完马上同步另一半」那一步：两半都从盘上重新读一遍。
+   * So: whoever changed last has the final say. The other half's draft is discarded the moment **this side** changes - it was rendered from
+   * the disk content from before the change, and keeping it only leads into a conflict. The full re-read after saving (see
+   * saveAll) is the "sync the other half right after editing" step: both halves are re-read from disk.
    */
   let lastEdit = $state<Record<string, "ui" | "raw">>({});
 
   /**
-   * dropped 是「刚才丢掉的是哪一份文件另一半的草稿」——一句给用户看的话，不是错误。
+   * dropped is "which file's other-half draft was just dropped" - a sentence for the user to read, not an error.
    *
-   * 为什么必须有：另一半的草稿是被**这一半**的编辑挤掉的（见 edit），而那是用户
-   * 刚敲进去的字。不声不响地丢掉它违背这个仓库那条硬规矩（不静默），而且他多半
-   * 会以为那段字还在——等他想起来回来看时，屏幕上已经是盘上那份旧内容了。
+   * Why it must exist: the other half's draft was displaced by **this half's** edit (see edit), and it was text the user
+   * had just typed. Dropping it silently violates this repo's hard rule (no silence), and they would most likely
+   * think those words are still there - by the time they come back to look, the screen already shows the old content from disk.
    */
   let dropped = $state("");
 
   /**
-   * previews 是「原文那一半的草稿长这样时，**控件**那一半该显示成什么」——按控件
-   * 那张卡的 id 存（见 api.ts 的 preview、内核 lib/view 的 Concept.Preview）。
+   * previews is "what the **control** half should show when the original-text half's draft looks like this" - stored by the control
+   * card's id (see preview in api.ts, Concept.Preview in the core lib/view).
    *
-   * 为什么必须有它：一份文件的两半都能改，而控件那一半的编辑载荷是**整份文件**
-   * （一张档位表整个交上去，不是那一格）。所以「在原文里粘一整份、再去动一个下拉
-   * 框」如果没有这一问，交上去的就是**改之前**那份旧表——刚粘的东西当场没了，而
-   * 屏幕上从头到尾没显示过它，用户不会觉得自己正在覆盖什么。
+   * Why it must exist: both halves of a file can be edited, and the control half's edit payload is **the whole file**
+   * (an entire tier table is submitted, not that one cell). So if "paste a whole file in the original text, then change one dropdown"
+   * did not ask this, what gets submitted is the old table **from before the change** - what was just pasted vanishes on the spot, and
+   * the screen never showed it from start to finish, so the user does not feel they are overwriting anything.
    *
-   * 生命周期跟着**原文那份草稿**走：草稿在，预览在；草稿被挤掉/保存掉/撤销掉，
-   * 预览跟着消失（否则控件那一半会停在一份磁盘上并不存在的内容上）。
+   * Its lifecycle follows **the original-text draft**: draft present, preview present; draft displaced/saved/reverted,
+   * preview disappears with it (otherwise the control half would sit on content that does not exist on disk).
    */
   let previews = $state<Record<string, unknown>>({});
 
   /**
-   * 跳到**编辑这份文件**的那张卡上。
+   * Jump to the card that **edits this file**.
    *
-   * 这一跳能成立，靠的是「文件身份」这一件事已经在前端了（`fileOf`，见 nav.ts）；
-   * 而「哪一张卡是它的编辑器」这条规则也只有一份（controlOf，下面几行）——两处各
-   * 写一遍的话，从首屏跳过去可能落到**原文那一半**上，而那两半是同一份文件的两种
-   * 看法，落错一半用户还得再点一次。
+   * This jump works because "file identity" is already in the frontend (`fileOf`, see nav.ts);
+   * and the rule for "which card is its editor" also exists in only one place (controlOf, a few lines below) - writing it in two places
+   * would mean jumping from the first screen may land on **the original-text half**, and those two halves are two views
+   * of the same file; landing on the wrong half makes the user click once more.
    *
-   * 找不到目标时**什么都不做**：那说明这份文件此刻没有可编辑的卡（比如贡献它的模块
-   * 被关掉了）。跳到一个不存在的地址比不跳更糟——它会把当前这一屏也弄丢。
+   * When no target is found, **do nothing**: that means this file has no editable card right now (for example the module contributing it
+   * was turned off). Jumping to a nonexistent address is worse than not jumping - it loses the current screen too.
    */
   function openFile(f: string) {
     const target = controlOf(f) ?? concepts.find((c) => fileOf(c) === f);
@@ -476,12 +476,12 @@
     writeHash(route);
   }
 
-  /** 这份文件上「控件那一半」：不是 code、且和它指同一份文件的那张卡。 */
+  /** The "control half" of this file: the card that is not code and points at the same file. */
   function controlOf(f: string): Concept | undefined {
     return concepts.find((c) => c.kind !== "code" && fileOf(c) === f);
   }
 
-  /** 原文那一半此刻的草稿文本（没有草稿就是 undefined）。 */
+  /** The original-text half's current draft text (undefined when there is no draft). */
   function rawDraftOf(f: string): string | undefined {
     const raw = concepts.find((c) => c.kind === "code" && fileOf(c) === f);
     const d = raw ? (drafts[raw.id] as { text?: unknown } | undefined) : undefined;
@@ -497,15 +497,15 @@
   }
 
   /**
-   * 原文改了 → 问一句控件那一半现在该长什么样。
+   * The original text changed -> ask what the control half should look like now.
    *
-   * **防抖 200ms**：CodeMirror 每敲一个字符就 onEdit 一次，而每敲一下就发一个请求
-   * 是白费——敲到一半的 KV 本来就解析不了（后端那时回 error，界面保持上一次的
-   * 样子，见 BFF 的 preview）。200ms 是「停手」的粗判：够短，看着像即时；够长，
-   * 一次连续的输入只问一次。
+   * **200ms debounce**: CodeMirror fires onEdit on every character typed, and firing a request on every keystroke
+   * is wasted - a half-typed KV cannot be parsed anyway (the backend returns an error then, and the UI keeps the previous
+   * look, see the BFF's preview). 200ms is a rough judgment of "stopped typing": short enough to feel instant, long enough that
+   * one continuous burst of input asks only once.
    *
-   * 回来晚了就用**内容**判一次：这中间草稿可能已经被挤掉或改过了，那时这一问的
-   * 答案属于上一个版本，画上去就是在显示一份不存在的草稿。
+   * If it comes back late, judge once by **content**: the draft may have been displaced or changed in the meantime, and then the answer to this question
+   * belongs to the previous version, and drawing it shows a draft that does not exist.
    */
   let previewTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -544,8 +544,8 @@
             file: lost,
           })
         : "";
-      // 改的是原文那一半 → 让控件那一半跟上（见 previews 的注释）。改的是控件那一
-      // 半 → 原文的草稿刚被挤掉，预览也就没有依据了，跟着撤掉。
+      // The original-text half was changed -> make the control half follow (see the comment on previews). The control half was changed
+      // -> the original-text draft has just been displaced, the preview has no basis either, withdraw it too.
       if (side === "raw") {
         const text = (value as { text?: unknown } | null)?.text;
         if (typeof text === "string") schedulePreview(f, text);
@@ -560,9 +560,9 @@
   function revert(id: string) {
     delete drafts[id];
     drafts = { ...drafts };
-    // 撤销 = 把这张卡回到「没改过」。除了丢掉草稿，再整份重读一次——这样它显示
-    // 的一定是**此刻盘上**的值，而不是上次快照那一刻的值（期间命令行可能改过）。
-    // 与 saveAll 同一条：本地 BFF 无代价，不做联动计算。
+    // Revert = put this card back to "not changed". Besides dropping the draft, do a full re-read - so that what it shows
+    // is necessarily **the value on disk right now**, not the value at the last snapshot (the command line may have changed it in the meantime).
+    // Same as saveAll: the local BFF costs nothing, no chained computation.
     void load();
   }
 
@@ -573,10 +573,10 @@
     for (const id of dirty) {
       const c = concepts.find((x) => x.id === id);
       if (!c) continue;
-      // 一份文件的两半只能有一半说了算（见 edit 里 lastEdit 的注释）：万一两边都
-      // 还带着草稿（比如从别处塞进来的），只交**后改**的那一半——一起交必然有一半
-      // 撞过期基线，用户看到的是「怎么保存都报错」。另一半的草稿就此丢掉：它写的
-      // 是同一份文件的旧内容，留着只会再错一次。
+      // The two halves of one file can have only one in charge (see the comment on lastEdit in edit): if by any chance both
+      // still carry drafts (say, stuffed in from elsewhere), submit only the **later-changed** half - submitting both necessarily leaves one half
+      // hitting a stale baseline, and the user sees "saving always errors". The other half's draft is dropped right there: it writes
+      // old content of the same file, and keeping it only makes the same mistake again.
       const f = fileOf(c);
       if (f && lastEdit[f]) {
         const side = c.kind === "code" ? "raw" : "ui";
@@ -591,8 +591,8 @@
         continue;
       }
       if (res.error) {
-        // 贡献者的报错原样显示并点名是哪张卡片：把几个概念的错误混成一句
-        // 「保存失败」，用户不知道该去看哪一张。
+        // The contributor's error is shown as is and names which card it is: mixing several concepts' errors into one
+        // "save failed" leaves the user not knowing which one to look at.
         error = `${c.title}: ${res.error}`;
         continue;
       }
@@ -602,28 +602,28 @@
     conflicts = stillConflicting;
     busy = false;
     if (!stillConflicting.length && !error) note = localTime(new Date().toISOString(), lang);
-    // 存成功就**整份重读**（不做按源增量）：保存是写文件，界面上任何一张卡都可能
-    // 因为这次写入而变——右栏原文、同源的别家卡、乃至 provider 列表。与其去算哪几
-    // 张会变，不如无脑重拉一份快照，简单、正确、（本地 BFF 毫无性能代价）。
+    // On success **re-read everything** (no per-source increment): saving writes a file, and any card on screen may
+    // have changed because of this write - the right-column original text, other cards from the same source, even the provider list. Rather than working out which ones
+    // change, just pull a fresh snapshot blindly: simple, correct, (the local BFF has no performance cost at all).
     if (!error && !stillConflicting.length) {
       void load();
-      // **皮肤表也要重读**，与快照一起。
+      // **The theme table must be re-read too**, together with the snapshot.
       //
-      // 它是一条独立的接口（皮肤不在账本里，见 api.ts 的 Themes），所以 `load()`
-      // 够不着它。少了这一句，症状是「从配置那一节的皮肤卡上换了一套，存完界面
-      // 一点没变」——而顶栏那个下拉是当场变的（它走 pickTheme，那里会重读）。同
-      // 一件设置的两个入口，只有一个生效，那是最难查的一类不一致。
+      // It is a separate endpoint (themes are not in the ledger, see Themes in api.ts), so `load()`
+      // cannot reach it. Without this line the symptom is "switched to another theme on the theme card in the config section, and after saving the UI
+      // does not change at all" - while the top-bar dropdown changes on the spot (it goes through pickTheme, which re-reads). The same
+      // setting with two entry points, only one of which works, is the hardest kind of inconsistency to track down.
       void loadThemes();
     }
   }
 
   /**
-   * 删掉**当前这张卡代表的那份档位文件**。
+   * Delete **the tier file that the current card represents**.
    *
-   * 它打在**这张卡自己的 apply** 上（`{delete:true}` + 加载时的基线做 CAS）：一份
-   * 文件一张卡，卡自己就能删自己——2026-09-20 之前这一步绕去另一张「档位文件」
-   * 目录卡，而那张卡列的文件与这些卡一一对应，是同一件事说两遍（用户要求彻底删掉
-   * 那张卡）。基线不对（别人刚改过）就让后端报冲突，不硬删。
+   * It fires on **this card's own apply** (`{delete:true}` + the baseline from load time for CAS): one
+   * file one card, and a card can delete itself - before 2026-09-20 this step detoured through another "tier file"
+   * directory card, and the files that card listed correspond one to one with these cards, so it was the same thing said twice (the user asked to delete that
+   * card entirely). If the baseline is wrong (someone just changed it), let the backend report a conflict rather than force the delete.
    */
   async function deleteActive() {
     if (!active) return;
@@ -642,29 +642,29 @@
     }
     delete drafts[id];
     drafts = { ...drafts };
-    // 那张卡已经不存在了，别停在它上面（active 会落回这一节的第一张）。
+    // That card no longer exists, do not stay on it (active falls back to the section's first card).
     if (route.card === id) route = { ...route, card: "" };
     void load();
   }
 
   /**
-   * 跑当前这一节上的一个动作（见 api.ts 的 runSectionAction）。
+   * Run an action on the current section (see runSectionAction in api.ts).
    *
-   * 界面**不知道那个动作会干什么**，也不该知道：「再建一份档位文件」这个名字怎么挑、
-   * 建出来是什么形状，全是拥有那一节的人的活。界面只做两件事——把点击转过去、
-   * 然后重读（与保存那条路一样，干完活就重新拉一份快照）。
+   * The UI **does not know what that action does**, and should not: how to pick the name "create another tier file",
+   * what shape it takes, is entirely the business of whoever owns that section. The UI does only two things - forward the click,
+   * then re-read (same as the save path, pull a fresh snapshot when the work is done).
    */
   /**
-   * 跑**某一张卡**上的一个动作（见 api.ts 的 runConceptAction）。
+   * Run an action on **a card** (see runConceptAction in api.ts).
    *
-   * 与 runAction 是同一件事的两个落点：那边认「这一节」，这边认「这一张卡」。
-   * 两者都**不知道那个动作会干什么**——label 是贡献者写的一句话，改的是磁盘上的
-   * 什么只有那一位知道。界面只做三件事：把点击转过去、丢掉手里的草稿（磁盘变了，
-   * 基线全是旧的）、重读一遍。
+   * It is the same thing as runAction at two different landing points: that one recognizes "this section", this one recognizes "this card".
+   * Both **do not know what that action does** - label is a sentence the contributor wrote, and only that one knows
+   * what it changes on disk. The UI does only three things: forward the click, drop the drafts in hand (the disk changed and
+   * all baselines are stale), and re-read.
    *
-   * 为什么不像保存那样走 drafts / CAS：动作**不是**「把这份草稿写下去」。它是
-   * 「干一件事」——比如「把这一份设为默认」，那件事改的是 state.json，与这张卡的
-   * 文件没有关系。所以它没有 base、没有 edit，也不该让这张卡变脏。
+   * Why not go through drafts / CAS like saving: an action is **not** "write this draft down". It is
+   * "do a thing" - for example "make this one the default", which changes state.json and has nothing to do with this card's
+   * file. So it has no base, no edit, and should not make this card dirty.
    */
   async function runCardAction(id: string, a: ConceptAction) {
     busy = true;
@@ -685,28 +685,28 @@
   }
 
   /**
-   * 跑**表格里某一行**上的一个动作（见 api.ts 的 runRowAction）。
+   * Run an action on **a row in a table** (see runRowAction in api.ts).
    *
-   * 与 runCardAction 的关键差别：**不清草稿**。
+   * The key difference from runCardAction: **do not clear drafts**.
    *
-   * 那张卡上的动作（「把这一份设为默认」）会**改磁盘**，所以重读之后手里所有
-   * 草稿的基线都成了旧的，必须丢掉；而一行上的动作（「探一下这条 binding」）
-   * 动的是 daemon **内存里**的状态——它和这张卡读的那个文件没有关系。清掉的
-   * 话，用户正开着的编辑会被一次「点个测试按钮」悄悄抹掉，那是纯粹的损失。
+   * The action on that card ("make this one the default") **changes the disk**, so after the re-read every draft's baseline
+   * in hand is stale and must be dropped; but an action on a row ("probe this binding")
+   * changes state **in the daemon's memory** - it has nothing to do with the file this card reads. Clearing them
+   * would silently wipe out an edit the user has open with one "click the test button", a pure loss.
    *
-   * 重读照做：这张表是 Live 的（摘帽、延迟、冷却都由这一次探活更新过），不重读
-   * 的话界面会继续说几分钟前那件事。
+   * Re-read as usual: this table is Live (tripping, latency, cooldown were all updated by this probe), and without a re-read
+   * the UI would keep talking about the thing from minutes ago.
    */
   async function runRow(id: string, row: string, a: RowAction) {
     busy = true;
     error = "";
     const res = await runRowAction(id, row, a.id);
-    // **不管成没成都重读**，而且要在放错误之前：这一行上的动作改的是 daemon 的
-    // 状态（探一发、结论记进健康表），表上那几列——探活、失败数、冷却到什么时候
-    // ——正是这个按钮的结果。失败时不重读的话，横幅说「连不上」而表上还是点之前
-    // 的样子，两句话互相矛盾，而用户没有办法判断哪个是真的。
+    // **Re-read whether or not it succeeded**, and before showing the error: the action on this row changes the daemon's
+    // state (one probe, the conclusion recorded in the health table), and those columns - probe, failures, cooldown until when
+    // - are exactly this button's result. Without a re-read on failure, the banner says "cannot connect" while the table still shows how it looked before the click,
+    // two statements contradicting each other, and the user has no way to tell which is true.
     //
-    // 顺序不能反：`load()` 开头会清 `error`，所以那句错误必须**最后**放回去。
+    // The order cannot be reversed: `load()` clears `error` at the start, so that error must be put back **last**.
     await load();
     busy = false;
     if (res.error) error = res.error;
@@ -715,27 +715,27 @@
   async function runAction(a: SectionAction, source = section?.source) {
     busy = true;
     error = "";
-    // **来源要由调用方给**（默认取「此刻那一栏」）。
+    // **The source must be given by the caller** (the default is "the column at this moment").
     //
-    // 这里曾经写的是 `route.section`，而主页模式下它是**空的**——于是点
-    // `auto fallback` 发出去的是 `{"source": "", "action": "fallback"}`，后端回
-    // 「上没有叫 fallback 的动作」。按钮画得出来（它读的是落点那一节），地址却算
-    // 在别处，两处对不上时只有**点下去**才看得见（2026-09-30 实测踩到，用户的原话：
-    // 「fallback 按钮还是关不掉啊」）。
+    // This used to say `route.section`, and in home mode it is **empty** - so clicking
+    // `auto fallback` sent `{"source": "", "action": "fallback"}`, and the backend replied
+    // "there is no action named fallback". The button could be drawn (it reads the landing section), yet the address was computed
+    // elsewhere, and only **clicking it** shows the mismatch (measured and hit on 2026-09-30, the user's own words:
+    // "the fallback button still cannot be turned off").
     const res = await runSectionAction(source ?? "", a.id);
     busy = false;
     if (res.error) {
       error = res.error;
       return;
     }
-    // 草稿先丢掉：动作改的是磁盘，重读之后手里那些草稿的基线全是旧的。
+    // Drop the draft first: the action changes the disk, and after the re-read the baselines of the drafts in hand are all stale.
     drafts = {};
     await load();
-    // 动作说它做出了什么（res.focus），就切过去——「新建」的下一步一定是去填它，
-    // 让用户自己在一堆卡里找刚建的那一张，等于把「它叫什么名字」这个问题的答案
-    // 又藏起来一次。
+    // If the action says what it produced (res.focus), switch there - the next step after "new" is always to fill it in,
+    // and making the user find the just-created one among a pile of cards hides the answer to "what is it called"
+    // one more time.
     //
-    // 界面**不猜**那个 id：找不到就留在原地（那边刚重读过，新卡就在导航里）。
+    // The UI **does not guess** that id: if not found, stay put (that side has just re-read, and the new card is in the nav).
     const target = res.focus ? concepts.find((c) => c.id === res.focus) : undefined;
     if (target) {
       route = { home: false, section: target.source, card: target.id, split: route.split };
@@ -743,7 +743,7 @@
     }
   }
 
-  /** 冲突里选「保留我的」：拿磁盘上那份的基线重放一次。 */
+  /** Pick "keep mine" in a conflict: replay once with the baseline of the disk copy. */
   async function keepMine(cf: Conflict) {
     const c = concepts.find((x) => x.id === cf.concept);
     if (!c) return;
@@ -755,11 +755,11 @@
     delete drafts[cf.concept];
     drafts = { ...drafts };
     conflicts = conflicts.filter((x) => x !== cf);
-    // 写完了就整份重读（与 saveAll 同一条：本地 BFF、无性能代价、不联动）。
+    // Once written, re-read everything (same as saveAll: local BFF, no performance cost, no chaining).
     void load();
   }
 
-  /** 冲突里选「用磁盘上那份」：丢掉我的草稿，重新读一次。 */
+  /** Pick "use the disk copy" in a conflict: drop my draft and re-read once. */
   function takeTheirs(cf: Conflict) {
     delete drafts[cf.concept];
     drafts = { ...drafts };
@@ -767,14 +767,14 @@
     void load();
   }
 
-  // 导航：三处入口（侧栏、tab、键盘）都只改 route，再由 writeHash 落到地址栏。
-  // **只改一处状态**，URL 就不可能与屏幕说的不一样。
+  // Navigation: all three entry points (sidebar, tab, keyboard) only change route, and writeHash lands it in the address bar.
+  // **Change state in only one place**, and the URL cannot disagree with the screen.
   function pickSection(source: string) {
-    // 点**首屏那一栏** = 回主页模式（目录收起来、只剩卡片）。
+    // Clicking **the first-screen column** = back to home mode (the directory folds up and only the card is left).
     //
-    // 与顶栏那颗「设置」是一对：那一颗从主页进完整界面，这一颗从完整界面回主页。
-    // 少了这条回路，「主页」在目录里就与别的栏目没有分别了——而它本来就是另一个
-    // 模式，不是另一节。
+    // It pairs with the "settings" button in the top bar: that one goes from home to the full UI, this one goes from the full UI back home.
+    // Without this return path, "home" in the directory would be no different from any other section - while it is a different
+    // mode, not another section.
     if (source === homeSection?.source) {
       toHome();
       return;
@@ -783,29 +783,29 @@
     writeHash(route);
   }
 
-  /** 回主页模式（地址里连 `#/s/…` 都不留，见 nav.ts 的 routeTo）。 */
+  /** Back to home mode (not even `#/s/...` is left in the address, see routeTo in nav.ts). */
   function toHome() {
     route = { ...homeRoute };
     writeHash(route);
   }
 
   /**
-   * 从主页模式进**完整界面**，落在**配置文件那一页**上。
+   * Enter the **full UI** from home mode, landing on **the config file page**.
    *
-   * 用户的原话是「处于主页的时候点击设置，应该跳转到配置文件那一页」。
+   * The user's own words were "clicking settings while on home should jump to the config file page".
    *
-   * 判据是**「有卡、且不是首屏那一节」的栏目里的第一个**，不写死模块名——这一层不
-   * 认识任何模块（同 fileOf 那条）。落在「第一节」上是错的：那一节就是主页自己。
-   * 万一这个发行版只有首屏那一节（骨架配置），退回它自己。
+   * The criterion is **the first section that has cards and is not the first-screen section**, with no module names hard-coded - this layer knows
+   * no modules (same as the fileOf rule). Landing on "the first section" is wrong: that section is home itself.
+   * If this distribution has only the first-screen section (a skeleton config), fall back to it.
    */
   function toSettings() {
-    // 判据是**那一栏自己声明的用途**（`Section.fields === "settings"`，见内核
-    // view.SectionInfo.Fields），而且是第一个有卡的那种。
+    // The criterion is **the purpose the column declares itself** (`Section.fields === "settings"`, see the core
+    // view.SectionInfo.Fields), and it is the first one with cards.
     //
-    // 先后试过两条都不行的路：「第一个有卡的节」落在熔断上（它按 source 排得更前），
-    // 「第一个有可编辑文件的节」落在 Claude Code 上（它也有 mappings 那种卡）。
-    // 用户要的是**配置文件那一页**——而「这一栏是设置」正是后端已经声明过的机器标记，
-    // 用它可以判，且不引入任何模块名。
+    // Two paths were tried and both failed: "the first section with cards" lands on the breaker (it sorts earlier by source),
+    // and "the first section with editable files" lands on Claude Code (it also has mappings-style cards).
+    // What the user wants is **the config file page** - and "this column is settings" is a machine marker the backend already declares,
+    // so it can be used to decide without introducing any module name.
     const target =
       sections.find(
         (s) =>
@@ -828,8 +828,8 @@
   }
 
   /**
-   * `[` / `]`：在这一节里换卡。到头了**绕回去**（而不是停在原地）：一个没有反馈
-   * 的按键会让人以为快捷键没生效，然后去试第二次。
+   * `[` / `]`: switch cards within this section. At the end **wrap around** (rather than stopping in place): a key with no feedback
+   * makes people think the shortcut did not work, and then try it a second time.
    */
   function stepCard(delta: 1 | -1) {
     if (sectionCards.length < 2 || !active) return;
@@ -841,7 +841,7 @@
   function run(a: Action) {
     switch (a.kind) {
       case "save":
-        // 没有草稿时也接（清掉上一次的报错），但不发请求。
+        // Accept it when there is no draft too (clear the previous error), but do not send a request.
         if (dirty.length && !busy) void saveAll();
         break;
       case "focus-filter":
@@ -861,13 +861,13 @@
     }
   }
 
-  /** 后退/前进（以及手动改 hash）：这是**唯一**从 URL 读回来的地方。 */
+  /** Back/forward (and a manual hash change): this is the **only** place that reads back from the URL. */
   function onHashChange() {
     route = parseHash(location.hash);
   }
 
-  // 过滤时如果当前这一节一张都没命中，就跳到**第一个命中**的地方（跨节找东西那
-  // 条路的最后一步）。写进 route 之后下一轮 `inSection` 就成立了，所以不会来回跳。
+  // While filtering, if the current section has no hits, jump to **the first hit** (the last step of the cross-section
+  // search path). Once written into route, the next round of `inSection` holds, so it does not jump back and forth.
   $effect(() => {
     if (!filter || !concepts.length) return;
     if (concepts.some((c) => c.source === route.section && matches(c))) return;
@@ -883,14 +883,14 @@
   });
 
   /**
-   * 有没保存的改动时，刷新/关标签页要先问一句。
+   * When there are unsaved changes, refreshing/closing the tab should ask first.
    *
-   * 草稿住在页面内存里（那是刻意的：一次编辑攒成一次 CAS 写），所以 F5 就是丢掉
-   * 它——而「按错了刷新」与「只是想看看最新状态」长得一模一样。浏览器这一道问询
-   * 是唯一拦得住它的地方（界面自己拦不住：刷新不是我们的代码发起的）。
+   * Drafts live in page memory (deliberately: one edit accumulates into one CAS write), so F5 means throwing them away
+   * - and "pressed refresh by mistake" and "just wanted to see the latest state" look exactly alike. This browser prompt
+   * is the only place that can stop it (the UI itself cannot: the refresh is not initiated by our code).
    *
-   * 文案由浏览器定（现代浏览器一律显示自己的那句），所以这里只 preventDefault。
-   * 代价是这条会**跟着草稿来去**：没有草稿时不留监听，免得连正常刷新都弹框。
+   * The wording is decided by the browser (modern browsers all show their own sentence), so here we only preventDefault.
+   * The cost is that this listens **follows the drafts**: no listener when there is no draft, so even a normal refresh gets no dialog.
    */
   $effect(() => {
     if (!dirty.length) return;
@@ -900,11 +900,11 @@
   });
 
   /**
-   * 读一次皮肤表。
+   * Read the theme table once.
    *
-   * **读不出来不是错误**：老版本的后端没有这条口（404），而一个读不到皮肤的界面
-   * 该照常打开——空表就是「只有出厂那套令牌」。为它弹一句红字，等于把「这个后端
-   * 少一个装饰性功能」说成「这个界面坏了」。
+   * **Failure to read is not an error**: an old backend has no such endpoint (404), and a UI that cannot read themes
+   * should still open - an empty table means "only the factory token set". Popping up red text for it would turn "this backend
+   * is missing a decorative feature" into "this UI is broken".
    */
   async function loadThemes() {
     try {
@@ -914,12 +914,12 @@
     }
   }
 
-  /** 换一套皮肤。空 id = 回到出厂那套令牌（见 theme.ts 的 applyTheme）。 */
+  /** Switch to another theme. Empty id = back to the factory token set (see applyTheme in theme.ts). */
   async function pickTheme(id: string) {
     try {
       await setTheme(id);
-      // 换完重读而不是就地改本地那份：**存下来的是哪一套**只有后端知道
-      // （它可能拒绝、也可能是另一个标签页刚改过），本地猜一份就会与盘上不一致。
+      // Re-read after switching rather than changing the local copy in place: **which one got saved** is known only to the backend
+      // (it may reject, or another tab may have just changed it), and guessing locally would disagree with disk.
       await loadThemes();
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
@@ -927,8 +927,8 @@
   }
 
   /**
-   * 皮肤落到 DOM 上（见 theme.ts）。放在 effect 里而不是 pickTheme 里：这样
-   * **一处理**——首屏读到的那份、换完重读的那份，走的都是同一条路。
+   * Themes land on the DOM (see theme.ts). Put it in an effect rather than pickTheme: this way
+   * **one place** - both the one read at first screen and the one re-read after switching go the same path.
    */
   $effect(() => {
     applyTheme(themeDoc);
@@ -938,24 +938,24 @@
   load();
   void loadThemes();
 
-  // 自动刷新走**两条节奏**。
+  // Auto refresh uses **two cadences**.
   //
-  //   - 自己会变的那几位（计数器、日志）每 3 秒问一次——它们便宜，而且变得快。
-  //   - **首屏那一节每 15 秒问一次**：它的产出要重读并重新解析每一份 profile（贵），
-  //     但探活的结果、以及命令行那边改过的配置都会落在它身上，而这一屏正是拿来
-  //     放着看的。整份重读（把首屏也按 3 秒刷）会把「看一眼请求数」变成「每 3 秒
-  //     解析一次全部配置」，而配置文件不会自己变——那个成本换不到新信息。
+  //   - the parts that change by themselves (counters, logs) are asked every 3 seconds - they are cheap and change fast.
+  //   - **the first-screen section is asked every 15 seconds**: its output must re-read and re-parse every profile (expensive),
+  //     but probe results, and config changed on the command line, all land on it, and this screen is exactly what is meant
+  //     to be left up and watched. A full re-read (refreshing the first screen every 3 seconds too) would turn "glance at the request count" into "every 3 seconds
+  //     parse all config", and the config files do not change by themselves - that cost buys no new information.
   //
-  // 两条各自算各自的来源，重叠的部分（一节同时是 Live 又是首屏）只走快的那条：
-  // 同一份数据问两遍，多出来的那一遍没有任何用处。
-  // **来源在这两个回调里面读，不在 effect 身上读**——这不是风格问题，是这一条能
-  // 不能工作的分界：effect 会跟踪它同步执行期间读到的每一份状态，而那两份来源都是
-  // 派生自 `sections` / `concepts` 的**新数组**。于是每一次刷新（包括这两条定时器
-  // 自己发起的那些）都会让 effect 重跑、把两个定时器都清掉重建——而 15 秒那个永远
-  // 等不到第 15 秒，它每 3 秒就被重置一次。
+  // Each computes its own source, and where they overlap (a section is both Live and the first screen) only the fast one runs:
+  // asking for the same data twice, the extra time is of no use at all.
+  // **The sources are read inside these two callbacks, not on the effect** - this is not a style question, it is the dividing line between
+  // this working and not working: an effect tracks every piece of state read during its synchronous run, and both of those sources are
+  // **new arrays** derived from `sections` / `concepts`. So every refresh (including those these two timers
+  // start themselves) makes the effect re-run and clears and rebuilds both timers - and the 15-second one never
+  // reaches second 15, it is reset every 3 seconds.
   //
-  // 实测过：改之前首屏那一节在 17 秒里被刷了 **0** 次，而 3 秒那条看着是好的
-  // （它比重置的间隔短，所以偶尔能跑完一次）——两条都错，只是错的症状不一样。
+  // Measured: before the fix, the first-screen section was refreshed **0** times in 17 seconds, while the 3-second one looked fine
+  // (it is shorter than the reset interval, so it occasionally completes) - both were wrong, only the symptom differed.
   $effect(() => {
     if (!auto) return;
     const fast = setInterval(() => {
@@ -974,30 +974,30 @@
   });
 </script>
 
-<!-- 换语言要**重新渲染整棵树**。
-     t() 查的那门语言住在 i18n.ts 的模块级变量里，不是 Svelte 的响应式状态，所以
-     没有响应式依赖的字符串（按钮、placeholder）只按**首次渲染那一刻**的语言渲染
-     一次，之后再不更新；而依赖了状态的（概念数、时间戳）会重渲染、拿到新语言。
-     结果是同一屏上两种语言（实测：后端给 zh-Hans 时「44 个概念」是中文而
-     "save" 是英文）。
+<!-- Switching language must **re-render the whole tree**.
+     The language t() looks up lives in a module-level variable in i18n.ts, not in Svelte reactive state, so
+     strings with no reactive dependency (buttons, placeholders) render only in the language of **the moment of first render**
+     once, and never update afterwards; while those that depend on state (concept counts, timestamps) re-render and get the new language.
+     The result is two languages on one screen (measured: with the backend on zh-Hans, "44 concepts" was in Chinese while
+     "save" was in English).
 
-     {#key} 在 lang 变化时重建子树，所有 t() 重新求值。它只在语言**真的变了**的
-     时候发生——正常情况是启动后第一次拿到快照那一下，那时页面还没有任何值得
-     保留的状态（草稿、打开的编辑器都还没建，route 在 App 自己身上）。 -->
+     {#key} rebuilds the subtree when lang changes, and every t() is evaluated again. It only happens when the language **really changed**
+     happens - normally it is right when the first snapshot arrives after startup, when the page has no state worth
+     keeping yet (no drafts, no open editor, and route lives on App itself). -->
 {#key lang}
 <div class="shell" class:home={route.home}>
   <header class="top">
-    <!-- 设置那一颗在**最左边**、搜索框左边，而且只在主页模式出现（用户的原话：
-         「设置按钮放页面左边，搜索栏的左边。处于主页才显示」，以及「设置和主页不要
-         用文字，用 icon」）。为什么主页模式下有它、完整界面下没有：完整界面的目录
-         里就有一栏「主页」可以点回来，而主页模式下目录收起来了——两颗按钮各自补
-         对方缺的那条路，不留一对多余的。 -->
+    <!-- The settings button is at the **far left**, left of the search box, and appears only in home mode (the user's own words:
+         "put the settings button on the left of the page, left of the search bar. Only show it on home", and "do not use text
+         for settings and home, use icons"). Why it exists in home mode and not in the full UI: the full UI's directory
+         has a "home" entry to click back to, while home mode has the directory folded up - the two buttons each fill the
+         other's missing path, with no redundant pair. -->
     {#if route.home}
       <button class="icon" title={t("settings")} aria-label={t("settings")} onclick={toSettings}>
-        <!-- 齿轮。**上一版画错了**：一个圆加八根短射线，读起来是太阳（用户的原话：
-             「你这个设置的icon为什么是个太阳不应该是个齿轮吗」）。齿得是**从轮体上
-             长出来的块**，不是飘在外面的线——所以这里用一整条轮廓路径（Feather 那只，
-             MIT），而不是圆 + 描边。 -->
+        <!-- Gear. **The previous version drew it wrong**: a circle plus eight short rays reads as a sun (the user's own words:
+             "why is your settings icon a sun, shouldn't it be a gear"). The teeth must be **blocks growing out of the
+             wheel body**, not lines floating outside - so here we use a single outline path (Feather's, MIT),
+             not a circle + stroke. -->
         <svg class="gear" viewBox="0 0 24 24" aria-hidden="true">
           <circle cx="12" cy="12" r="3.1" />
           <path
@@ -1009,8 +1009,8 @@
 
     <strong>newgate</strong>
     {#if !route.home}
-      <!-- 过滤框只在完整界面里：主页模式那一屏的卡片是**全部**（它就是一屏看完
-           的那一屏），而给一个十来张卡的网格配一个过滤器，是又一件不常用的控件。 -->
+      <!-- The filter box is only in the full UI: home mode's screen has **all** the cards (it is the see-it-all-on-one-screen
+           screen), and putting a filter on a grid of a dozen cards is one more rarely used control. -->
       <input
         class="filter"
         bind:this={filterBox}
@@ -1021,10 +1021,10 @@
     <span class="spacer"></span>
 
     {#if route.home}
-      <!-- 主页模式就这几颗：`auto fallback` 那颗状态按钮、皮肤、保存（按需）。
-           没有重载（自动刷新一直在跑）、没有过滤、没有自动刷新那个勾、没有「全部
-           探一遍」——用户的原话是「尽量减少不常用的控件按钮」，「主页全部探一遍那个
-           按钮也是傻啊，直接移除掉吧」。 -->
+      <!-- Home mode has just these few: the `auto fallback` status button, themes, save (on demand).
+           No reload (auto refresh is always running), no filter, no auto-refresh checkbox, no "probe
+           everything" - the user's own words were "keep rarely used control buttons to a minimum" and "that probe-everything
+           button on home is dumb too, just remove it". -->
       {#each homeSection?.actions ?? [] as a (a.id)}
         {#if a.id === "fallback"}
           <button
@@ -1043,20 +1043,20 @@
       <button onclick={reloadAll} disabled={busy}>{t("reload")}</button>
     {/if}
 
-    <!-- 模块自带前端的挂点（见 PluginSlot.svelte）：这里不认识任何插件。 -->
+    <!-- The mount point for module-provided frontends (see PluginSlot.svelte): this knows no plugin. -->
     <PluginSlot at="topbar" {lang} />
     {#if themeDoc.themes.length}
       <ThemePicker doc={themeDoc} onPick={pickTheme} />
     {/if}
-    <!-- 保存**按需出现**（有东西没存才画）。用户的原话是「只有保存是 dynamic 出现
-         的」——一颗永远挂在那里的保存按钮，在没有改动的时候只是一块占着顶栏的灰。 -->
+    <!-- Save **appears on demand** (drawn only when something is unsaved). The user's own words were "only save is dynamic
+         -appearing" - a save button permanently pinned there is just a gray block taking up the top bar when there are no changes. -->
     {#if dirty.length}
       <button class="primary" onclick={saveAll} disabled={busy}>
         {t("save")} ({dirty.length})
       </button>
     {/if}
     {#if !route.home}
-      <!-- 回主页模式。同样是**图标**（与设置那一颗对称）。 -->
+      <!-- Back to home mode. Also an **icon** (symmetric with the settings button). -->
       <button class="icon" title={t("home mode")} aria-label={t("home mode")} onclick={toHome}>
         <svg viewBox="0 0 16 16" aria-hidden="true">
           <path d="M2.6 7.4 8 3l5.4 4.4V13a.6.6 0 0 1-.6.6h-3v-3.4h-3.6v3.4h-3A.6.6 0 0 1 2.6 13z" />
@@ -1066,8 +1066,8 @@
   </header>
 
   {#if route.home}
-    <!-- 主页模式：**目录不画**。这一屏是「大部分时候就用它」的那一屏，而目录是
-         一栏常驻的导航——要看别的，右上角那颗进完整界面。 -->
+    <!-- Home mode: **the directory is not drawn**. This screen is the "use it most of the time" screen, and the directory is
+         a permanently present nav column - to see anything else, the button in the top right goes to the full UI. -->
   {:else}
     <Sidebar {sections} active={route.section} {counts} onPick={pickSection} />
   {/if}
@@ -1081,7 +1081,7 @@
         <div class="notice">{dropped}</div>
       {/if}
       {#each conflicts as cf (cf.concept + cf.current)}
-        <!-- 自己就是一块 .banner.conflict（不套壳：两层边框看着像两个东西）。 -->
+        <!-- It is itself a .banner.conflict block (no wrapper: two layers of border look like two things). -->
         <ConflictDialog
           conflict={cf}
           onKeepMine={() => keepMine(cf)}
@@ -1090,10 +1090,10 @@
       {/each}
     </div>
 
-    <!-- 这一节的工具条：它自己注入的动作（「再建一份档位文件」这类）。
-         动作住在**栏目**上而不是某张卡上——新建出来的那一份此刻还没有概念，没有哪张
-         卡能挂这个按钮；挂在栏目上它还永远够得着，不管你正看着哪一张卡。
-         没有动作就整条不画（空着的一条只会把内容往下推）。 -->
+    <!-- This section's toolbar: the actions it injects itself (like "create another tier file").
+         Actions live on the **section** rather than on a card - a newly created one has no concept yet, and no
+         card can host this button; on the section it is always reachable, no matter which card you are viewing.
+         With no actions the whole bar is not drawn (an empty bar only pushes content down). -->
     {#if !route.home && sectionActions.length}
       <div class="secbar">
         <span class="name">{section?.title}</span>
@@ -1112,8 +1112,8 @@
       </div>
     {/if}
 
-    <!-- 包一层 .nav-slot：TabStrip 是组件，App 的 scoped 样式给不了它根元素的网格
-         位置，标在包这一层清楚了（见 app.css 的 .content.subcol）。 -->
+    <!-- Wrap in a .nav-slot: TabStrip is a component, and App's scoped styles cannot give its root element a grid
+         position; marking it on the wrapper is clearer (see .content.subcol in app.css). -->
     {#if !route.home}
     <div class="nav-slot">
       <TabStrip
@@ -1153,7 +1153,7 @@
 </div>
 {/key}
 
-<!-- 键盘监听放在 `{#key}` **外面**：换语言没有理由把监听摘了再装一遍。 -->
+<!-- The keyboard listener goes **outside** `{#key}`: there is no reason to remove and reinstall the listener when the language changes. -->
 <Shortcuts onAction={run} />
 
 <style>
@@ -1164,10 +1164,10 @@
     padding: 9px 16px;
     background: var(--panel);
     border-bottom: 1px solid var(--line);
-    /* 不再 sticky：整页不滚了（见 app.css 的 .shell），没有东西需要它粘住。 */
+    /* No longer sticky: the whole page does not scroll (see .shell in app.css), nothing needs it to stick. */
     flex-wrap: wrap;
   }
-  /* 只给过滤框定宽。原来是 `.top input`，于是「自动刷新」那个**复选框**也被拉成
-     220px，把它的标签顶到几百像素之外——两个本该挨着的东西看起来毫不相干。 */
+  /* Only the filter box gets a fixed width. It used to be `.top input`, so the **auto-refresh checkbox** was stretched to
+     220px too, pushing its label hundreds of pixels away - two things that should sit together looked unrelated. */
   .top .filter { width: 220px; }
 </style>

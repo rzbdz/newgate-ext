@@ -1,23 +1,23 @@
 <script lang="ts">
-  // 模型选择器：一个**可输入的下拉**，数据来自 provider 自己（而不是 providers.json）。
+  // Model picker: an **input-capable dropdown**, with data from the provider itself (not from providers.json).
   //
-  // # 为什么不是一个 datalist
+  // # Why not a datalist
   //
-  // 改造前这一格是 `<input list=…>`：datalist 只给「声明的模型」，而那份清单要
-  // 用户手写；上游新出一个模型，用户得先去 provider 卡片里补一行，再回来选。而且
-  // datalist 没有分组、没有模糊搜索、也不说「上游到底回没回话」。
+  // Before the change this cell was `<input list=...>`: a datalist only gives "the declared models", and that list had to be
+  // hand-written by the user; when the upstream ships a new model, the user has to go add a line in the provider card, then come back and pick. And
+  // a datalist has no grouping, no fuzzy search, and does not say "did the upstream answer at all".
   //
-  // 这里在**打开的那一刻**去问一次（见 api.ts 的 modelList → BFF 的
-  // /api/ext/modellist → 发行版的 modules/modellist）：
-  //   - 上游支持列表 → 直接列出它此刻真正提供的模型（带分组），支持模糊搜索；
-  //   - 上游不支持 / key 不允许 / 网络不通 → **回落到 providers.json 里声明的
-  //     清单**，并把原因写在菜单顶上。这不是故障：多数上游没有这个接口。
+  // Here it asks once **at the moment of opening** (see modelList in api.ts -> the BFF's
+  // /api/ext/modellist -> the distribution's modules/modellist):
+  //   - the upstream supports listing -> list what it really offers right now (with groups), with fuzzy search;
+  //   - the upstream does not support it / the key is not allowed / the network is down -> **fall back to the list declared in providers.json**,
+  //     and write the reason at the top of the menu. This is not a failure: most upstreams do not have this endpoint.
   //
-  // # 为什么是 fixed 定位
+  // # Why fixed positioning
   //
-  // 卡片 `.card` 有 `overflow: hidden`（见 app.css）。绝对定位的菜单会被卡片裁掉，
-  // 于是在最需要它的地方（一屏十几张档位卡）只剩一条缝。fixed 到视口、按输入框
-  // 的位置算坐标，再把宽度夹进视口——滚动/缩放时直接关掉菜单（见 closeOnViewport）。
+  // The card `.card` has `overflow: hidden` (see app.css). An absolutely positioned menu gets clipped by the card,
+  // so in the place that needs it most (a screen with a dozen tier cards) only a slit is left. Fixed to the viewport, with coordinates computed from the input box,
+  // and the width clamped into the viewport - close the menu directly on scroll/zoom (see closeOnViewport).
   import { onMount, untrack } from "svelte";
   import { t } from "./i18n";
   import {
@@ -37,18 +37,18 @@
     declared = [],
     readonly = false,
     /**
-     * 要不要在格子旁边显示上一次验到的指纹、并给一颗「验」按钮。
+     * Whether to show the last verified fingerprint next to the cell, and offer a "verify" button.
      *
-     * 默认开；自由验证那一页把它关掉——那里自己有一套 API/挑战数选择与一颗
-     * 「获取指纹」，同一个格子里再放一颗同名按钮会让「这一次按的到底是哪一个」
-     * 变得没有答案。
+     * On by default; the free-verification page turns it off - that page has its own API/challenge-number selector and a
+     * "get fingerprint" button, and putting another button of the same name in the same cell would leave "which one was pressed this time"
+     * with no answer.
      */
     verify = true,
     onchange,
   }: {
     value?: string;
     provider?: string;
-    /** providers.json 里声明的模型名：问不到上游时就用这一份。 */
+    /** The model names declared in providers.json: use this set when the upstream cannot be asked. */
     declared?: string[];
     readonly?: boolean;
     verify?: boolean;
@@ -56,7 +56,7 @@
   } = $props();
 
   let open = $state(false);
-  /** 输入框里正在打的那一串。**打开时清空**，菜单才会列出全部模型。 */
+  /** The string being typed into the input box. **Cleared when opened**, so the menu lists all models. */
   let query = $state(untrack(() => value));
   let active = $state(0);
   let loading = $state(false);
@@ -64,10 +64,10 @@
   let catalogs = $state<Record<string, ModelList>>({});
 
   /**
-   * 按模型名缓存的指纹结论（来自 `/api/ext/fingerprint` 的 cache 动作）。
+   * Fingerprint conclusions cached by model name (from the cache action of `/api/ext/fingerprint`).
    *
-   * 它只在该下拉被打开/换 provider 时读一次（缓存文件很小），**不自动去验**：
-   * verify 会花 token，必须是人点出来的。这里展示的永远是「上一次验到的那份」。
+   * It is read once only when the dropdown is opened / the provider is switched (the cache file is small), and **does not verify automatically**:
+   * verify spends tokens, and it must be triggered by a person. What is shown here is always "the one verified last time".
    */
   let fingerprints = $state<Record<string, FingerprintEntry>>({});
   let fpError = $state("");
@@ -76,11 +76,11 @@
   let input: HTMLInputElement | undefined = $state();
   let menuEl: HTMLDivElement | undefined = $state();
   let pos = $state({ left: 0, top: 0, width: 260, maxHeight: 320 });
-  // 菜单的 id 要唯一：一屏里同时有好几个候选行，每个都有自己的选择器。
+  // The menu id must be unique: several candidate rows are on one screen at once, each with its own picker.
   const menuID = $props.id();
 
-  // 外部改了值（换 provider、撤销草稿、载入另一份 profile）时同步输入框——
-  // 但**打开的时候不抢**：那正是用户在打字的时候。
+  // When the value is changed externally (switch provider, revert draft, load another profile), sync the input box -
+  // but **do not grab it while open**: that is exactly when the user is typing.
   let seenValue = untrack(() => value);
   $effect(() => {
     if (seenValue === value) return;
@@ -88,9 +88,9 @@
     if (!open) query = value;
   });
 
-  // 换 provider = 换了一份清单：菜单与本地查询都重来（缓存按 provider 存着，
-  // 切回来还在）。指纹也一起换：它是按「provider/model」存的，留着上一家的
-  // 只会让新格子显示一个不属于它的结论。
+  // Switching provider = switching to a different list: the menu and the local query both start over (the cache is stored per provider,
+  // so switching back still has it). The fingerprint switches too: it is stored by "provider/model", and keeping the previous vendor's
+  // would only make the new cell show a conclusion that does not belong to it.
   let seenProvider = untrack(() => provider);
   $effect(() => {
     if (seenProvider === provider) return;
@@ -107,12 +107,12 @@
     if (verify) void loadFingerprints();
   });
 
-  /** 选中那个模型上一次的结论（没有就是 undefined）。 */
+  /** The last conclusion for the selected model (undefined if none). */
   const selectedFP = $derived(provider && value ? fingerprints[value] : undefined);
 
   const catalog = $derived(provider ? catalogs[provider] : undefined);
 
-  /** 菜单里要列的东西：上游说得出就用上游的，否则用声明的那份。 */
+  /** What to list in the menu: use the upstream's if it can say, otherwise the declared one. */
   const models = $derived<ModelInfo[]>(
     catalog?.supported && (catalog.models?.length ?? 0) > 0
       ? catalog.models
@@ -139,10 +139,10 @@
   });
 
   /**
-   * 分组：同一个组的模型连在一起，组的先后 = 它最好的那个命中。
+   * Groups: models in the same group are listed together, and a group's order = the rank of its best hit.
    *
-   * 没有组的时候就是一个空组（菜单不画标题）——「上游没给分组」与「所有模型都在
-   * 同一组」在界面上本来就该长得一样。
+   * When there are no groups it is one empty group (the menu draws no heading) - "the upstream gave no groups" and "all models are in
+   * the same group" should look the same in the UI anyway.
    */
   const grouped = $derived.by(() => {
     const map = new Map<string, { m: ModelInfo; i: number }[]>();
@@ -154,7 +154,7 @@
     });
     let out = [...map.entries()].map(([group, items]) => ({ group, items }));
     if (query.trim()) {
-      // fuzzyFilter 已按分数排好；组按各自第一个命中的名次排，组内保持分数序。
+      // fuzzyFilter is already sorted by score; groups are ordered by the rank of their first hit, and within a group the score order is kept.
       out = out.sort((a, b) => a.items[0].i - b.items[0].i);
     }
     return out;
@@ -169,15 +169,15 @@
       fingerprints = next;
       fpError = "";
     } catch (e) {
-      // 端点是可选的：没装那个模块时这里是 404。**不是故障**——格子照常用，
-      // 只是没有指纹可展示（与 modelList 的 404 同一条）。
+      // The endpoint is optional: it is 404 when that module is not installed. **Not a failure** - the cell works as usual,
+      // there is just no fingerprint to show (same as the 404 from modelList).
       fpError = e instanceof Error ? e.message : String(e);
     }
   }
 
   /**
-   * 现场验一次选中的模型。**会花 token**：按钮的 title 已说明，不弹确认框——
-   * 这个按钮点一下就是「我要验」，再问一次只会多一步。
+   * Verify the selected model on the spot. **Spends tokens**: the button's title says so, no confirmation dialog -
+   * pressing this button already means "I want to verify", and asking again only adds a step.
    */
   async function verifySelected() {
     const model = value.trim();
@@ -249,7 +249,7 @@
   }
 
   async function load(refresh: boolean) {
-    // 演示页没有后端（见 src/env.d.ts）：照常列声明清单，不去问一个不存在的端点。
+    // The demo page has no backend (see src/env.d.ts): list the declared list as usual, and do not ask an endpoint that does not exist.
     if (__NEWGATE_DEMO__) return;
     if (!provider || readonly) return;
     const p = provider;
@@ -276,7 +276,7 @@
     let top = r.bottom + gap;
     let maxHeight = Math.min(320, window.innerHeight - top - 8);
     if (maxHeight < 140) {
-      // 下面放不下：翻到上面去。
+      // It does not fit below: flip above.
       maxHeight = Math.min(320, r.top - gap - 8);
       top = Math.max(8, r.top - gap - maxHeight);
     }
@@ -289,13 +289,13 @@
     if (!open) {
       open = true;
       active = 0;
-      // 打开时清空查询：用户想看的是**全部**，而不是「只匹配当前这个值」。
-      // 当前值仍然在 placeholder 里（见模板），不会看起来像丢了。
-      // 已经打开时不清——那会把用户正打着的那串字擦掉。
+      // Clear the query when opened: what the user wants to see is **everything**, not "only what matches the current value".
+      // The current value is still in the placeholder (see the template), so it does not look lost.
+      // Do not clear when already open - that would erase the string the user is typing.
       query = "";
       if (provider && !catalogs[provider] && !loading) void load(false);
-      // 指纹是本地缓存（几十 KB），每次打开都重读一遍：终端里刚跑过 verify
-      // 的话，下拉里那一格应该立刻是新结论，而不是页面加载时的那一份。
+      // The fingerprint is a local cache (tens of KB), re-read every time it is opened: if verify was just run in the terminal,
+      // that cell in the dropdown should be the new conclusion right away, not the one from page load.
       if (verify) void loadFingerprints();
     }
   }
@@ -353,11 +353,11 @@
     }
   }
 
-  // 菜单是 fixed 的：视口一动，它就会悬在一个不再对应输入框的位置上。
-  // 直接关掉比追着重新定位简单，也比「看起来还开着、点下去选错行」安全。
+  // The menu is fixed: once the viewport moves, it hangs at a position that no longer corresponds to the input box.
+  // Closing directly is simpler than chasing it with repositioning, and safer than "looks still open, click and pick the wrong row".
   //
-  // 用**捕获**监听：卡片住在一个 `overflow: auto` 的窗格里，那一层滚动不会
-  // 冒泡到 window。菜单自己的滚动要放过——那是用户在翻列表。
+  // Use a **capture** listener: the card lives in an `overflow: auto` pane, and scrolling in that layer does not
+  // bubble to window. The menu's own scrolling must pass through - that is the user paging through the list.
   $effect(() => {
     if (!open) return;
     const onScroll = (e: Event) => {
@@ -405,8 +405,8 @@
   {/if}
 
   {#if verify && provider && !readonly && value.trim()}
-    <!-- 上一次验到的指纹就在格子旁边：它是**陈述**（缓存），不是「这一格的值」，
-         所以不参与编辑、也不进草稿。没有它就是「还没验过」，不是故障。 -->
+    <!-- The last verified fingerprint sits right next to the cell: it is a **statement** (cache), not "this cell's value",
+         so it takes no part in editing and does not go into drafts. Its absence means "not verified yet", not a failure. -->
     <span
       class="fp {selectedFP ? matchTone(selectedFP.match) : 'none'}"
       title={selectedFP
@@ -467,8 +467,8 @@
                 {/if}
               </span>
               {#if fpe}
-                <!-- 下拉里每一行都带**上一次**的指纹：选之前就能看见「这一行写的是
-                     这个名字，但上次验出来是另一个」。这是这个下拉最该有的信息。 -->
+                <!-- Every row in the dropdown carries the **last** fingerprint: before picking you can already see "this row says
+                     this name, but last time it verified as something else". That is the most valuable information this dropdown can have. -->
                 <span class="fpm {matchTone(fpe.match)}" title={matchText(fpe.match)}>
                   {matchText(fpe.match)}{#if fpe.probability != null} · {Math.round(fpe.probability * 100)}%{/if}
                 </span>
@@ -487,7 +487,7 @@
   .picker { position: relative; display: inline-flex; align-items: center; flex-wrap: wrap; row-gap: 4px; min-width: 220px; }
   .picker .model { flex: 1; min-width: 160px; }
   .probe { padding: 0 4px; line-height: 1; }
-  /* 指纹那一格：陈述，不是输入。颜色只表达「名字对上没有」，不改变形状。 */
+  /* The fingerprint cell: a statement, not an input. Color only expresses "did the name match", and does not change the shape. */
   .fp {
     font-size: 11px;
     font-family: var(--mono);
@@ -556,7 +556,7 @@
   .opt.selected .mid { font-weight: 600; }
   .opt .mid { font-size: 12px; overflow-wrap: anywhere; }
   .opt .mname { font-size: 11px; }
-  /* 每行右侧的上一次指纹：小、等宽，不抢模型名的位置。 */
+  /* The last fingerprint on the right of each row: small, monospace, not stealing the model name's place. */
   .fpm { font-size: 10px; font-family: var(--mono); white-space: nowrap; color: var(--dim); }
   .fpm.ok { color: var(--ok); }
   .fpm.warn { color: var(--warn); }

@@ -1,13 +1,13 @@
 <script lang="ts">
-  // 同一个文件的**两半并排**：左边控件、右边原文。
+  // **Two halves of the same file side by side**: controls on the left, original text on the right.
   //
-  // 为什么值得为它单开一块版面：改配置时最常见的动作是「这个值在文件里长什么样
-  // / 我刚才那一下到底改了哪一行」，而瀑布流里这两张卡从来不在同一屏——看一眼
-  // 原文要滚过去、再滚回来，回来时还得重新找到刚才那张卡。并排之后这件事变成
-  // **零次操作**（两个都在屏幕上）。
+  // Why it deserves a layout of its own: the most common action when changing config is "what does this value look like in the file
+  // / which line did I just change", and in the waterfall these two cards are never on the same screen - to look at
+  // the original text you scroll over, then scroll back, and on the way back you have to find that card again. Side by side this becomes
+  // **zero operations** (both are on screen).
   //
-  // 配对由 App 按「写的是不是同一份文件」算好（见 nav.ts 的 fileOf），这里只管
-  // 摆。所以它不认识任何模块，也不知道哪一半是「控件」。
+  // Pairing is computed by App on "do they write the same file" (see fileOf in nav.ts); this component only
+  // arranges. So it knows no module, and does not know which half is the "control".
   import type { Concept, ConceptAction, RowAction } from "./api";
   import ConceptCard from "./ConceptCard.svelte";
   import { t } from "./i18n";
@@ -30,25 +30,25 @@
     left: Concept;
     right: Concept | undefined;
     drafts: Record<string, unknown>;
-    // 「同一份文件另一半的草稿长这样时，这张卡该显示成什么」，按卡片 id 存（见
-    // App.svelte 的 previews）。**只有控件那一半会有**——原文那一半自己就是原文。
+    // "What this card should show when the other half of the same file has a draft like this", stored by card id (see
+    // previews in App.svelte). **Only the control half has it** - the original-text half is itself the original text.
     previews: Record<string, unknown>;
     split: boolean;
     onEdit: (id: string, v: unknown) => void;
     onRevert: (id: string) => void;
-    // 都作用在**卡片自己那份文件**上，所以不带参数（见 kinds/MappingEditor）。
+    // They all act on **the card's own file**, so they take no argument (see kinds/MappingEditor).
     onDeleteFile?: () => void;
-    // 跑某张卡上的一个动作（见 api.ts 的 ConceptAction）。**要带 id**：这个组件
-    // 同时拿着两张卡（控件半与原文半），而动作只属于其中一张。
+    // Run an action on a card (see ConceptAction in api.ts). **It needs an id**: this component
+    // holds two cards at once (the control half and the original-text half), and the action belongs to only one of them.
     onAction?: (id: string, a: ConceptAction) => void;
-    // 跑某一行上的一个动作（见 api.ts 的 RowAction）。同一条理由要带 id：两张
-    // 卡都在手里，而那一行只属于其中一张。
+    // Run an action on a row (see RowAction in api.ts). Same reason for the id: two
+    // cards are in hand, and that row belongs to only one of them.
     onRowAction?: (id: string, row: string, a: RowAction) => void;
-    // 跳到**编辑这份文件**的那张卡上（见 App.svelte 的 openFile）。不带卡 id：
-    // 要去的地方由文件决定，而两张卡说的是同一份文件——带上 id 反而会诱导调用方
-    // 按「哪一半」分叉，而那正是这一跳要避免的。
+    // Jump to the card that **edits this file** (see openFile in App.svelte). No card id:
+    // where to go is decided by the file, and both cards talk about the same file - carrying an id would only tempt the caller
+    // to branch on "which half", and that is exactly what this jump must avoid.
     onOpenFile?: (file: string) => void;
-    /** 见 ConceptCard.bare（主页模式那一屏只有这一张）。 */
+    /** See ConceptCard.bare (home mode has only this one card on screen). */
     bare?: boolean;
     onToggleSplit: () => void;
   } = $props();
@@ -102,8 +102,8 @@
     min-height: 0;
     height: 100%;
   }
-  /* 这一条只在有配对时才出现（App 不传 right 就没有它），而且只有一行高：
-     它是一个「我可以把它收起来」的出口，不是一条工具栏。 */
+  /* This one only appears when there is a pair (App passes no right and it is absent), and it is only one row tall:
+     it is an exit that says "I can tuck this away", not a toolbar. */
   .bar {
     display: flex;
     justify-content: flex-end;
@@ -116,8 +116,8 @@
     min-height: 0;
     flex: 1;
   }
-  /* 左控件、右原文。宽度按内容给：控件那一栏（一行是一个候选下拉 + 模型输入）
-     最窄要 ~550px，原文那一栏窄一点也读得下去。 */
+  /* Controls on the left, original text on the right. Widths follow content: the control column (one row is a candidate dropdown + a model input)
+     needs ~550px at its narrowest, and the original-text column is still readable a bit narrower. */
   .split.two { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); }
   .pane-l,
   .pane-r {
@@ -125,8 +125,8 @@
     min-height: 0;
     overflow: auto;
   }
-  /* 窄屏退化成上下堆叠（见 app.css 的媒体查询；这里给下面那一半一个高度上限，
-     否则它又会变成一条瀑布）。 */
+  /* On narrow screens it degrades to stacking (see the media query in app.css; here the lower half gets a height cap,
+     otherwise it turns into a waterfall again). */
   @media (max-width: 1000px) {
     .split.two {
       grid-template-columns: minmax(0, 1fr);

@@ -1,12 +1,12 @@
 <script lang="ts">
-  // 左边这一栏：**目录**。点一下切一节，不再往下滚。
+  // This left column: **the directory**. One click switches section, no more scrolling down.
   //
-  // 它为什么存在：原来所有卡片按来源分组、一路往下铺（实测 4303px ≈ 4.8 屏），
-  // 于是「改一个开关」这件四步就能做完的事，第一步是滚三屏。侧栏把这一步变成
-  // 一次点击，而且是**位置固定**的——同一节永远在同一个地方，肌肉记忆有效。
+  // Why it exists: all cards used to be grouped by source and laid out downwards (measured 4303px ≈ 4.8 screens),
+  // so "change one switch", a four-step job, started with scrolling three screens. The sidebar turns that step into
+  // one click, and at a **fixed position** - the same section is always in the same place, and muscle memory works.
   //
-  // 它不认识任何模块：栏目名由各模块在登记时报（后端 `view.Sections`），这里只
-  // 负责画。名字**不走 t()**：那是模块的内容，后端已经按当时的语言翻好了。
+  // It knows no modules: section names are reported by each module at registration (the backend's `view.Sections`), and here it only
+  // draws. The names **do not go through t()**: that is module content, already translated by the backend into the current language.
   import type { Section } from "./api";
   import { t } from "./i18n";
 
@@ -23,59 +23,59 @@
   } = $props();
 
   /**
-   * 侧栏的行：几个分组标题 + 每一栏。
+   * A sidebar row: a few group headings + each section.
    *
-   * **不归组的那几栏排在最前面**（今天只有「配置」，也是最大最常用的那一个）：
-   * 分组标题的全部价值就是把它与下面那几类分开，而它自己在最上面时连标题都不用
-   * 画——位置本身就是那句话。
+   * **The ungrouped sections come first** (today only "config", which is also the largest and most used one):
+   * the whole value of a group heading is separating it from the categories below, and when it is at the very top not even a heading needs
+   * drawing - the position itself is that sentence.
    *
-   * 分组标题**写在贡献者声明的那一组第一次出现的地方**，组内保持后端的来源序
-   * （稳定：同一份装配跑两次，同一栏永远在同一个位置）。
+   * A group heading **is written where the contributor-declared group first appears**, and within a group the backend's source order is kept
+   * (stable: run the same assembly twice, and the same section is always in the same place).
    *
-   * 与 TabStrip 的差别（那边「≥2 个成员才画标题」）是刻意的：那边的组是内核从
-   * 档位名字**推**出来的（`claude-cheap` 归到 `claude`），一个人一族纯属噪音；
-   * 这边是模块**自己说**「我属于哪一类」——说了就该看得见。而且这里若也按人数
-   * 藏标题，一个只有一处声明的组会让那一栏**跳到最上面去**（它变成了「不归组」），
-   * 位置跟着人数变，那比多一行小字糟得多。
+   * The difference from TabStrip (there "draw the heading only with >=2 members") is deliberate: there the groups are **inferred** by the core from
+   * tier names (`claude-cheap` belongs to `claude`), and a group of one is pure noise;
+   * here the module **says** "which category I belong to" - and if it says so, it should be visible. And if headings were hidden by member count here too,
+   * a group with only one declaration would make that section **jump to the top** (it becomes "ungrouped"),
+   * and the position changing with the member count is much worse than one extra line of small text.
    */
   type Row = { kind: "head"; name: string } | { kind: "sec"; s: Section };
 
   /**
-   * 目录里的三档标题，以及它们的先后。
+   * The three headings in the directory, and their order.
    *
-   * 判据是**栏目自己声明的用途**（`Section.fields`，见内核 view.SectionInfo.Fields），
-   * 不是贡献者写的分组名——那是自由文本（`In("Clients")` / `In("数据面")`），两个
-   * 模块写不一样就分不到一起。所以显示的**字**由这里定（它要翻译、要能改措辞），
-   * 而**分到哪一档**由后端给的机器标记定。
+   * The criterion is **the purpose the section declares itself** (`Section.fields`, see the core view.SectionInfo.Fields),
+   * not the group name the contributor writes - that is free text (`In("Clients")` / `In("data plane")`), and two
+   * modules writing it differently will not be grouped together. So the **words** shown are decided here (they must be translated and rewordings must be possible),
+   * while **which bucket** it goes into is decided by the machine marker the backend gives.
    *
-   * 没声明用途的栏目（今天没有）排最后一档，不藏起来：一栏在目录里消失，比它出现在
-   * 一个不精确的标题底下糟得多。
+   * Sections that declare no purpose (none today) go in the last bucket, not hidden: a section disappearing from the directory is much worse
+   * than it appearing under an imprecise heading.
    */
   const ORDER = ["clients", "routes", "settings"] as const;
-  // 标题的字**每次渲染再查**（不是模块加载时查一次）：`t()` 读的语言住在
-  // i18n.ts 的模块级变量里，而它在快照回来之后才设——在顶层查一遍，中文界面下
-  // 这三个标题会永远是英文（实测：Clients 是英文，而它底下的 Claude Code 是中文）。
+  // The heading text is **looked up on every render** (not once at module load): the language `t()` reads lives in
+  // a module-level variable in i18n.ts, and it is only set after the snapshot returns - looking it up once at the top level would leave these
+  // three headings permanently in English in a Chinese UI (measured: Clients was English while the Claude Code under it was Chinese).
   const head = (f: string): string =>
     f === "clients" ? t("Clients") : f === "routes" ? t("Routes") : t("Settings");
 
   const rows = $derived.by<Row[]>(() => {
     const out: Row[] = [];
 
-    // 声明了落点的那一栏（首屏）**排在目录第一位**，而且不画分组标题。
+    // The section that declared a landing spot (the first screen) **sorts first in the directory**, and gets no group heading.
     //
-    // 为什么拿落点当判据、而不是给 Section 加一个 Order：落点本来就是模块自己声明
-    // 的那个「用户第一眼该看哪儿」（见 lib/view 的 Section.Default），而目录的第一
-    // 项说的也正是这件事——同一个问题的两个说法，用同一个事实答。加第二个字段就有
-    // 「落点在一处、排位在另一处，两处不一致」的余地。
+    // Why use landing spot as the criterion rather than adding an Order to Section: the landing spot is already what the module itself declares as
+    // "where the user should look first" (see Section.Default in lib/view), and the directory's first
+    // entry says exactly that too - two statements of the same question, answered with the same fact. Adding a second field leaves room for
+    // "landing spot in one place, rank in another, the two disagreeing".
     const landing = sections.find((s) => s.default);
     if (landing) out.push({ kind: "sec", s: landing });
 
-    // 每一档**聚在一起**：先按 ORDER 定档的先后，再把整档成员一次列完。
+    // Each bucket **clusters together**: first order the buckets by ORDER, then list all the members of a bucket at once.
     //
-    // 不能「边走边插标题」——那一版是那么写的，而它是错的：成员按来源序来，于是
-    // 一档的第二栏会被别档的标题拦在后面（实测：`gateway` 排在 `claudecode` 之后，
-    // 结果标题底下只有一半成员）。标题说的是「下面这几栏是一类」，底下就必须真的是
-    // 那一类。
+    // Cannot "insert headings as you go" - that version did that, and it was wrong: members come in source order, so
+    // a bucket's second section would be cut off behind another bucket's heading (measured: `gateway` sorts after `claudecode`,
+    // so the heading only had half the members under it). A heading says "the sections below are one category", so below it must really be
+    // that category.
     const byField = new Map<string, Section[]>();
     for (const s of sections) {
       if (s === landing) continue;
@@ -101,11 +101,11 @@
       <div class="group">{r.name}</div>
     {:else}
       {@const n = counts.get(r.s.source)}
-      <!-- 整节锁灰：这一节**每一张卡都锁着**（今天就是「这家客户端没装」）。
-           注意它只是**看起来**灰——仍然点得进去，因为详情照常要能看（用户的原话：
-           「详情界面不可操作而已，但是为了展示我们的功能，我建议还是允许查看的」）。
-           所以这里不给 disabled：那是「点不动」，而我们要的是「看了就知道动不了，
-           想动得先装上」。 -->
+      <!-- The whole section is locked gray: **every card in this section is locked** (today it is "this client is not installed").
+           Note that it only **looks** gray - it can still be clicked, because the details must still be viewable (the user's own words:
+           "the details screen just cannot be operated, but to show off our features, I suggest still allowing viewing").
+           So no disabled here: that means "cannot click", while what we want is "look and you know it cannot be operated,
+           and to operate it you must install it first". -->
       <button
         class="row"
         class:on={r.s.source === active}
@@ -158,13 +158,13 @@
     cursor: pointer;
   }
   .row:hover { background: var(--panel-2); }
-  /* 整节锁灰（见模板里那条注释）：灰是**陈述**，不是禁用手势——这一栏照样点得进去，
-     只是告诉你「里面那些东西这台机器上用不上」。所以降不透明度、不降交互。 */
+  /* The whole section locked gray (see the comment in the template): gray is a **statement**, not a disabled gesture - this section is still clickable,
+     it just tells you "the things inside are not usable on this machine". So lower the opacity, not the interaction. */
   .row.locked { opacity: 0.5; }
   .row.locked:hover { opacity: 0.75; }
-  /* 分组标题：比栏名小一号、疏一点，读作「下面这几栏是一类」。**不是按钮**——
-     点它没有意义（它代表的是一类，不是一栏），做成按钮只会多一个点不出东西的
-     目标。 */
+  /* Group heading: one size smaller than section names and more spaced out, read as "the sections below are one category". **Not a button** -
+     clicking it is meaningless (it represents a category, not a section), and making it a button only adds a
+     target that does nothing. */
   .group {
     margin: 10px 12px 3px;
     font-size: 11px;
@@ -172,7 +172,7 @@
     text-transform: uppercase;
     color: var(--dim);
   }
-  /* 当前那一节：一条左侧竖线 + 底色。不用整块反白——侧栏是常驻的，抢眼会疲劳。 */
+  /* The current section: a vertical line on the left + background tint. No full inverted block - the sidebar is permanent, and being loud all the time tires the eye. */
   .row.on {
     background: var(--panel-2);
     box-shadow: inset 2px 0 0 var(--accent);
@@ -188,8 +188,8 @@
     font-size: 11px;
     color: var(--dim);
   }
-  /* 有没保存的改动时，徽标换成**改动数**并着色：那是一个会丢东西的状态，
-     它得比「这张卡在这儿」显眼。 */
+  /* When there are unsaved changes, the badge switches to **the change count** and is colored: that is a state where things can be lost,
+     so it must stand out more than "this card is here". */
   .badge.dirty {
     color: var(--bg);
     background: var(--warn);
@@ -198,8 +198,8 @@
   }
   .pad { padding: 0 12px; }
 
-  /* 窄屏：竖栏收成顶上一条横带（见 app.css 的 .shell 媒体查询，那边把第二行
-     改成了 auto）。208px 的侧栏在 900px 以下会把 mapping-editor 挤到读不了。 */
+  /* Narrow screens: the vertical column folds into a horizontal band at the top (see the .shell media query in app.css, which turns the second row
+     into auto). A 208px sidebar below 900px would squeeze mapping-editor until it is unreadable. */
   @media (max-width: 900px) {
     .side {
       flex-direction: row;

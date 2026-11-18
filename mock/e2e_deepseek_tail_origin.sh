@@ -1,30 +1,30 @@
 #!/usr/bin/env bash
-# 零 token 端到端：DeepSeek 尾部形状修复的**出身判据**（第 4 手 messages 方言、
-# 第 5 手 Responses 方言）。
+# Zero-token end to end: the **origin rule** of the DeepSeek tail shape fix (move 4, messages dialect;
+# move 5, Responses dialect).
 #
-# 背景（2026-09-18 与 2026-09-22 两轮，打真实 smt-deepseek/deepseek-flash 逐格实测）：
-# 「裸尾」（messages 的最后一条 user 轮只有 tool_result；Responses 的 input[] 以
-# function_call_output 收尾）到底会不会被上游拒，**不只看形状**——还要看那条
-# tool call 是谁产的。聚合器（newgate 走的那家）记得自己发过的 id，续写那一轮靠
-# 这份记忆把推理补回去；不是我产的 id 它补不上，一路漏到 DeepSeek，才报那句
-# 「must be passed back」。完整推导见 core/docs/06-reasoning.md §1.1。
+# Background (two rounds, 2026-09-18 and 2026-09-22, measured cell by cell against real smt-deepseek/deepseek-flash):
+# whether a "bare tail" (the last user turn in messages has only tool_result; the Responses input[] ends with
+# function_call_output) is rejected by the upstream **does not depend on shape alone** - it also depends on who produced
+# that tool call. The aggregator (the one newgate goes through) remembers the ids it issued, and uses
+# that memory to put the reasoning back in the continuation round; for an id it did not produce it cannot, and the gap leaks all the way to DeepSeek, which then reports
+# "must be passed back". The full derivation is in core/docs/06-reasoning.md §1.1.
 #
-# 判据因此是**两维**（形状 + 出身），而这一层最容易静默错掉的就是第二维：
+# So the rule is **two-dimensional** (shape + origin), and the second dimension is the one most easily wrong silently at this layer:
 #
-#   A  **自产的那一族不能少认**。一轮里并行发几个 tool call，聚合器就按
-#      `call_00_`、`call_01_`、… 依次编号——只认 `call_00_` 会把「一轮发了两个
-#      工具」这种最常见的正常轮次判成外来，于是**健康链路也被塞一句话**
-#      （2026-09-21 全天 5060 次注入，约三分之一是这种）。
-#   B  **认不出的形态必须按外来处理**。漏补的后果不是报错而是**静默沿链转移**
-#      （客户端拿到下一家的 200，日志里看不出中间那家拒过）。
+#   A  **the self-produced family must not be under-recognized**. When several tool calls are issued in parallel in one round, the aggregator numbers them
+#      `call_00_`, `call_01_`, ... in order - recognizing only `call_00_` judges "two tools in one round",
+#      the most common normal round, as foreign, and so **even healthy chains get a sentence stuffed in**
+#      (5060 injections all day on 2026-09-21, about a third of them this kind).
+#   B  **an unrecognizable shape must be treated as foreign**. The consequence of a missed fix is not an error but **a silent shift down the chain**
+#      (the client gets the next vendor's 200, and the log shows no sign that the middle vendor rejected it).
 #
-# 假上游按路径复用内核的 `core/mock/fake_upstream.py`（不复制：它是逐字节复刻
-# 真实上游行为的产物，复制必然漂移，而漂移出来的是「绿的假测试」）。它**不模拟**
-# 聚合器那份「记不记得这个 id」的记忆，所以这条 e2e 断言的是**我们发出去的字节**
-# （`/__mock/requests`），而不是上游的 200/400——真正那条契约由
-# `mock/e2e_reasoning_affinity.sh` 那种打真实上游的脚本按需锁。
+# The fake upstream reuses the core's `core/mock/fake_upstream.py` by path (not copied: it is a byte-for-byte replica of
+# real upstream behavior, a copy inevitably drifts, and what drifts out is a "green fake test"). It **does not simulate**
+# the aggregator's memory of "does it remember this id", so this e2e asserts on **the bytes we send out**
+# (`/__mock/requests`), not the upstream's 200/400 - the real contract is locked on demand by
+# a script that hits the real upstream, like `mock/e2e_reasoning_affinity.sh`.
 #
-# 全部在临时沙箱里跑，不碰真实 ~/.config 与 ~/.codex。
+# Everything runs in a temporary sandbox, never touching the real ~/.config or ~/.codex.
 
 set -u
 
@@ -39,7 +39,7 @@ case "$(uname -m)" in
 esac
 BIN_SRC="${NEWGATE_E2E_BIN:-$ROOT/dist/newgate-$DIST_NAME-$(uname -s | tr 'A-Z' 'a-z')-$host_arch}"
 SANDBOX="${NEWGATE_E2E_SANDBOX:-$(mktemp -d /tmp/newgate-tailorigin.XXXXXX)}"
-# 端口与另外几条 e2e 错开：几条可以同时跑。
+# Ports are spaced away from the other e2e's: several can run at once.
 UP_PORT="${NEWGATE_E2E_UP_PORT:-18095}"
 PORT="${NEWGATE_E2E_TAILORIGIN_PORT:-18096}"
 BIN="$SANDBOX/bin/newgate"
@@ -47,14 +47,14 @@ BIN="$SANDBOX/bin/newgate"
 PASS=0; FAIL=0
 ok()   { echo "  ✓ $1"; PASS=$((PASS+1)); }
 bad()  { echo "  ✗ $1"; FAIL=$((FAIL+1)); }
-check(){ if [ "$2" = "$3" ]; then ok "$1"; else bad "$1 (期望 '$3'，实际 '$2')"; fi; }
-has()  { if command grep -qF "$2" "$3" 2>/dev/null; then ok "$1"; else bad "$1（$3 里找不到 $2）"; fi; }
-hasnt(){ if command grep -qF "$2" "$3" 2>/dev/null; then bad "$1（$3 里不该有 $2）"; else ok "$1"; fi; }
+check(){ if [ "$2" = "$3" ]; then ok "$1"; else bad "$1 (expected '$3', actual '$2')"; fi; }
+has()  { if command grep -qF "$2" "$3" 2>/dev/null; then ok "$1"; else bad "$1 ($3 does not contain $2)"; fi; }
+hasnt(){ if command grep -qF "$2" "$3" 2>/dev/null; then bad "$1 ($3 must not contain $2)"; else ok "$1"; fi; }
 
 export NEWGATE_HOME="$SANDBOX/ng"
 export NEWGATE_LANG=en
-# 沙箱要密闭：跑 e2e 的会话自己可能带着 newgate 注入的窗口声明（嵌套启动时父进程
-# env 会漏给子进程）。
+# The sandbox must be sealed: the session running e2e may itself carry newgate-injected window declarations (nested startup leaks the parent's
+# env to the child).
 unset CLAUDE_CODE_MAX_CONTEXT_TOKENS CLAUDE_CODE_AUTO_COMPACT_WINDOW
 unset LC_ALL LC_MESSAGES LANG LANGUAGE 2>/dev/null || true
 mkdir -p "$NEWGATE_HOME/mappings" "$(dirname "$BIN")"
@@ -63,23 +63,23 @@ cleanup() {
   [ -n "${UP_PID:-}" ] && kill "$UP_PID" 2>/dev/null
   [ -n "${SERVE_PID:-}" ] && kill "$SERVE_PID" 2>/dev/null
   if [ -n "${NEWGATE_E2E_KEEP:-}" ]; then
-    echo "沙箱保留（NEWGATE_E2E_KEEP）: $SANDBOX"
+    echo "sandbox kept (NEWGATE_E2E_KEEP): $SANDBOX"
   else
     rm -rf "$SANDBOX"
   fi
 }
 trap cleanup EXIT
 
-echo "沙箱: $SANDBOX"
-[ -x "$BIN_SRC" ] || { echo "找不到二进制 $BIN_SRC——先跑 build/build.sh"; exit 1; }
+echo "sandbox: $SANDBOX"
+[ -x "$BIN_SRC" ] || { echo "binary not found $BIN_SRC - run build/build.sh first"; exit 1; }
 [ -f "$CORE/mock/fake_upstream.py" ] || {
-  echo "找不到内核的假上游 $CORE/mock/fake_upstream.py"
-  echo "core/ 是个 submodule，先：git submodule update --init --recursive"
+  echo "cannot find the core's fake upstream $CORE/mock/fake_upstream.py"
+  echo "core/ is a submodule, first: git submodule update --init --recursive"
   exit 1
 }
 cp "$BIN_SRC" "$BIN"
 
-# ---- 假上游 ----
+# ---- fake upstream ----
 python3 "$CORE/mock/fake_upstream.py" --port "$UP_PORT" >"$SANDBOX/upstream.log" 2>&1 &
 UP_PID=$!
 for _ in $(seq 1 50); do
@@ -87,9 +87,9 @@ for _ in $(seq 1 50); do
   sleep 0.1
 done
 
-# ---- 配置 ----
-# provider 名里带 deepseek，DeepSeek 那个模型家族的 MatchTarget 才认（它看的是
-# 模型名 / provider 名 / base URL 任一处）。这是这一次请求会被认领的前提。
+# ---- config ----
+# The provider name contains deepseek, which is what the DeepSeek model family's MatchTarget recognizes (it looks at
+# any of model name / provider name / base URL). That is the premise for this request being claimed.
 cat > "$NEWGATE_HOME/providers.json" <<EOF
 {"providers":{"deepseek":{"protocol":"openai","base_url":"http://127.0.0.1:$UP_PORT/v1","api_key":"sk-demo"}}}
 EOF
@@ -107,16 +107,16 @@ for _ in $(seq 1 50); do
 done
 LOG="$NEWGATE_HOME/newgate.log"
 
-# POST <请求体文件> <输出文件> <路径> → HTTP 状态码。
-# agent 那一段不能省：`special.Request.Agent` 从那里来，少了它交叉插件不认领
-# （见 mock/e2e_codex_tools.sh 的同一处注释）。
+# POST <request body file> <output file> <path> -> HTTP status code.
+# The agent segment cannot be omitted: `special.Request.Agent` comes from there, and without it the cross plugin does not claim
+# (see the same comment in mock/e2e_codex_tools.sh).
 POST() {
   curl -sS -o "$2" -w '%{http_code}' -X POST \
     "http://127.0.0.1:$PORT/a/codex/p/ds$3" \
     -H 'Content-Type: application/json' --data-binary @"$1"
 }
 RESET() { curl -s -X POST "http://127.0.0.1:$UP_PORT/__mock/reset" >/dev/null; }
-# UPSAW <表达式> — 对上游收到的**最后一条**请求体求值（表达式里 body 就是它）。
+# UPSAW <expression> - evaluate against the **last** request body the upstream received (body is it inside the expression).
 UPSAW() {
   curl -s "http://127.0.0.1:$UP_PORT/__mock/requests" | python3 -c '
 import json, sys
@@ -125,17 +125,17 @@ body = d[-1]["body"] if d else {}
 print(eval(sys.argv[1], {"json": json}, {"body": body}))
 ' "$1"
 }
-# 注入了没有：最后一条消息/项里有没有那句 `continue`。
+# Whether it injected anything: is that `continue` in the last message/item.
 INJ_TAIL='json.dumps(body[end][textkey])'
 NOTE4="the trailing user turn holds only tool_result"
 NOTE5="the Responses input[] ends on a function_call_output"
 
-# 一次请求之后等日志落盘：note 与响应是同一条线程写的，但日志是追加写，
-# 慢一步读会读到上一发（其它 e2e 也这么处理）。
+# After a request, wait for the log to land on disk: note and response are written on the same thread, but the log is append-only,
+# and reading a step too early reads the previous request (other e2e's handle it the same way).
 settle() { sleep 1; }
 
 echo
-echo "== 1. Responses：外来 call_id 收尾 → 追加一条普通 user 消息（第 5 手动手） =="
+echo "== 1. Responses: foreign call_id at the tail -> append a plain user message (move 5 acts) =="
 cat > "$SANDBOX/req-resp-foreign.json" <<'JSON'
 {"model":"normal","stream":false,"input":[
  {"type":"message","role":"user","content":[{"type":"input_text","text":"go"}]},
@@ -143,18 +143,18 @@ cat > "$SANDBOX/req-resp-foreign.json" <<'JSON'
  {"type":"function_call_output","call_id":"call_faedac561213487ebeea7731","output":"x"}]}
 JSON
 RESET
-check "照常 200（假上游不模拟那份记忆，所以状态码不在这里断言）" \
+check "200 as usual (the fake upstream does not simulate that memory, so the status code is not asserted here)" \
   "$(POST "$SANDBOX/req-resp-foreign.json" "$SANDBOX/out1.json" /v1/responses)" "200"
 settle
-check "上游收到的 input[] 多了一项，正文逐字是 continue" \
+check "the input[] the upstream received has one more item, its body word for word continue" \
   "$(UPSAW 'json.dumps([i for i in body["input"] if i.get("type")=="message"][-1])')" \
   '{"type": "message", "role": "user", "content": [{"type": "input_text", "text": "continue"}]}'
-check "多出来的那一项在**末尾**（判据看的就是最后一项）" \
+check "the extra item is **at the end** (the rule looks at the last item)" \
   "$(UPSAW 'body["input"][-1]["content"][0]["text"]')" "continue"
-has "日志里报了第 5 手动手" "$NOTE5" "$LOG"
+has "the log reported move 5 acting" "$NOTE5" "$LOG"
 
 echo
-echo "== 2. Responses：全自产（call_00_ + call_01_，一轮两个工具）→ 一个字节都不动 =="
+echo "== 2. Responses: all self-produced (call_00_ + call_01_, two tools in one round) -> not a byte is touched =="
 cat > "$SANDBOX/req-resp-self.json" <<'JSON'
 {"model":"normal","stream":false,"input":[
  {"type":"message","role":"user","content":[{"type":"input_text","text":"go"}]},
@@ -166,28 +166,28 @@ JSON
 RESET
 POST "$SANDBOX/req-resp-self.json" "$SANDBOX/out2.json" /v1/responses >/dev/null
 settle
-check "上游收到的 input[] 一项不多一项不少（5 项，原样）" \
+check "the input[] the upstream received has neither more nor fewer items (5 items, as is)" \
   "$(UPSAW 'len(body["input"])')" "5"
-# 比 input[] 而不是整个 body：model 那一段被路由改写过（normal → mock-normal），
-# 那是**路由**的事，不是这一手的事。
-check "发出去的 input[] 与客户端发的逐字节相同" \
+# Compare input[] rather than the whole body: the model segment was rewritten by routing (normal -> mock-normal),
+# That is a **routing** matter, not this move's.
+check "the input[] sent out is byte-for-byte identical to what the client sent" \
   "$(UPSAW 'json.dumps(body["input"], sort_keys=True, ensure_ascii=False)')" \
   "$(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))["input"], sort_keys=True, ensure_ascii=False))' "$SANDBOX/req-resp-self.json")"
 NOTE_COUNT_BEFORE="$(command grep -cF "$NOTE5" "$LOG" 2>/dev/null || echo 0)"
 
 echo
-echo "== 3. Responses：认不出的形态（序号只有一位）→ 按外来处理，照旧补 =="
+echo "== 3. Responses: unrecognizable shape (the sequence number has one digit) -> treated as foreign, backfilled as before =="
 sed 's/call_00_aaa111/call_0_aaa111/g' "$SANDBOX/req-resp-self.json" > "$SANDBOX/req-resp-odd.json"
 RESET
 POST "$SANDBOX/req-resp-odd.json" "$SANDBOX/out3.json" /v1/responses >/dev/null
 settle
-check "上游收到的 input[] 变成 6 项（多出那条 continue）" \
+check "the input[] the upstream received became 6 items (the continue was added)" \
   "$(UPSAW 'len(body["input"])')" "6"
 NOTE_COUNT_AFTER="$(command grep -cF "$NOTE5" "$LOG" 2>/dev/null || echo 0)"
-check "日志里第 5 手的次数 +1" "$((NOTE_COUNT_AFTER - NOTE_COUNT_BEFORE))" "1"
+check "move 5 count in the log +1" "$((NOTE_COUNT_AFTER - NOTE_COUNT_BEFORE))" "1"
 
 echo
-echo "== 4. messages：裸 tool_result 尾 + 全自产 → **不注入**（健康链路的回归点） =="
+echo "== 4. messages: bare tool_result tail + all self-produced -> **no injection** (the healthy-chain regression point) =="
 cat > "$SANDBOX/req-msg-self.json" <<'JSON'
 {"model":"normal","stream":false,"messages":[
  {"role":"user","content":[{"type":"text","text":"go"}]},
@@ -199,13 +199,13 @@ JSON
 RESET
 POST "$SANDBOX/req-msg-self.json" "$SANDBOX/out4.json" /v1/messages >/dev/null
 settle
-check "上游收到的尾部那一轮还是两个 tool_result，没有多出 text 块" \
+check "the tail turn the upstream received still has two tool_results, no extra text block" \
   "$(UPSAW 'json.dumps([b.get("type") for b in body["messages"][-1]["content"]])')" \
   '["tool_result", "tool_result"]'
-hasnt "日志里没有第 4 手动手的痕迹" "$NOTE4" "$LOG"
+hasnt "the log has no trace of move 4 acting" "$NOTE4" "$LOG"
 
 echo
-echo "== 5. messages：裸尾 + 外来 id → 注入，正文逐字 continue =="
+echo "== 5. messages: bare tail + foreign id -> inject, body word for word continue =="
 cat > "$SANDBOX/req-msg-foreign.json" <<'JSON'
 {"model":"normal","stream":false,"messages":[
  {"role":"user","content":[{"type":"text","text":"go"}]},
@@ -215,29 +215,29 @@ JSON
 RESET
 POST "$SANDBOX/req-msg-foreign.json" "$SANDBOX/out5.json" /v1/messages >/dev/null
 settle
-check "尾部那一轮变成 tool_result + text" \
+check "the tail turn became tool_result + text" \
   "$(UPSAW 'json.dumps([b.get("type") for b in body["messages"][-1]["content"]])')" \
   '["tool_result", "text"]'
-check "补进去的那句话逐字是 continue（措辞最小、不是长句）" \
+check "the sentence appended is word for word continue (minimal wording, not a long sentence)" \
   "$(UPSAW 'body["messages"][-1]["content"][-1]["text"]')" "continue"
-has "日志里报了第 4 手动手" "$NOTE4" "$LOG"
+has "the log reported move 4 acting" "$NOTE4" "$LOG"
 
 echo
-echo "== 6. 开关点：deepseek.tail-shape-responses 关掉之后第 5 手停手 =="
+echo "== 6. switch point: with deepseek.tail-shape-responses off, move 5 stops acting =="
 "$BIN" plugin deepseek.tail-shape-responses off 5m >"$SANDBOX/off.log" 2>&1
-sleep 1.5   # 等一次配置重载（开关与 providers.json 走同一条路）
+sleep 1.5   # wait for one config reload (the switch and providers.json go the same way)
 RESET
 POST "$SANDBOX/req-resp-foreign.json" "$SANDBOX/out6.json" /v1/responses >/dev/null
 settle
-check "上游收到的 input[] 一项不多（3 项，停手了）" \
+check "the upstream received neither more nor fewer input[] items (3 items, it stopped acting)" \
   "$(UPSAW 'len(body["input"])')" "3"
 "$BIN" plugin deepseek.tail-shape-responses on >"$SANDBOX/on.log" 2>&1
 sleep 1.5
 RESET
 POST "$SANDBOX/req-resp-foreign.json" "$SANDBOX/out7.json" /v1/responses >/dev/null
 settle
-check "打开之后又补上了（4 项）" "$(UPSAW 'len(body["input"])')" "4"
+check "turned back on, it appends again (4 items)" "$(UPSAW 'len(body["input"])')" "4"
 
 echo
-echo "结果: $PASS 通过, $FAIL 失败"
+echo "result: $PASS passed, $FAIL failed"
 [ "$FAIL" = "0" ]

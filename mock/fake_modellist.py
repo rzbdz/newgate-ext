@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""假上游：只实现「列模型」这一条，给 `mock/e2e_modellist.sh` 用。
+"""Fake upstream: implements only "list models", for `mock/e2e_modellist.sh`.
 
-为什么不复用 `core/mock/fake_upstream.py`：那一位是**逐字节复刻真实上游行为**
-的产物（转发、推理、尾部形状），它的 `/v1/models` 只是一个空列表桩。这里要验的
-是模型清单的解析与分组，需要一份**有内容**的回答；把测试夹具塞进核心那份假上游
-会改变别的端到端的输入。两份东西的目的不同，所以分开。
+Why not reuse `core/mock/fake_upstream.py`: that one is the product of a **byte-for-byte replica of real upstream behavior**
+(forwarding, reasoning, tail shape), and its `/v1/models` is just an empty-list stub. What is verified here
+is model list parsing and grouping, which needs an answer **with content**; stuffing test fixtures into the core fake upstream
+would change the inputs of other end-to-end runs. The two things have different purposes, so they are kept apart.
 
-路由：
-  GET /v1/models   有清单（OpenAI 形状，含 owned_by 分组）
-  GET /models      同上（DeepSeek 那种 base 不带 /v1 的写法）
-  其它              404（用来演「这家没有列表接口」）
+Routing:
+  GET /v1/models   a list (OpenAI shape, with owned_by grouping)
+  GET /models      the same (DeepSeek's style of base without /v1)
+  everything else  404 (used to play "this vendor has no list endpoint")
 """
 import argparse
 import json

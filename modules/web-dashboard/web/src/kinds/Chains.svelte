@@ -1,19 +1,19 @@
 <script lang="ts">
-  // 一屏摊开的候选链（形状见内核 lib/view 的 Chains）。
+  // A screen of laid-out candidate chains (shape in the core lib/view's Chains).
   //
-  // 与 Table 的分工写在那边：表是「一行一个事实」，读的人只看；这里每一行**带着
-  // 去处**（「这一档现在走这条链」），所以它比表多两样东西——链头单独占一格（用户
-  // 唯一会问的问题是「为什么不是我想的那个」，眼睛就落在那里），以及行上的按钮。
+  // The division of labor with Table is written there: a table is "one fact per row", and readers only look; here each row **carries a destination**
+  // ("this tier goes through this chain now"), so it has two things a table does not - the chain head takes a cell of its own (the user's
+  // only question is "why is it not the one I thought", and the eye lands there), and buttons on rows.
   //
-  // 三个约定，都是前端这边唯一的执行者：
+  // Three conventions, all enforced only by the frontend:
   //
-  //  1. **链头读 Head，不是 Steps[0]**。空链在前端自己去取第一个的话，「空链怎么
-  //     办」这条判断就抄进了前端，而它本来就是后端算出来的结论（见 ChainRow.Head）。
-  //  2. **一行 = 一档，顺序由贡献者给**。这里不排序、不分组、不认识档位名——
-  //     `heavy`/`normal` 只是字符串，与模块名一样属于「后端翻好了的内容」。
-  //  3. **tone 是语义，不是颜色**（与 Table 同一条）。认不出来的词一律当没给。
+  //  1. **The chain head reads Head, not Steps[0]**. If the frontend picked the first one itself for an empty chain, "what to do with an empty
+  //     chain" would be copied into the frontend, while it is a conclusion the backend already computed (see ChainRow.Head).
+  //  2. **One row = one tier, ordered as the contributor gives it**. Nothing is sorted or grouped here, and no tier name is recognized -
+  //     `heavy`/`normal` are just strings, and like module names they are "content the backend already translated".
+  //  3. **tone is semantics, not color** (same as Table). Any unrecognized word is treated as not given.
   type Step = { provider: string; model: string; profile?: string; note?: string; tone?: string };
-  /** 行上的一个按钮。label 是贡献者写好的那句人话（后端已经翻过），界面不译。 */
+  /** A button on a row. label is the human sentence the contributor wrote (already translated by the backend); the UI does not translate it. */
   type Act = { id: string; label: string };
   type Role = {
     tier: string;
@@ -36,16 +36,16 @@
   }: {
     data: Data;
     /**
-     * 跑这一行上的一个按钮（见 api.ts 的 runRowAction）。
+     * Run a button on this row (see runRowAction in api.ts).
      *
-     * **刻意走 `onRowAction` 这条路，而不是 `Concept.Actions`**：动作跑完之后界面
-     * 只做一件事——重读快照。卡上的动作（`RunConceptAction`）是给「把这一份设为
-     * 默认」那种**改完要换一张卡**的事情用的（档案卡自己会消失）；而这一行改的是
-     * **同一张卡里的一行**，卡还在。两条路都丢掉了「跑一下」这个动作本身，只是回头
-     * 看的对象不同——这正是它们该分开的地方。
+     * **Deliberately goes through `onRowAction`, not `Concept.Actions`**: after an action runs, the UI
+     * does only one thing - re-read the snapshot. Card actions (`RunConceptAction`) are for things like "make this one the
+     * default", which **need a different card after they finish** (the profile card disappears itself); while this row changes
+     * **a row inside the same card**, and the card is still there. Both paths lose the act of "running it" itself, and only the object
+     * they look back at differs - which is exactly where they should be kept apart.
      *
-     * 行 ID 由下面 rowID 给出（`profile + "/" + tier`，与内核 ChainRow.ID 的构造
-     * 一致——那边也这么拼，`RunRowAction` 拿到的就是这个串）。
+     * The row ID is given by rowID below (`profile + "/" + tier`, the same construction as the core ChainRow.ID
+     * - that side builds it the same way, and what `RunRowAction` gets is this string).
      */
     onAction?: (row: string, a: RowAction) => void;
   } = $props();
@@ -53,21 +53,21 @@
   const cards = $derived(data?.cards ?? []);
 
   /**
-   * 一行的身份：**这一行属于哪一份 profile 的哪一档**。
+   * A row's identity: **which profile's which tier this row is**.
    *
-   * 两边都要，因为「把 heavy 换成 zhipu/glm-4」这件事在 `demo.kv` 与 `alt.kv` 里
-   * 是两件不同的事——只带档位名的话，后端没法知道该动哪一份文件（它只能去猜
-   * 「当前生效的那一份」，而这一屏上明明每份都列着）。
+   * Both are needed, because "switch heavy to zhipu/glm-4" is two different things in `demo.kv` and `alt.kv`
+   * - with only the tier name, the backend cannot know which file to touch (it could only guess
+   * "the one currently in effect", while this screen clearly lists every one).
    *
-   * 拼法**与后端一模一样**（`profile + "/" + tier`，见内核 ChainRow.ID 那段：
-   * 行 ID 是机器标记，两边各拼一次就必须拼成同一个串）。这里不自己另立一种分隔符
-   * ——后端拿这个串去 `RunRowAction` 里对号，对不上的症状是「按钮点了没反应」。
+   * The construction is **exactly the same as the backend's** (`profile + "/" + tier`, see the core ChainRow.ID part:
+   * a row ID is a machine marker, and both sides must build the same string). Do not establish a different separator here
+   * - the backend uses this string to match in `RunRowAction`, and a mismatch shows as "clicking the button does nothing".
    */
   function rowID(card: Card, role: Role): string {
     return `${card.profile}/${role.tier}`;
   }
 
-  /** 这一站来自哪一份 profile——**与卡片同名时不重复写**（那是绝大多数情况）。 */
+  /** Which profile this stop comes from - **not repeated when it is the same as the card name** (which is the vast majority). */
   function foreign(card: Card, s: Step): boolean {
     return !!s.profile && s.profile !== card.profile;
   }
@@ -79,9 +79,9 @@
 
 {#each cards as card (card.profile)}
   <div class="chain">
-    <!-- 卡头：这份 profile 的名字 + 「它此刻是不是生效的那一份」。
-         后者与 Concept.Note 那条「当前配置」是同一个意思、同一份语气（绿），
-         因为用户在这一屏上要找的第一件事就是「我现在到底在走谁」。 -->
+    <!-- Card header: this profile's name + "is it the one in effect right now".
+         The latter means the same thing and uses the same tone (green) as Concept.Note's "current config",
+         because the first thing the user looks for on this screen is "who am I actually going through right now". -->
     <div class="row head">
       <span class="profile">{card.profile}</span>
       {#if card.default}
@@ -97,8 +97,8 @@
         <li>
           <div class="row tier">
             <span class="tier-name" title={role.tier}>{role.label ?? role.tier}</span>
-            <!-- 链头单独一格（见上面第 1 条）。没有任何候选时它是一句陈述，
-                 不是一个空着的格子——空着的话读的人会以为这条链没加载出来。 -->
+            <!-- The chain head gets its own cell (see point 1 above). With no candidates at all it is a statement,
+                 not an empty cell - empty would make the reader think the chain failed to load. -->
             {#if role.head}
               <span class="head-name {toneClass(role.tone)}">{role.head}</span>
             {:else}
@@ -106,7 +106,7 @@
             {/if}
             <span class="spacer"></span>
             {#each role.actions ?? [] as a (a.id)}
-              <!-- 字由贡献者给（后端翻好），所以这里不套 t()。 -->
+              <!-- The text is given by the contributor (translated by the backend), so no t() here. -->
               <button
                 class="tiny ghost"
                 data-action={a.id}
@@ -118,23 +118,23 @@
             {/each}
           </div>
 
-          <!-- 链的展开：链头之内还有谁。**只有一站时不画**——那一行会与上面那格
-               一模一样，多一层缩进只是把同一个名字说两遍。 -->
+          <!-- Chain expansion: who else is within the chain head. **Not drawn when there is only one stop** - that row would be
+               identical to the cell above, and one more level of indentation just says the same name twice. -->
           {#if (role.steps?.length ?? 0) > 1}
             <ol class="steps">
               {#each role.steps ?? [] as s, i (i)}
                 <li class={toneClass(s.tone)}>
                   <span class="idx">{i + 1}</span>
-                  <!-- provider 与 model 分开排版（中间那根斜杠是分隔符，不是数据
-                       的一部分）：一行 `ark/deepseek-v3` 读起来像一个名字，而它们
-                       是两个可以分别去查的东西。 -->
+                  <!-- provider and model are laid out separately (the slash between them is a separator, not part of
+                       the data): one line `ark/deepseek-v3` reads like one name, while they are
+                       two things that can be looked up separately. -->
                   <span class="binding">
                     <span class="prov">{s.provider}</span><span class="slash">/</span
                     ><span class="model">{s.model}</span>
                   </span>
                   {#if foreign(card, s)}
-                    <!-- 跨 profile 的那几站**必须写出处**：不写的话用户会去自己
-                         正看着的这份文件里找一个不存在的候选。 -->
+                    <!-- The stops from another profile **must state their origin**: otherwise the user looks for a candidate that does not exist
+                         in the file they are viewing. -->
                     <span class="pill from">{s.profile}</span>
                   {/if}
                   {#if s.note}
@@ -145,9 +145,9 @@
             </ol>
           {/if}
 
-          <!-- 链尾那句总结（今天就是「跳过 N 个候选」）。它在**行的下面**而不是
-               行内，因为它说的是被跳过的那些候选——那些一步都不在链上，行内没有
-               它们的位置。 -->
+          <!-- The summary sentence at the chain tail (today it is "N candidates skipped"). It goes **below the row** rather than
+               inline, because it is about the candidates that were skipped - those are not on the chain at all, and inline has no
+               place for them. -->
           {#if role.note}
             <p class="dim skip">{role.note}</p>
           {/if}
@@ -158,14 +158,14 @@
 {/each}
 
 {#if !cards.length}
-  <!-- 空与「坏了」要长得不一样：这里说的是「这台机器上一份 profile 都没有」，
-       而读不出来（文件坏了之类）由卡片自己的 error 分支说。 -->
+  <!-- Empty and "broken" must look different: here it says "there is not one profile on this machine",
+       while an unreadable one (a corrupt file and the like) is said by the card's own error branch. -->
   <p class="dim">{t("no profiles")}</p>
 {/if}
 
 <style>
-  /* 一叠卡之间用一条线分开，不用边框：这一整块本来就是**一张卡片的内容**
-     （外面那层 .card 已经有了边框），里面再画一圈框就是框套框。 */
+  /* Separate a stack of cards with a line rather than a border: this whole block is **the content of one card**
+     (the outer .card already has a border), and drawing another frame inside is a frame within a frame. */
   .chain + .chain {
     margin-top: 14px;
     padding-top: 12px;
@@ -178,15 +178,15 @@
   .roles { list-style: none; margin: 0; padding: 0; }
   .roles > li + li { margin-top: 7px; }
   .tier { align-items: baseline; gap: 8px; }
-  /* 档位名占固定宽度：不固定的话每行的箭头会参差不齐，而这几行的价值恰恰在于
-     **竖着比**（heavy 走谁、normal 走谁）。 */
+  /* The tier name takes a fixed width: unfixed, each row's arrow would be ragged, and the value of these rows is precisely
+     **vertical comparison** (who heavy goes through, who normal goes through). */
   .tier-name { color: var(--dim); font-size: 12px; min-width: 62px; }
   .head-name { font-family: var(--mono); font-size: 12px; }
 
   .steps {
     list-style: none;
     margin: 4px 0 0;
-    padding: 0 0 0 62px; /* 与上面的链头对齐：缩进量 = tier-name 的宽度 */
+    padding: 0 0 0 62px; /* align with the chain head above: the indent = the width of tier-name */
   }
   .steps > li {
     display: flex;
@@ -207,7 +207,7 @@
   .why { font-size: 11px; }
   .skip { font-size: 11px; margin: 3px 0 0 62px; }
 
-  /* 状态说明那套语气（与 ConceptCard 的 note 同一份）：**只换颜色，不换形状**。 */
+  /* The tone of the status note (same set as ConceptCard's note): **change only the color, not the shape**. */
   .note-ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
   .t-ok { color: var(--ok); }
   .t-warn { color: var(--warn); }

@@ -1,10 +1,10 @@
 <script lang="ts">
-  // 计数器（只读）。分组与每一行的「这个数意味着什么」都是**贡献者给的**
-  // （网关那边就是 metrics.Group / metrics.Hint，与 `newgate metrics` 同一份），
-  // 所以两个界面上看到的东西不会各说各话。
+  // Counters (read-only). The groups and "what does this number mean" for each row are **given by the contributor**
+  // (on the gateway side it is metrics.Group / metrics.Hint, the same as `newgate metrics`),
+  // so what is seen on the two UIs does not disagree.
   //
-  // 条形长度按组内最大值归一：跨组比绝对数没有意义（不同组的量级差几个数量级），
-  // 组内一眼看出谁在涨才是要看的。
+  // Bar length is normalized to the max within the group: comparing absolute numbers across groups is meaningless (different groups differ by orders of magnitude),
+  // and seeing at a glance who is growing within a group is what matters.
   type Entry = { name: string; value: number; hint?: string };
   type Group = { id: string; label: string; counters: Entry[] };
   type Data = { groups: Group[]; total: number };

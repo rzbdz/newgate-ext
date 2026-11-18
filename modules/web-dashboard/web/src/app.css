@@ -1,26 +1,26 @@
-/* 设计系统的全部：一层底色、一层卡片、一条分隔线、一个强调色。不引 UI 框架——
-   这个界面是给工程师看的，密度和稳定比动效重要（同一份配置看两次，位置要一样）。
+/* Everything in the design system: one background layer, one card layer, one divider, one accent color. No UI framework -
+   this UI is for engineers, and density and stability matter more than motion (view the same config twice, and the positions must match).
 
-   # 出厂这一套是**黑白**
+   # The factory set is **black and white**
 
-   用户挑的是「跟随系统」，而那个选择的语义是「不要给我指定一套」——所以出厂这
-   一套必须是最中性的那一套：灰阶不带任何色相（H 全是 0），强调色就是前景色本身
-   （深色下近白、浅色下近黑）。它不与任何一套皮肤争口味。
+   The user picks "follow the system", and the meaning of that choice is "do not pin a theme on me" - so the factory
+   set must be the most neutral one: a grayscale with no hue at all (H is all 0), and the accent is the foreground color itself
+   (near white in dark, near black in light). It competes with no theme over taste.
 
-   语义色（--ok / --warn / --danger）是唯一保留色相的三格，而这是有意的：一个灰掉
-   的「警告」读不出意思来。
+   The semantic colors (--ok / --warn / --danger) are the only three cells that keep a hue, and that is deliberate: a grayed-out
+   "warning" cannot be read as anything.
 
-   # 暖色那一套去哪了
+   # Where did the warm one go
 
-   它成了 `theme-anthropic`（modules/theme-anthropic）——那套暖米 + 陶土的配色本来
-   就是 Anthropic 的品牌语气，而不是这个界面的出厂样子。2026-09-29 按用户的话搬过去
-   （原话：「跟随系统这个主题才是 anthropic 主题吧，跟随系统默认应该是黑白主题」）。
+   It became `theme-anthropic` (modules/theme-anthropic) - that warm beige + terracotta palette was always
+   Anthropic's brand voice, not this UI's factory look. On 2026-09-29 it moved over per the user's words
+   (verbatim: "the follow-system theme is the anthropic one, follow-system should default to a black and white theme").
 
-   深浅两套不是同一组灰的两次曝光：浅色那套的 --accent 要压得更深才在白底上读得清，
-   照抄一个值会让其中一边的对比度掉下来。 */
-/* 出厂这套深色是**近黑**而不是中灰（2026-09-30 用户要求「黑就黑一点」）。
-   层级靠 4% 一档的亮度差撑着——再压深一档，卡片与底色的边界就看不见了，
-   所以 panel/panel-2 与 --bg 的差反而比改之前更明显（11%→8% 那一版几乎糊在一起）。 */
+   The light and dark sets are not the same set of grays exposed twice: the light set's --accent has to be pressed darker to read well on white,
+   and copying one value would drop the contrast on one side. */
+/* The factory dark is **near black** rather than mid gray (on 2026-09-30 the user asked for "if it is black, make it blacker").
+   The hierarchy rests on 4%-per-step brightness differences - press it one more step and the boundary between cards and background disappears,
+   so the gap between panel/panel-2 and --bg is actually more visible than before the change (the 11%→8% version almost blended together). */
 :root {
   --bg: hsl(0 0% 4%);
   --panel: hsl(0 0% 8%);
@@ -33,18 +33,18 @@
   --warn: hsl(38 78% 58%);
   --danger: hsl(0 58% 62%);
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  /* 两级圆角（cc-switch 同款）：卡片 12px、小件 8px。只有一套的话，要么卡片
-     太方（8px 在大块面上几乎看不出圆），要么按钮太圆（12px 在 26px 高的按钮上
-     会像个胶囊）。 */
+  /* Two corner radii (same as cc-switch): cards 12px, small widgets 8px. With only one set, either the cards
+     are too square (8px is barely visible as rounding on a large surface), or the buttons are too round (12px on a 26px-tall button
+     looks like a pill). */
   --radius: 12px;
   --radius-sm: 8px;
 }
-/* 出厂那套浅色：**只在没有选皮肤时**生效（`:root:not([data-theme])`）。
-   少了那个 :not，选了皮肤也白选——这一段的 `:root` 与皮肤那段的
-   `:root[data-theme="x"]` 具体度不同（后者高），本该是皮肤赢；但中间还夹着
-   `@media`，而媒体查询本身**不加具体度**，所以两个规则撞在同一个元素上时，
-   判的是选择器本身——带上 :not 才是「没选皮肤时才走这里」这句话的准确写法。
-   见 src/theme.ts 的文件头。 */
+/* The factory light set: **only takes effect when no theme is selected** (`:root:not([data-theme])`).
+   Without that :not, selecting a theme would be pointless - this block's `:root` and the theme block's
+   `:root[data-theme="x"]` have different specificity (the latter is higher), and the theme ought to win; but there is an
+   `@media` in between, and a media query itself **adds no specificity**, so when the two rules collide on the same element
+   the decision is by the selectors themselves - with :not it is the accurate way to write "only come here when no theme is selected".
+   See the file header of src/theme.ts. */
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) {
     --bg: hsl(0 0% 100%);
@@ -83,8 +83,8 @@ button:disabled { opacity: 0.45; cursor: default; }
 button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 button.ghost { background: transparent; }
 button.tiny { padding: 1px 7px; font-size: 12px; border-radius: 6px; }
-/* 顶栏上那两颗只有记号没有字的按钮（设置 / 主页）。形状与 ThemePicker 那颗一致——
-   它们并排站着，高矮宽窄不一样会很难看。 */
+/* The two icon-only buttons in the top bar (settings / home). Same shape as the ThemePicker one -
+   they stand side by side, and different heights or widths would look bad. */
 button.icon {
   display: flex;
   align-items: center;
@@ -107,14 +107,14 @@ button.icon svg {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-/* 齿轮那只画得密：同一根 1.3 的笔画在它身上显得比别处重，压细一点才与顶栏其余
-   图标同一个分量。 */
+/* The gear is drawn dense: the same 1.3 stroke looks heavier on it than elsewhere; thinning it keeps it at the same
+   visual weight as the other top-bar icons. */
 button.icon svg.gear { width: 16px; height: 16px; stroke-width: 1.1; }
-/* 带语气的动作（见 api.ts 的 tone）：它不是「主按钮」（它不推进什么），而是**一个
-   亮着的状态**——底色淡、边框与字用语义色。用在 `auto fallback` 那颗上：它的名字
-   固定，状态由这里说（绿=开着，红=关着）。
-   三种语气都画，不是只画「坏」那一种：一颗状态按钮在两种状态下都该看得出是哪一种，
-   只标异常的话，看的人得先知道「不标 = 正常」，而那正是他要问的问题。 */
+/* An action with tone (see tone in api.ts): it is not a "primary button" (it does not advance anything), but **a
+   state that is lit up** - faint background, semantic color for border and text. Used on the `auto fallback` one: its name
+   is fixed, and the state is said here (green = on, red = off).
+   All three tones are drawn, not only the "bad" one: a status button should make clear which of two states it is in,
+   and if only the abnormal one is marked, the viewer first has to know "unmarked = normal", which is exactly what they are asking about. */
 button.tiny[data-tone] {
   border-color: color-mix(in srgb, currentColor 50%, var(--line));
   background: color-mix(in srgb, currentColor 12%, transparent);
@@ -137,8 +137,8 @@ input[type="checkbox"] { accent-color: var(--accent); }
 
 a { color: var(--accent); }
 
-/* 卡片：一张卡片 = 一个概念。同一份装配跑两次，卡片的顺序必须一样（后端按
-   Source, ID 排序），所以这里不做任何重排。 */
+/* Card: one card = one concept. Run the same assembly twice, and the card order must be the same (the backend sorts by
+   Source, ID), so nothing is reordered here. */
 .card {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -157,18 +157,18 @@ a { color: var(--accent); }
 .card .meta { color: var(--dim); font-size: 11px; font-family: var(--mono); }
 .card .body { padding: 12px 13px; }
 .card.dirty > header { box-shadow: inset 3px 0 0 var(--accent); }
-/* 锁灰：这张卡此刻没有意义（见 lib/view 的 Concept.Locked，今天唯一的用处是
-   「这家客户端没装在这台机器上」）。整张降饱和 + 降不透明度，让它在版面上一眼看
-   得出「这里现在动不了」；**但仍然画出来**——藏掉的话用户会以为那个功能不存在，
-   而真相是「它在，只是这台机器上用不上」。
-   判据挂在 class 上而不是「禁掉里面每个控件」：后者每个渲染器都要记得禁，漏一个
-   就出现一个能点但点了没用的控件。 */
+/* Locked gray: this card is meaningless right now (see Concept.Locked in lib/view; today its only use is
+   "this client is not installed on this machine"). Desaturate and lower opacity for the whole card, so it is obvious at a glance in the layout
+   that "this cannot be operated right now"; **but still draw it** - hiding it would make the user think the feature does not exist,
+   when the truth is "it is there, just not usable on this machine".
+   The criterion hangs on a class rather than "disable every control inside": the latter requires every renderer to remember to disable,
+   and missing one leaves a control you can click but that does nothing. */
 .card.locked { opacity: 0.55; filter: grayscale(1); }
 .card.locked > header { background: color-mix(in srgb, var(--line) 30%, transparent); }
 .locked-pill { border: 1px solid var(--line); text-transform: uppercase; letter-spacing: 0.5px; }
-/* 锁死那张横幅：一条说清「为什么动不了」和「怎么让它能动」。
-   放在卡片顶部而不是悬浮提示——理由是一句话，鼠标不悬上去也该看得见
-   （而 hover 提示在触摸屏上根本不存在）。 */
+/* The locked banner: one line explaining "why it cannot be operated" and "how to make it operable".
+   Put at the top of the card rather than in a hover tip - the reason is one sentence, and it should be visible without hovering
+   (and hover tips do not exist on touch screens at all). */
 .card.locked > .locked-bar {
   padding: 8px 13px;
   font-size: 12px;
@@ -177,11 +177,11 @@ a { color: var(--accent); }
   color: var(--warn);
 }
 
-/* 只有 log 这一种 Kind 要**占满可用高度**。
-   理由是日志没有「该看多少行」的自然长度：每一行都是等价的，按内容给高度等于让
-   窗口上碰巧空出来的那块地决定你看见几行——实测 1440×900 里日志只吃到 340px，
-   下面 500 多 px 全是空白，而看日志的人要的恰恰是「尽量多几行」。
-   别的 Kind 都是「有几条画几条」、长了自己滚，那些照旧。 */
+/* Only the log Kind should **fill the available height**.
+   The reason is that a log has no natural length of "how many lines to show": every line is equivalent, and sizing by content lets
+   whatever space happens to be free in the window decide how many lines you see - measured, in 1440x900 the log only got 340px,
+   with 500+ px of blank space below, while what a log viewer wants is exactly "as many lines as possible".
+   Other Kinds are "draw as many as there are" and scroll when long; those stay as they are. */
 .card.fills {
   display: flex;
   flex-direction: column;
@@ -190,8 +190,8 @@ a { color: var(--accent); }
 }
 .card.fills > .body {
   flex: 1;
-  /* min-height: 0 与 .pane 那一条同理：flex 子项默认不肯缩到内容以下，日志会把
-     卡片顶高，于是滚的是外层而不是日志自己。 */
+  /* min-height: 0 is the same reasoning as the .pane rule: flex children by default refuse to shrink below their content, so the log pushes
+     the card taller, and then the outer layer scrolls instead of the log itself. */
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -218,9 +218,9 @@ a { color: var(--accent); }
   margin-bottom: 14px;
 }
 
-/* notice 是**说一句**，不是报错：东西没坏，只是有个副作用用户该知道（比如同一份
-   文件的另一半有未保存的改动被挤掉了）。所以用 warn 而不是 danger——画成红的会
-   让人以为保存失败了，然后去重试一件已经成功的事。 */
+/* notice **says something**, it is not an error: nothing is broken, there is just a side effect the user should know about (for example, the other half of the same
+   file had unsaved changes that got displaced). So use warn rather than danger - drawn in red it would
+   make people think the save failed, and then retry something that already succeeded. */
 .notice {
   padding: 9px 13px;
   border-radius: var(--radius);
@@ -229,10 +229,10 @@ a { color: var(--accent); }
   margin-bottom: 14px;
 }
 
-/* ---------- 版面：左目录 / 右上 tab 条 / 右下内容 ----------
-   页面的网格必须住在这个全局表里，不能写进 App.svelte 的 <style>：Svelte 的
-   样式是**按组件作用域**的，它给不了子组件**根元素**的样式——而 .shell 的子元素
-   正是 Sidebar / TabStrip / .pane 这几个。`.card` 住在这里也是同一个理由。 */
+/* ---------- layout: directory on the left / tab strip top right / content bottom right ----------
+   The page's grid must live in this global sheet, and cannot be written into App.svelte's <style>: Svelte's
+   styles are **scoped per component**, and it cannot style a child component's **root element** - and .shell's children
+   are exactly Sidebar / TabStrip / .pane. `.card` lives here for the same reason. */
 .shell {
   display: grid;
   grid-template-columns: 208px minmax(0, 1fr);
@@ -240,33 +240,33 @@ a { color: var(--accent); }
   height: 100%;
 }
 .shell > header.top { grid-column: 1 / -1; }
-/* 主页模式（见 App.svelte 的 route.home）：**目录那一栏不画**，内容占满整宽。
-   一栏常驻的导航换成一屏卡片——用户的原话是「大部分时候就是主要用主页」，而目录
-   是给「要去别处」准备的。要进别处，右上角那颗「设置」。 */
+/* Home mode (see route.home in App.svelte): **the directory column is not drawn**, and content takes the full width.
+   A permanently present nav column swapped for one screen of cards - the user's own words were "most of the time I mainly use home", and the directory
+   is for "going elsewhere". To go elsewhere, the "settings" button in the top right. */
 .shell.home { grid-template-columns: minmax(0, 1fr); }
 .content {
   display: grid;
-  /* errs / secbar / nav / pane。secbar 没画时那一行是 auto=0，所以不需要为它写
-     两套版面。 */
+  /* errs / secbar / nav / pane. When secbar is not drawn that row is auto=0, so no second
+     layout is needed for it. */
   grid-template-rows: auto auto auto minmax(0, 1fr);
   min-height: 0;
   overflow: hidden;
 }
-/* 卡多到横 tab 条滚不动时（config 那种 38 张），行进 tab 条让位成**左侧竖栏**：
-   nav-slot（竖的 tab 列表）在左边，pane 在右边，errs（报错横幅）横跨两列压顶。
-   这个「多少算多」由 App 的 TAB_OVERFLOW 决定，这里只铺版面。 */
+/* When too many cards for the horizontal tab strip to scroll (config's 38), the row gives way to a **vertical column on the left**:
+   nav-slot (the vertical tab list) on the left, pane on the right, and errs (the error banner) spans both columns at the top.
+   "How many is too many" is decided by App's TAB_OVERFLOW; this only lays out the page. */
 .content.subcol {
   grid-template-columns: 210px minmax(0, 1fr);
   grid-template-rows: auto auto minmax(0, 1fr);
 }
 .content.subcol > .errs { grid-column: 1 / -1; grid-row: 1; }
 .content.subcol > .secbar { grid-column: 1 / -1; grid-row: 2; }
-/* 滚动落在 .nav-slot 上，而不是里面的竖栏自己：竖栏（nav.v）高度是「内容撑满」
-   的，38 行永远>自己，永远不会溢出、也就永远不会滚。.nav-slot 是网格 1fr 行上一
-   个确定性高度的容器，加 overflow-y 才有的滚。 */
+/* Scrolling lands on .nav-slot, not on the vertical column inside it: the column (nav.v) has a height of "fit the content",
+   so 38 rows are always > itself, never overflow, and therefore never scroll. .nav-slot is a
+   deterministically sized container on a 1fr grid row, and only with overflow-y does it scroll. */
 .content.subcol > .nav-slot { grid-column: 1; grid-row: 3; min-height: 0; min-width: 0; overflow-y: auto; }
 .content.subcol > .pane { grid-column: 2; grid-row: 3; }
-/* 一节的工具条：左边是这一节的名字，右边是它注入的动作。 */
+/* A section's toolbar: the section name on the left, the actions it injects on the right. */
 .secbar {
   display: flex;
   align-items: center;
@@ -283,23 +283,23 @@ a { color: var(--accent); }
   min-height: 0;
   min-width: 0;
 }
-/* minmax(0, 1fr) 与 min-height: 0 是这块版面的承重墙，不是洁癖：grid 子项的
-   默认 min-height 是 auto——它**不肯缩到内容以下**，于是里面那个会滚的东西
-   会把整页撑高，而不是自己滚。那正好是这次要修的病（4303px 的页面）以另一种
-   长相回来，而症状看起来像「CSS 没生效」。 */
+/* minmax(0, 1fr) and min-height: 0 are load-bearing walls of this layout, not fussiness: a grid child's
+   default min-height is auto - it **refuses to shrink below its content**, so the scrollable thing inside
+   pushes the whole page taller instead of scrolling itself. That is exactly the disease this change fixes (a 4303px page) coming back
+   in another shape, and the symptom looks like "the CSS did not take effect". */
 .pane > :global(.card:last-child) { margin-bottom: 0; }
 
-/* 窄屏：侧栏收成顶上一条，内容占满。900px 是侧栏那 208px 开始挤到
-   mapping-editor（一行要 ~550px）的地方。 */
+/* Narrow screens: the sidebar folds into a band on top, content takes everything. 900px is where the sidebar's 208px starts squeezing
+   mapping-editor (a row needs ~550px). */
 @media (max-width: 900px) {
   .shell {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto auto minmax(0, 1fr);
   }
   .shell > header.top { grid-column: 1; }
-  /* 窄屏上，config 那种竖栏也没地方并排——退回叠加：竖的 tab 列表变回一条横向
-     滚动带（与侧栏同一套退法），pane 在下面。筛掉它比硬并排强：两条竖栏在
-     900px 会让内容只剩一条缝。 */
+  /* On narrow screens the config-style vertical column has no room side by side either - fall back to stacking: the vertical tab list becomes a horizontal
+     scroll band (the same fallback as the sidebar), with pane below. Dropping it is better than forcing them side by side: two vertical columns at
+     900px would leave the content only a slit. */
   .content.subcol {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto auto auto minmax(0, 1fr);
