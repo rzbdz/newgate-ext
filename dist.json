@@ -40,6 +40,5 @@
     "hermes",
     "codex_deepseek",
     "ssh-tunnel"
-  ],
-  "disable": []
+  ]
 }

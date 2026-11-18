@@ -30,6 +30,5 @@
     "upgrade",
     "self-update",
     "verify"
-  ],
-  "disable": []
+  ]
 }

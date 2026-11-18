@@ -111,7 +111,7 @@ type Harness struct {
 // modules (2026-11-18), "a real graph" is by definition a product graph — this
 // distribution's. StartWith remains for a test that wants a different one.
 func DefaultGraph() modules.Loader {
-	return manifest.Specs()[manifest.DefaultSpec]
+	return modules.Static(manifest.Specs()[manifest.DefaultSpec])
 }
 
 // Start brings it up: sandbox config -> fake upstream -> real graph -> real forward (temp port).

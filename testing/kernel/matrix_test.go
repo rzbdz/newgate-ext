@@ -47,7 +47,7 @@ func TestRemovalMatrix(t *testing.T) {
 		victims++
 		t.Run(victim.Name, func(t *testing.T) {
 			dependents := hardDependents(all, victim)
-			manager, err := modules.NewContext(context.Background(), staticLoader(without(all, victim.Name)))
+			manager, err := modules.NewContext(context.Background(), modules.Static(without(all, victim.Name)))
 
 			if err == nil {
 				t.Cleanup(func() { _ = manager.Stop(context.Background()) })
@@ -134,7 +134,7 @@ func TestTheOnlyBuiltinCannotBeRemoved(t *testing.T) {
 		}
 	}
 
-	_, err := modules.NewContext(context.Background(), staticLoader(without(all, "entry")))
+	_, err := modules.NewContext(context.Background(), modules.Static(without(all, "entry")))
 	if err == nil {
 		t.Fatal("removing entry still assembles: the entry ledger is gone, the process starts but nothing is the entry")
 	}

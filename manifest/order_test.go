@@ -1,87 +1,70 @@
 package manifest
 
 import (
+	"strings"
 	"testing"
 
 	modules "github.com/rzbdz/newgate/component"
 )
 
-// What this guards is that **the generated order_gen.go can be trusted**.
+// What this guards is that **the frozen table is a start order at all**.
 //
-// It is computed and frozen at build time (see tools/distgen/orderprobe); at runtime there
-// is only one check (is the arrangement right), and **it does not check whether it really
-// is a topological order** -- that is the graph-building step's job. So "is this table
-// right at all" has to be watched by someone **here**, or it is frozen data nobody verified.
+// The order is computed at build time (tools/distgen runs tools/distgen/orderprobe, which calls
+// component.Ordered) and then committed, so at runtime nobody re-derives it: `Resolve` only
+// verifies that every provider sits before its consumer. "Is this table right" therefore has to
+// be watched here, or it is frozen data nobody checked.
 //
-// Two things are checked together; missing either is not enough:
+// Two properties, and missing either is not enough:
 //
-//  1. It **works**: for each spec, the graph assembled in this order makes
-//     `Resolve` take the fast path, and the order it produces is exactly the same;
-//  2. It **is not decoration**: the order must really be used (Selection.Load
-//     sorts by it), or nobody would notice this table going stale.
-func TestGeneratedOrderMatchesResolve(t *testing.T) {
+//  1. **It works**: every spec's table passes assembly, and the order that comes out is the
+//     table's order (Resolve does not rearrange anything).
+//  2. **It is not decoration**: the table must be what component.Ordered would produce from the
+//     same components, otherwise a hand-edit or a stale generator slips through -- assembly
+//     would still accept it (a valid order need not be the canonical one), and nothing else
+//     would notice.
+func TestGeneratedTablesAreStartOrders(t *testing.T) {
 	specs := Specs()
 	if len(specs) == 0 {
 		t.Fatal("there are no specs at all")
 	}
-	_ = specs
 	for _, name := range SpecNames() {
-		loader := Loader{Spec: name}
-		order := loader.PrecomputedOrder()
-		if len(order) == 0 {
-			t.Errorf("%s has no start order -- was order_gen.go not generated?"+
+		table := specs[name]
+		if len(table) == 0 {
+			t.Errorf("%s has an empty component table -- was the generated manifest not written? "+
 				"(run `go run ./tools/distgen`)", name)
 			continue
 		}
 
-		// (1) Assemble by the blueprint: it must assemble,
-		// and the order must be the one on the blueprint.
-		//
-		// This is also evidence that "runtime really took the blueprint": `Loader`
-		// implements component.Precomputed, so Resolve does not build edges and sort (see
-		// component.planFromOrder). Name mismatches and count mismatches error out on the spot.
-		plan, err := modules.Resolve(loader)
+		// (1) Assemble by the table: it must assemble, and the order must be the table's.
+		plan, err := modules.Resolve(modules.Static(table))
 		if err != nil {
-			t.Errorf("%s does not assemble from the blueprint: %v", name, err)
+			t.Errorf("%s does not assemble from its table: %v", name, err)
 			continue
 		}
-		if got := plan.Names(); !sameStrings(got, order) {
-			t.Errorf("%s's actual order differs from the blueprint:\n  blueprint: %v\n  actual: %v", name, order, got)
+		if got := strings.Join(plan.Names(), ","); got != strings.Join(namesOf(table), ",") {
+			t.Errorf("%s's assembly order differs from the table:\n  table:    %s\n  assembly: %s",
+				name, strings.Join(namesOf(table), ","), got)
 		}
 
-		// (2) The blueprint must **equal the "computed from scratch" answer**. This is
-		// the most important one: the blueprint is frozen at build time, and runtime no
-		// longer verifies whether it really is a topological order (that is build time's
-		// job). Without this one, a wrongly ordered blueprint has nobody watching it.
-		components, err := Specs()[name].Load()
+		// (2) The table must be the **canonical** order, i.e. what the only ordering
+		// implementation says. This is the one that catches a stale or hand-edited table.
+		ordered, err := modules.Ordered(table)
 		if err != nil {
-			t.Errorf("%s does not assemble from scratch: %v", name, err)
+			t.Errorf("%s cannot be ordered at all: %v", name, err)
 			continue
 		}
-		fresh, err := modules.Resolve(staticLoader(components))
-		if err != nil {
-			t.Errorf("%s failed to build the graph from scratch: %v", name, err)
-			continue
-		}
-		if got := fresh.Names(); !sameStrings(got, order) {
-			t.Errorf("%s: the blueprint differs from the \"compute from scratch\" result (is the list stale?):\n"+
-				"  blueprint: %v\n  from scratch: %v", name, order, got)
+		if got := strings.Join(namesOf(ordered), ","); got != strings.Join(namesOf(table), ",") {
+			t.Errorf("%s's table differs from the computed order (a stale generator or a hand edit? "+
+				"run `go run ./tools/distgen`):\n  table:    %s\n  computed: %s",
+				name, strings.Join(namesOf(table), ","), got)
 		}
 	}
 }
 
-func sameStrings(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
+func namesOf(components []modules.Component) []string {
+	out := make([]string, 0, len(components))
+	for _, c := range components {
+		out = append(out, c.Name)
 	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
+	return out
 }
-
-type staticLoader []modules.Component
-
-func (s staticLoader) Load() ([]modules.Component, error) { return s, nil }

@@ -66,7 +66,7 @@ func TestHelloUnregistersOnStop(t *testing.T) {
 	testkit.Sandbox(t)
 
 	comps := []modules.Component{entrymod.New(), hello.New()}
-	manager, err := modules.NewContext(context.Background(), staticLoader(comps))
+	manager, err := modules.NewContext(context.Background(), modules.Static(comps))
 	if err != nil {
 		t.Fatalf("starting the graph: %v", err)
 	}

@@ -109,15 +109,21 @@ type Graph struct {
 // Start installs and starts a component graph.
 //
 // Pass only what you care about: real modules (`cli.New()`) and hand-written stubs mixed,
-// dependencies derived from capability declarations, no manual ordering. Failure is
-// t.Fatal - "the graph will not assemble" is a broken test, not the behaviour under test.
+// in **any order** -- this is the one place a graph is assembled from components nobody wrote
+// a declaration for, so it computes the order itself with component.Ordered (the framework's
+// only ordering implementation). Failure is t.Fatal - "the graph will not assemble" is a broken
+// test, not the behaviour under test.
 //
 // The graph stops in reverse on Cleanup. **Stop is on this path too**: if a component's
 // Stop misses an undo, the next Start hits a duplicate registration and fails - and this
 // test finds it for you before production does.
 func Start(t *testing.T, components ...modules.Component) *Graph {
 	t.Helper()
-	manager, err := modules.New(loader(components))
+	ordered, err := modules.Ordered(components)
+	if err != nil {
+		t.Fatalf("testkit: %v", err)
+	}
+	manager, err := modules.New(modules.Static(ordered))
 	if err != nil {
 		t.Fatalf("testkit: assembling the component graph failed: %v", err)
 	}
@@ -273,10 +279,6 @@ func InstallCatalog(t *testing.T, catalog agentapi.AgentCatalog) {
 }
 
 // ---- internals ----
-
-type loader []modules.Component
-
-func (l loader) Load() ([]modules.Component, error) { return l, nil }
 
 func setEnv(vals map[string]string) (restore func()) {
 	type prior struct {

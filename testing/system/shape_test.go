@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rzbdz/newgate-ext/manifest"
 	breakerapi "github.com/rzbdz/newgate-ext/modules/breaker"
 	"github.com/rzbdz/newgate-ext/testing/system"
-	app "github.com/rzbdz/newgate/app"
 	modules "github.com/rzbdz/newgate/component"
 )
 
@@ -25,7 +25,6 @@ import (
 // the same assertions with the real criterion in its repo. What stays is the **causal
 // chain**, every link the kernel's own: the registration port (breaker.RegisterShapeDetector),
 // the data plane's claim (forward reads only Result.Shape), ledger semantics (count, no tri).
-const shapeProbeDir = "shape-probe"
 
 // shapeProbe is the kernel-side synthetic criterion: it claims "a 400 carrying must be passed".
 //
@@ -63,17 +62,24 @@ func shapeProbeComponent() modules.Component {
 	}
 }
 
-// probeGraph is "the kernel's graph plus a synthetic criterion".
-// probeGraph is the product graph plus a probe strategy module.
+// probeGraph is the product graph plus a synthetic criterion module.
 //
-// It used to be "the kernel's graph plus a probe". The kernel ships none now, so the
-// base is this distribution's flagship spec — which is the graph the probe actually
-// runs in, and therefore the one worth testing the wiring against.
-func probeGraph() app.Selection {
-	sel := system.DefaultGraph().(app.Selection)
-	sel.Extra = append(append([]app.Entry(nil), sel.Extra...),
-		app.Entry{Dir: shapeProbeDir, Component: shapeProbeComponent()})
-	return sel
+// It used to be "the kernel's graph plus a probe"; the kernel ships none now, so the base is
+// this distribution's flagship spec -- which is the graph the probe actually runs in, and
+// therefore the one worth testing the wiring against.
+//
+// The probe component Needs the health table, so appending it to the frozen table would put a
+// consumer after its provider only by luck. Recomputing the order is the honest thing here and
+// it is exactly what component.Ordered is for (a test writing its own declaration).
+func probeGraph() modules.Static {
+	base := append([]modules.Component(nil),
+		manifest.Specs()[manifest.DefaultSpec]...)
+	base = append(base, shapeProbeComponent())
+	ordered, err := modules.Ordered(base)
+	if err != nil {
+		panic("ordering the probe graph: " + err.Error())
+	}
+	return modules.Static(ordered)
 }
 
 // strictReasoningBody builds a request **the fake upstream rejects as measured** - the real

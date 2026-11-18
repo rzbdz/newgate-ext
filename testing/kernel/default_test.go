@@ -30,7 +30,7 @@ import (
 // 2026-11-18 is *the* graph — the kernel ships none. Per-module behaviour still
 // lives with its module; this is the "who must start before whom" declaration.
 func TestDefaultGraphLayering(t *testing.T) {
-	built, err := app.New(context.Background(), staticLoader(kernelGraph(t)))
+	built, err := app.New(context.Background(), modules.Static(kernelGraph(t)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +101,7 @@ func TestCLIDependenciesOnlyShrink(t *testing.T) {
 	// means someone's knowledge went back into the UI.
 	allowed := map[string]bool{}
 
-	built, err := app.New(context.Background(), staticLoader(kernelGraph(t)))
+	built, err := app.New(context.Background(), modules.Static(kernelGraph(t)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func TestCLIDependenciesOnlyShrink(t *testing.T) {
 }
 
 func TestGatewayReceivesModuleHooks(t *testing.T) {
-	built, err := app.New(context.Background(), staticLoader(kernelGraph(t)))
+	built, err := app.New(context.Background(), modules.Static(kernelGraph(t)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +167,7 @@ func TestGatewayReceivesModuleHooks(t *testing.T) {
 // This test turns silence red. Real multi-ui (tui / web are on the roadmap) needs
 // injection switched to GetAll first; this assertion changes then.
 func TestExactlyOneUI(t *testing.T) {
-	built, err := app.New(context.Background(), staticLoader(kernelGraph(t)))
+	built, err := app.New(context.Background(), modules.Static(kernelGraph(t)))
 	if err != nil {
 		t.Fatal(err)
 	}

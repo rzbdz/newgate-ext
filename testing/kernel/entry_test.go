@@ -26,7 +26,7 @@ func TestTheDaemonEntrySurvivesARemovedUI(t *testing.T) {
 	testkit.Sandbox(t)
 	all := kernelGraph(t)
 
-	manager, err := modules.NewContext(context.Background(), staticLoader(without(all, "cli")))
+	manager, err := modules.NewContext(context.Background(), modules.Static(without(all, "cli")))
 	if err != nil {
 		t.Fatalf("does not assemble after removing cli: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestTheDaemonEntrySurvivesARemovedUI(t *testing.T) {
 // Together they are the criterion: the fallback holds only where nobody else can answer.
 func TestABareInvocationIsStillTheUIs(t *testing.T) {
 	testkit.Sandbox(t)
-	manager, err := modules.NewContext(context.Background(), staticLoader(kernelGraph(t)))
+	manager, err := modules.NewContext(context.Background(), modules.Static(kernelGraph(t)))
 	if err != nil {
 		t.Fatalf("does not assemble: %v", err)
 	}

@@ -8,7 +8,6 @@ import (
 	"github.com/rzbdz/newgate-ext/manifest"
 	cliapi "github.com/rzbdz/newgate-ext/modules/cli/extension"
 	"github.com/rzbdz/newgate-ext/testing/testkit"
-	app "github.com/rzbdz/newgate/app"
 	modules "github.com/rzbdz/newgate/component"
 	"github.com/rzbdz/newgate/component/entry"
 )
@@ -32,12 +31,6 @@ func servesEntry(c modules.Component) bool {
 	return false
 }
 
-// staticLoader hands out a hard-coded component table (same trick as the kernel's
-// app/matrix_test.go: the composition root's Loader has one method; no real Loader needed).
-type staticLoader []modules.Component
-
-func (s staticLoader) Load() ([]modules.Component, error) { return s, nil }
-
 // TestEverySpecBuilds: every spec must load, start and stop, and every module it
 // names must really be in the graph (naming a module and not installing it is a
 // silent failure: a feature is missing and nothing says so).
@@ -50,15 +43,11 @@ func TestEverySpecBuilds(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			testkit.Sandbox(t)
 
-			sel, ok := manifest.Specs()[name]
+			comps, ok := manifest.Specs()[name]
 			if !ok {
 				t.Fatalf("SpecNames reported %q but it is not in Specs()", name)
 			}
-			comps, err := sel.Load()
-			if err != nil {
-				t.Fatalf("assembly selection: %v", err)
-			}
-			manager, err := modules.NewContext(context.Background(), staticLoader(comps))
+			manager, err := modules.NewContext(context.Background(), modules.Static(comps))
 			if err != nil {
 				t.Fatalf("starting the graph: %v", err)
 			}
@@ -68,10 +57,10 @@ func TestEverySpecBuilds(t *testing.T) {
 			for _, n := range manager.ComponentNames() {
 				got[n] = true
 			}
-			for _, e := range sel.Extra {
-				if !got[e.Component.Name] {
-					t.Errorf("the spec names %s (directory %s) but it is not in the graph -- anything named must really be installed; graph = %v",
-						e.Component.Name, e.Dir, manager.ComponentNames())
+			for _, c := range comps {
+				if !got[c.Name] {
+					t.Errorf("the spec names %s but it is not in the graph -- anything named must really be installed; graph = %v",
+						c.Name, manager.ComponentNames())
 				}
 			}
 			// The other direction: nothing beyond the list may be installed. A module
@@ -79,8 +68,8 @@ func TestEverySpecBuilds(t *testing.T) {
 			// fallback or a stale generated table — both are "I thought I narrowed the
 			// product, and it is wider than I think".
 			named := map[string]bool{}
-			for _, e := range sel.Extra {
-				named[e.Component.Name] = true
+			for _, c := range comps {
+				named[c.Name] = true
 			}
 			for _, n := range manager.ComponentNames() {
 				if !named[n] {
@@ -112,12 +101,8 @@ func TestEverySpecHasAtMostOneUI(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			testkit.Sandbox(t)
 
-			sel := manifest.Specs()[name]
-			comps, err := sel.Load()
-			if err != nil {
-				t.Fatalf("assembly selection: %v", err)
-			}
-			manager, err := modules.NewContext(context.Background(), staticLoader(comps))
+			comps := manifest.Specs()[name]
+			manager, err := modules.NewContext(context.Background(), modules.Static(comps))
 			if err != nil {
 				t.Fatalf("starting the graph: %v", err)
 			}
@@ -157,13 +142,9 @@ func TestEverySpecClaimsTheBareInvocation(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			testkit.Sandbox(t)
 
-			sel := manifest.Specs()[name]
-			comps, err := sel.Load()
-			if err != nil {
-				t.Fatalf("assembly selection: %v", err)
-			}
+			comps := manifest.Specs()[name]
 			// NewContext really Starts, so declarations happened (not "a component is sitting there").
-			manager, err := modules.NewContext(context.Background(), staticLoader(comps))
+			manager, err := modules.NewContext(context.Background(), modules.Static(comps))
 			if err != nil {
 				t.Fatalf("starting the graph: %v", err)
 			}
@@ -194,47 +175,53 @@ func TestDistModulesAreRemovable(t *testing.T) {
 	if !ok {
 		t.Fatalf("there is no spec named %s", specName)
 	}
-	if len(base.Extra) < 2 {
-		t.Fatalf("%s only names %d modules — the matrix degenerated", specName, len(base.Extra))
+	if len(base) < 2 {
+		t.Fatalf("%s only names %d modules — the matrix degenerated", specName, len(base))
 	}
 
-	for _, victim := range base.Extra {
-		t.Run(victim.Dir, func(t *testing.T) {
+	for _, victim := range base {
+		t.Run(victim.Name, func(t *testing.T) {
 			testkit.Sandbox(t)
 
-			sel := app.Selection{}
-			for _, e := range base.Extra {
-				if e.Dir == victim.Dir {
+			// The table minus the victim. The order has to be **recomputed**: the victim may be
+			// another module's provider, and the frozen table's positions no longer describe this
+			// graph. This is the one situation where a test really is "somebody writing a
+			// declaration", so it calls the framework's own ordering entry.
+			var remaining []modules.Component
+			for _, c := range base {
+				if c.Name == victim.Name {
 					continue
 				}
-				sel.Extra = append(sel.Extra, e)
+				remaining = append(remaining, c)
 			}
-			comps, err := sel.Load()
+			comps, err := modules.Ordered(remaining)
 			if err != nil {
-				t.Fatalf("assembly selection: %v", err)
+				// A cycle can only appear if the removal broke the order; the matrix's own
+				// expectation (below) is about assembly, so report it as such.
+				t.Fatalf("ordering the graph without %s: %v", victim.Name, err)
 			}
-			dependents := hardDependents(comps, victim.Component)
-			manager, err := modules.NewContext(context.Background(), staticLoader(comps))
+			dependents := hardDependents(comps, victim)
+			manager, err := modules.NewContext(context.Background(), modules.Static(comps))
 
 			if err == nil {
 				t.Cleanup(func() { _ = manager.Stop(context.Background()) })
 				if len(dependents) > 0 {
 					t.Fatalf("removing %s still assembles, but %v declares a hard dependency on a capability it provides --"+
-						"which means that dependency is missing from the graph (was Requires written as Optional?)", victim.Dir, dependents)
+						"which means that dependency is missing from the graph (was Requires written as Optional?)", victim.Name, dependents)
 				}
 				return
 			}
 			if len(dependents) == 0 {
 				t.Fatalf("removing %s does not assemble, but no module declares a hard dependency on it -- someone reaches"+
-					"for what it provides without declaring it:\n%v", victim.Dir, err)
+					"for what it provides without declaring it:\n%v", victim.Name, err)
 			}
-			for _, provision := range victim.Component.Provides {
+			for _, provision := range victim.Provides {
 				if strings.Contains(err.Error(), provision.Name()) {
 					return
 				}
 			}
 			t.Fatalf("the error from removing %s does not name the capability it provides (%v), so the cause cannot be told:\n%v",
-				victim.Dir, provisionNames(victim.Component), err)
+				victim.Name, provisionNames(victim), err)
 		})
 	}
 }

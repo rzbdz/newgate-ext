@@ -41,6 +41,5 @@
     "codex_deepseek",
     "arch-diagram",
     "ssh-tunnel"
-  ],
-  "disable": []
+  ]
 }

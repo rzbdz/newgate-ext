@@ -8,6 +8,7 @@ import (
 	"github.com/rzbdz/newgate-ext/manifest"
 	"github.com/rzbdz/newgate-ext/modules/config/store"
 	"github.com/rzbdz/newgate/app"
+	modules "github.com/rzbdz/newgate/component"
 )
 
 // TestMain is this package's only process-level assembly point (the internal and external test
@@ -43,8 +44,8 @@ func TestMain(m *testing.M) {
 	// The graph is the distribution's flagship spec: this package tests how a
 	// module behaves when the product actually installs it (an upstream patch's
 	// signature is registered by another module, so it has to be present).
-	sel := manifest.Specs()[manifest.DefaultSpec]
-	built, err := app.New(context.Background(), sel)
+	table := modules.Static(manifest.Specs()[manifest.DefaultSpec])
+	built, err := app.New(context.Background(), table)
 	if err != nil {
 		_ = os.RemoveAll(dir)
 		panic(err)

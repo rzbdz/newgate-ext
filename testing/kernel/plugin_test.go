@@ -26,7 +26,7 @@ import (
 // hard refusal would crash all of newgate plugin over one new word.
 func TestPluginMetadataIsConsistent(t *testing.T) {
 	testkit.Sandbox(t)
-	built, err := app.New(context.Background(), staticLoader(kernelGraph(t)))
+	built, err := app.New(context.Background(), modules.Static(kernelGraph(t)))
 	if err != nil {
 		t.Fatalf("assembly failed: %v", err)
 	}

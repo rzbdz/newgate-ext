@@ -1,22 +1,26 @@
-// Command orderprobe runs the **real** assembly resolution and prints each spec's start order.
+// Command orderprobe computes each spec's **start order** with the framework's own algorithm.
 //
-// It is distgen's second pass: the first compiles specs into manifest/modules_gen.go,
-// then this program runs (a **new process**, so it reads the just-written manifest),
-// returns the order, and writes manifest/order_gen.go.
+// It is distgen's second pass: the first compiles the specs' component tables (in spec order)
+// into manifest/modules_gen.go, then this program runs -- in a **new process**, so it reads the
+// manifest just written -- computes the order, and prints `spec -> component names`.
 //
 // # Why a new process instead of distgen computing it
 //
-// The manifest in the distgen process is **compiled in** - the previous run's result.
-// With a just-edited spec (module added, disable changed), order from the old manifest
-// is silently wrong, and "wrong order" is miles from "stale manifest". A new process
-// has no such problem: it necessarily reads the one on disk.
+// The manifest in the distgen process is **compiled in**: the previous run's result. With a
+// just-edited spec (module added, removed), an order derived from the old manifest is silently
+// wrong, and "wrong order" is miles from "stale manifest". A new process has no such problem:
+// it necessarily reads the one on disk.
 //
-// # It computes the "from scratch" one
+// # Why it calls component.Ordered and not distgen
 //
-// `Specs()` hands out **plain** choices (no order), so `Load()` here gives declaration
-// order and `Resolve` honestly builds edges and sorts - exactly what we freeze. It also
-// self-checks: every spec really assembles, or generation fails (not at the first runtime
-// command).
+// There is exactly one implementation of "compute a valid start order", and it lives in the
+// framework (`component.Ordered`) -- the same function testkit and any third-party composition
+// root use. A second implementation here would be the beginning of "the generator's order" and
+// "the framework's order" disagreeing, which is precisely the split this pass exists to avoid.
+//
+// It also self-checks: every spec must assemble, or generation fails -- rather than the failure
+// surfacing on somebody's first command. A dependency cycle, in particular, can only be
+// reported here (a declared order cannot express one).
 package main
 
 import (
@@ -38,17 +42,26 @@ func main() {
 	}
 	sort.Strings(names)
 
-	out := map[string][]string{}
+	// Indices into the spec's table, **not component names**: distgen has to translate the
+	// result back into import aliases, and the directory name need not equal the component name
+	// (`claudecode_deepseek` is `claudecode-deepseek`). An index needs no such mapping and
+	// cannot be misspelled.
+	out := map[string][]int{}
 	for _, name := range names {
-		components, err := specs[name].Load()
+		declared := specs[name]
+		index := make(map[string]int, len(declared))
+		for i, c := range declared {
+			index[c.Name] = i
+		}
+		ordered, err := modules.Ordered(declared)
 		if err != nil {
 			fail(name, err)
 		}
-		plan, err := modules.Resolve(staticLoader(components))
-		if err != nil {
-			fail(name, err)
+		positions := make([]int, 0, len(ordered))
+		for _, c := range ordered {
+			positions = append(positions, index[c.Name])
 		}
-		out[name] = plan.Names()
+		out[name] = positions
 	}
 
 	enc := json.NewEncoder(os.Stdout)
@@ -62,8 +75,3 @@ func fail(name string, err error) {
 	fmt.Fprintf(os.Stderr, "orderprobe: spec %s does not assemble: %v\n", name, err)
 	os.Exit(1)
 }
-
-// staticLoader hands out a batch of pre-built components (same-named helper in app's tests).
-type staticLoader []modules.Component
-
-func (s staticLoader) Load() ([]modules.Component, error) { return s, nil }

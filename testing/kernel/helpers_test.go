@@ -25,11 +25,7 @@ func graphComponents(t *testing.T, spec string) []modules.Component {
 	if !ok {
 		t.Fatalf("no spec %q (have: %v)", spec, manifest.SpecNames())
 	}
-	comps, err := sel.Load()
-	if err != nil {
-		t.Fatalf("spec %s does not load: %v", spec, err)
-	}
-	return comps
+	return sel
 }
 
 // kernelGraph is the flagship spec's component set.

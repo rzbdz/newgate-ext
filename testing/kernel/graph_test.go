@@ -2,8 +2,10 @@ package kernel
 
 import (
 	"context"
-	app "github.com/rzbdz/newgate/app"
 	"testing"
+
+	app "github.com/rzbdz/newgate/app"
+	modules "github.com/rzbdz/newgate/component"
 
 	"github.com/rzbdz/newgate-ext/modules/gateway/special"
 	"github.com/rzbdz/newgate-ext/testing/testkit"
@@ -28,7 +30,7 @@ import (
 func TestGraphCanBeRebuiltAfterStop(t *testing.T) {
 	testkit.Sandbox(t)
 
-	first, err := app.New(context.Background(), staticLoader(kernelGraph(t)))
+	first, err := app.New(context.Background(), modules.Static(kernelGraph(t)))
 	if err != nil {
 		t.Fatalf("first assembly failed: %v", err)
 	}
@@ -37,7 +39,7 @@ func TestGraphCanBeRebuiltAfterStop(t *testing.T) {
 		t.Fatalf("first stop failed: %v", err)
 	}
 
-	second, err := app.New(context.Background(), staticLoader(kernelGraph(t)))
+	second, err := app.New(context.Background(), modules.Static(kernelGraph(t)))
 	if err != nil {
 		t.Fatalf("second assembly failed (the first Stop did not clean up?): %v", err)
 	}
@@ -79,7 +81,7 @@ func TestGraphCanBeRebuiltAfterStop(t *testing.T) {
 func TestGraphCoversEveryModule(t *testing.T) {
 	testkit.Sandbox(t)
 
-	built, err := app.New(context.Background(), staticLoader(kernelGraph(t)))
+	built, err := app.New(context.Background(), modules.Static(kernelGraph(t)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +145,7 @@ var uiCapabilities = map[string]bool{
 func TestUIStaysOutOfTheDependencyGraph(t *testing.T) {
 	testkit.Sandbox(t)
 
-	built, err := app.New(context.Background(), staticLoader(kernelGraph(t)))
+	built, err := app.New(context.Background(), modules.Static(kernelGraph(t)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +199,7 @@ func TestUIStaysOutOfTheDependencyGraph(t *testing.T) {
 func TestInjectorsStartAfterTheUI(t *testing.T) {
 	testkit.Sandbox(t)
 
-	built, err := app.New(context.Background(), staticLoader(kernelGraph(t)))
+	built, err := app.New(context.Background(), modules.Static(kernelGraph(t)))
 	if err != nil {
 		t.Fatal(err)
 	}

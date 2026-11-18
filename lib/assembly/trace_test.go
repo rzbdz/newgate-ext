@@ -12,13 +12,9 @@ import (
 	modules "github.com/rzbdz/newgate/component"
 )
 
-// staticLoader installs nothing: the record's content is irrelevant to this test,
-// only that a real assembly happened and produced trace lines.
-type staticLoader struct{}
-
-func (staticLoader) Load() ([]modules.Component, error) {
-	return []modules.Component{{Name: "only", Type: "test"}}, nil
-}
+// nothingGraph installs one component: the record's content is irrelevant to these
+// tests, only that a real assembly happened and produced trace lines.
+var nothingGraph = modules.Static{{Name: "only", Type: "test"}}
 
 // This family tests the 2026-09-20 change: the assembly
 // record is written whole **only when it changed**.
@@ -222,7 +218,7 @@ func TestARepeatedInvocationWritesNothing(t *testing.T) {
 	logPath := filepath.Join(env.Home, "newgate.log")
 	invoke := func() {
 		stop := TraceToLogFile(logPath)
-		built, err := modules.New(staticLoader{})
+		built, err := modules.New(nothingGraph)
 		if err != nil {
 			t.Fatalf("assembly failed: %v", err)
 		}

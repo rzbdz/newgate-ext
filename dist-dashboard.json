@@ -33,6 +33,5 @@
     "theme-dark",
     "theme-light",
     "theme-anthropic"
-  ],
-  "disable": []
+  ]
 }

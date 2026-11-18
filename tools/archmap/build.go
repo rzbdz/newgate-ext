@@ -4,7 +4,6 @@ import (
 	"sort"
 	"time"
 
-	app "github.com/rzbdz/newgate/app"
 	modules "github.com/rzbdz/newgate/component"
 )
 
@@ -19,7 +18,7 @@ import (
 // manifest here is a compile cycle, hit in practice; core/app's SpecAware hands it down.
 //
 // root is the **source tree root** (`go list` runs there). The assembly half does not need it.
-func Build(specs map[string]app.Selection, root string) (Report, error) {
+func Build(specs map[string][]modules.Component, root string) (Report, error) {
 	report := Report{GeneratedAt: time.Now().Format(time.RFC3339)}
 
 	names := make([]string, 0, len(specs))
@@ -28,9 +27,10 @@ func Build(specs map[string]app.Selection, root string) (Report, error) {
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		sel := specs[name]
-		// Actually run the resolution (Start nothing): this is the "resolved" map.
-		g, err := ResolveGraph(name, name, DistributionNote(sel), sel)
+		comps := specs[name]
+		// Actually run the resolution (Start nothing): this is the "resolved" map. The table is
+		// already in start order (see component.Loader), so this verifies it rather than sorting.
+		g, err := ResolveGraph(name, name, DistributionNote(comps), modules.Static(comps))
 		if err != nil {
 			return report, err
 		}
@@ -74,21 +74,14 @@ func importHalf(root string) Graph {
 	return g
 }
 
-// DistributionNote is the line in hover/overview: what this spec **installed and left off**.
+// DistributionNote is the line in hover/overview: **how big** this spec's assembly is.
 //
-// That is an assembly map's most useful context: the same module table is a dozen
-// points for a skeleton ("disable": ["*"]) and thirty-odd for the flagship - know which.
-func DistributionNote(sel app.Selection) string {
-	parts := []string{plural(len(sel.Extra), "own module", "own modules")}
-	switch {
-	case sel.AllCore:
-		parts = append(parts, "all built-in kernel modules disabled")
-	case len(sel.Disable) > 0:
-		parts = append(parts, "kernel modules disabled: "+join(sel.Disable, ", "))
-	default:
-		parts = append(parts, "all built-in kernel modules installed")
-	}
-	return join(parts, " · ")
+// That is an assembly map's most useful context: the same drawing is a dozen points for a
+// skeleton and thirty-odd for the flagship - know which. It used to also say which kernel
+// modules were disabled; since 2026-11-18 the kernel ships none, so every spec is its own
+// modules and nothing else.
+func DistributionNote(comps []modules.Component) string {
+	return plural(len(comps), "module", "modules")
 }
 
 // Unavailable is the empty map for "this half was not drawn because ...".

@@ -216,11 +216,7 @@ func TestEveryModuleTypeHasALegendColour(t *testing.T) {
 	keys := legendKeys(t)
 
 	types := map[string]bool{}
-	for name, sel := range manifest.Specs() {
-		comps, err := sel.Load()
-		if err != nil {
-			t.Fatalf("cannot read the assembly selection for %s: %v", name, err)
-		}
+	for _, comps := range manifest.Specs() {
 		for _, c := range comps {
 			if c.Type != "" {
 				types[string(c.Type)] = true
