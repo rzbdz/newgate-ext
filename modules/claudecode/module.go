@@ -1,4 +1,4 @@
-// Package claudecode describes the Claude Code client family.
+// Package claudecode describes the Claude Code client: install, takeover, launch family.
 //
 // A client module owns only Claude Code's own facts: binary name, environment
 // slots, protocol, and the request treatments a client generally needs. It
@@ -23,14 +23,14 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 )
 
-// New declares the Claude Code client component. It registers the client
+// New declares the Claude Code client: install, takeover, launch component. It registers the client
 // descriptor and state fields, then wires the client-specific handlers
 // into the gateway; every registration handle is released by Stop.
 func New() modules.Component {
 	var releases []modules.Release
 	return modules.Component{
 		Name: "claudecode",
-		Desc: func() string { return i18n.T("the Claude Code client", nil) },
+		Desc: func() string { return i18n.T("the Claude Code client: install, takeover, launch", nil) },
 		Type: "client",
 		Requires: []modules.Requirement{
 			modules.Need(gatewayapi.Capability),
