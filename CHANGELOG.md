@@ -14,7 +14,7 @@ finished release.
 
 Nothing yet.
 
-## [0.9.0] - 2026-11-18
+## [0.9.1] - 2026-11-18
 
 ### Changed
 
@@ -85,6 +85,13 @@ Nothing yet.
 
 ### Fixed
 
+- **The macOS binaries build again.** v0.9.0's release job failed on the darwin
+  half of the matrix (`undefined: enterRaw` from `lib/term`), so no artifacts
+  were published for it — **0.9.0 was never released**; 0.9.1 is the first 0.9.x
+  you can download. Everything listed above is in here unchanged.
+- CI now **cross-compiles every platform the release ships** before a tag is
+  pushed. Until now "it builds" meant linux/amd64: the darwin breakage was
+  invisible locally and in CI, and surfaced for the first time on tag day.
 - **Claude Code is capped at a 512K context window.** Every injected model name
   used to carry the `[1m]` suffix, and profiles could declare
   `context_window: 1000000`. A long session then grew to 1.01M tokens, the next
@@ -117,6 +124,12 @@ Nothing yet.
   start order arrives with the declaration), `policy.Env` lends contributors the
   current config snapshot, and `component.Ordered` verifies the order it just
   computed.
+
+## [0.9.0] - 2026-11-18
+
+**Never released.** The darwin build broke in the release job, so nothing was
+published for this version. Its content is in [0.9.1](#091---2026-11-18) above.
+
 
 ## [0.8.2] - 2026-11-04
 
