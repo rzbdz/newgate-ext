@@ -275,7 +275,7 @@ echo "== 5. 换版/重启后的第一发（流式）：只有落盘缓存能救�
 #
 # 换成真进程重启（停干净 + 起），再手工写一份 probe-capabilities.json——那正是
 # `newgate probe` 探过一次会留下的东西，也是 `probe.LoadCachedCapabilities` 读回的
-# 那份（见 core/modules/thinking/st-always.go 的 matchTarget）。
+# 那份（见 modules/thinking/st-always.go 的 matchTarget）。
 wait_serve_down
 cat > "$NEWGATE_HOME/probe-capabilities.json" <<'JSON'
 {"targets":{"up/mock-normal":{"supports":0,"known":0,"quirks":1,"checked_at":"2026-09-23T00:00:00Z"}}}

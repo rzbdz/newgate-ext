@@ -1,41 +1,41 @@
 # web-dashboard
 
-浏览器界面 + 它的 BFF。挂在 gateway 那个端口（默认 8899）的 `/ui` 前缀下。
+Browser UI + its BFF. Mounted under the `/ui` prefix on the gateway port (default 8899).
 
-## 三件事，各有其人
+## Three things, each with an owner
 
-| 谁 | 管什么 |
+| Who | Owns what |
 | --- | --- |
-| 内核的 `modules/porthub` | 那个端口归谁用。本模块只负责 `Mount("/ui", …)` |
-| 本模块的 `bff.go` | 四件事：发概念账本、把修改转交给概念的主人、转交扩展端点、发静态资源。**不认识任何模块** |
-| 各业务模块 | 自己那一面长什么样、怎么写回去（`core/lib/view`，Optional 依赖） |
+| `modules/porthub` | The owner of that port. This module only does `Mount("/ui", ...)` |
+| This module's `bff.go` | Four things: serve the concept ledger, hand edits to the concept's owner, forward extension endpoints, serve static assets. **Knows no module** |
+| The business modules | What their own surface looks like and how to write back to it (`lib/view`, Optional dependency) |
 
-加一个模块的界面 = 那个模块在自己的 `Start` 里 `Register`，本包与前端都不用改
-（前端只认 Kind，见 `web/src/api.ts`）。
+Adding a module's UI = that module calls `Register` in its own `Start`; neither this package nor the frontend changes
+(the frontend only knows Kind, see `web/src/api.ts`).
 
-### 第二条口子：`/api/ext/<name>`
+### The second door: `/api/ext/<name>`
 
-概念账本只装**画得成一张卡**的东西。有一类功能不是一张卡——比如「点开模型下拉，
-问一句这家上游此刻提供哪些模型」：它没有可持久化的形状，也不该在每次快照里碰
-网络。这种时候模块 Optional 依赖本模块的 `web-extension` 端口，在自己的 `Start`
-里登记**一个名字 + 一个函数**：
+The concept ledger only holds things that **fit on one card**. Some features are not a card: for example, "open the model dropdown,
+ask what models this upstream offers right now": it has no persistable shape, and it should not touch
+the network on every snapshot. In that case the module optionally depends on this module's `web-extension` port and, in its own `Start`,
+registers **a name + a function**:
 
 ```go
 rel, err := web.Register("modellist", func(r webapi.ExtensionRequest) (any, error) {
-    // 形状由你定义；BFF 原样把请求体交给你，把你的返回值写成 JSON。
+    // The shape is yours; the BFF hands you the request body as-is and writes your return value as JSON.
     return myAnswer, nil
 })
 ```
 
-前端 `POST /ui/api/ext/<name>`，体是 JSON。BFF 只做四件形状上的事：认 POST、
-认 `application/json`、找名字、转交——它仍然不认识任何模块。没登记的扩展回 404
-（界面据此回落到自己能拿到的那份数据），扩展返回 error 时回 400 并把那句话原样
-给界面。今天的第一个使用者是 `modules/modellist`（模型选择器的清单来源）。
+The frontend does `POST /ui/api/ext/<name>` with a JSON body. The BFF only does four things of a formal nature: accept POST,
+accept `application/json`, find the name, forward--it still knows no module. An unregistered extension returns 404
+(the UI falls back to the data it can get), and when an extension returns an error the BFF returns 400 and passes that sentence
+through to the UI unchanged. Today's first user is `modules/modellist` (the list source for the model picker).
 
-### 第三条口子：模块自带前端（插件）
+### The third door: a module brings its own frontend (plugins)
 
-前两条口子都要求**前端事先认识形状**（Kind、或者某个扩展端点的回答）。一个模块要
-一块前端不认识的界面时，它不该往 `web/src` 里加组件，而是**自带前端代码**：
+The first two doors both require the **frontend to know the shape in advance** (a Kind, or some extension endpoint's answer). When a module wants
+a piece of UI the frontend does not know, it should not add components to `web/src`; instead it **brings its own frontend code**:
 
 ```go
 //go:embed web
@@ -43,49 +43,49 @@ var webFiles embed.FS
 
 plugins.RegisterPlugin(webapi.Plugin{
     Name:   "self-update",
-    Assets: sub(webFiles, "web"),   // 模块自己的 ES module + 静态文件
+    Assets: sub(webFiles, "web"),   // the module's own ES module + static files
     Entry:  "plugin.js",            // export function mount(el, host) { …; return unmount }
     Slots:  []webapi.PluginSlot{webapi.SlotTopbar},
 })
 ```
 
-BFF 在 `/api/plugins` 发清单、在 `/plugins/<名字>/…` 发文件；界面（`PluginSlot.svelte`）
-在自己版面的**槽位**里给每个插件一个空容器和一个 host（`ext()` 调扩展端点、`asset()`、
-`lang`）。界面认识的只有槽位与这份契约；插件的文案由它自己的扩展端点给（后端翻译），
-样式用设计令牌。一个插件挂不上只丢它自己那一格。今天的槽位只有 `topbar`，要别的
-（侧栏一节、整页）就在这里加一个槽位——那是给模块的**更高自由度的定制点**，不是让
-界面去认识模块。第一个使用者是 `modules/self-update`（顶栏的「更新」）。
+The BFF serves the list at `/api/plugins` and the files at `/plugins/<name>/...`; the UI (`PluginSlot.svelte`)
+gives each plugin an empty container and a host in a **slot** of its own layout (`ext()` calls an extension endpoint, `asset()`,
+`lang`). The UI knows only slots and this contract; a plugin's copy comes from its own extension endpoint (translated on the backend),
+styles use design tokens. A plugin that fails to mount loses only its own cell. Today the only slot is `topbar`; if you need another
+(a sidebar section, a full page), add a slot here--that is a **customization point with more freedom** for modules, not a way to make
+the UI know about modules. The first user is `modules/self-update` (the top bar's "Update").
 
-### 分层：界面 ← 包装层 ← 模块
+### Layering: UI <- wrapper layer <- modules
 
-- **界面（本模块）**只提供框架接口：Kind、槽位、插件契约、扩展端点的转交。不认识
-  任何模块。
-- **单个模块**的界面：它自己带插件（上面那条）。
-- **多个模块拼起来的界面**（模型下拉要 modellist 的清单 + verify 的指纹）：不写进
-  界面，也不让某一个业务模块去依赖另一个——放进一层**包装模块**，它把那几个模块当
-  数据上游（Optional 依赖它们的端口），聚合之后一次注入给界面。抽象层次不清楚的时候
-  就再加一层，而不是让界面越界。
+- **The UI (this module)** provides only framework interfaces: Kind, slots, the plugin contract, extension endpoint forwarding. It knows
+  no module.
+- **A single module's** UI: it brings its own plugin (the point above).
+- **The UI assembled from several modules** (the model dropdown needs modellist's list + verify's fingerprints): do not put it
+  into the UI, and do not make one business module depend on another--put it in a **wrapper module**, which treats those modules as
+  data upstreams (Optional dependencies on their ports) and injects the aggregate into the UI in one go. When the level of abstraction is unclear,
+  add another layer instead of letting the UI overstep.
 
-### 谁越界了（2026-10-29 盘点，待迁）
+### Who crossed the line (2026-10-29 survey, to be migrated)
 
-`boundary_test.go` 的棘轮守着「前端源码不许写死扩展端点名」，下面前两条在它的名单上
-（**只减不增**）；后几条它查不出来，列在这里：
+The ratchet in `boundary_test.go` guards "frontend source must not hardcode extension endpoint names"; the first two rows below are on its list
+(**it may only shrink**); the rest it cannot detect, and they are listed here:
 
-| 在哪 | 越了什么界 | 该去哪 |
+| Where | Which line it crossed | Where it should go |
 | --- | --- | --- |
-| `kinds/Fingerprints.svelte` + `api.ts` 的 fingerprint 类型与 `/ext/fingerprint` | 整个指纹页是 modules/verify 的界面 | verify 自带插件（需要一个「整页」槽位） |
-| `ModelPicker.svelte` 直接问 `/ext/modellist` 与 `/ext/fingerprint` | 模型下拉认识两个模块 | 界面定义一个「模型来源」端口；包装模块聚合 modellist + verify 去实现它 |
-| 内核 `lib/view` 的 `KindFingerprints` | 内核认识一个发行版模块的形状 | 随指纹页迁成插件后删掉 |
-| `kinds/Overview.svelte` 按动作 id 前缀 `probe` 分支 | 认识 home 那几个动作的命名 | 动作自己声明「会花多久 / 要不要转圈」这类语义字段 |
-| `App.svelte` 顶栏只画 id 为 `fallback` 的那个节动作 | 认识某个模块的动作 id | 动作声明「要上顶栏」（一个 placement 字段），界面按字段摆 |
+| `kinds/Fingerprints.svelte` + the fingerprint types in `api.ts` and `/ext/fingerprint` | the whole fingerprint page is modules/verify's UI | verify brings its own plugin (needs a "full page" slot) |
+| `ModelPicker.svelte` asks `/ext/modellist` and `/ext/fingerprint` directly | the model dropdown knows two modules | the UI defines a "model source" port; a wrapper module aggregates modellist + verify to implement it |
+| kernel `lib/view`'s `KindFingerprints` | the kernel knows the shape of a distribution module | delete it once the fingerprint page moves to a plugin |
+| `kinds/Overview.svelte` branches on the action id prefix `probe` | knows how home's actions are named | actions declare semantic fields like "how long it takes / whether to spin" themselves |
+| `App.svelte`'s top bar only renders the section action with id `fallback` | knows one module's action id | actions declare "goes in the top bar" (a placement field), and the UI places them by that field |
 
-## 本地调试：怎么在浏览器里打开
+## Local debugging: how to open it in a browser
 
-**不要动线上那个 daemon**（它跑在 8899，你自己的请求也穿行在其中）。起一个沙箱
-实例，用一个别的端口：
+**Do not touch the live daemon** (it runs on 8899, and your own requests flow through it too). Start a sandbox
+instance on a different port:
 
 ```bash
-# 1. 一份最小配置（放在别处，别碰 ~/.config/newgate）
+# 1. a minimal config (put it elsewhere; do not touch ~/.config/newgate)
 mkdir -p /tmp/ngui/home/mappings
 cat > /tmp/ngui/home/providers.json <<'JSON'
 {"providers":{"demo":{"protocol":"anthropic","base_url":"http://127.0.0.1:9/demo","api_key":"sk-x"}}}
@@ -94,109 +94,109 @@ cat > /tmp/ngui/home/mappings/demo.json <<'JSON'
 {"description":"debug profile","roles":{"normal":[{"provider":"demo","model":"demo-model"}]}}
 JSON
 
-# 2. 编一份产物，**按正确的名字落一份**（argv0 决定这次调用归谁）
+# 2. build an artifact, and **drop a copy under the right name** (argv0 decides who this call belongs to)
 build/build.sh
 mkdir -p /tmp/ngui/bin && cp dist/newgate-default-linux-amd64 /tmp/ngui/bin/newgate
 
-# 3. 起它
+# 3. start it
 cd /tmp/ngui && NEWGATE_HOME=/tmp/ngui/home HOME=/tmp/ngui ./bin/newgate __serve --port 8901
 ```
 
-然后打开 <http://127.0.0.1:8901/ui/>。`providers.json` 里那个 `api_key` 在界面上
-应当显示成 `***`，而且那份文件是**只读**的。
+Then open <http://127.0.0.1:8901/ui/>. The `api_key` in `providers.json` should show as
+`***` in the UI, and that file should be **read-only**.
 
-改前端：`cd modules/web-dashboard/web && pnpm install && pnpm dev`（vite 的 dev
-server 自己起在 5173，把 `/ui/api` 代理到上面的 8901 就能热更新），改完
-`pnpm build` —— **产物要提交**（Go 的 `go:embed` 读它，`go build` 才能离线）。
+Changing the frontend: `cd modules/web-dashboard/web && pnpm install && pnpm dev` (vite's dev
+server starts on 5173 by itself; proxy `/ui/api` to the 8901 above for hot reload), then
+`pnpm build`--**the build output must be committed** (Go's `go:embed` reads it, which is what lets `go build` work offline).
 
-## 装配：入口有三种形态，`newgate web` 会告诉你这次是哪种
+## Assembly: the entry has three shapes, and `newgate web` tells you which one this is
 
-**两条独立的轴**，别混：一条是「谁当终端界面」（`cli` / `tui` / `simple-cli`），
-另一条是**这个界面自己从哪儿被服务**：
+**Two independent axes**; do not mix them: one is "who is the terminal UI" (`cli` / `tui` / `simple-cli`),
+the other is **where this UI is served from**:
 
-| porthub | serving | 界面在哪儿 | 这次装配的样子 |
+| porthub | serving | where the UI is | what this assembly looks like |
 | --- | --- | --- | --- |
-| 在 | 任意 | 共享端口 `/ui`（与数据面同一个端口） | 常态 |
-| 不在 | 在 | **自己的端口** `http://127.0.0.1:8898/ui/`（`NEWGATE_WEB_PORT` 可改） | 退路 |
-| 不在 | 不在 | 没有入口 | `newgate web` 会说清楚为什么 |
+| yes | any | shared port `/ui` (the same port as the data plane) | normal |
+| no | yes | **its own port** `http://127.0.0.1:8898/ui/` (`NEWGATE_WEB_PORT` can change it) | fallback |
+| no | no | no entry | `newgate web` explains why |
 
-退路只在**服务进程**里生效（登记在 `lib/serving` 那本账上，由拥有端口的一方在
-开始服务时通知）——CLI 进程里一次都不会开监听。它丢掉的正是当初要共享端口的那个
-理由（防火墙/反代/ACL 都按端口配），所以它是退路而不是常态。
+The fallback only takes effect in the **serving process** (registered in `lib/serving`'s book and announced by whoever owns the port
+when it starts serving)--in a CLI process it never opens a listener. It gives up exactly the reason we wanted a shared port
+(firewalls / reverse proxies / ACLs are all configured per port), so it is a fallback, not the norm.
 
-终端界面那一轴与它无关，各自成立：默认（`cli`/`tui` + 本模块）是终端与浏览器各
-一份；关掉内核的 `cli` 时浏览器照常、终端只剩最小渲染（`simple-cli` 顶上来）；
-**不装本模块**则完全没有 web 入口，`/ui` 掉进数据面的 catch-all（与任何未知路径
-一样）。这些组合都成立，是因为本模块的依赖**全是 `Optional`**。
+The terminal UI axis is unrelated to it and stands on its own: the default (`cli`/`tui` + this module) gives the terminal and the browser
+one each; with the kernel's `cli` turned off the browser keeps working and the terminal falls back to minimal rendering (`simple-cli` steps up);
+**without this module** there is no web entry at all, and `/ui` falls into the data plane's catch-all (like any unknown path
+does). All these combinations hold because this module's dependencies are **all `Optional`**.
 
-**没有终端界面的装配里，浏览器是唯一的入口**（`dist-dashboard.json` 就是这么一份：
-它关掉内核的 `cli`）。那时：
+**In an assembly with no terminal UI, the browser is the only entry** (`dist-dashboard.json` is exactly one of those:
+it turns off the kernel's `cli`). Then:
 
 ```bash
-newgate --port 8899      # 无子命令 = 起服务（只有本入口自己的 flag 时不认领别的东西）
+newgate --port 8899      # no subcommand = start serving (only this entry's own flags are not claimed by anything else)
 ```
 
-这条曾经不成立：`__serve` 原来是 `cli` 的一条命令，于是关掉 `cli` 的装配编得出来
-却起不来（`no entry claimed this call`）。2026-09-20 之后守护进程本体是一个**入口
-申报**（`component/entry`），与界面装不装无关；同一个改动还让「无参数 = 起服务」
-在**没有终端界面**时成立——那时没有子命令可派，这个二进制唯一说得通的行为就是
-服务。带别的参数（`newgate frobnicate`、`newgate --help`）仍然会得到「没人认领
-这次调用」那句人话。
+This did not hold before: `__serve` used to be a command of `cli`, so an assembly with `cli` off would build
+but not start (`no entry claimed this call`). Since 2026-09-20 the daemon itself is an **entry
+declaration** (`component/entry`), independent of whether a UI is installed; the same change also made "no arguments = start serving"
+hold **with no terminal UI**--then there is no subcommand to dispatch, and the only sensible behavior of this binary is to
+serve. Other arguments (`newgate frobnicate`, `newgate --help`) still get the plain-English "no entry claimed
+this call".
 
-## 谁能碰它
+## Who can touch it
 
-它**能改配置、能拨运行期开关**，所以两道门是硬的（都在 `bff.go` 里，各有注释）：
+It **can change config and flip runtime switches**, so two gates are hard (both in `bff.go`, each with comments):
 
-1. **只答本机的 Host**（127.0.0.1 / localhost / ::1）。只监听 loopback 挡得住外面
-   的连接，挡不住别人网页上的一段脚本：攻击者把自己控制的域名解析到 127.0.0.1
-   （DNS rebinding），浏览器就认为同源。浏览器唯一不骗人的是它自己填的 Host。
-   代价：在 `/etc/hosts` 里给自己起名的人会被挡在外面，报错里写了该用什么地址。
-2. **写操作必须声明 `Content-Type: application/json`**。跨站表单与 no-cors 的
-   fetch 发不出这个类型（会触发预检，而我们不回 CORS 头），但它们能发一个 body
-   长得像 JSON 的 text/plain——而解码器不看 Content-Type。这条是那条路唯一的墙。
+1. **Answer only the local Host** (127.0.0.1 / localhost / ::1). Listening on loopback only blocks outside
+   connections; it does not block a script on someone else's web page: the attacker resolves a domain they control to 127.0.0.1
+   (DNS rebinding) and the browser then considers it same-origin. The only thing the browser does not lie about is the Host it fills in.
+   Cost: people who give themselves a name in `/etc/hosts` are locked out, and the error says which address to use.
+2. **Write operations must declare `Content-Type: application/json`**. Cross-site forms and no-cors
+   fetch cannot send this type (it triggers a preflight, and we send no CORS headers), but they can send a text/plain body
+   that looks like JSON--and the decoder does not look at Content-Type. This is the only wall on that road.
 
-**残留风险说清楚**：本机的**任何进程**都还能直接读写这些端点（loopback 的边界
-就是本机）。所以它和 `providers.json` 同级看待——凭据在那里脱敏、带凭据的文件
-在界面上只读，理由都是这一条。
+**Residual risk, stated plainly**: **any process** on this machine can still read and write these endpoints directly (the loopback boundary
+is this machine). So treat it as being at the same level as `providers.json`--credentials are masked there, and files carrying credentials
+are read-only in the UI, both for this same reason.
 
-## 待办
+## TODO
 
-- **打开浏览器**：`newgate web` 只打印地址，不替用户 `xdg-open`（跳板机上那种调用
-  会挂住）。要加的话得先想清楚「没有图形界面时」的表现。
-- **footgun 的时限选择**：界面上那些开关点里，`DangerFootgun` 的被放进一张**只读**
-  卡片（写它们必须带时限，而这一版没有选时限的界面）。今天没有任何模块声明 footgun，
-  所以这条是给将来铺路——现在无法用真实数据验证。
-- **`gateway.special` 还不能写**：它是只读的，而**关掉 cli 的那份装配里
-  `newgate st on|off` 也不存在**——那里要开关一个补丁，只能去 `config.file.state.json`
-  那张 code 卡上手工改 `ModuleConfig["gateway"]`。补上它需要一条 CAS 写
-  （`store.WriteIfUnchanged`，把 `StaleError` 翻成 `view.Conflict`），与 footgun 那条
-  是同一类活。今天可以用真实数据验证（这份装配里注册了六个补丁）。
-- **非 loopback 的暴露**：现在只答本机。要开放给别人用，得先有认证（控制令牌是现成
-  的一半），见 `docs/12-newgate-remote.md` 那条路线。
+- **Opening the browser**: `newgate web` only prints the address; it does not run `xdg-open` for the user (that kind of call
+  hangs on jump hosts). Adding it would first require thinking through the behavior "when there is no graphical interface".
+- **Time limits for footguns**: among the switch dots in the UI, `DangerFootgun` ones are put on a **read-only**
+  card (writing them requires a time limit, and this version has no UI for choosing one). Today no module declares a footgun,
+  so this is paving the way for the future--it cannot be validated with real data now.
+- **`gateway.special` cannot be written yet**: it is read-only, and **in an assembly with cli off
+  `newgate st on|off` does not exist either**--there, to toggle a patch you can only go to the code card
+  of `config.file.state.json` and edit `ModuleConfig["gateway"]` by hand. Adding it needs a CAS write
+  (`store.WriteIfUnchanged`, turning `StaleError` into `view.Conflict`), the same kind of work as the footgun item.
+  Today it can be validated with real data (six patches are registered in this assembly).
+- **Non-loopback exposure**: right now it answers only this machine. To open it to others you first need authentication (the control token is
+  half of what is needed), see the route in `docs/12-newgate-remote.md`.
 
-## 今天有哪些卡片
+## What cards exist today
 
-| 概念 ID | Kind | 谁贡献的 | 能写吗 |
+| Concept ID | Kind | Contributed by | Writable |
 | --- | --- | --- | --- |
-| `config.file.*` | `code` | config | `providers.json` 只读（凭据），其余可写 |
-| `config.profile.*` | `mapping-editor` | config | 能 |
-| `config.state` | `toggles` | config | 能 |
-| `gateway.metrics` | `series` | gateway | 只读 |
-| `gateway.log` | `log` | gateway | 只读 |
-| `gateway.special` | `table` | gateway | 只读：**哪些补丁在动你的请求**（两种「关掉」各有各的说法与颜色；关掉了 cli 的装配里这是唯一的答案） |
-| `claudecode.classifier` | `table` | claudecode | 只读：**Bash 分类器此刻被怎么对待**（裸奔关着 / 限时 / 永久；永久才画红）。同样是关掉 cli 的装配里唯一能看见它的地方 |
-| `plugin-manager.switches` | `toggles` | plugin-manager | 能 |
-| `plugin-manager.footguns` | `toggles` | plugin-manager | 只读（要带时限，见上） |
-| `plugin-manager.modules` | `table` | plugin-manager | 只读：**这个构建由哪些模块组成** |
-| `breaker.health` | `table` | breaker | 只读 |
-| `runtime.takeover` | `table` | runtime | 只读：**谁在走 newgate**（四态：生效 / 声明了没生效 / 关过却没放开 / 直连） |
-| `opencode-omo.slots` | `table` | opencode-omo | 只读：每个 omo 槽位现在的绑定（写归属只有 `newgate omo use` 一份语义） |
+| `config.file.*` | `code` | config | `providers.json` read-only (credentials), the rest writable |
+| `config.profile.*` | `mapping-editor` | config | yes |
+| `config.state` | `toggles` | config | yes |
+| `gateway.metrics` | `series` | gateway | read-only |
+| `gateway.log` | `log` | gateway | read-only |
+| `gateway.special` | `table` | gateway | read-only: **which patches are touching your requests** (the two kinds of "off" each get their own wording and color; in an assembly with cli off this is the only answer) |
+| `claudecode.classifier` | `table` | claudecode | read-only: **how the Bash classifier is being treated right now** (unguarded and off / time-limited / permanent; only permanent is drawn red). Also the only place to see it in an assembly with cli off |
+| `plugin-manager.switches` | `toggles` | plugin-manager | yes |
+| `plugin-manager.footguns` | `toggles` | plugin-manager | read-only (needs a time limit, see above) |
+| `plugin-manager.modules` | `table` | plugin-manager | read-only: **which modules make up this build** |
+| `breaker.health` | `table` | breaker | read-only |
+| `runtime.takeover` | `table` | runtime | read-only: **who is going through newgate** (four states: active / declared but not active / turned off but not released / direct) |
+| `opencode-omo.slots` | `table` | opencode-omo | read-only: the current binding of each omo slot (write ownership has a single semantics: `newgate omo use`) |
 
-这张表是**产物**不是清单：加一个模块的那一面不需要改它，就像不需要改前端一样
-（前端只认 Kind，账本只认注册）。写在这里是为了让人一眼看到「今天能看什么」，
-别当成需要维护的名单。
+This table is a **product**, not a checklist: adding a module's surface does not require changing it, just as it does not require changing the frontend
+(the frontend only knows Kind; the ledger only knows registrations). It is written here so you can see at a glance "what can be seen today";
+do not treat it as a list that needs maintaining.
 
-`table` 那几张（今天六张）是 2026-09-20 加的：形状定义在 `core/lib/view`（列 + 行，行按**列 ID**
-索引而不是数组下标，所以列顺序是纯展示的事），前端 `kinds/Table.svelte` 认它。
-第二个贡献者（模块清单）一行前端代码都没改——那正是把它做成契约而不是一次性
-渲染器的理由。
+The `table` ones (six today) were added on 2026-09-20: the shape is defined in `lib/view` (columns + rows, with rows indexed by **column ID**
+rather than array position, so column order is purely a display matter), and the frontend's `kinds/Table.svelte` recognizes it.
+The second contributor (module list) did not change a single line of frontend code--that is exactly the reason to make it a contract
+rather than a one-off renderer.
