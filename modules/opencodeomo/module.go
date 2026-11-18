@@ -44,7 +44,9 @@ func New() modules.Component {
 	var releases []modules.Release
 	return modules.Component{
 		Name: "opencode-omo",
-		Desc: func() string { return i18n.T("oh-my-openagent's intra-agent slots", nil) },
+		Desc: func() string {
+			return i18n.T("oh-my-openagent's sub-agent slots: classify, bind, explain (newgate omo)", nil)
+		},
 		Type: "client",
 		Requires: []modules.Requirement{
 			modules.Need(configapi.Capability),
