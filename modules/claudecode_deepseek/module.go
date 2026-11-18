@@ -28,7 +28,7 @@ func New() modules.Component {
 	var releases []modules.Release
 	return modules.Component{
 		Name: "claudecode-deepseek",
-		Desc: func() string { return i18n.T("the Claude Code × DeepSeek crossing", nil) },
+		Desc: func() string { return i18n.T("Claude Code × DeepSeek: replay reasoning, disable thinking", nil) },
 		Type: "bridge",
 		Requires: []modules.Requirement{
 			modules.Need(gatewayapi.Capability),
