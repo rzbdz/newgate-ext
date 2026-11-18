@@ -12,6 +12,23 @@ finished release.
 
 ## [Unreleased]
 
+### Changed
+
+- **The kernel now ships no modules.** `rzbdz/newgate` is a framework: the
+  component graph, typed capabilities, the process-entry contract, the i18n
+  engine, and the tooling. Everything else — the gateway, the breaker, the CLI,
+  config, client takeover, locale, plugin manager, the HTTP/styling/view leaf
+  libraries — moved here and lives in `modules/` and `lib/` next to the upstream
+  patches and client adapters. The split follows the line "the kernel is
+  mechanism, the distribution is product".
+  - A build now names every module it installs in its spec; `disable` is gone
+    from the specs (there is nothing in the kernel to disable). `dist-hello.json`
+    is the smallest example: `i18n`, `entry`, `hello`.
+  - The composition root takes two hooks (`app.Options.Trace`,
+    `OnAssemblyFailure`) instead of knowing where the product keeps its log.
+  - Behaviour is unchanged: the whole end-to-end suite passes against the
+    product binary, as before.
+
 ### Added
 
 - **One-line install, then one-command setup.** `curl -fsSL …/install.sh | bash`
