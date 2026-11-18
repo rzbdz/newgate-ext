@@ -25,7 +25,7 @@ func New() modules.Component {
 	return modules.Component{
 		Name: "config",
 		Desc: func() string {
-			return i18n.T("tiers, providers and state.json: what they mean, and how they are read and written", nil)
+			return i18n.T("the config itself: tiers, providers, profiles, state.json — and their meaning", nil)
 		},
 		Type: "infra",
 		Requires: []modules.Requirement{
