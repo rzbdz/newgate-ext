@@ -41,7 +41,9 @@ func New() modules.Component {
 	var releases []modules.Release
 	return modules.Component{
 		Name: "tui",
-		Desc: func() string { return i18n.T("a menuconfig-style terminal interface", nil) },
+		Desc: func() string {
+			return i18n.T("menuconfig-style terminal config UI: profiles and their bindings (newgate tui)", nil)
+		},
 		// Type is a product-layer classification, values set by the assembler (see pluginmanager).
 		Type: "cli",
 		Requires: []modules.Requirement{
