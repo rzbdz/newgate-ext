@@ -58,7 +58,7 @@ func New() modules.Component {
 	return modules.Component{
 		Name: "config-hook",
 		Desc: func() string {
-			return i18n.T("the client catalog: what a client is, how to install it, and how it is right now", nil)
+			return i18n.T("the client catalog: which agents exist, how each is installed, how it is doing now", nil)
 		},
 		Type: "infra",
 		Requires: []modules.Requirement{
