@@ -67,7 +67,7 @@ func New() modules.Component {
 	return modules.Component{
 		Name: Name,
 		Desc: func() string {
-			return i18n.T("replace the newgate binary from a GitHub release or a local build, with a graceful daemon handoff", nil)
+			return i18n.T("describes and installs newer binaries: where newgate upgrade downloads from, rollback", nil)
 		},
 		Type: "infra",
 		Requires: []modules.Requirement{
