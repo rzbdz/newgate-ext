@@ -48,7 +48,7 @@ func New() modules.Component {
 	return modules.Component{
 		Name: Name,
 		Desc: func() string {
-			return i18n.T("ask a provider which models it serves, for the model picker in the web interface", nil)
+			return i18n.T("asks a provider which models it serves; feeds the model picker in the UI (newgate profile)", nil)
 		},
 		// Same layer as the kernel's config/gateway: it is infrastructure, not a client, not an upstream
 		// patch.
