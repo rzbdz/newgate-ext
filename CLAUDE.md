@@ -96,6 +96,12 @@ newgate-ext/           ← 你在这里（发行版：产品），这个仓库�
   gateway/direction_test.go` 那条棘轮守着方向：它拒「名字」也拒 `import` 策略包
   本身，只有 `…/breaker/status` 那种 wire 叶子除外）。一个都不装时网关是最小系统，
   照常转发。
+  **运行时的临时决定走开关点，不走配置**：要「出问题时一键关掉」的行为，用
+  `pluginmanager.RegisterSelf` 报一个 Switch（`modules/breaker/switches.go` 的
+  `breaker.admission` 是样例），用户在 `newgate plugin` 里关掉，热路径读
+  `pluginmanager.Off(state, path)`——纯函数、无锁、无 IO。需要「此刻的配置快照」时
+  从 `gateway/policy` 的 `Env.State()` 拿（数据面借出的运行时能力，与 `Logf`/
+  `Probe` 同一个门），别自己开第二套。
 - **模块的键不 hard-code 进 gateway**：客户端插件自带的东西（omo 的
   sisyphus/librarian 槽位）由模块实现 `config.RoleProvider` 注册成动态角色
   键（`domain.ExtraRole`），命名与缺省归属留在 `modules/opencodeomo`。
