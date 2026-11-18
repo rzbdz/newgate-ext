@@ -5,10 +5,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/rzbdz/newgate/lib/view"
+	"github.com/rzbdz/newgate-ext/lib/view"
 
-	agentapi "github.com/rzbdz/newgate/modules/confighook"
-	"github.com/rzbdz/newgate/testing/testkit"
+	agentapi "github.com/rzbdz/newgate-ext/modules/confighook"
+	"github.com/rzbdz/newgate-ext/testing/testkit"
 )
 
 // 槽位映射从 2026-09-21 起可配。这一族测的是那条链上最容易断的三处：读到的值要

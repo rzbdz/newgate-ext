@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rzbdz/newgate/modules/config/store"
-	"github.com/rzbdz/newgate/testing/testkit"
+	"github.com/rzbdz/newgate-ext/modules/config/store"
+	"github.com/rzbdz/newgate-ext/testing/testkit"
 )
 
 // 这一族是那张映射表的**写入侧**：界面上按一次「应用」之后，盘上到底发生了什么。

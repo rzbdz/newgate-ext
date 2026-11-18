@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rzbdz/newgate/modules/gateway/special"
+	"github.com/rzbdz/newgate-ext/modules/gateway/special"
 )
 
 func init() {

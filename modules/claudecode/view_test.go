@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rzbdz/newgate-ext/lib/view"
+	"github.com/rzbdz/newgate-ext/modules/config/store"
+	"github.com/rzbdz/newgate-ext/testing/testkit"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/lib/view"
-	"github.com/rzbdz/newgate/modules/config/store"
-	"github.com/rzbdz/newgate/testing/testkit"
 )
 
 // 这一族测的是那张分类器卡片。断言打在**数据**上（view.Table），不打在 HTML 上。

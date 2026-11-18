@@ -6,10 +6,10 @@ import (
 	"os"
 	"strings"
 
+	"github.com/rzbdz/newgate-ext/modules/config/domain"
+	"github.com/rzbdz/newgate-ext/modules/config/store"
+	agentapi "github.com/rzbdz/newgate-ext/modules/confighook"
 	"github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/modules/config/domain"
-	"github.com/rzbdz/newgate/modules/config/store"
-	agentapi "github.com/rzbdz/newgate/modules/confighook"
 )
 
 // 本文件是 **hermes 的接管**：改写 `$HERMES_HOME/config.yaml`，把它指到本地代理。

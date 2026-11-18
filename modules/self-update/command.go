@@ -7,11 +7,11 @@ import (
 	"path/filepath"
 	"regexp"
 
-	"github.com/rzbdz/newgate/lib/buildinfo"
+	"github.com/rzbdz/newgate-ext/lib/buildinfo"
+	"github.com/rzbdz/newgate-ext/lib/style"
+	cliapi "github.com/rzbdz/newgate-ext/modules/cli/extension"
+	"github.com/rzbdz/newgate-ext/modules/gateway/controlplane"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/lib/style"
-	cliapi "github.com/rzbdz/newgate/modules/cli/extension"
-	"github.com/rzbdz/newgate/modules/gateway/controlplane"
 
 	"github.com/rzbdz/newgate-ext/manifest/distinfo"
 )

@@ -5,11 +5,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/rzbdz/newgate/lib/durarg"
+	"github.com/rzbdz/newgate-ext/lib/durarg"
+	"github.com/rzbdz/newgate-ext/lib/style"
+	cliapi "github.com/rzbdz/newgate-ext/modules/cli/extension"
+	"github.com/rzbdz/newgate-ext/modules/config/store"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/lib/style"
-	cliapi "github.com/rzbdz/newgate/modules/cli/extension"
-	"github.com/rzbdz/newgate/modules/config/store"
 )
 
 // defaultTTL 是 `newgate nothink on` 的默认窗口，与 `newgate naked on` 同一个数。

@@ -14,32 +14,46 @@ import (
 	"strings"
 
 	ext_arch_diagram "github.com/rzbdz/newgate-ext/modules/arch-diagram"
+	ext_ask "github.com/rzbdz/newgate-ext/modules/ask"
+	ext_breaker "github.com/rzbdz/newgate-ext/modules/breaker"
 	ext_claudecode "github.com/rzbdz/newgate-ext/modules/claudecode"
 	ext_claudecode_deepseek "github.com/rzbdz/newgate-ext/modules/claudecode_deepseek"
 	ext_claudecode_glm "github.com/rzbdz/newgate-ext/modules/claudecode_glm"
+	ext_cli "github.com/rzbdz/newgate-ext/modules/cli"
 	ext_codex "github.com/rzbdz/newgate-ext/modules/codex"
 	ext_codex_deepseek "github.com/rzbdz/newgate-ext/modules/codex_deepseek"
+	ext_config "github.com/rzbdz/newgate-ext/modules/config"
+	ext_confighook "github.com/rzbdz/newgate-ext/modules/confighook"
 	ext_deepseek "github.com/rzbdz/newgate-ext/modules/deepseek"
+	ext_entry "github.com/rzbdz/newgate-ext/modules/entry"
+	ext_gateway "github.com/rzbdz/newgate-ext/modules/gateway"
 	ext_glm "github.com/rzbdz/newgate-ext/modules/glm"
 	ext_hello "github.com/rzbdz/newgate-ext/modules/hello"
 	ext_hermes "github.com/rzbdz/newgate-ext/modules/hermes"
 	ext_home "github.com/rzbdz/newgate-ext/modules/home"
 	ext_i18n "github.com/rzbdz/newgate-ext/modules/i18n"
+	ext_locale "github.com/rzbdz/newgate-ext/modules/locale"
 	ext_modellist "github.com/rzbdz/newgate-ext/modules/modellist"
 	ext_nothink "github.com/rzbdz/newgate-ext/modules/nothink"
 	ext_opencode "github.com/rzbdz/newgate-ext/modules/opencode"
 	ext_opencodeomo "github.com/rzbdz/newgate-ext/modules/opencodeomo"
+	ext_pluginmanager "github.com/rzbdz/newgate-ext/modules/pluginmanager"
+	ext_porthub "github.com/rzbdz/newgate-ext/modules/porthub"
+	ext_runtime "github.com/rzbdz/newgate-ext/modules/runtime"
 	ext_self_update "github.com/rzbdz/newgate-ext/modules/self-update"
+	ext_serving "github.com/rzbdz/newgate-ext/modules/serving"
 	ext_setup "github.com/rzbdz/newgate-ext/modules/setup"
 	ext_simple_cli "github.com/rzbdz/newgate-ext/modules/simple-cli"
 	ext_ssh_tunnel "github.com/rzbdz/newgate-ext/modules/ssh-tunnel"
 	ext_theme_anthropic "github.com/rzbdz/newgate-ext/modules/theme-anthropic"
 	ext_theme_dark "github.com/rzbdz/newgate-ext/modules/theme-dark"
 	ext_theme_light "github.com/rzbdz/newgate-ext/modules/theme-light"
+	ext_thinking "github.com/rzbdz/newgate-ext/modules/thinking"
 	ext_tui "github.com/rzbdz/newgate-ext/modules/tui"
 	ext_upgrade "github.com/rzbdz/newgate-ext/modules/upgrade"
 	ext_verify "github.com/rzbdz/newgate-ext/modules/verify"
 	ext_web_dashboard "github.com/rzbdz/newgate-ext/modules/web-dashboard"
+	ext_wrapper "github.com/rzbdz/newgate-ext/modules/wrapper"
 	app "github.com/rzbdz/newgate/app"
 	modules "github.com/rzbdz/newgate/component"
 )
@@ -54,8 +68,20 @@ const DefaultSpec = "dist.json"
 func Specs() map[string]app.Selection {
 	return map[string]app.Selection{
 		"dist-dashboard.json": {
-			Disable: []string{"cli"},
 			Extra: []app.Entry{
+				{Dir: "ask", Component: ext_ask.New()},
+				{Dir: "breaker", Component: ext_breaker.New()},
+				{Dir: "config", Component: ext_config.New()},
+				{Dir: "confighook", Component: ext_confighook.New()},
+				{Dir: "entry", Component: ext_entry.New()},
+				{Dir: "gateway", Component: ext_gateway.New()},
+				{Dir: "locale", Component: ext_locale.New()},
+				{Dir: "pluginmanager", Component: ext_pluginmanager.New()},
+				{Dir: "porthub", Component: ext_porthub.New()},
+				{Dir: "runtime", Component: ext_runtime.New()},
+				{Dir: "serving", Component: ext_serving.New()},
+				{Dir: "thinking", Component: ext_thinking.New()},
+				{Dir: "wrapper", Component: ext_wrapper.New()},
 				{Dir: "i18n", Component: ext_i18n.New()},
 				{Dir: "home", Component: ext_home.New()},
 				{Dir: "deepseek", Component: ext_deepseek.New()},
@@ -78,6 +104,20 @@ func Specs() map[string]app.Selection {
 		},
 		"dist-dev.json": {
 			Extra: []app.Entry{
+				{Dir: "ask", Component: ext_ask.New()},
+				{Dir: "breaker", Component: ext_breaker.New()},
+				{Dir: "cli", Component: ext_cli.New()},
+				{Dir: "config", Component: ext_config.New()},
+				{Dir: "confighook", Component: ext_confighook.New()},
+				{Dir: "entry", Component: ext_entry.New()},
+				{Dir: "gateway", Component: ext_gateway.New()},
+				{Dir: "locale", Component: ext_locale.New()},
+				{Dir: "pluginmanager", Component: ext_pluginmanager.New()},
+				{Dir: "porthub", Component: ext_porthub.New()},
+				{Dir: "runtime", Component: ext_runtime.New()},
+				{Dir: "serving", Component: ext_serving.New()},
+				{Dir: "thinking", Component: ext_thinking.New()},
+				{Dir: "wrapper", Component: ext_wrapper.New()},
 				{Dir: "i18n", Component: ext_i18n.New()},
 				{Dir: "setup", Component: ext_setup.New()},
 				{Dir: "home", Component: ext_home.New()},
@@ -106,15 +146,27 @@ func Specs() map[string]app.Selection {
 			},
 		},
 		"dist-hello.json": {
-			AllCore: true,
 			Extra: []app.Entry{
 				{Dir: "i18n", Component: ext_i18n.New()},
+				{Dir: "entry", Component: ext_entry.New()},
 				{Dir: "hello", Component: ext_hello.New()},
 			},
 		},
 		"dist-simple-cli.json": {
-			Disable: []string{"cli"},
 			Extra: []app.Entry{
+				{Dir: "ask", Component: ext_ask.New()},
+				{Dir: "breaker", Component: ext_breaker.New()},
+				{Dir: "config", Component: ext_config.New()},
+				{Dir: "confighook", Component: ext_confighook.New()},
+				{Dir: "entry", Component: ext_entry.New()},
+				{Dir: "gateway", Component: ext_gateway.New()},
+				{Dir: "locale", Component: ext_locale.New()},
+				{Dir: "pluginmanager", Component: ext_pluginmanager.New()},
+				{Dir: "porthub", Component: ext_porthub.New()},
+				{Dir: "runtime", Component: ext_runtime.New()},
+				{Dir: "serving", Component: ext_serving.New()},
+				{Dir: "thinking", Component: ext_thinking.New()},
+				{Dir: "wrapper", Component: ext_wrapper.New()},
 				{Dir: "i18n", Component: ext_i18n.New()},
 				{Dir: "setup", Component: ext_setup.New()},
 				{Dir: "simple-cli", Component: ext_simple_cli.New()},
@@ -134,6 +186,20 @@ func Specs() map[string]app.Selection {
 		},
 		"dist.json": {
 			Extra: []app.Entry{
+				{Dir: "ask", Component: ext_ask.New()},
+				{Dir: "breaker", Component: ext_breaker.New()},
+				{Dir: "cli", Component: ext_cli.New()},
+				{Dir: "config", Component: ext_config.New()},
+				{Dir: "confighook", Component: ext_confighook.New()},
+				{Dir: "entry", Component: ext_entry.New()},
+				{Dir: "gateway", Component: ext_gateway.New()},
+				{Dir: "locale", Component: ext_locale.New()},
+				{Dir: "pluginmanager", Component: ext_pluginmanager.New()},
+				{Dir: "porthub", Component: ext_porthub.New()},
+				{Dir: "runtime", Component: ext_runtime.New()},
+				{Dir: "serving", Component: ext_serving.New()},
+				{Dir: "thinking", Component: ext_thinking.New()},
+				{Dir: "wrapper", Component: ext_wrapper.New()},
 				{Dir: "i18n", Component: ext_i18n.New()},
 				{Dir: "setup", Component: ext_setup.New()},
 				{Dir: "home", Component: ext_home.New()},

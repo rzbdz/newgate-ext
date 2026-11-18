@@ -6,12 +6,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rzbdz/newgate/lib/view"
-	configapi "github.com/rzbdz/newgate/modules/config"
-	configmod "github.com/rzbdz/newgate/modules/config"
-	"github.com/rzbdz/newgate/modules/config/paths"
-	"github.com/rzbdz/newgate/modules/config/store"
-	"github.com/rzbdz/newgate/testing/testkit"
+	"github.com/rzbdz/newgate-ext/lib/view"
+	configapi "github.com/rzbdz/newgate-ext/modules/config"
+	configmod "github.com/rzbdz/newgate-ext/modules/config"
+	"github.com/rzbdz/newgate-ext/modules/config/paths"
+	"github.com/rzbdz/newgate-ext/modules/config/store"
+	"github.com/rzbdz/newgate-ext/testing/testkit"
 )
 
 // 这一族的判据从**两处**来，各自有各自的理由。

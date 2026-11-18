@@ -12,9 +12,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/rzbdz/newgate-ext/modules/config/paths"
+	"github.com/rzbdz/newgate-ext/modules/gateway/controlplane"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/modules/config/paths"
-	"github.com/rzbdz/newgate/modules/gateway/controlplane"
 )
 
 // 本文件是「换上去」那半：落一份候选、试跑、留旧版、rename、交接 daemon、回滚。

@@ -6,11 +6,11 @@ import (
 	"testing"
 
 	"github.com/rzbdz/newgate-ext/manifest"
+	cliapi "github.com/rzbdz/newgate-ext/modules/cli/extension"
+	"github.com/rzbdz/newgate-ext/testing/testkit"
 	app "github.com/rzbdz/newgate/app"
 	modules "github.com/rzbdz/newgate/component"
 	"github.com/rzbdz/newgate/component/entry"
-	cliapi "github.com/rzbdz/newgate/modules/cli/extension"
-	"github.com/rzbdz/newgate/testing/testkit"
 )
 
 // 这一组锁的是**发行版自己那张图**的不变式：每份规格书能不能装起来、规格书点名与
@@ -38,10 +38,13 @@ type staticLoader []modules.Component
 
 func (s staticLoader) Load() ([]modules.Component, error) { return s, nil }
 
-// TestEverySpecBuilds 每份规格书都要能装、能起、能停，而且：
-//   - 它点名的模块**真的在图里**（点了名没装上是静默故障：功能少了没人报错）；
-//   - 它 disable 的内核模块**真的不在图里**（写错名字的话 Selection.Load 就会拦，
-//     但「拦没拦住」值得在成品这一侧再确认一次）。
+// TestEverySpecBuilds: every spec must load, start and stop, and every module it
+// names must really be in the graph (naming a module and not installing it is a
+// silent failure: a feature is missing and nothing says so).
+//
+// Specs no longer *disable* anything — the kernel ships no modules to disable
+// (2026-11-18). A spec is now exactly the list it names, so "the graph equals the
+// list" is checked from both directions below.
 func TestEverySpecBuilds(t *testing.T) {
 	for _, name := range manifest.SpecNames() {
 		t.Run(name, func(t *testing.T) {
@@ -71,25 +74,18 @@ func TestEverySpecBuilds(t *testing.T) {
 						e.Component.Name, e.Dir, manager.ComponentNames())
 				}
 			}
-			// 关掉的那些必须**真的**不在图里。判据从规格书读——Disable 名单，或者
-			// AllCore（内核自带的全部可关模块）——不写死名字，也不重复一份名单。
-			for _, e := range app.CoreModules() {
-				if !sel.AllCore && !contains(sel.Disable, e.Dir) {
-					continue
-				}
-				if servesEntry(e.Component) {
-					// 组合根自己要用的那个（入口账本）**关不掉**：Selection.Load 拒绝关它，
-					// AllCore 也把它留在外面。所以它必须还在图里——它是「这张图里还有人
-					// 能认领这次调用」的那一半保证。
-					if !got[e.Component.Name] {
-						t.Errorf("入口账本（%s）不在图里——没有它，这个二进制裸跑没人能认领调用",
-							e.Component.Name)
-					}
-					continue
-				}
-				if got[e.Component.Name] {
-					t.Errorf("规格书关掉了 %s（目录 %s），可它还在图里——"+
-						"「我以为关掉了，它还在跑」是这一层最坏的失效", e.Component.Name, e.Dir)
+			// The other direction: nothing beyond the list may be installed. A module
+			// that shows up without being named came from a Selection.DefaultSpec
+			// fallback or a stale generated table — both are "I thought I narrowed the
+			// product, and it is wider than I think".
+			named := map[string]bool{}
+			for _, e := range sel.Extra {
+				named[e.Component.Name] = true
+			}
+			for _, n := range manager.ComponentNames() {
+				if !named[n] {
+					t.Errorf("%s installed but not named by the spec — graph = %v",
+						n, manager.ComponentNames())
 				}
 			}
 		})
@@ -199,14 +195,14 @@ func TestDistModulesAreRemovable(t *testing.T) {
 		t.Fatalf("没有 %s 这份规格书", specName)
 	}
 	if len(base.Extra) < 2 {
-		t.Fatalf("%s 只装了 %d 个自有模块，矩阵退化了", specName, len(base.Extra))
+		t.Fatalf("%s only names %d modules — the matrix degenerated", specName, len(base.Extra))
 	}
 
 	for _, victim := range base.Extra {
 		t.Run(victim.Dir, func(t *testing.T) {
 			testkit.Sandbox(t)
 
-			sel := app.Selection{Disable: base.Disable}
+			sel := app.Selection{}
 			for _, e := range base.Extra {
 				if e.Dir == victim.Dir {
 					continue

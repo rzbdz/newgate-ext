@@ -1,7 +1,7 @@
 package claudecode
 
 import (
-	agentapi "github.com/rzbdz/newgate/modules/confighook"
+	agentapi "github.com/rzbdz/newgate-ext/modules/confighook"
 )
 
 // 槽位 → 档位的映射，从 2026-09-21 起可配。

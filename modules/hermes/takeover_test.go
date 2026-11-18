@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rzbdz/newgate/modules/config/domain"
-	"github.com/rzbdz/newgate/modules/config/store"
-	agentapi "github.com/rzbdz/newgate/modules/confighook"
-	"github.com/rzbdz/newgate/testing/testkit"
+	"github.com/rzbdz/newgate-ext/modules/config/domain"
+	"github.com/rzbdz/newgate-ext/modules/config/store"
+	agentapi "github.com/rzbdz/newgate-ext/modules/confighook"
+	"github.com/rzbdz/newgate-ext/testing/testkit"
 )
 
 // 接管 hermes 这一族测三件事：写进去的东西 hermes 能按我们的意思读出来（plan）、

@@ -2,10 +2,10 @@ package claudecode_glm
 
 import (
 	claudeapi "github.com/rzbdz/newgate-ext/modules/claudecode"
+	"github.com/rzbdz/newgate-ext/modules/gateway/rewrite"
+	"github.com/rzbdz/newgate-ext/modules/gateway/special"
 	glmapi "github.com/rzbdz/newgate-ext/modules/glm"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/modules/gateway/rewrite"
-	"github.com/rzbdz/newgate/modules/gateway/special"
 )
 
 type thinking struct {

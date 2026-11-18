@@ -16,10 +16,10 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/rzbdz/newgate-ext/lib/style"
 	term "github.com/rzbdz/newgate-ext/lib/term"
+	agentapi "github.com/rzbdz/newgate-ext/modules/confighook"
 	"github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/lib/style"
-	agentapi "github.com/rzbdz/newgate/modules/confighook"
 )
 
 const (

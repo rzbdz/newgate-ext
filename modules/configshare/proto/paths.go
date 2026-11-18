@@ -3,7 +3,7 @@ package proto
 import (
 	"path/filepath"
 
-	paths "github.com/rzbdz/newgate/modules/config/paths"
+	paths "github.com/rzbdz/newgate-ext/modules/config/paths"
 )
 
 // 这个文件原来是内核的 `modules/config/paths` 里的一段（2026-09-20 跟着配置共享

@@ -9,11 +9,11 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/rzbdz/newgate-ext/modules/config/domain"
+	"github.com/rzbdz/newgate-ext/modules/config/store"
 	webapi "github.com/rzbdz/newgate-ext/modules/web-dashboard"
+	"github.com/rzbdz/newgate-ext/testing/testkit"
 	modules "github.com/rzbdz/newgate/component"
-	"github.com/rzbdz/newgate/modules/config/domain"
-	"github.com/rzbdz/newgate/modules/config/store"
-	"github.com/rzbdz/newgate/testing/testkit"
 )
 
 // 本文件的用例只碰 modellist 自己的知识：两种方言的地址/认证/分页、分组怎么收敛、

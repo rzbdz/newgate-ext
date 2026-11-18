@@ -10,9 +10,9 @@ import (
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 
 	claudeapi "github.com/rzbdz/newgate-ext/modules/claudecode"
+	gatewayapi "github.com/rzbdz/newgate-ext/modules/gateway"
 	glmapi "github.com/rzbdz/newgate-ext/modules/glm"
 	modules "github.com/rzbdz/newgate/component"
-	gatewayapi "github.com/rzbdz/newgate/modules/gateway"
 )
 
 // New 声明 Claude Code × GLM 交叉组件，

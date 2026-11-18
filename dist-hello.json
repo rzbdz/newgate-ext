@@ -3,9 +3,8 @@
   "github": "rzbdz/newgate-ext",
   "modules": [
     "i18n",
+    "entry",
     "hello"
   ],
-  "disable": [
-    "*"
-  ]
+  "disable": []
 }

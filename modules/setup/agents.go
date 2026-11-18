@@ -24,9 +24,9 @@ import (
 	"io"
 	"os"
 
+	agentapi "github.com/rzbdz/newgate-ext/modules/confighook"
+	runtimeapi "github.com/rzbdz/newgate-ext/modules/runtime"
 	"github.com/rzbdz/newgate/lib/i18n"
-	agentapi "github.com/rzbdz/newgate/modules/confighook"
-	runtimeapi "github.com/rzbdz/newgate/modules/runtime"
 )
 
 // Step 是一条「装 + 接管」的结局。

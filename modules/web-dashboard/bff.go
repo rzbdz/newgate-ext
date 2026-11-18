@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rzbdz/newgate-ext/lib/view"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/lib/view"
 )
 
 // Contract 是前端与 BFF 之间的契约版本。

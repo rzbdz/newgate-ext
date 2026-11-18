@@ -10,14 +10,14 @@ import (
 	"os"
 	"path/filepath"
 
+	viewapi "github.com/rzbdz/newgate-ext/lib/view"
+	cliapi "github.com/rzbdz/newgate-ext/modules/cli/extension"
+	configapi "github.com/rzbdz/newgate-ext/modules/config"
+	"github.com/rzbdz/newgate-ext/modules/config/paths"
+	agentapi "github.com/rzbdz/newgate-ext/modules/confighook"
 	opencodeapi "github.com/rzbdz/newgate-ext/modules/opencode"
 	modules "github.com/rzbdz/newgate/component"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	viewapi "github.com/rzbdz/newgate/lib/view"
-	cliapi "github.com/rzbdz/newgate/modules/cli/extension"
-	configapi "github.com/rzbdz/newgate/modules/config"
-	"github.com/rzbdz/newgate/modules/config/paths"
-	agentapi "github.com/rzbdz/newgate/modules/confighook"
 )
 
 type configTakeover struct{}

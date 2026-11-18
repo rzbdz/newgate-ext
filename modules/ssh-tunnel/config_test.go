@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rzbdz/newgate/modules/config/paths"
-	"github.com/rzbdz/newgate/modules/config/store"
-	"github.com/rzbdz/newgate/testing/testkit"
+	"github.com/rzbdz/newgate-ext/modules/config/paths"
+	"github.com/rzbdz/newgate-ext/modules/config/store"
+	"github.com/rzbdz/newgate-ext/testing/testkit"
 )
 
 // 这一族验的是**读配置**这件事的判据。它是这套东西里最容易被写松的一层：读坏了

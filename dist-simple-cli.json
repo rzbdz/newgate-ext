@@ -2,6 +2,19 @@
   "distribution": "simple-cli",
   "github": "rzbdz/newgate-ext",
   "modules": [
+    "ask",
+    "breaker",
+    "config",
+    "confighook",
+    "entry",
+    "gateway",
+    "locale",
+    "pluginmanager",
+    "porthub",
+    "runtime",
+    "serving",
+    "thinking",
+    "wrapper",
     "i18n",
     "setup",
     "simple-cli",
@@ -18,7 +31,5 @@
     "self-update",
     "verify"
   ],
-  "disable": [
-    "cli"
-  ]
+  "disable": []
 }

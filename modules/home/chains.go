@@ -6,10 +6,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	configapi "github.com/rzbdz/newgate-ext/modules/config"
+	"github.com/rzbdz/newgate-ext/modules/config/paths"
+	"github.com/rzbdz/newgate-ext/modules/config/store"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	configapi "github.com/rzbdz/newgate/modules/config"
-	"github.com/rzbdz/newgate/modules/config/paths"
-	"github.com/rzbdz/newgate/modules/config/store"
 )
 
 // 本文件把 config 的**读端口**结论（configapi.Config.AllChains）翻译成界面要的形状

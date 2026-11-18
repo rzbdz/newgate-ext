@@ -2,6 +2,19 @@
   "distribution": "dashboard",
   "github": "rzbdz/newgate-ext",
   "modules": [
+    "ask",
+    "breaker",
+    "config",
+    "confighook",
+    "entry",
+    "gateway",
+    "locale",
+    "pluginmanager",
+    "porthub",
+    "runtime",
+    "serving",
+    "thinking",
+    "wrapper",
     "i18n",
     "home",
     "deepseek",
@@ -21,7 +34,5 @@
     "theme-light",
     "theme-anthropic"
   ],
-  "disable": [
-    "cli"
-  ]
+  "disable": []
 }

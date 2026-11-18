@@ -3,10 +3,10 @@ package hermes
 import (
 	"encoding/json"
 
+	"github.com/rzbdz/newgate-ext/lib/view"
+	agentapi "github.com/rzbdz/newgate-ext/modules/confighook"
 	modules "github.com/rzbdz/newgate/component"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/lib/view"
-	agentapi "github.com/rzbdz/newgate/modules/confighook"
 )
 
 // 本文件是 hermes 交给 web 界面的那一面：**它跑哪个档位**，外加网关那两件事

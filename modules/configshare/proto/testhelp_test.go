@@ -3,7 +3,7 @@ package proto
 import (
 	"encoding/hex"
 	"encoding/json"
-	paths "github.com/rzbdz/newgate/modules/config/paths"
+	paths "github.com/rzbdz/newgate-ext/modules/config/paths"
 	"io"
 	"log"
 	"net/http"

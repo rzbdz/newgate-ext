@@ -6,10 +6,10 @@ import (
 	"testing"
 
 	claudeapi "github.com/rzbdz/newgate-ext/modules/claudecode"
+	"github.com/rzbdz/newgate-ext/modules/gateway/special"
 	"github.com/rzbdz/newgate-ext/modules/glm"
 	glmapi "github.com/rzbdz/newgate-ext/modules/glm"
-	"github.com/rzbdz/newgate/modules/gateway/special"
-	thinkingmodule "github.com/rzbdz/newgate/modules/thinking"
+	thinkingmodule "github.com/rzbdz/newgate-ext/modules/thinking"
 )
 
 func testPlugin() thinking {

@@ -5,8 +5,10 @@
 
 它和内核仓库（`github.com/rzbdz/newgate`）的分工是一句话：
 
-> **内核只做机制**——链的复合、结局的推进、身份的定义、故障的隔离。
-> **发行版做产品决策**——装哪些模块、修哪家的怪癖、按什么顺序修。
+> **内核只做机制**——组件框架、typed capability、入口契约、装配器、i18n 引擎，
+> **一个模块都不带**（2026-11-18 起，像 Linux 内核之于用户态）。
+> **发行版做产品决策**——**全部模块**都在这里：网关、熔断、界面、配置、客户端
+> 接入、上游怪癖修补。装哪些、修哪家的怪癖、按什么顺序修，都是这一层的事。
 
 ---
 
@@ -16,12 +18,14 @@
 newgate-ext/           ← 你在这里（发行版：产品），这个仓库本身就是它的 Go module
 ├── core/              ← submodule：内核源码，钉在一个提交上
 ├── go.mod             ← replace github.com/rzbdz/newgate => ./core
-├── modules/           ← 本发行版的模块
-├── testing/           ← 本发行版自己的测试
+├── modules/           ← 本发行版的模块（全部模块；内核一个都不带）
+├── lib/               ← 本发行版的叶子库（httpx / style / view / assembly / term …）
+├── testing/           ← testkit / upstream / system / kernel（本发行版自己的测试）
 ├── manifest/          ← 生成物：规格书 → 装配选择（进版本控制）
 ├── cmd/newgate/       ← 本发行版的 main（十几行）
 ├── tools/distgen/     ← 读规格书，生成 manifest/
-├── dist*.json         ← 规格书：本发行版由哪些模块组成、关掉内核的哪几个
+├── docs/              ← 产品文档（配置、网关、推理、接管、运维、排障）
+├── dist*.json         ← 规格书：本发行版装哪些模块（就是全部内容——没有 disable）
 ├── build/build.sh     ← 唯一的构建入口
 └── mock/              ← 本发行版模块的端到端（复用内核的假上游）
 ```
@@ -48,30 +52,59 @@ newgate-ext/           ← 你在这里（发行版：产品），这个仓库�
 
 > **换个发行版，这东西还该在吗？**
 
-| 该在 → `core/` | 不该在 → `modules/` |
+| 该在 → `core/`（内核） | 不该在 → 本仓库 `modules/` |
 | --- | --- |
-| 网关、熔断、接管、界面、配置、组件框架 | 上游怪癖修补（DeepSeek 尾部形状、GLM 思维链回传） |
-| 客户端接入（Claude Code / opencode） | 客户端×模型的交叉语义 |
-| 别的发行版也要用的**机制** | 只对某个上游/某个产品有意义的**取舍** |
+| 组件框架、capability、装配器、入口契约 | 网关、熔断、接管、界面、配置 |
+| i18n 引擎、生成器 / lint 工具 | 客户端接入（Claude Code / codex / opencode / hermes） |
+| 别的发行版也要用、且**不是模块**的机制 | 上游怪癖修补、客户端×模型交叉语义 |
 
 好消息：这个判断**错了也不会静默**——写进哪个仓库、装不装，都在规格书里写着，
 构建日志与 `newgate plugin` 会把实际装了什么报出来。
 
 ## 2. 模块怎么写
 
-形态与内核 `modules/` 里**完全一样**：一个目录、一个 `module.go`、导出
-`func New() modules.Component`，声明 `Requires` / `Provides` / `Start` / `Stop`。
+形态：一个目录、一个 `module.go`、导出 `func New() modules.Component`，声明
+`Requires` / `Provides` / `Start` / `Stop`（与内核的组件契约逐字相同——只是内核
+自己不带任何模块）。目录规则：根 `module.go`、公开契约在根 `api.go`。
 
-- 对内核的 import 是 `github.com/rzbdz/newgate/...`（**用它的公开契约**，
-  别 import 内部实现包——那些随时会动）；
-- 模块之间的 import 是 `github.com/rzbdz/newgate-ext/modules/<名字>`；
+- 对内核的 import 是 `github.com/rzbdz/newgate/...`（**用它的公开契约**：
+  `component`、`component/entry`、`lib/i18n`、`app`、`tools/...`；别 import 内部
+  实现包——那些随时会动）；
+- 模块之间的 import 是 `github.com/rzbdz/newgate-ext/modules/<名字>`，叶子库是
+  `github.com/rzbdz/newgate-ext/lib/<名字>`；
 - **目录名不必是 Go 标识符**（`simple-cli` 合法），生成器会把 import 别名拧成
   `ext_simple_cli`（判据在内核的 `tools/genmodules/scan.Ident`，两个仓库共用一份）；
-- 依赖方向：可以 `Need`/`Optional` 内核提供的端口；**不要**依赖内核里某个具体模块的
-  内部——那是内核自己的事，它也没给你那个口子。
+- 依赖方向由 capability 表达：`Need`（硬）/ `Optional`（弱，也是排序边）。对「某个
+  模块的内部」**不要**直接依赖——只有它 `api.go` 里暴露的 service 才作数。
 
-写模块的完整规矩（fail-open、不静默、注释写「为什么」、字节手术、capability 而不是
-直接调用）**沿用内核仓库那一套**，`core/CLAUDE.md` 与 `core/docs/` 是权威原文。
+通用规矩（fail-open、不静默、注释写「为什么」、capability 而不是直接调用）沿用
+内核那一套，`core/CLAUDE.md` 与 `core/docs/` 是权威原文。**产品侧的规矩都在这里**
+（2026-11-18 从内核搬来，因为它们只对某个上游/某个产品有意义）：
+
+- **纯字节手术**：请求体不做 JSON 往返（大整数会变 `…92`，字段顺序和未知键会
+  丢）。用 `gateway/rewrite` 的原语，只动该动的那一段。
+- **不静默**：改写了请求就必须回报 `notes`，由调用方写日志。用户永远能知道
+  自己的请求被动过哪一笔。
+- **新的上游怪癖** → 写成 `gateway/special/st-<上游>.go` 插件，别散落在转发热
+  路径的 `if` 里；插件自己说清 `Match`（认哪个上游）、`Why`（为什么存在）、
+  `Apply`（改了什么）。用户能 `newgate st off <名字>` 单独摘掉。
+  只对某一类客户端生效的补丁，判据用 `special.claudeCode(r)`，别按「Agent 非空」猜。
+- **新的数据面策略**（摘谁的牌、记哪本账、什么算失败、留什么痕）→ 实现
+  `gateway/policy` 的口，在自己的 `Start` 里 `RegisterFilter` 挂进去；**别让
+  gateway import 你**——数据面的非测试源码里连你的名字都不该出现（`modules/
+  gateway/direction_test.go` 那条棘轮守着方向：它拒「名字」也拒 `import` 策略包
+  本身，只有 `…/breaker/status` 那种 wire 叶子除外）。一个都不装时网关是最小系统，
+  照常转发。
+- **模块的键不 hard-code 进 gateway**：客户端插件自带的东西（omo 的
+  sisyphus/librarian 槽位）由模块实现 `config.RoleProvider` 注册成动态角色
+  键（`domain.ExtraRole`），命名与缺省归属留在 `modules/opencodeomo`。
+  gateway 只认「键 → 缺省绑定」这张表，解析路径与档位完全一样。
+- **ui 只是一类普通模块，cli 是其中一个**（2026-09-18 定）。三条硬规矩：业务模块
+  不依赖任何 ui（往存在的 ui 注入，`Optional`）；没装任何 ui 时一切功能照常；
+  ui 自己不依赖任何模块（`modules/cli` 的 `Requires` 是空的）。界面全部能力来自
+  注入（端口在 `modules/cli/extension`），所以 `--help` / `status` / `doctor` /
+  `alllogs` 都是纯汇总，装一个新模块不需要改它们。棘轮在
+  `testing/kernel/`（装配层级、`MustGet` 全声明、摘除矩阵）。
 
 ### 文案与本地化（2026-09-20 起）
 
@@ -86,8 +119,8 @@ newgate-ext/           ← 你在这里（发行版：产品），这个仓库�
   翻了签名永远匹配不上，见 `modules/deepseek` 里那些 needle）。
 - 发行版是**独立 module**，内核不认识我们的模块名——所以**谁的东西谁带**：
   `modules/i18n` 在 Start 里把自带的目录**追加**进内核已装好的语言
-  （`lib/i18n.Extend`；安装是内核 `modules/locale` 的事，一次装配只发生一次）。
-  依赖是 `Optional(localeapi.Capability)`——骨架规格书把内核模块全关掉时，
+  （`lib/i18n.Extend`；安装是本仓库 `modules/locale` 在 Start 里的事，一次装配
+  只发生一次）。依赖是 `Optional(localeapi.Capability)`——骨架规格书不装 locale 时，
   这里什么都不做，文案走恒等路径。
 - 工具与判据只有一份（住内核），发行版用**同一把尺子**跑，路径参数指自己：
 
@@ -120,8 +153,8 @@ NEWGATE_PLATFORMS="linux/amd64 linux/arm64 darwin/arm64" build/build.sh dist/
 - **产物名 = `newgate-<规格书里的 distribution>-<平台>-<架构>`**。今天是五份：
   `default`（旗舰）、`simple-cli`（换掉界面）、`hello`（**骨架**：整个框架 + 一个
   hello，`newgate` 跑起来就是一句 hello world）、`dev`（**开发用**：默认模块 +
-  arch-diagram，见 §5）、`dashboard`（**只有网页**：关掉内核的 cli，没有任何终端
-  界面，`newgate --port N` 起来之后全靠浏览器）。多编几份是为了**调试**——想看骨架
+  arch-diagram，见 §5）、`dashboard`（**只有网页**：规格书里不装 cli，没有任何
+  终端界面，`newgate --port N` 起来之后全靠浏览器）。多编几份是为了**调试**——想看骨架
   配置（`dist-hello.json`）的行为，`NEWGATE_ALL=1` 编出来直接跑即可；而
   `dashboard` 那份是「UI 无关」这句话的**唯一**检验：旗舰版永远装着 cli，
   所以任何一处偷偷依赖界面的代码在那里都看不出来（2026-09-20 实测到两处）。
@@ -135,10 +168,12 @@ NEWGATE_PLATFORMS="linux/amd64 linux/arm64 darwin/arm64" build/build.sh dist/
   所以拿产物去跑之前，**先按正确的名字落一份**——直接跑
   `dist/newgate-<发行版>-linux-amd64 plugin` 会被当成 profile 名，报
   「同时给了 profile … 和 …，不一致」（2026-09-20 实测）。
-- **要关掉内核自带的全部**（骨架发行版就是这种）写 `"disable": ["*"]`，别把目录名
-  列满：`distgen` 把它编成 `app.Selection.AllCore`，它跟着内核的模块表一起长——
-  列满的名单是那份表的**副本**，内核加一个模块时它不会跟着变（静默多装一个）。
-  `*` 与具体名字同时写、或点了不存在的目录，生成期就报错。
+- **规格书就是「装哪些」，没有 `disable`**（2026-11-18 起：内核没有模块可关）。
+  每一份规格书都必须在 `modules` 里点名它要装的**全部**模块（内核的那几个也在这里，
+  因为内核自己不带）。`dist-hello.json` 是最小样例：`i18n` + `entry` + `hello`。
+  点了不存在的目录、或两份规格书之间漏了某个必需模块，`distgen` 生成/构图期报错。
+  （旧写法 `"disable": ["*"]` 编成 `app.Selection.AllCore` 仍在 `Selection` 里保留着
+  给第三方组合根用，但本仓库的规格书已经不用它了。）
 - 换规格书 = 改 `dist.json` 或加一份 `dist*.json`，**不用改任何 Go 代码**：
   `distgen` 会把全部规格书生成进 `manifest/modules_gen.go`（那份文件要提交），
   构建时用 `-X distinfo.spec=<文件名>` 选一份。
@@ -172,9 +207,13 @@ git config core.hooksPath .githooks
 绕开用 `git push --no-verify`——口子故意留着：钩子自己出毛病时（这台机器缺 python3
 跑不了假上游）不能把人卡死。
 
-**测试跟着拥有者走**：
-- 内核的测试只管内核的逻辑与内核的模块（`core/...`）；
-- 本发行版的模块行为由本仓库的测试与 `mock/` 里的端到端锁；
+**测试跟着拥有者走**（2026-11-18 之后这条边界更清楚了）：
+- 内核的测试只管**框架**（`core/...`：component、entry、装配器、i18n 引擎、工具）。
+  它一个模块都没有，所以不再有任何「模块行为」测试；
+- **全部模块**的行为由本仓库的测试锁：`testing/testkit`（模块层）、
+  `testing/system`（整图 + 真转发 + 假上游）、`testing/kernel`（整图不变式：
+  摘除矩阵、装配层级、`MustGet` 声明、目录规则）、`modules/*/…_test.go`（模块自己）；
+- 端到端是 `mock/*.sh`（真二进制、真进程、真接管），内核没有端到端了；
 - 需要真 token 的 `mock/e2e_reasoning_affinity.sh` **不在 CI 里**（它花真钱），
   按需人工跑。
 
@@ -204,9 +243,9 @@ go test ./tools/archmap -run TestArchitectureMap -v   # → dist/architecture.ht
 两张图对不上就是线索：import 了却没有任何依赖边，说明**有一条没人声明的依赖**
 （编译过、测试过、review 看不出来，改动时才发现拆不动）。
 
-**聚合会造出环**，这是 import 图的固有现象、不是设计毛病：内核里那些谁都能直接
-import 的共享叶子（`config/domain`、`cli/extension`、`gateway/policy`…）按文件看
-是 DAG，按目录聚合成一个矩形之后就互相可达了。所以布局先做**强连通分量收缩**
+**聚合会造出环**，这是 import 图的固有现象、不是设计毛病：那些谁都能直接 import 的
+共享叶子（`modules/config/domain`、`modules/cli/extension`、`modules/gateway/policy`…）
+按文件看是 DAG，按目录聚合成一个矩形之后就互相可达了。所以布局先做**强连通分量收缩**
 （Tarjan），环里的点落在同一条带上、环内的边标红——review 的人该看见它们，而不
 该让分层算法在环上给出一个看起来正常、其实随机的答案。
 
@@ -221,7 +260,8 @@ import 的共享叶子（`config/domain`、`cli/extension`、`gateway/policy`…
 - 分层方向正确：非环边必须从下层指向上层，环边必须落在同一层（防的是工具自己
   算错——那种错画出来只是「有点难看」，没人会怀疑工具）；
 - 收紧之后不许出现空层，且同输入两次布局必须落在同一个地方（对比着看才成立）；
-- 内核的包**绝不 import 发行版的包**（`app/independence_test.go` 那条规矩的编译期版）；
+- 内核的包**绝不 import 发行版的包**（`core/app/independence_test.go` 那条规矩的编译期版，
+  现在是「内核的 import 集合里不出现 `newgate-ext`」——切之前它还允许两个 `modules/…`）；
 - import 图必须真的扫到边（扫描坏了的话，上面那条会空转成绿的）。
 
 产物落在 `dist/`（进 .gitignore）：它是**这一刻**的图，不进版本控制——图和代码

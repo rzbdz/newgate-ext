@@ -7,8 +7,8 @@ import (
 	"io/fs"
 	"testing"
 
-	"github.com/rzbdz/newgate/modules/config/paths"
-	"github.com/rzbdz/newgate/testing/testkit"
+	"github.com/rzbdz/newgate-ext/modules/config/paths"
+	"github.com/rzbdz/newgate-ext/testing/testkit"
 
 	upgradeapi "github.com/rzbdz/newgate-ext/modules/upgrade"
 	webapi "github.com/rzbdz/newgate-ext/modules/web-dashboard"

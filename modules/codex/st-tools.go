@@ -19,12 +19,12 @@ package codex
 // 能在不修改本模块的情况下被上游看到）。
 
 import (
+	"github.com/rzbdz/newgate-ext/modules/config/domain"
+	gatewayapi "github.com/rzbdz/newgate-ext/modules/gateway"
+	"github.com/rzbdz/newgate-ext/modules/gateway/special"
+	"github.com/rzbdz/newgate-ext/modules/pluginmanager"
 	modules "github.com/rzbdz/newgate/component"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/modules/config/domain"
-	gatewayapi "github.com/rzbdz/newgate/modules/gateway"
-	"github.com/rzbdz/newgate/modules/gateway/special"
-	"github.com/rzbdz/newgate/modules/pluginmanager"
 )
 
 var _ special.Plugin = (*ToolsLift)(nil)

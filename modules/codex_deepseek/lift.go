@@ -3,7 +3,7 @@ package codex_deepseek
 import (
 	"bytes"
 
-	"github.com/rzbdz/newgate/modules/gateway/rewrite"
+	"github.com/rzbdz/newgate-ext/modules/gateway/rewrite"
 )
 
 // Tools 是 Codex 放工具定义的那条 input 项的类型名。

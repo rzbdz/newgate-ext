@@ -3,12 +3,12 @@ package verify
 import (
 	"context"
 
+	viewapi "github.com/rzbdz/newgate-ext/lib/view"
+	cliapi "github.com/rzbdz/newgate-ext/modules/cli/extension"
 	upgradeapi "github.com/rzbdz/newgate-ext/modules/upgrade"
 	webapi "github.com/rzbdz/newgate-ext/modules/web-dashboard"
 	modules "github.com/rzbdz/newgate/component"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	viewapi "github.com/rzbdz/newgate/lib/view"
-	cliapi "github.com/rzbdz/newgate/modules/cli/extension"
 )
 
 // New 声明这个组件。

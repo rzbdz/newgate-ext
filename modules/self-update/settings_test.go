@@ -5,10 +5,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/rzbdz/newgate/modules/config/domain"
-	"github.com/rzbdz/newgate/modules/config/paths"
-	"github.com/rzbdz/newgate/modules/config/store"
-	"github.com/rzbdz/newgate/testing/testkit"
+	"github.com/rzbdz/newgate-ext/modules/config/domain"
+	"github.com/rzbdz/newgate-ext/modules/config/paths"
+	"github.com/rzbdz/newgate-ext/modules/config/store"
+	"github.com/rzbdz/newgate-ext/testing/testkit"
 )
 
 // fakeRepo 造一个「看起来是发行版仓库」的目录：checkRepo 只看这三样。

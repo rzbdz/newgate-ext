@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
+	paths "github.com/rzbdz/newgate-ext/modules/config/paths"
 	"github.com/rzbdz/newgate/lib/i18n"
-	paths "github.com/rzbdz/newgate/modules/config/paths"
 )
 
 // maxEnvelopeBytes 单次拉取的大小上限。

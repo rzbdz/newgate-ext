@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	agentapi "github.com/rzbdz/newgate/modules/confighook"
-	"github.com/rzbdz/newgate/testing/testkit"
+	agentapi "github.com/rzbdz/newgate-ext/modules/confighook"
+	"github.com/rzbdz/newgate-ext/testing/testkit"
 )
 
 // 接管 codex = 改写一份**人手写的** TOML。这一族测的就是那句话里最容易坏的三处：

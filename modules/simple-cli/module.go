@@ -27,12 +27,12 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/rzbdz/newgate-ext/lib/buildinfo"
+	"github.com/rzbdz/newgate-ext/lib/style"
+	cliapi "github.com/rzbdz/newgate-ext/modules/cli/extension"
 	modules "github.com/rzbdz/newgate/component"
 	"github.com/rzbdz/newgate/component/entry"
-	"github.com/rzbdz/newgate/lib/buildinfo"
 	"github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/lib/style"
-	cliapi "github.com/rzbdz/newgate/modules/cli/extension"
 )
 
 // statusLabelW 是 status 里标签列的宽度。

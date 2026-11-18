@@ -11,7 +11,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/rzbdz/newgate/lib/view"
+	"github.com/rzbdz/newgate-ext/lib/view"
 )
 
 // BFF 的职责只有三条：把概念端出去、把修改**转交**给贡献它的那位、发静态资源。

@@ -14,11 +14,11 @@ package setup
 import (
 	"context"
 
+	cliapi "github.com/rzbdz/newgate-ext/modules/cli/extension"
+	agentapi "github.com/rzbdz/newgate-ext/modules/confighook"
+	runtimeapi "github.com/rzbdz/newgate-ext/modules/runtime"
 	modules "github.com/rzbdz/newgate/component"
 	"github.com/rzbdz/newgate/lib/i18n"
-	cliapi "github.com/rzbdz/newgate/modules/cli/extension"
-	agentapi "github.com/rzbdz/newgate/modules/confighook"
-	runtimeapi "github.com/rzbdz/newgate/modules/runtime"
 )
 
 // Name 是这个模块在装配表与 `newgate plugin` 里的名字（= 目录名）。

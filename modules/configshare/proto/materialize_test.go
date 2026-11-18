@@ -1,7 +1,7 @@
 package proto
 
 import (
-	paths "github.com/rzbdz/newgate/modules/config/paths"
+	paths "github.com/rzbdz/newgate-ext/modules/config/paths"
 	"os"
 	"path/filepath"
 	"strings"

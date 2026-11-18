@@ -1,9 +1,9 @@
 package deepseek
 
 import (
+	"github.com/rzbdz/newgate-ext/modules/gateway/special"
+	"github.com/rzbdz/newgate-ext/modules/pluginmanager"
 	"github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/modules/gateway/special"
-	"github.com/rzbdz/newgate/modules/pluginmanager"
 )
 
 // 本模块上报的运行期开关点。

@@ -27,9 +27,9 @@ import (
 	"path/filepath"
 	"sync"
 
+	cliapi "github.com/rzbdz/newgate-ext/modules/cli/extension"
+	porthubapi "github.com/rzbdz/newgate-ext/modules/porthub"
 	modules "github.com/rzbdz/newgate/component"
-	cliapi "github.com/rzbdz/newgate/modules/cli/extension"
-	porthubapi "github.com/rzbdz/newgate/modules/porthub"
 )
 
 // Prefix 是它在共享端口上的落脚点。

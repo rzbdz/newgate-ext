@@ -11,8 +11,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/rzbdz/newgate-ext/modules/config/store"
 	"github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/modules/config/store"
 )
 
 // 本文件是 hermes 的**消息网关**那一面：它在不在跑、什么时候起的、要不要重启。

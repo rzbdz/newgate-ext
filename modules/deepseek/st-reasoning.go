@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/rzbdz/newgate-ext/modules/gateway/rewrite"
+	"github.com/rzbdz/newgate-ext/modules/gateway/special"
+	"github.com/rzbdz/newgate-ext/modules/gateway/thinkcache"
 	"github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/modules/gateway/rewrite"
-	"github.com/rzbdz/newgate/modules/gateway/special"
-	"github.com/rzbdz/newgate/modules/gateway/thinkcache"
 )
 
 var (

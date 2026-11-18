@@ -86,8 +86,8 @@ var startOrder = map[string][]string{
 		"ssh-tunnel",
 	},
 	"dist-hello.json": {
-		"entry",
 		"i18n",
+		"entry",
 		"hello",
 	},
 	"dist-simple-cli.json": {

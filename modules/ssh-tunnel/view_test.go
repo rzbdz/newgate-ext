@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	viewapi "github.com/rzbdz/newgate/lib/view"
+	viewapi "github.com/rzbdz/newgate-ext/lib/view"
 )
 
 // 这一族锁的是**这张卡在界面上能不能用**。全部是「到 wire 上」那类判据：同一个

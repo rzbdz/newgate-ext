@@ -1,10 +1,10 @@
 package hermes
 
 import (
+	"github.com/rzbdz/newgate-ext/modules/config/domain"
+	"github.com/rzbdz/newgate-ext/modules/config/store"
+	"github.com/rzbdz/newgate-ext/modules/gateway/special"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/modules/config/domain"
-	"github.com/rzbdz/newgate/modules/config/store"
-	"github.com/rzbdz/newgate/modules/gateway/special"
 )
 
 // modelsLister 替 hermes 的 URL 回答 `GET …/v1/models`（内核的 special.ModelLister）。

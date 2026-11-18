@@ -8,9 +8,9 @@ import (
 	"os"
 	"strings"
 
+	"github.com/rzbdz/newgate-ext/lib/style"
+	cliapi "github.com/rzbdz/newgate-ext/modules/cli/extension"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/lib/style"
-	cliapi "github.com/rzbdz/newgate/modules/cli/extension"
 )
 
 // 本文件是 `newgate upgrade`：把模块登记的升级动作跑一遍，或者只看清单。

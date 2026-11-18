@@ -8,7 +8,7 @@ import (
 	claudeapi "github.com/rzbdz/newgate-ext/modules/claudecode"
 	"github.com/rzbdz/newgate-ext/modules/deepseek"
 	deepseekapi "github.com/rzbdz/newgate-ext/modules/deepseek"
-	"github.com/rzbdz/newgate/modules/gateway/special"
+	"github.com/rzbdz/newgate-ext/modules/gateway/special"
 )
 
 func testPlugin() thinking {

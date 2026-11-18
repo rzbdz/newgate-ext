@@ -34,7 +34,7 @@ var kindConst = regexp.MustCompile(`(?m)^\s*Kind[A-Za-z]*\s*=\s*"([a-z][a-z-]*)"
 var kindBranch = regexp.MustCompile(`concept\.kind === "([a-z][a-z-]*)"`)
 
 func TestEveryDeclaredKindHasARenderer(t *testing.T) {
-	declared := kindsIn(t, "../../core/lib/view/view.go", kindConst, "内核的 Kind 常量")
+	declared := kindsIn(t, "../../lib/view/view.go", kindConst, "内核的 Kind 常量")
 	rendered := kindsIn(t, "web/src/ConceptCard.svelte", kindBranch, "前端的渲染分支")
 
 	if len(declared) == 0 {

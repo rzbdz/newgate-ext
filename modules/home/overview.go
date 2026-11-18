@@ -6,13 +6,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rzbdz/newgate-ext/lib/view"
+	breakerapi "github.com/rzbdz/newgate-ext/modules/breaker"
+	configapi "github.com/rzbdz/newgate-ext/modules/config"
+	"github.com/rzbdz/newgate-ext/modules/config/store"
+	agentapi "github.com/rzbdz/newgate-ext/modules/confighook"
+	gatewayapi "github.com/rzbdz/newgate-ext/modules/gateway"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/lib/view"
-	breakerapi "github.com/rzbdz/newgate/modules/breaker"
-	configapi "github.com/rzbdz/newgate/modules/config"
-	"github.com/rzbdz/newgate/modules/config/store"
-	agentapi "github.com/rzbdz/newgate/modules/confighook"
-	gatewayapi "github.com/rzbdz/newgate/modules/gateway"
 )
 
 // 本文件是首屏那一张卡：**让哪个客户端走哪一份档位**。

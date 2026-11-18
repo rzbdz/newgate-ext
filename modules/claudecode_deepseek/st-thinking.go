@@ -5,10 +5,10 @@ package claudecode_deepseek
 import (
 	claudeapi "github.com/rzbdz/newgate-ext/modules/claudecode"
 	deepseekapi "github.com/rzbdz/newgate-ext/modules/deepseek"
+	"github.com/rzbdz/newgate-ext/modules/gateway/rewrite"
+	"github.com/rzbdz/newgate-ext/modules/gateway/special"
+	"github.com/rzbdz/newgate-ext/modules/pluginmanager"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/modules/gateway/rewrite"
-	"github.com/rzbdz/newgate/modules/gateway/special"
-	"github.com/rzbdz/newgate/modules/pluginmanager"
 )
 
 type thinking struct {

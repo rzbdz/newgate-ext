@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	paths "github.com/rzbdz/newgate-ext/modules/config/paths"
 	"github.com/rzbdz/newgate/lib/i18n"
-	paths "github.com/rzbdz/newgate/modules/config/paths"
 )
 
 func rootKey(seed byte) []byte { return bytes.Repeat([]byte{seed}, RootKeyLen) }

@@ -23,8 +23,8 @@ package codex
 import (
 	"bytes"
 
+	rw "github.com/rzbdz/newgate-ext/modules/gateway/rewrite"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	rw "github.com/rzbdz/newgate/modules/gateway/rewrite"
 )
 
 // 本包内 takeover.go 把 `rewrite` 用作了**局部函数名**（负责 TOML 字节手术的那

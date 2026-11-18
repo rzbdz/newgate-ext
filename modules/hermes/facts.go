@@ -4,8 +4,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/rzbdz/newgate/modules/config/paths"
-	agentapi "github.com/rzbdz/newgate/modules/confighook"
+	"github.com/rzbdz/newgate-ext/modules/config/paths"
+	agentapi "github.com/rzbdz/newgate-ext/modules/confighook"
 )
 
 // facts 是本模块交给内核的运行期事实（见 confighook.AgentFacts）。

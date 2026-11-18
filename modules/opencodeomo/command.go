@@ -6,14 +6,14 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/rzbdz/newgate-ext/lib/style"
+	cliapi "github.com/rzbdz/newgate-ext/modules/cli/extension"
+	configapi "github.com/rzbdz/newgate-ext/modules/config"
+	"github.com/rzbdz/newgate-ext/modules/config/domain"
+	"github.com/rzbdz/newgate-ext/modules/config/resolve"
+	"github.com/rzbdz/newgate-ext/modules/config/store"
+	"github.com/rzbdz/newgate-ext/modules/gateway/controlplane"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/lib/style"
-	cliapi "github.com/rzbdz/newgate/modules/cli/extension"
-	configapi "github.com/rzbdz/newgate/modules/config"
-	"github.com/rzbdz/newgate/modules/config/domain"
-	"github.com/rzbdz/newgate/modules/config/resolve"
-	"github.com/rzbdz/newgate/modules/config/store"
-	"github.com/rzbdz/newgate/modules/gateway/controlplane"
 )
 
 type omoCommand struct{}

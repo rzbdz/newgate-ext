@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rzbdz/newgate/modules/config/domain"
-	"github.com/rzbdz/newgate/modules/gateway/special"
-	thinkingmodule "github.com/rzbdz/newgate/modules/thinking"
+	"github.com/rzbdz/newgate-ext/modules/config/domain"
+	"github.com/rzbdz/newgate-ext/modules/gateway/special"
+	thinkingmodule "github.com/rzbdz/newgate-ext/modules/thinking"
 )
 
 type testThinking struct{}

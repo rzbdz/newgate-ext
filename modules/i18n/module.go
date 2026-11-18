@@ -32,9 +32,9 @@ import (
 	"embed"
 	"io/fs"
 
+	localeapi "github.com/rzbdz/newgate-ext/modules/locale"
 	modules "github.com/rzbdz/newgate/component"
 	corei18n "github.com/rzbdz/newgate/lib/i18n"
-	localeapi "github.com/rzbdz/newgate/modules/locale"
 )
 
 // 嵌的是 **bundle（.bin）**，不是 JSON——理由与内核那一份完全相同（见内核

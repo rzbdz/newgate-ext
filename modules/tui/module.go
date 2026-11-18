@@ -30,10 +30,10 @@ import (
 	"context"
 	"fmt"
 
+	cliapi "github.com/rzbdz/newgate-ext/modules/cli/extension"
+	agentapi "github.com/rzbdz/newgate-ext/modules/confighook"
 	modules "github.com/rzbdz/newgate/component"
 	"github.com/rzbdz/newgate/lib/i18n"
-	cliapi "github.com/rzbdz/newgate/modules/cli/extension"
-	agentapi "github.com/rzbdz/newgate/modules/confighook"
 )
 
 // New 声明终端界面模块。

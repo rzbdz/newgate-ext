@@ -36,12 +36,12 @@ package nothink
 import (
 	"context"
 
+	cliapi "github.com/rzbdz/newgate-ext/modules/cli/extension"
+	confighookapi "github.com/rzbdz/newgate-ext/modules/confighook"
+	gatewayapi "github.com/rzbdz/newgate-ext/modules/gateway"
+	thinkingapi "github.com/rzbdz/newgate-ext/modules/thinking"
 	modules "github.com/rzbdz/newgate/component"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	cliapi "github.com/rzbdz/newgate/modules/cli/extension"
-	confighookapi "github.com/rzbdz/newgate/modules/confighook"
-	gatewayapi "github.com/rzbdz/newgate/modules/gateway"
-	thinkingapi "github.com/rzbdz/newgate/modules/thinking"
 )
 
 // Name 是这个模块在装配表与 `newgate plugin` 里的名字（= 目录名），

@@ -3,9 +3,9 @@ package hermes
 import (
 	"time"
 
+	"github.com/rzbdz/newgate-ext/lib/style"
+	cliapi "github.com/rzbdz/newgate-ext/modules/cli/extension"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/lib/style"
-	cliapi "github.com/rzbdz/newgate/modules/cli/extension"
 )
 
 // status 把 hermes 的接管状况报进 `newgate status`：/model 里列了几份 profile、

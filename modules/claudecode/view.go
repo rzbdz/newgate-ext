@@ -5,12 +5,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rzbdz/newgate-ext/lib/view"
+	"github.com/rzbdz/newgate-ext/modules/config/domain"
+	"github.com/rzbdz/newgate-ext/modules/config/store"
+	agentapi "github.com/rzbdz/newgate-ext/modules/confighook"
+	"github.com/rzbdz/newgate-ext/modules/gateway/gatewaystate"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/lib/view"
-	"github.com/rzbdz/newgate/modules/config/domain"
-	"github.com/rzbdz/newgate/modules/config/store"
-	agentapi "github.com/rzbdz/newgate/modules/confighook"
-	"github.com/rzbdz/newgate/modules/gateway/gatewaystate"
 )
 
 // classifierConcept 是这个模块给 web 界面的一面：Bash 分类器此刻被怎么对待。

@@ -7,11 +7,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/rzbdz/newgate-ext/modules/config/domain"
+	"github.com/rzbdz/newgate-ext/modules/config/paths"
+	"github.com/rzbdz/newgate-ext/modules/config/store"
+	agentapi "github.com/rzbdz/newgate-ext/modules/confighook"
 	"github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/modules/config/domain"
-	"github.com/rzbdz/newgate/modules/config/paths"
-	"github.com/rzbdz/newgate/modules/config/store"
-	agentapi "github.com/rzbdz/newgate/modules/confighook"
 )
 
 // 本文件是 **codex 的接管**：改写 `~/.codex/config.toml`，把它指到本地代理。

@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"time"
 
+	paths "github.com/rzbdz/newgate-ext/modules/config/paths"
 	"github.com/rzbdz/newgate/lib/i18n"
-	paths "github.com/rzbdz/newgate/modules/config/paths"
 )
 
 // 角色。这是一台机器的**本地事实**，不是共享配置的一部分：同一份共享配置

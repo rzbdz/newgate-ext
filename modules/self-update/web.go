@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rzbdz/newgate/lib/buildinfo"
+	"github.com/rzbdz/newgate-ext/lib/buildinfo"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 
 	upgradeapi "github.com/rzbdz/newgate-ext/modules/upgrade"

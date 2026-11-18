@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
+	viewapi "github.com/rzbdz/newgate-ext/lib/view"
 	modules "github.com/rzbdz/newgate/component"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	viewapi "github.com/rzbdz/newgate/lib/view"
 )
 
 // registerView 把这一节挂进概念账本。

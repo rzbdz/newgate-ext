@@ -41,10 +41,10 @@ package codex_deepseek
 import (
 	"context"
 
+	gatewayapi "github.com/rzbdz/newgate-ext/modules/gateway"
+	pluginmanagerapi "github.com/rzbdz/newgate-ext/modules/pluginmanager"
 	modules "github.com/rzbdz/newgate/component"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	gatewayapi "github.com/rzbdz/newgate/modules/gateway"
-	pluginmanagerapi "github.com/rzbdz/newgate/modules/pluginmanager"
 
 	codexapi "github.com/rzbdz/newgate-ext/modules/codex"
 	deepseekapi "github.com/rzbdz/newgate-ext/modules/deepseek"

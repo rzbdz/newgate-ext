@@ -43,9 +43,9 @@ package selfupdate
 import (
 	"context"
 
+	cliapi "github.com/rzbdz/newgate-ext/modules/cli/extension"
 	modules "github.com/rzbdz/newgate/component"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	cliapi "github.com/rzbdz/newgate/modules/cli/extension"
 
 	upgradeapi "github.com/rzbdz/newgate-ext/modules/upgrade"
 	webapi "github.com/rzbdz/newgate-ext/modules/web-dashboard"

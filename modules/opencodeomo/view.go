@@ -29,12 +29,12 @@ import (
 	"os"
 	"strings"
 
+	"github.com/rzbdz/newgate-ext/lib/view"
+	"github.com/rzbdz/newgate-ext/modules/config/domain"
+	"github.com/rzbdz/newgate-ext/modules/config/store"
+	agentapi "github.com/rzbdz/newgate-ext/modules/confighook"
 	opencodeapi "github.com/rzbdz/newgate-ext/modules/opencode"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/lib/view"
-	"github.com/rzbdz/newgate/modules/config/domain"
-	"github.com/rzbdz/newgate/modules/config/store"
-	agentapi "github.com/rzbdz/newgate/modules/confighook"
 )
 
 // profileOf 是 opencode 的**链头**那一格（读写的实现在内核，见

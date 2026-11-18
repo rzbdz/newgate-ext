@@ -5,11 +5,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/rzbdz/newgate/lib/durarg"
+	"github.com/rzbdz/newgate-ext/lib/durarg"
+	"github.com/rzbdz/newgate-ext/lib/style"
+	cliapi "github.com/rzbdz/newgate-ext/modules/cli/extension"
+	"github.com/rzbdz/newgate-ext/modules/config/store"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/lib/style"
-	cliapi "github.com/rzbdz/newgate/modules/cli/extension"
-	"github.com/rzbdz/newgate/modules/config/store"
 )
 
 const nakedDefaultTTL = 60 * time.Second

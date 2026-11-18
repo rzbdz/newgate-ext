@@ -5,10 +5,10 @@ import (
 	"os"
 	"strings"
 
+	"github.com/rzbdz/newgate-ext/lib/view"
+	"github.com/rzbdz/newgate-ext/modules/config/domain"
+	"github.com/rzbdz/newgate-ext/modules/config/store"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/lib/view"
-	"github.com/rzbdz/newgate/modules/config/domain"
-	"github.com/rzbdz/newgate/modules/config/store"
 )
 
 // modelsConceptID 是这张卡的稳定身份。

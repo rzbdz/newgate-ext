@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/rzbdz/newgate/testing/testkit"
+	"github.com/rzbdz/newgate-ext/testing/testkit"
 )
 
 // 这一族锁的是「codex 用自己的模型名」这件事的两半：

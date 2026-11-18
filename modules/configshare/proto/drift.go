@@ -9,8 +9,8 @@ import (
 	"sort"
 	"time"
 
+	paths "github.com/rzbdz/newgate-ext/modules/config/paths"
 	"github.com/rzbdz/newgate/lib/i18n"
-	paths "github.com/rzbdz/newgate/modules/config/paths"
 )
 
 // DriftReport 是本机托管文件相对"我们上次写下去的样子"的偏离。

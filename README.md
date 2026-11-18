@@ -59,6 +59,7 @@ module data (`-y` to skip the questions).
 
 Fingerprinting is powered by [lm-detector](https://github.com/Ikaleio/lm-detector)
 (MIT), with reference data from [lm.ikale.io](https://lm.ikale.io/docs/sdk).
+newgate-ext itself is [Apache-2.0](LICENSE).
 Thank you.
 
 **It takes over your CLI, without your CLI knowing.**
@@ -114,12 +115,13 @@ we have never heard of.
 ## Fork it, and make it yours
 
 **Even the gateway and the CLI are modules.** A module is one directory with a
-`New()` in it, and every box below is one — the left column ships in the kernel
-([`rzbdz/newgate`](https://github.com/rzbdz/newgate)), the right one is what this
-distribution adds. The two columns are the same kind of thing; the split is only
-which repository ships it.
+`New()` in it, and every box below is one — and they **all ship in this repository**.
+[`rzbdz/newgate`](https://github.com/rzbdz/newgate) is the kernel: the component
+framework, the entry contract, the assembler. It ships no modules at all (the same
+split as a Linux kernel and its userland). The gateway, the breaker, the UI, config,
+client takeover and the upstream patches are this distribution's modules.
 
-![Two columns of modules — the fourteen the kernel ships, the ones this distribution adds — both feeding one binary](site/src/architecture.svg)
+![This distribution's modules, all feeding one binary](site/src/architecture.svg)
 
 Swap our routing policy for yours, drop the quirks you don't care about, keep the
 gateway and the breaker:
@@ -127,8 +129,7 @@ gateway and the breaker:
 ```jsonc
 // dist-mine.json  →  build/build.sh  →  one static binary per platform
 { "distribution": "mine",
-  "modules": ["tui", "deepseek", "glm", "claudecode", "opencode"],
-  "disable": [] }
+  "modules": ["entry", "gateway", "config", "cli", "tui", "deepseek", "claudecode"] }
 ```
 
 Gateway, tier resolution, breaker, UI and entry point are all modules, so

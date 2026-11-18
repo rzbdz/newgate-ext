@@ -8,14 +8,14 @@ package codex
 import (
 	"context"
 
+	viewapi "github.com/rzbdz/newgate-ext/lib/view"
+	cliapi "github.com/rzbdz/newgate-ext/modules/cli/extension"
+	configapi "github.com/rzbdz/newgate-ext/modules/config"
+	confighookapi "github.com/rzbdz/newgate-ext/modules/confighook"
+	gatewayapi "github.com/rzbdz/newgate-ext/modules/gateway"
+	pluginmanagerapi "github.com/rzbdz/newgate-ext/modules/pluginmanager"
 	modules "github.com/rzbdz/newgate/component"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	viewapi "github.com/rzbdz/newgate/lib/view"
-	cliapi "github.com/rzbdz/newgate/modules/cli/extension"
-	configapi "github.com/rzbdz/newgate/modules/config"
-	confighookapi "github.com/rzbdz/newgate/modules/confighook"
-	gatewayapi "github.com/rzbdz/newgate/modules/gateway"
-	pluginmanagerapi "github.com/rzbdz/newgate/modules/pluginmanager"
 )
 
 // New 声明 Codex 客户端组件。

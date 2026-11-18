@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
+	cfg "github.com/rzbdz/newgate-ext/modules/config"
 	"github.com/rzbdz/newgate/lib/i18n"
-	cfg "github.com/rzbdz/newgate/modules/config"
 )
 
 // ValidateSnapshot 校验一份快照的形状。**任何一个文件不过就整体拒绝**。

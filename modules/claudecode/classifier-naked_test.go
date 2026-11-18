@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rzbdz/newgate/modules/config/domain"
-	"github.com/rzbdz/newgate/modules/gateway/special"
+	"github.com/rzbdz/newgate-ext/modules/config/domain"
+	"github.com/rzbdz/newgate-ext/modules/gateway/special"
 )
 
 // 下面两条正则照搬 Claude Code 2.1.295 里那两个解析器（都在去掉 <thinking> 之后

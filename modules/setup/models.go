@@ -27,10 +27,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rzbdz/newgate-ext/lib/style"
 	term "github.com/rzbdz/newgate-ext/lib/term"
+	"github.com/rzbdz/newgate-ext/modules/config/domain"
 	"github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/lib/style"
-	"github.com/rzbdz/newgate/modules/config/domain"
 )
 
 const (

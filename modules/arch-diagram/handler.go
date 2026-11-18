@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/rzbdz/newgate/lib/buildinfo"
+	"github.com/rzbdz/newgate-ext/lib/buildinfo"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 
 	"github.com/rzbdz/newgate-ext/tools/archmap"

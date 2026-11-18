@@ -41,8 +41,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/rzbdz/newgate/modules/config/paths"
-	"github.com/rzbdz/newgate/modules/config/store"
+	"github.com/rzbdz/newgate-ext/modules/config/paths"
+	"github.com/rzbdz/newgate-ext/modules/config/store"
 )
 
 // StateKey 是 state.json 的 ModuleConfig 里属于本模块的那一格。

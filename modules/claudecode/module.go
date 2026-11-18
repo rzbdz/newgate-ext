@@ -13,13 +13,13 @@ import (
 
 	modules "github.com/rzbdz/newgate/component"
 
-	cliapi "github.com/rzbdz/newgate/modules/cli/extension"
-	confighookapi "github.com/rzbdz/newgate/modules/confighook"
-	gatewayapi "github.com/rzbdz/newgate/modules/gateway"
-	thinkingapi "github.com/rzbdz/newgate/modules/thinking"
+	cliapi "github.com/rzbdz/newgate-ext/modules/cli/extension"
+	confighookapi "github.com/rzbdz/newgate-ext/modules/confighook"
+	gatewayapi "github.com/rzbdz/newgate-ext/modules/gateway"
+	thinkingapi "github.com/rzbdz/newgate-ext/modules/thinking"
 
+	viewapi "github.com/rzbdz/newgate-ext/lib/view"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	viewapi "github.com/rzbdz/newgate/lib/view"
 )
 
 // New 声明 Claude Code 客户端组件。它注册客户端描述符和状态字段，

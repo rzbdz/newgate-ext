@@ -21,11 +21,11 @@ import (
 	"context"
 	"testing"
 
+	entrymod "github.com/rzbdz/newgate-ext/modules/entry"
 	"github.com/rzbdz/newgate-ext/modules/hello"
+	"github.com/rzbdz/newgate-ext/testing/testkit"
 	modules "github.com/rzbdz/newgate/component"
 	"github.com/rzbdz/newgate/component/entry"
-	entrymod "github.com/rzbdz/newgate/modules/entry"
-	"github.com/rzbdz/newgate/testing/testkit"
 )
 
 // TestHelloClaimsTheDefaultEntry 是骨架配置（dist-hello.json）的全部行为：

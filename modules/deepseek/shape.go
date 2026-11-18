@@ -3,7 +3,7 @@ package deepseek
 import (
 	"bytes"
 
-	breakerapi "github.com/rzbdz/newgate/modules/breaker"
+	breakerapi "github.com/rzbdz/newgate-ext/modules/breaker"
 )
 
 var _ breakerapi.ShapeDetector = (*reasoningShape)(nil)

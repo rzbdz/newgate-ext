@@ -5,10 +5,10 @@ import (
 	"sort"
 	"sync"
 
+	viewapi "github.com/rzbdz/newgate-ext/lib/view"
+	"github.com/rzbdz/newgate-ext/modules/config/store"
 	modules "github.com/rzbdz/newgate/component"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	viewapi "github.com/rzbdz/newgate/lib/view"
-	"github.com/rzbdz/newgate/modules/config/store"
 )
 
 // 本文件是皮肤登记处的实现（形状见 api.go），外加「这一台机器选了哪一套」这件事。

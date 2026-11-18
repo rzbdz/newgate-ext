@@ -111,7 +111,7 @@ var landingTmpl = template.Must(template.New("landing").Parse(`<!doctype html>
       <iframe src="{{.Base}}demo/" title="newgate 控制台" loading="lazy"></iframe>
     </div>
     <div class="browser-pane" data-pane="arch" role="tabpanel" hidden>
-      <img src="{{.Base}}architecture.svg" alt="内核自带的模块与这个发行版自己写的模块，装进同一个二进制">
+      <img src="{{.Base}}architecture.svg" alt="一份规格书喂给内核的组装器，本发行版的全部模块装进同一个二进制">
     </div>
   </div>
   <ul class="chips">

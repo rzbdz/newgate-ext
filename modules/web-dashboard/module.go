@@ -21,11 +21,11 @@ import (
 	"io/fs"
 	"net/http"
 
+	servingapi "github.com/rzbdz/newgate-ext/lib/serving"
+	viewapi "github.com/rzbdz/newgate-ext/lib/view"
+	cliapi "github.com/rzbdz/newgate-ext/modules/cli/extension"
+	porthubapi "github.com/rzbdz/newgate-ext/modules/porthub"
 	modules "github.com/rzbdz/newgate/component"
-	servingapi "github.com/rzbdz/newgate/lib/serving"
-	viewapi "github.com/rzbdz/newgate/lib/view"
-	cliapi "github.com/rzbdz/newgate/modules/cli/extension"
-	porthubapi "github.com/rzbdz/newgate/modules/porthub"
 )
 
 // assets 是前端构建产物。**产物进版本控制**（与 manifest/modules_gen.go 同一套

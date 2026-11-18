@@ -1,8 +1,8 @@
 package verify
 
 import (
+	cliapi "github.com/rzbdz/newgate-ext/modules/cli/extension"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	cliapi "github.com/rzbdz/newgate/modules/cli/extension"
 )
 
 // verifyGlossary 是帮助屏术语表里「指纹」那一行。

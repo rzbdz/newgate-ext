@@ -1,0 +1,96 @@
+package forward
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/rzbdz/newgate-ext/modules/config/domain"
+	"github.com/rzbdz/newgate-ext/modules/config/resolve"
+	"github.com/rzbdz/newgate-ext/modules/gateway/metrics"
+)
+
+func TestCompactNotTightTimeout(t *testing.T) {
+	sandboxState(t, `{"port": 0, "timeouts": {"classifier_first_byte_ms": 400, "first_byte_ms": 150000}}`)
+	metrics.Default.Reset()
+	t.Cleanup(func() { metrics.Default.Reset(); testChain = nil })
+
+	var upstreamGot uint32
+	hung := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.StoreUint32(&upstreamGot, 1)
+		time.Sleep(3 * time.Second) // 慢，但没超过 150s 标准上限
+		_, _ = w.Write([]byte(`{"from":"hung-slow"}`))
+	}))
+	defer hung.Close()
+	testChain = func(role string) []resolve.Step {
+		return []resolve.Step{
+			{Profile: "a", Binding: domain.Binding{Provider: "hung-prov", Model: "m1"}, Provider: testProvider(hung.URL)},
+		}
+	}
+
+	srv := newTestServer()
+	front := httptest.NewServer(http.HandlerFunc(srv.handleProxy))
+	defer front.Close()
+
+	// 客户端 1.2s 后放弃（远晚于 400ms 的紧超时，远早于 150s 标准上限）
+	ctx, cancel := context.WithTimeout(context.Background(), 1200*time.Millisecond)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost,
+		front.URL+"/a/claude/v1/messages", strings.NewReader(compactBody))
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err == nil {
+		resp.Body.Close()
+	}
+
+	if got := metrics.Default.Snapshot()["timeout.first_byte.non_stream"]; got != 0 {
+		t.Fatalf("compact 不该吃分类器紧超时，却超时了（counter=%d）", got)
+	}
+	if atomic.LoadUint32(&upstreamGot) == 0 {
+		t.Fatal("请求没到上游")
+	}
+	// 客户端断开后 proxy goroutine 处理取消需要一点时间——轮询等它记账
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if metrics.Default.Snapshot()["client.cancel"] == 1 {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("应该是客户端取消（counter=%d）", metrics.Default.Snapshot()["client.cancel"])
+}
+
+const compactBody = `{"model":"heavy","max_tokens":10240,` +
+	`"system":[{"type":"text","text":"You are a conversation summarizer. Summarize this conversation."}],` +
+	`"messages":[{"role":"user","content":"…transcript…"}]}`
+
+func sandboxState(t *testing.T, stateJSON string) {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv("NEWGATE_HOME", dir)
+	if err := os.MkdirAll(filepath.Join(dir, "mappings"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "providers.json"),
+		[]byte(`{"providers":{}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "state.json"), []byte(stateJSON), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// classifierBody 复刻 Bash 权限分类器的形态（实抓：非流式 + system
+// 自报 "You are a security monitor"）。
+const classifierBody = `{"model":"mid","max_tokens":2112,` +
+	`"system":[{"type":"text","text":"You are a security monitor for autonomous AI coding agents."}],` +
+	`"messages":[{"role":"user","content":"classify"}]}`
+
+	// compactBody 复刻 /compact 总结请求的形态（非流式，**没有**分类器
+	// marker——大输入、不挡交互，不该吃紧超时）。

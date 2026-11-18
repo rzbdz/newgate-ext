@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/rzbdz/newgate-ext/modules/config/domain"
+	agentapi "github.com/rzbdz/newgate-ext/modules/confighook"
 	opencodeapi "github.com/rzbdz/newgate-ext/modules/opencode"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/modules/config/domain"
-	agentapi "github.com/rzbdz/newgate/modules/confighook"
 )
 
 const ProviderID = "newgate"

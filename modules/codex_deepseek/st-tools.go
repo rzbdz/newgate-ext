@@ -3,11 +3,11 @@ package codex_deepseek
 import (
 	"encoding/json"
 
+	"github.com/rzbdz/newgate-ext/modules/config/domain"
+	"github.com/rzbdz/newgate-ext/modules/gateway/rewrite"
+	"github.com/rzbdz/newgate-ext/modules/gateway/special"
+	"github.com/rzbdz/newgate-ext/modules/pluginmanager"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/modules/config/domain"
-	"github.com/rzbdz/newgate/modules/gateway/rewrite"
-	"github.com/rzbdz/newgate/modules/gateway/special"
-	"github.com/rzbdz/newgate/modules/pluginmanager"
 
 	codexapi "github.com/rzbdz/newgate-ext/modules/codex"
 	deepseekapi "github.com/rzbdz/newgate-ext/modules/deepseek"

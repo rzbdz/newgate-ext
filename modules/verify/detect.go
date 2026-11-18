@@ -8,8 +8,8 @@ import (
 	"time"
 
 	lmfpd "github.com/Ikaleio/lm-detector/sdk/go"
+	"github.com/rzbdz/newgate-ext/modules/config/domain"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/modules/config/domain"
 )
 
 // DataEnv 指向一份**本地**参考数据目录（`unified_bank.json` + `shared_detector.bin`），

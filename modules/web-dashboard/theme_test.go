@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/rzbdz/newgate/testing/testkit"
+	"github.com/rzbdz/newgate-ext/testing/testkit"
 )
 
 // 皮肤这一层要锁的是三件事：**登记处认人不认序**、**存下来的那套不在了要老实说**、

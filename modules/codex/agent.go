@@ -6,8 +6,8 @@
 package codex
 
 import (
+	agentapi "github.com/rzbdz/newgate-ext/modules/confighook"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	agentapi "github.com/rzbdz/newgate/modules/confighook"
 )
 
 const ID = "codex"

@@ -10,10 +10,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rzbdz/newgate-ext/lib/style"
+	cliapi "github.com/rzbdz/newgate-ext/modules/cli/extension"
+	"github.com/rzbdz/newgate-ext/modules/config/targets"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/lib/style"
-	cliapi "github.com/rzbdz/newgate/modules/cli/extension"
-	"github.com/rzbdz/newgate/modules/config/targets"
 )
 
 // 本文件是 `newgate verify [profile]`：把一份（或全部）profile 的每条 binding

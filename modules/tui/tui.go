@@ -6,13 +6,13 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/rzbdz/newgate-ext/lib/style"
 	term "github.com/rzbdz/newgate-ext/lib/term"
+	"github.com/rzbdz/newgate-ext/modules/config/domain"
+	"github.com/rzbdz/newgate-ext/modules/config/store"
+	agentapi "github.com/rzbdz/newgate-ext/modules/confighook"
+	"github.com/rzbdz/newgate-ext/modules/gateway/controlplane"
 	"github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/lib/style"
-	"github.com/rzbdz/newgate/modules/config/domain"
-	"github.com/rzbdz/newgate/modules/config/store"
-	agentapi "github.com/rzbdz/newgate/modules/confighook"
-	"github.com/rzbdz/newgate/modules/gateway/controlplane"
 )
 
 // ---------- 渲染 ----------

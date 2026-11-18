@@ -7,18 +7,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rzbdz/newgate-ext/lib/view"
+	breakerapi "github.com/rzbdz/newgate-ext/modules/breaker"
+	configapi "github.com/rzbdz/newgate-ext/modules/config"
+	configmod "github.com/rzbdz/newgate-ext/modules/config"
+	"github.com/rzbdz/newgate-ext/modules/config/domain"
+	"github.com/rzbdz/newgate-ext/modules/config/paths"
+	"github.com/rzbdz/newgate-ext/modules/config/store"
+	agentapi "github.com/rzbdz/newgate-ext/modules/confighook"
+	gatewayapi "github.com/rzbdz/newgate-ext/modules/gateway"
+	"github.com/rzbdz/newgate-ext/testing/testkit"
 	modules "github.com/rzbdz/newgate/component"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/lib/view"
-	breakerapi "github.com/rzbdz/newgate/modules/breaker"
-	configapi "github.com/rzbdz/newgate/modules/config"
-	configmod "github.com/rzbdz/newgate/modules/config"
-	"github.com/rzbdz/newgate/modules/config/domain"
-	"github.com/rzbdz/newgate/modules/config/paths"
-	"github.com/rzbdz/newgate/modules/config/store"
-	agentapi "github.com/rzbdz/newgate/modules/confighook"
-	gatewayapi "github.com/rzbdz/newgate/modules/gateway"
-	"github.com/rzbdz/newgate/testing/testkit"
 )
 
 // 这一族验的是**首屏那张卡**（home.overview）：它比链卡多的那两样东西——「这个

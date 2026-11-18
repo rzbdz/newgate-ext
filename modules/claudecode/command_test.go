@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	cliapi "github.com/rzbdz/newgate/modules/cli/extension"
-	"github.com/rzbdz/newgate/modules/config/store"
-	"github.com/rzbdz/newgate/testing/testkit"
+	cliapi "github.com/rzbdz/newgate-ext/modules/cli/extension"
+	"github.com/rzbdz/newgate-ext/modules/config/store"
+	"github.com/rzbdz/newgate-ext/testing/testkit"
 )
 
 // nakedHost 是 Host 的最小实现。naked 只用到 Die 和 NotifyProxy。

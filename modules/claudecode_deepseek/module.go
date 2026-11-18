@@ -14,9 +14,9 @@ import (
 
 	claudeapi "github.com/rzbdz/newgate-ext/modules/claudecode"
 	deepseekapi "github.com/rzbdz/newgate-ext/modules/deepseek"
+	gatewayapi "github.com/rzbdz/newgate-ext/modules/gateway"
+	pluginmanagerapi "github.com/rzbdz/newgate-ext/modules/pluginmanager"
 	modules "github.com/rzbdz/newgate/component"
-	gatewayapi "github.com/rzbdz/newgate/modules/gateway"
-	pluginmanagerapi "github.com/rzbdz/newgate/modules/pluginmanager"
 )
 
 // New 声明 Claude Code × DeepSeek 交叉组件。

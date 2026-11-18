@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rzbdz/newgate/lib/view"
+	"github.com/rzbdz/newgate-ext/lib/view"
 )
 
 // TestSlotsCardExplainsAnAbsentRegistry：还没接管过 omo 时**照常出一张卡片**，

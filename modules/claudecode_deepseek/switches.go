@@ -1,10 +1,10 @@
 package claudecode_deepseek
 
 import (
+	"github.com/rzbdz/newgate-ext/modules/config/domain"
+	"github.com/rzbdz/newgate-ext/modules/gateway/special"
+	"github.com/rzbdz/newgate-ext/modules/pluginmanager"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/modules/config/domain"
-	"github.com/rzbdz/newgate/modules/gateway/special"
-	"github.com/rzbdz/newgate/modules/pluginmanager"
 )
 
 // SwitchInjectThinking 第 1 手：Claude Code 没写 thinking 时补

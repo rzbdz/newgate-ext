@@ -1,8 +1,8 @@
 package codex
 
 import (
+	"github.com/rzbdz/newgate-ext/modules/pluginmanager"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/modules/pluginmanager"
 )
 
 // SwitchLiftTools 这一手：把 Codex 的 additional_tools 抬到顶层 tools（见 st-tools.go）。

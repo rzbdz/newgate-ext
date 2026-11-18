@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 486" width="960" height="486" role="img"
-     aria-label="newgate 的装配：一份规格书喂给组装器，内核仓库自带的模块与发行版仓库自己写的模块装进同一个二进制"
+     aria-label="newgate 的装配：一份规格书喂给组装器，一份规格书喂给内核的组装器，本发行版的全部模块装进同一个二进制"
      font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans SC', sans-serif">
   <!--
     ══════════════════════════════════════════════════════════════════════════
@@ -8,7 +8,7 @@
 
     # 它要讲的那一件事
 
-    **连 gateway 和 cli 都是模块。** 内核仓库本身就是一个组装器，它自带的那些东西
+    **连 gateway 和 cli 都是模块。** 内核仓库本身就是一个组装器，它不带任何模块
     （转发、熔断、终端界面、接管、槽位……）与发行版自己写的那些（客户端接入、上游
     怪癖、皮肤）是**同一种东西**：一个目录、一个 `New()`。
 
@@ -18,7 +18,7 @@
 
     # 三个刻意的取舍
 
-      - **方块上写路径而不是花名**：`modules/gateway` 是照着磁盘上那个目录抄的，
+      - **方块上写路径而不是花名**：`core/component` 是照着磁盘上那个目录抄的，
         所以图上任何一格都对应得到仓库里的一行 `ls`。写花名（「转发层」）好看，
         但它不指向任何东西。
       - **两栏同形**：方块尺寸、圆角、字号逐字相同，只有底色区分来源。画成两种
@@ -82,55 +82,55 @@
        内核真正做的事：把规格书点到的模块按 Requires/Provides 排好序、起停。
        它不认识任何一家上游——它只认识那张表。 -->
   <rect class="asm" x="44" y="96" width="872" height="54" rx="12"/>
-  <text class="cap dim" x="66" y="116">the assembler</text>
-  <text class="h ink" x="66" y="138">Requires / Provides → topological order → Start / Stop</text>
-  <text class="t dim" x="612" y="138">no upstream, no client, no product decision</text>
+  <text class="cap dim" x="66" y="116">the kernel</text>
+  <text class="h ink" x="66" y="138">Requires / Provides → order → Start / Stop</text>
+  <text class="t dim" x="612" y="138">no module, no upstream, no product decision</text>
 
   <g class="wire" stroke-width="1.2">
     <path d="M256 212 L256 152"/><path d="M253 156 L256 149 L259 156"/>
     <path d="M704 212 L704 152"/><path d="M701 156 L704 149 L707 156"/>
   </g>
 
-  <!-- ── 两栏：同一个内核，两种来源 ─────────────────────────────────────── -->
+  <!-- ── 两栏：同一个模块只有一种来源 ─────────────────────────────────────── -->
 
-  <!-- 左：内核仓库自带的那些。**gateway 与 cli 就在这里面**——这正是这张图的题眼。 -->
+  <!-- 左：网关、熔断、界面、配置：**它们都是本发行版的模块**，与上游补丁同一种东西。 -->
   <rect class="panel" x="44" y="212" width="424" height="228" rx="12"/>
-  <text class="cap dim" x="66" y="242">ships in the kernel</text>
+  <text class="cap dim" x="66" y="242">the kernel ships no modules</text>
   <text class="repo m mid" x="66" y="258">rzbdz/newgate</text>
-  <text class="t dim" x="66" y="276">fourteen directories, all of them modules</text>
+  <text class="t dim" x="66" y="276">the framework: components, ports, entry</text>
 
   <g>
     <rect class="chip" x="66"  y="288" width="184" height="24" rx="7"/>
-    <text class="m mid" x="78" y="304">modules/gateway</text>
+    <text class="m mid" x="78" y="304">core/component</text>
     <rect class="chip" x="262" y="288" width="184" height="24" rx="7"/>
-    <text class="m mid" x="274" y="304">modules/breaker</text>
+    <text class="m mid" x="274" y="304">core/component/entry</text>
 
     <rect class="chip" x="66"  y="318" width="184" height="24" rx="7"/>
-    <text class="m mid" x="78" y="334">modules/cli</text>
+    <text class="m mid" x="78" y="334">core/app</text>
     <rect class="chip" x="262" y="318" width="184" height="24" rx="7"/>
-    <text class="m mid" x="274" y="334">modules/runtime</text>
+    <text class="m mid" x="274" y="334">core/lib/i18n</text>
 
     <rect class="chip" x="66"  y="348" width="184" height="24" rx="7"/>
-    <text class="m mid" x="78" y="364">modules/config</text>
+    <text class="m mid" x="78" y="364">core/tools</text>
     <rect class="chip" x="262" y="348" width="184" height="24" rx="7"/>
-    <text class="m mid" x="274" y="364">modules/porthub</text>
+    <text class="m mid" x="274" y="364">(typed ports)</text>
 
     <rect class="chip" x="66"  y="378" width="184" height="24" rx="7"/>
-    <text class="m mid" x="78" y="394">modules/confighook</text>
+    <text class="m mid" x="78" y="394">core/component</text>
     <rect class="chip" x="262" y="378" width="184" height="24" rx="7"/>
-    <text class="m mid" x="274" y="394">modules/serving</text>
+    <text class="m mid" x="274" y="394">(build-time order)</text>
 
     <rect class="chip" x="66"  y="408" width="184" height="24" rx="7"/>
-    <text class="m mid" x="78" y="424">modules/locale</text>
+    <text class="m mid" x="78" y="424">(no lifecycle but Start/Stop)</text>
     <rect class="chip" x="262" y="408" width="184" height="24" rx="7"/>
-    <text class="m mid" x="274" y="424">… · five more</text>
+    <text class="m mid" x="274" y="424"></text>
   </g>
 
   <!-- 右：发行版仓库自己带的那些。方块尺寸与左边**逐字相同**——同一种东西。 -->
   <rect class="panel-hot" x="492" y="212" width="424" height="228" rx="12"/>
-  <text class="cap hotink" x="514" y="242">added by this distribution</text>
+  <text class="cap hotink" x="514" y="242">this distribution</text>
   <text class="repo m hotink" x="514" y="258">rzbdz/newgate-ext</text>
-  <text class="t dim" x="514" y="276">the repository you fork; one directory each</text>
+  <text class="t dim" x="514" y="276">the product: one directory per module</text>
 
   <g>
     <rect class="chip-hot" x="514" y="288" width="184" height="24" rx="7"/>

@@ -1,8 +1,8 @@
 package codex_deepseek
 
 import (
+	"github.com/rzbdz/newgate-ext/modules/pluginmanager"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/modules/pluginmanager"
 )
 
 // SwitchDegradeTools 这一手：把 Codex 工具树里的 `custom` 声明降成 `function`

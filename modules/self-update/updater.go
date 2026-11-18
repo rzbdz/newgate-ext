@@ -9,9 +9,9 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/rzbdz/newgate/lib/buildinfo"
+	"github.com/rzbdz/newgate-ext/lib/buildinfo"
+	"github.com/rzbdz/newgate-ext/lib/style"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/lib/style"
 
 	"github.com/rzbdz/newgate-ext/manifest/distinfo"
 	upgradeapi "github.com/rzbdz/newgate-ext/modules/upgrade"

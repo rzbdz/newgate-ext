@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rzbdz/newgate/modules/config/domain"
-	"github.com/rzbdz/newgate/modules/gateway/special"
-	"github.com/rzbdz/newgate/modules/pluginmanager"
+	"github.com/rzbdz/newgate-ext/modules/config/domain"
+	"github.com/rzbdz/newgate-ext/modules/gateway/special"
+	"github.com/rzbdz/newgate-ext/modules/pluginmanager"
 )
 
 // reqWithOff 造一个 Claude Code × DeepSeek 的上下文，并把给定的开关点关掉。

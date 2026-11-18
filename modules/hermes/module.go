@@ -3,13 +3,13 @@ package hermes
 import (
 	"context"
 
+	servingapi "github.com/rzbdz/newgate-ext/lib/serving"
+	viewapi "github.com/rzbdz/newgate-ext/lib/view"
+	cliapi "github.com/rzbdz/newgate-ext/modules/cli/extension"
+	confighookapi "github.com/rzbdz/newgate-ext/modules/confighook"
+	gatewayapi "github.com/rzbdz/newgate-ext/modules/gateway"
 	modules "github.com/rzbdz/newgate/component"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	servingapi "github.com/rzbdz/newgate/lib/serving"
-	viewapi "github.com/rzbdz/newgate/lib/view"
-	cliapi "github.com/rzbdz/newgate/modules/cli/extension"
-	confighookapi "github.com/rzbdz/newgate/modules/confighook"
-	gatewayapi "github.com/rzbdz/newgate/modules/gateway"
 )
 
 // New 声明 Hermes 客户端组件。

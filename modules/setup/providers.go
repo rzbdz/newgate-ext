@@ -15,9 +15,9 @@ import (
 	"io/ioutil"
 	"os"
 
+	"github.com/rzbdz/newgate-ext/modules/config/domain"
+	"github.com/rzbdz/newgate-ext/modules/config/paths"
 	"github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/modules/config/domain"
-	"github.com/rzbdz/newgate/modules/config/paths"
 )
 
 // loadProvidersRaw 读 providers.json 的原始形态：

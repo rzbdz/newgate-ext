@@ -47,6 +47,7 @@ Release 里本平台的产物并核对校验和；开发机则在自己的仓库
 
 指纹由 [lm-detector](https://github.com/Ikaleio/lm-detector) 提供（MIT），参考数据
 来自 [lm.ikale.io](https://lm.ikale.io/docs/sdk)。谢谢这个项目。
+newgate-ext 本体是 [Apache-2.0](LICENSE)。
 
 **接管你的 CLI，而 CLI 毫无察觉。**
 PATH shim 加上就地改写客户端自己的配置——env 静默注入，动手前先做逐字节备份。装一次，
@@ -91,25 +92,24 @@ Oh My OpenAgent 槽位）。读一个、改一个，或者为你从没听过的�
 ## Fork 下来，改成你自己的
 
 **连 `gateway` 和 `cli` 都是模块。** 一个模块就是一个目录加一个 `New()`，下面每一个
-方块都是这样一个目录——左边那一栏内核自带
-（[`rzbdz/newgate`](https://github.com/rzbdz/newgate)），右边那一栏是这个发行版加的。
-**两栏是同一种东西**，分栏只看它由哪个仓库出货。
+方块都是这样一个目录——而且**它们全在这个仓库里**。[`rzbdz/newgate`](https://github.com/rzbdz/newgate)
+是内核：组件框架、入口契约、装配器，一个模块都不带（像 Linux 内核与用户态的分法）。
+网关、熔断、界面、配置、客户端接入、上游补丁，都是本发行版的模块。
 
-![两栏模块——内核自带的十四个，与这个发行版加的那些——都装进同一个二进制](site/src/architecture.svg)
+![这个发行版的模块，全部装进同一个二进制](site/src/architecture.svg)
 
 把我们的路由策略换成你的、删掉你不在乎的怪癖、留下网关与熔断：
 
 ```jsonc
 // dist-mine.json  →  build/build.sh  →  每个平台一个静态二进制
 { "distribution": "mine",
-  "modules": ["tui", "deepseek", "glm", "claudecode", "opencode"],
-  "disable": [] }
+  "modules": ["entry", "gateway", "config", "cli", "tui", "deepseek", "claudecode"] }
 ```
 
 网关、档位解析、熔断、界面、入口——全是模块，所以「换一套策略」等于换一个模块，而不是
-给内核打补丁。而「模块」是**一种东西、不是两种**：内核自己的 `modules/gateway` 与你
-fork 里那个 `modules/deepseek` 满足同一份契约、声明同样的 `Requires`/`Provides`、
-由同一个组装器排序。`newgate restart` 负责把 socket 交出去，所以你发自己的版本不会打断任何人，
+给内核打补丁。而「模块」是**一种东西、不是两种**：`modules/gateway` 与你 fork 里
+那个 `modules/deepseek` 满足同一份契约、声明同样的 `Requires`/`Provides`、由同一个
+组装器排序。`newgate restart` 负责把 socket 交出去，所以你发自己的版本不会打断任何人，
 包括会话中的你自己。想从近乎空白开始，就拿 `dist-hello.json`（框架 + 一个 `hello`）。
 
 ## 穿过 SSH 看远端那个界面
@@ -174,7 +174,7 @@ newgate 分成两半，这个分法本身就是要紧的东西：
 
 | | |
 | --- | --- |
-| [**rzbdz/newgate**](https://github.com/rzbdz/newgate) | **内核**：链、熔断、网关、升级交接、模块框架。不含任何产品决策——它不认识任何上游、任何客户端的名字。 |
+| [**rzbdz/newgate**](https://github.com/rzbdz/newgate) | **内核**：组件框架、typed capability、入口契约、装配器、i18n 引擎。一个模块都不带，也不认识任何上游或客户端的名字（像 Linux 内核之于用户态）。 |
 | **rzbdz/newgate-ext**（这里） | 一个**发行版**：装哪些模块、修哪家的怪癖、按什么顺序。这是产品决策，也是你可以改的那部分。 |
 
 这里是旗舰版：Claude Code 与 OpenCode，跑在你选的档位上，你用到的上游怪癖已经修好。

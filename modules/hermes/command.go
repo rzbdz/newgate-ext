@@ -3,9 +3,9 @@ package hermes
 import (
 	"fmt"
 
+	"github.com/rzbdz/newgate-ext/lib/style"
+	cliapi "github.com/rzbdz/newgate-ext/modules/cli/extension"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/lib/style"
-	cliapi "github.com/rzbdz/newgate/modules/cli/extension"
 )
 
 // gatewayCommand 是 `newgate hermes-gateway`：看 / 同步 / 重启 hermes 的消息网关。

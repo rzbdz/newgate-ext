@@ -31,12 +31,12 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/rzbdz/newgate-ext/lib/style"
 	term "github.com/rzbdz/newgate-ext/lib/term"
+	"github.com/rzbdz/newgate-ext/modules/config/store"
+	agentapi "github.com/rzbdz/newgate-ext/modules/confighook"
+	runtimeapi "github.com/rzbdz/newgate-ext/modules/runtime"
 	"github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/lib/style"
-	"github.com/rzbdz/newgate/modules/config/store"
-	agentapi "github.com/rzbdz/newgate/modules/confighook"
-	runtimeapi "github.com/rzbdz/newgate/modules/runtime"
 )
 
 // Deps 是向导用得上的全部端口。缺一个都做不完这件事，所以它们是必填的。

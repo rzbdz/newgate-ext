@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rzbdz/newgate/modules/gateway/special"
-	"github.com/rzbdz/newgate/modules/gateway/thinkcache"
+	"github.com/rzbdz/newgate-ext/modules/gateway/special"
+	"github.com/rzbdz/newgate-ext/modules/gateway/thinkcache"
 )
 
 // claudeReq Claude Code 形态的上下文：/a/claude/ + /v1/messages。

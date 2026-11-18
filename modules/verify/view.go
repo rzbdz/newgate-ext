@@ -1,9 +1,9 @@
 package verify
 
 import (
+	"github.com/rzbdz/newgate-ext/lib/view"
 	modules "github.com/rzbdz/newgate/component"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/lib/view"
 )
 
 // 本文件是交给界面那一面：侧栏里的一节「指纹」，里面一张 KindFingerprints 卡。

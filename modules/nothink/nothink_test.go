@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rzbdz/newgate/modules/config/domain"
-	"github.com/rzbdz/newgate/modules/gateway/special"
+	"github.com/rzbdz/newgate-ext/modules/config/domain"
+	"github.com/rzbdz/newgate-ext/modules/gateway/special"
 )
 
 // stub 是内核那个端口的替身。

@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rzbdz/newgate-ext/modules/config/domain"
+	"github.com/rzbdz/newgate-ext/modules/config/store"
 	webapi "github.com/rzbdz/newgate-ext/modules/web-dashboard"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/modules/config/domain"
-	"github.com/rzbdz/newgate/modules/config/store"
 )
 
 // 本文件是模块的实现：读 providers.json、挑适配器、缓存、把请求翻译成一次探测。

@@ -4,12 +4,12 @@ import (
 	"context"
 	"net/http"
 
+	servingapi "github.com/rzbdz/newgate-ext/lib/serving"
+	viewapi "github.com/rzbdz/newgate-ext/lib/view"
+	cliapi "github.com/rzbdz/newgate-ext/modules/cli/extension"
+	porthubapi "github.com/rzbdz/newgate-ext/modules/porthub"
 	modules "github.com/rzbdz/newgate/component"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	servingapi "github.com/rzbdz/newgate/lib/serving"
-	viewapi "github.com/rzbdz/newgate/lib/view"
-	cliapi "github.com/rzbdz/newgate/modules/cli/extension"
-	porthubapi "github.com/rzbdz/newgate/modules/porthub"
 )
 
 // Name 是这个模块在装配表、概念账本与 `newgate plugin` 里的名字（= 目录名）。

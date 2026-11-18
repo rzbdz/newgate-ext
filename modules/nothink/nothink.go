@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/rzbdz/newgate-ext/modules/config/domain"
+	"github.com/rzbdz/newgate-ext/modules/gateway/rewrite"
+	"github.com/rzbdz/newgate-ext/modules/gateway/special"
+	thinkingapi "github.com/rzbdz/newgate-ext/modules/thinking"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/modules/config/domain"
-	"github.com/rzbdz/newgate/modules/gateway/rewrite"
-	"github.com/rzbdz/newgate/modules/gateway/special"
-	thinkingapi "github.com/rzbdz/newgate/modules/thinking"
 )
 
 var _ special.Plugin = nothink{}

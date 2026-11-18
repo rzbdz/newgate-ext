@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rzbdz/newgate-ext/modules/config/store"
+	"github.com/rzbdz/newgate-ext/modules/config/targets"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/modules/config/store"
-	"github.com/rzbdz/newgate/modules/config/targets"
 )
 
 // service 是本模块的实现：把配置、指纹库与缓存缝在一起。

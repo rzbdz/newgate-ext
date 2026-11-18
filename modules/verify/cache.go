@@ -10,8 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rzbdz/newgate-ext/modules/config/paths"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/modules/config/paths"
 )
 
 // 指纹的落盘缓存。

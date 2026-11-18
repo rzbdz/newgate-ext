@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/rzbdz/newgate/modules/config/domain"
-	"github.com/rzbdz/newgate/modules/config/resolve"
-	"github.com/rzbdz/newgate/modules/config/roleprov"
+	"github.com/rzbdz/newgate-ext/modules/config/domain"
+	"github.com/rzbdz/newgate-ext/modules/config/resolve"
+	"github.com/rzbdz/newgate-ext/modules/config/roleprov"
 )
 
 func init() {

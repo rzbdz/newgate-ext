@@ -27,13 +27,13 @@ package home
 import (
 	"context"
 
+	viewapi "github.com/rzbdz/newgate-ext/lib/view"
+	breakerapi "github.com/rzbdz/newgate-ext/modules/breaker"
+	configapi "github.com/rzbdz/newgate-ext/modules/config"
+	agentapi "github.com/rzbdz/newgate-ext/modules/confighook"
+	gatewayapi "github.com/rzbdz/newgate-ext/modules/gateway"
 	modules "github.com/rzbdz/newgate/component"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	viewapi "github.com/rzbdz/newgate/lib/view"
-	breakerapi "github.com/rzbdz/newgate/modules/breaker"
-	configapi "github.com/rzbdz/newgate/modules/config"
-	agentapi "github.com/rzbdz/newgate/modules/confighook"
-	gatewayapi "github.com/rzbdz/newgate/modules/gateway"
 )
 
 // Name 是这个模块在装配表与 `newgate plugin` 里的名字。

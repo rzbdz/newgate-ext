@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rzbdz/newgate/testing/testkit"
+	"github.com/rzbdz/newgate-ext/testing/testkit"
 )
 
 func TestCacheRoundTripAndCrossProcessRead(t *testing.T) {

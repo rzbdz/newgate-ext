@@ -11,10 +11,10 @@ import (
 	"context"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
 
+	breakerapi "github.com/rzbdz/newgate-ext/modules/breaker"
+	gatewayapi "github.com/rzbdz/newgate-ext/modules/gateway"
+	pluginmanagerapi "github.com/rzbdz/newgate-ext/modules/pluginmanager"
 	modules "github.com/rzbdz/newgate/component"
-	breakerapi "github.com/rzbdz/newgate/modules/breaker"
-	gatewayapi "github.com/rzbdz/newgate/modules/gateway"
-	pluginmanagerapi "github.com/rzbdz/newgate/modules/pluginmanager"
 )
 
 // New 声明 DeepSeek 模型组件，同时提供模型判定端口并注册模型侧协议修补。

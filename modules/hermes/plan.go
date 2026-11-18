@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/rzbdz/newgate/modules/config/domain"
+	"github.com/rzbdz/newgate-ext/modules/config/domain"
 )
 
 // 本文件是**这次接管要写什么**：给定此刻的 newgate 配置，算出 config.yaml 里每一处

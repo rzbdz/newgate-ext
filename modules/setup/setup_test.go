@@ -10,11 +10,11 @@ import (
 	"testing"
 
 	term "github.com/rzbdz/newgate-ext/lib/term"
-	"github.com/rzbdz/newgate/modules/config/paths"
-	"github.com/rzbdz/newgate/modules/config/store"
-	agentapi "github.com/rzbdz/newgate/modules/confighook"
-	runtimeapi "github.com/rzbdz/newgate/modules/runtime"
-	"github.com/rzbdz/newgate/testing/testkit"
+	"github.com/rzbdz/newgate-ext/modules/config/paths"
+	"github.com/rzbdz/newgate-ext/modules/config/store"
+	agentapi "github.com/rzbdz/newgate-ext/modules/confighook"
+	runtimeapi "github.com/rzbdz/newgate-ext/modules/runtime"
+	"github.com/rzbdz/newgate-ext/testing/testkit"
 )
 
 // 本文件用一台**假终端**驱动整个向导：脚本化的按键进来，屏幕画到 buffer 里。

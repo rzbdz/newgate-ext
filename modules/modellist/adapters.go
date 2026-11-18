@@ -12,8 +12,8 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/rzbdz/newgate-ext/modules/config/domain"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/modules/config/domain"
 )
 
 // 本文件是**适配器**：不同上游列模型的方式不一样，但回答要收敛成一种形状。

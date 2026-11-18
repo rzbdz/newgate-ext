@@ -11,7 +11,7 @@ import (
 
 	modules "github.com/rzbdz/newgate/component"
 
-	confighookapi "github.com/rzbdz/newgate/modules/confighook"
+	confighookapi "github.com/rzbdz/newgate-ext/modules/confighook"
 )
 
 // New 声明 OpenCode 客户端组件：提供家族身份，并在生命周期内注册客户端描述符。

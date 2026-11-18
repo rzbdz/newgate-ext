@@ -3,8 +3,8 @@ package opencodeomo
 import (
 	"os"
 
+	cliapi "github.com/rzbdz/newgate-ext/modules/cli/extension"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	cliapi "github.com/rzbdz/newgate/modules/cli/extension"
 )
 
 type diagnostics struct{}

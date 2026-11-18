@@ -1,10 +1,10 @@
 package home
 
 import (
+	"github.com/rzbdz/newgate-ext/lib/view"
+	configapi "github.com/rzbdz/newgate-ext/modules/config"
 	modules "github.com/rzbdz/newgate/component"
 	i18n "github.com/rzbdz/newgate/lib/i18n"
-	"github.com/rzbdz/newgate/lib/view"
-	configapi "github.com/rzbdz/newgate/modules/config"
 )
 
 // 本文件是交给界面的那一面：**一屏看到我这些链**。
