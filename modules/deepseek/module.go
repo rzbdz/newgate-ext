@@ -28,7 +28,7 @@ func New() modules.Component {
 	var releases []modules.Release
 	return modules.Component{
 		Name: "deepseek",
-		Desc: func() string { return i18n.T("DeepSeek upstream quirk patches", nil) },
+		Desc: func() string { return i18n.T("DeepSeek's quirks: reasoning backfill, tail shape, /responses", nil) },
 		Type: "model",
 		Requires: []modules.Requirement{
 			modules.Need(gatewayapi.Capability),
