@@ -43,7 +43,7 @@ func New() modules.Component {
 	return modules.Component{
 		Name: "porthub",
 		Desc: func() string {
-			return i18n.T("several services on one port, or a port of its own when there is no shared one", nil)
+			return i18n.T("lets several services share one port (the gateway's), or opens its own", nil)
 		},
 		Type:     "infra",
 		Provides: []modules.Provision{modules.Provide(Capability, Service(hub.Default()))},
