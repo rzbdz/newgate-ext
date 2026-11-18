@@ -27,7 +27,7 @@ func New() modules.Component {
 	return modules.Component{
 		Name: Name,
 		Desc: func() string {
-			return i18n.T("verify which model an upstream really serves, by fingerprint (newgate verify)", nil)
+			return i18n.T("fingerprints each binding to check which model really answers (newgate verify)", nil)
 		},
 		// Same layer as modellist: diagnostics/infrastructure, not a client, not an upstream patch.
 		Type: "infra",
