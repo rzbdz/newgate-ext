@@ -25,7 +25,9 @@ func New() modules.Component {
 	registry := serving.NewRegistry()
 	return modules.Component{
 		Name: "serving",
-		Desc: func() string { return i18n.T("the edge that says this process is serving", nil) },
+		Desc: func() string {
+			return i18n.T("a notifier: the process is now serving — other modules hook in to add their own route", nil)
+		},
 		Type: "infra",
 		// Not a single out-edge: both notifier and listener use it only optionally. That is
 		// also the premise for removing it (see app/matrix_test.go's removal matrix).
