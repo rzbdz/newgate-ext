@@ -183,10 +183,11 @@ func TestDistModulesAreRemovable(t *testing.T) {
 		t.Run(victim.Name, func(t *testing.T) {
 			testkit.Sandbox(t)
 
-			// The table minus the victim. The order has to be **recomputed**: the victim may be
-			// another module's provider, and the frozen table's positions no longer describe this
-			// graph. This is the one situation where a test really is "somebody writing a
-			// declaration", so it calls the framework's own ordering entry.
+			// The table minus the victim, **in the table's order**: dropping an entry cannot
+			// invert an edge, so the rest is still a valid order -- and that matters here, because
+			// this test asserts on the *assembly* error ("names the missing port"), not on the
+			// ordering one. Going through Ordered first would report the missing Need before
+			// NewContext ever runs, and the two messages are deliberately different sentences.
 			var remaining []modules.Component
 			for _, c := range base {
 				if c.Name == victim.Name {
@@ -194,12 +195,7 @@ func TestDistModulesAreRemovable(t *testing.T) {
 				}
 				remaining = append(remaining, c)
 			}
-			comps, err := modules.Ordered(remaining)
-			if err != nil {
-				// A cycle can only appear if the removal broke the order; the matrix's own
-				// expectation (below) is about assembly, so report it as such.
-				t.Fatalf("ordering the graph without %s: %v", victim.Name, err)
-			}
+			comps := remaining
 			dependents := hardDependents(comps, victim)
 			manager, err := modules.NewContext(context.Background(), modules.Static(comps))
 

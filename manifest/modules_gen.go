@@ -64,10 +64,27 @@ import (
 // the default is the repository's main spec, the same one the real binary uses.
 const DefaultSpec = "dist.json"
 
-// Specs is each spec's component table, in start order.
+// Specs is each spec's component table, in start order, built in full.
+//
+// **It constructs every spec's modules**, which is what diagnostics want (draw all
+// the graphs) and what a running process must not do -- Loader.Load builds only its
+// own spec.
 func Specs() map[string][]modules.Component {
 	return map[string][]modules.Component{
-		"dist-dashboard.json": {
+		"dist-dashboard.json":  spec("dist-dashboard.json"),
+		"dist-dev.json":        spec("dist-dev.json"),
+		"dist-hello.json":      spec("dist-hello.json"),
+		"dist-simple-cli.json": spec("dist-simple-cli.json"),
+		"dist.json":            spec("dist.json"),
+	}
+}
+
+// spec builds one spec's component table. Unknown names return nil; Loader.Load is
+// the door that turns that into an error naming the alternatives.
+func spec(name string) []modules.Component {
+	switch name {
+	case "dist-dashboard.json":
+		return []modules.Component{
 			ext_ask.New(),
 			ext_confighook.New(),
 			ext_entry.New(),
@@ -99,8 +116,9 @@ func Specs() map[string][]modules.Component {
 			ext_theme_dark.New(),
 			ext_theme_light.New(),
 			ext_theme_anthropic.New(),
-		},
-		"dist-dev.json": {
+		}
+	case "dist-dev.json":
+		return []modules.Component{
 			ext_cli.New(),
 			ext_ask.New(),
 			ext_confighook.New(),
@@ -140,13 +158,15 @@ func Specs() map[string][]modules.Component {
 			ext_codex_deepseek.New(),
 			ext_arch_diagram.New(),
 			ext_ssh_tunnel.New(),
-		},
-		"dist-hello.json": {
+		}
+	case "dist-hello.json":
+		return []modules.Component{
 			ext_i18n.New(),
 			ext_entry.New(),
 			ext_hello.New(),
-		},
-		"dist-simple-cli.json": {
+		}
+	case "dist-simple-cli.json":
+		return []modules.Component{
 			ext_entry.New(),
 			ext_porthub.New(),
 			ext_serving.New(),
@@ -175,8 +195,9 @@ func Specs() map[string][]modules.Component {
 			ext_upgrade.New(),
 			ext_self_update.New(),
 			ext_verify.New(),
-		},
-		"dist.json": {
+		}
+	case "dist.json":
+		return []modules.Component{
 			ext_cli.New(),
 			ext_ask.New(),
 			ext_confighook.New(),
@@ -215,8 +236,9 @@ func Specs() map[string][]modules.Component {
 			ext_hermes.New(),
 			ext_codex_deepseek.New(),
 			ext_ssh_tunnel.New(),
-		},
+		}
 	}
+	return nil
 }
 
 // SpecNames lists every spec name, sorted by file name.
@@ -235,8 +257,8 @@ func (l Loader) Load() ([]modules.Component, error) {
 	if name == "" {
 		name = DefaultSpec
 	}
-	comps, ok := Specs()[name]
-	if !ok {
+	comps := spec(name)
+	if comps == nil {
 		return nil, fmt.Errorf("no spec named %q (available: %s)", name, strings.Join(SpecNames(), ", "))
 	}
 	return comps, nil

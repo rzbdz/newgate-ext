@@ -12,3 +12,6 @@
 # product of "this moment", and a stale copy makes people believe the site is like that.
 # So it goes into .gitignore.
 /site/dist/
+
+# A stray `go build ./tools/distgen` output (the tool is run with `go run`).
+/distgen

@@ -96,24 +96,35 @@ func main() {
 	check := flag.Bool("check", false,
 		"only check whether the generated output matches the spec, do not write files (for CI/tests)")
 	flag.Parse()
+	// **No os.Exit inside the work**: -check has to put back the bytes it found on every path,
+	// including the failing one (2026-11-18: a check that dirties the file it is checking is a
+	// check people stop running). So the work returns an error and main is the only place that
+	// exits.
+	if err := run(*check); err != nil {
+		fmt.Fprintln(os.Stderr, "distgen:", err)
+		os.Exit(1)
+	}
+}
 
+// run does the three passes. check only compares; otherwise it writes.
+func run(check bool) error {
 	// Flattened (2026-09-20): the module root is the repo root - Go code and specs live there.
 	root, err := moduleRoot()
-	repoRoot := root
 	if err != nil {
-		fail(err)
+		return err
 	}
+	repoRoot := root
 
 	specs, names, err := loadSpecs(repoRoot)
 	if err != nil {
-		fail(err)
+		return err
 	}
 	mods, err := scan(filepath.Join(root, modulesRelDir))
 	if err != nil {
-		fail(err)
+		return err
 	}
 	if err := validate(specs, mods); err != nil {
-		fail(err)
+		return err
 	}
 
 	target := filepath.Join(root, genPkgDir, genFileName)
@@ -121,25 +132,38 @@ func main() {
 
 	// The file as committed, kept so -check can report on it and put it back.
 	committed, readErr := os.ReadFile(target)
+	restore := func() {
+		if !check {
+			return
+		}
+		if readErr != nil {
+			_ = os.Remove(target) // it did not exist before this run either
+			return
+		}
+		_ = write(target, committed)
+	}
 
 	// Pass 1: the component table **in spec order**, written to disk so the probe in pass 2 can
 	// read it.
 	//
 	// A real write even under -check, because the probe is a new process and can only see what is
 	// on disk -- and the answer must be computed from the table *this* run just derived from the
-	// specs, not from the previous generation. -check therefore compares against **the bytes it
-	// found** and restores them before returning, so a failing check leaves the tree untouched
-	// (a check that dirties the file it is checking is a check people stop running).
-	table, err := source(render(mods, specs, names, nil))
+	// specs, not from the previous generation.
+	rawTable, err := render(mods, specs, names, nil)
 	if err != nil {
-		fail(err)
+		return err
+	}
+	table, err := source(rawTable)
+	if err != nil {
+		return err
 	}
 	if err := write(target, table); err != nil {
-		fail(err)
+		return err
 	}
 	infoContent, err := source(renderInfo(specs, names))
 	if err != nil {
-		fail(err)
+		restore()
+		return err
 	}
 
 	// Pass 2: **a new process** computes each spec's start order from the table just written.
@@ -148,55 +172,50 @@ func main() {
 	// just-edited spec would get a silently wrong order from the old table, and "wrong order" is
 	// miles from "stale manifest". A new process necessarily reads the file on disk.
 	order, err := probeOrder(root, names)
-	if *check {
-		restore := committed
-		if readErr != nil {
-			restore = nil
-		}
-		if restore != nil {
-			defer func() { _ = write(target, restore) }()
-		}
-	}
 	if err != nil {
-		fail(err)
+		restore()
+		return err
 	}
 
 	// Pass 3: the same file again, each spec's components in start order.
-	table, err = source(render(mods, specs, names, order))
+	rawTable, err = render(mods, specs, names, order)
 	if err != nil {
-		fail(err)
+		restore()
+		return err
+	}
+	table, err = source(rawTable)
+	if err != nil {
+		restore()
+		return err
 	}
 	outputs := []struct {
 		path string
 		data []byte
 	}{{target, table}, {infoTarget, infoContent}}
 
-	if *check {
+	if check {
+		defer restore()
 		for _, f := range outputs {
-			var current []byte
-			if f.path == target {
-				current = committed
-			} else {
+			current := committed
+			if f.path != target {
 				current, _ = os.ReadFile(f.path)
 			}
-			if readErr != nil && f.path == target {
-				current = nil
-			}
 			if !bytes.Equal(current, f.data) {
-				fail(fmt.Errorf("%s is stale: run `go run ./tools/distgen` and commit again", f.path))
+				return fmt.Errorf("%s is stale: run `go run ./tools/distgen` and commit again", f.path)
 			}
 		}
 		fmt.Printf("distgen: %d specs x %d own modules, all generated files are fresh\n",
 			len(names), len(mods))
-		return
+		return nil
 	}
 	for _, f := range outputs {
 		if err := write(f.path, f.data); err != nil {
-			fail(err)
+			return err
 		}
 	}
 	fmt.Printf("distgen: %d specs x %d own modules -> %s, %s\n",
 		len(names), len(mods), target, infoTarget)
+	return nil
 }
 
 // source gofmts generated text; a formatting error means the generator itself is broken.
@@ -245,7 +264,7 @@ func probeOrder(root string, names []string) (map[string][]int, error) {
 // point of the second pass is that **the emitted table IS the start order**: a Loader's slice
 // is the order (see component.Loader), so there is no separate order table to fall out of sync
 // with the component table.
-func render(mods []module, specs map[string]spec, names []string, order map[string][]int) []byte {
+func render(mods []module, specs map[string]spec, names []string, order map[string][]int) ([]byte, error) {
 	byDir := make(map[string]module, len(mods))
 	for _, m := range mods {
 		byDir[m.dir] = m
@@ -277,37 +296,64 @@ func render(mods []module, specs map[string]spec, names []string, order map[stri
 	b.WriteString("// the default is the repository's main spec, the same one the real binary uses.\n")
 	fmt.Fprintf(&b, "const DefaultSpec = %q\n\n", defaultSpec)
 
-	b.WriteString("// Specs is each spec's component table, in start order.\n")
-	b.WriteString("func Specs() map[string][]modules.Component {\n")
-	b.WriteString("\treturn map[string][]modules.Component{\n")
+	// One function per spec, then a table over them.
+	//
+	// Why not one big literal inside Specs(): **the constructors run**. Every `New()` allocates
+	// a module's services, and a process only ever installs one spec -- building all five on
+	// every `newgate status` would be four graphs' worth of work thrown away. So Load() calls its
+	// own spec's function only; Specs() stays as the "everything, for diagnostics" door
+	// (archmap, tests) and is explicit about paying for all of them.
+	ordered := make(map[string][]string, len(names))
 	for _, name := range names {
 		s := specs[name]
 		want := s.Modules
 		if order != nil {
 			positions, ok := order[name]
 			if !ok || len(positions) != len(s.Modules) {
-				fail(fmt.Errorf("the probe gave %d positions for %s, the spec installs %d -- "+
-					"the table it read is not the one this run wrote", len(positions), name, len(s.Modules)))
+				return nil, fmt.Errorf("the probe gave %d positions for %s, the spec installs %d -- "+
+					"the table it read is not the one this run wrote", len(positions), name, len(s.Modules))
 			}
 			want = make([]string, 0, len(positions))
 			seen := make([]bool, len(s.Modules))
 			for _, i := range positions {
 				if i < 0 || i >= len(s.Modules) || seen[i] {
-					fail(fmt.Errorf("the probe returned %v for %s, which is not a permutation of its %d modules",
-						positions, name, len(s.Modules)))
+					return nil, fmt.Errorf("the probe returned %v for %s, which is not a permutation of its %d modules",
+						positions, name, len(s.Modules))
 				}
 				seen[i] = true
 				want = append(want, s.Modules[i])
 			}
 		}
-		fmt.Fprintf(&b, "\t\t%q: {\n", name)
-		for _, dir := range want {
-			m := byDir[dir]
-			fmt.Fprintf(&b, "\t\t\t%s.New(),\n", m.alias)
-		}
-		b.WriteString("\t\t},\n")
+		ordered[name] = want
+	}
+
+	b.WriteString("// Specs is each spec's component table, in start order, built in full.\n")
+	b.WriteString("//\n")
+	b.WriteString("// **It constructs every spec's modules**, which is what diagnostics want (draw all\n")
+	b.WriteString("// the graphs) and what a running process must not do -- Loader.Load builds only its\n")
+	b.WriteString("// own spec.\n")
+	b.WriteString("func Specs() map[string][]modules.Component {\n")
+	b.WriteString("\treturn map[string][]modules.Component{\n")
+	for _, name := range names {
+		fmt.Fprintf(&b, "\t\t%q: spec(%q),\n", name, name)
 	}
 	b.WriteString("\t}\n}\n\n")
+
+	b.WriteString("// spec builds one spec's component table. Unknown names return nil; Loader.Load is\n")
+	b.WriteString("// the door that turns that into an error naming the alternatives.\n")
+	b.WriteString("func spec(name string) []modules.Component {\n")
+	b.WriteString("\tswitch name {\n")
+	for _, name := range names {
+		fmt.Fprintf(&b, "\tcase %q:\n", name)
+		b.WriteString("\t\treturn []modules.Component{\n")
+		for _, dir := range ordered[name] {
+			fmt.Fprintf(&b, "\t\t\t%s.New(),\n", byDir[dir].alias)
+		}
+		b.WriteString("\t\t}\n")
+	}
+	b.WriteString("\t}\n")
+	b.WriteString("\treturn nil\n")
+	b.WriteString("}\n\n")
 
 	b.WriteString("// SpecNames lists every spec name, sorted by file name.\n")
 	fmt.Fprintf(&b, "func SpecNames() []string { return []string{%s} }\n\n", quoteList(names))
@@ -321,13 +367,13 @@ func render(mods []module, specs map[string]spec, names []string, order map[stri
 	b.WriteString("\tif name == \"\" {\n")
 	b.WriteString("\t\tname = DefaultSpec\n")
 	b.WriteString("\t}\n")
-	b.WriteString("\tcomps, ok := Specs()[name]\n")
-	b.WriteString("\tif !ok {\n")
+	b.WriteString("\tcomps := spec(name)\n")
+	b.WriteString("\tif comps == nil {\n")
 	b.WriteString("\t\treturn nil, fmt.Errorf(\"no spec named %q (available: %s)\", name, strings.Join(SpecNames(), \", \"))\n")
 	b.WriteString("\t}\n")
 	b.WriteString("\treturn comps, nil\n")
 	b.WriteString("}\n")
-	return b.Bytes()
+	return b.Bytes(), nil
 }
 
 // moduleRoot walks up from cwd to the directory holding go.mod (`go run ./tools/distgen`
@@ -485,7 +531,3 @@ func quoteList(xs []string) string {
 }
 
 // fail is the generator's exit: one sentence on what is wrong, exit code 1.
-func fail(err error) {
-	fmt.Fprintln(os.Stderr, "distgen:", err)
-	os.Exit(1)
-}
