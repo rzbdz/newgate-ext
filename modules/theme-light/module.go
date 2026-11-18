@@ -30,7 +30,7 @@ const ID = "light"
 func New() modules.Component {
 	return modules.Component{
 		Name:     Name,
-		Desc:     func() string { return i18n.T("a white theme for the web interface", nil) },
+		Desc:     func() string { return i18n.T("a white skin for the web UI", nil) },
 		Type:     "cli",
 		Requires: []modules.Requirement{modules.Optional(webapi.ThemeCapability)},
 		Start:    start,
