@@ -1204,6 +1204,35 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 	}
 	deadline := start.Add(time.Duration(st.Chain.Budget()) * time.Millisecond)
 
+	// One line that answers "why this upstream" -- the question every routing incident opens
+	// with (2026-11-19: the user's claude calls were served by DeepSeek and nothing in the log
+	// said which switch had decided that).
+	//
+	// It is printed **always**, not only under `newgate debug`: a chain is built once per
+	// request and the line is short (one profile name, one tier, N steps), while the thing it
+	// replaces -- reading state.json, the profile tables and every registered admission filter
+	// together, by hand, after the fact -- is what actually costs. Under debug the full step
+	// list comes along; otherwise it stays at "how many candidates and the head", which is
+	// enough to tell "pinned", "fallback off" and "someone swapped" apart.
+	{
+		head := steps[0].String()
+		if gatewaystate.DebugActive(st) {
+			s.logf("[proxy] %s", i18n.T(
+				"#{req} route: tier={tier} profile={profile} pinned={pinned} fallback={fallback} special={special} -> {steps} (skipped: {skips})",
+				i18n.A{"req": reqID, "tier": tier, "profile": active,
+					"pinned":   boolWord(tgt.Profile != "" || gatewaystate.FallbackOff(st)),
+					"fallback": boolWord(!gatewaystate.FallbackOff(st)),
+					"special":  boolWord(gatewaystate.SpecialEnabled(st)),
+					"steps":    formatSteps(steps), "skips": fmtSkips(skips)}))
+		} else {
+			s.logf("[proxy] %s", i18n.N(
+				"#{req} route: tier={tier} profile={profile} -> {head} ({n} candidate)",
+				"#{req} route: tier={tier} profile={profile} -> {head} ({n} candidates)",
+				len(steps), i18n.A{"req": reqID, "tier": tier, "profile": active, "head": head,
+					"n": len(steps)}))
+		}
+	}
+
 	var lastMsg string
 	var lastCode int
 	var trail []string // for X-Newgate-Chain
@@ -1295,6 +1324,18 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 			counted := map[string]bool{}
 			for _, n := range res.Notes {
 				s.logf("[proxy] #%d special_treatment %s", reqID, n)
+			}
+			// Under debug, also print the plugins that were **asked** -- Match is per request, so
+			// "the patch was registered" and "the patch ran on this request" are different facts,
+			// and telling them apart is the whole job when a 400 is not being patched. Printed
+			// after Apply so the body has already moved if it was going to; the list is the
+			// registry's order (see special.Plugins), which is also the order they were asked in.
+			if gatewaystate.DebugActive(st) {
+				s.logf("[proxy] %s", i18n.T(
+					"#{req} special_treatment step {step} ({provider}/{model}): asked {asked}, changed={changed}, skipped={skipped}",
+					i18n.A{"req": reqID, "step": i + 1, "provider": a.Binding.Provider,
+						"model": a.Binding.Model, "asked": pluginNamesFor(st),
+						"changed": boolWord(res.Changed), "skipped": boolWord(len(res.Notes) == 0)}))
 			}
 			for _, event := range res.Events {
 				key := event.MetricKey()
@@ -2089,6 +2130,37 @@ func formatSteps(steps []resolve.Step) string {
 		parts = append(parts, s.String())
 	}
 	return strings.Join(parts, ", ")
+}
+
+// boolWord renders a switch's state for the route line: on/off stays untranslated on purpose,
+// it is a machine marker next to `tier=` / `profile=` (see the i18n rule in CLAUDE.md).
+func boolWord(b bool) string {
+	if b {
+		return "on"
+	}
+	return "off"
+}
+
+// pluginNamesFor lists the special plugins registered right now, marking the ones the user
+// turned off individually (they are skipped, but "it was off" and "it never registered" look
+// identical in a log that only prints the ones that ran).
+//
+// Plugin names are machine markers (each plugin's Name()), so they stay untranslated: grepping
+// the log for a name is how `newgate st off <name>` is used in the first place.
+func pluginNamesFor(st *domain.State) string {
+	plugins := special.Plugins()
+	names := make([]string, 0, len(plugins))
+	for _, p := range plugins {
+		if gatewaystate.PluginOff(st, p.Name()) {
+			names = append(names, p.Name()+"(off)")
+			continue
+		}
+		names = append(names, p.Name())
+	}
+	if len(names) == 0 {
+		return "-"
+	}
+	return strings.Join(names, ",")
 }
 
 func truncate(s string, n int) string {

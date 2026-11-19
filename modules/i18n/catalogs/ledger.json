@@ -240,6 +240,28 @@
       ],
       "other": "#{req} response rewritten on the way out ({n} events): upstream bytes differ from what the client got"
     },
+    "#{req} route: tier={tier} profile={profile} -> {head} ({n} candidate)": {
+      "args": [
+        "head",
+        "n",
+        "profile",
+        "req",
+        "tier"
+      ],
+      "other": "#{req} route: tier={tier} profile={profile} -> {head} ({n} candidates)"
+    },
+    "#{req} route: tier={tier} profile={profile} pinned={pinned} fallback={fallback} special={special} -> {steps} (skipped: {skips})": {
+      "args": [
+        "fallback",
+        "pinned",
+        "profile",
+        "req",
+        "skips",
+        "special",
+        "steps",
+        "tier"
+      ]
+    },
     "#{req} scene NOT saved (check permissions/disk): {err}": {
       "args": [
         "err",
@@ -267,6 +289,17 @@
         "req"
       ],
       "other": "#{req} set \"required\": [] on {n} tools to pass strict validators (semantically a no-op): {changes}"
+    },
+    "#{req} special_treatment step {step} ({provider}/{model}): asked {asked}, changed={changed}, skipped={skipped}": {
+      "args": [
+        "asked",
+        "changed",
+        "model",
+        "provider",
+        "req",
+        "skipped",
+        "step"
+      ]
     },
     "#{req} stream ended normally: {chunks} chunks / {bytes} bytes / {ms} ms total": {
       "args": [
@@ -2090,6 +2123,9 @@
         "pid"
       ]
     },
+    "dropped {n} empty thinking block (whitespace only, no signature) that a strict upstream refuses": {
+      "other": "dropped {n} empty thinking blocks (whitespace only, no signature) that a strict upstream refuses"
+    },
     "dump material": {},
     "duplicate": {},
     "duplicate of an earlier candidate in the chain": {},
@@ -3590,6 +3626,7 @@
     "slots are discovered by the config extension module": {},
     "slots are discovered from the config file at startup": {},
     "slots are discovered from the config file at takeover": {},
+    "some clients send assistant turns carrying a thinking block with only whitespace in it; strict Anthropic upstreams refuse the whole request\ndrop those blocks (they hold no text and no signature, so removing one changes no meaning) - never fill them with invention": {},
     "some models always think and return a 400 when told to turn thinking off (GLM code 1210)\ngive these models an explicit reasoning_effort=low and change thinking:disabled back to enabled (the fallback half of BestEffortDisableThink)": {},
     "some targets were ignored: {list}": {
       "args": [

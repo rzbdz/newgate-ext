@@ -24,6 +24,22 @@
       "reviewed": true,
       "text": "「最后一条 user 消息只有 tool_result」不再被修（不再追加「继续」），上游会把这种空指令尾部误报成 reasoning_content 缺失而 400"
     },
+    "#{req} learned {provider}/{model} {what} — applied to later requests automatically (turn off with `newgate st`)": {
+      "reviewed": true,
+      "text": "#{req} 学到了 {provider}/{model} {what} —— 之后自动生效（`newgate st` 关掉）"
+    },
+    "#{req} route: tier={tier} profile={profile} -> {head} ({n} candidate)": {
+      "reviewed": true,
+      "text": "#{req} 路由：档位={tier} profile={profile} -> {head}（{n} 个候选）"
+    },
+    "#{req} route: tier={tier} profile={profile} pinned={pinned} fallback={fallback} special={special} -> {steps} (skipped: {skips})": {
+      "reviewed": true,
+      "text": "#{req} 路由：档位={tier} profile={profile} 钉死={pinned} 回退={fallback} 补丁={special} -> {steps}（跳过：{skips}）"
+    },
+    "#{req} special_treatment step {step} ({provider}/{model}): asked {asked}, changed={changed}, skipped={skipped}": {
+      "reviewed": true,
+      "text": "#{req} 补丁清单 第 {step} 步（{provider}/{model}）：问过 {asked}，改了={changed}，没改={skipped}"
+    },
     "(cannot check the model list: {err})": {
       "reviewed": true,
       "text": "（查不了模型清单：{err}）"
@@ -559,6 +575,10 @@
     "[naked] the classifier request was approved directly, the upstream was not called (the window has {left} left)": {
       "reviewed": true,
       "text": "[naked] 分类器请求被直接批准，未调用上游（窗口还剩 {left}）"
+    },
+    "[probe] {provider}/{model}: probe says unavailable — recorded as evidence only, real traffic decides whether to delist": {
+      "reviewed": true,
+      "text": "[probe] {provider}/{model}：探活说不适用——只作为证据记录，摘不摘牌由真实流量决定"
     },
     "`newgate restart` failed: {err}": {
       "reviewed": true,
@@ -1255,6 +1275,10 @@
     "downloading {name} broke off: {err}": {
       "reviewed": true,
       "text": "下载 {name} 中断：{err}"
+    },
+    "dropped {n} empty thinking block (whitespace only, no signature) that a strict upstream refuses": {
+      "reviewed": true,
+      "text": "摘掉了 {n} 个空 thinking 块（只有空白、没有签名），严格的上游会拒收它们"
     },
     "dump material": {
       "reviewed": true,
@@ -2080,6 +2104,10 @@
       "reviewed": true,
       "text": "档位 {profiles} 引用了 provider {provider}，但 provider 表里没有它"
     },
+    "profile {profile} has no usable candidate for {model} right now; {reason}": {
+      "reviewed": true,
+      "text": "profile {profile} 此刻没有 {model} 的可用候选；{reason}"
+    },
     "profiles and clients": {
       "reviewed": true,
       "text": "档位与客户端"
@@ -2328,6 +2356,10 @@
       "reviewed": true,
       "text": "槽位在接管时从配置文件里发现"
     },
+    "some clients send assistant turns carrying a thinking block with only whitespace in it; strict Anthropic upstreams refuse the whole request\ndrop those blocks (they hold no text and no signature, so removing one changes no meaning) - never fill them with invention": {
+      "reviewed": true,
+      "text": "有些客户端会在 assistant 轮里带上一个只有空白的 thinking 块，严格的 Anthropic 上游会因此整条请求 400\n把这种块摘掉（它既没有正文也没有签名，删掉不改变任何语义）——绝不用凭空编的内容去填"
+    },
     "some targets were ignored: {list}": {
       "machine": true,
       "text": "部分目标被忽略：{list}"
@@ -2511,6 +2543,10 @@
     "the browser UI: config, breakers, logs, switches (newgate web)": {
       "reviewed": true,
       "text": "浏览器界面：配置、熔断、日志、开关点（newgate web）"
+    },
+    "the chain is pinned to profile {profile}, this one does not join": {
+      "reviewed": true,
+      "text": "这条链被钉在 profile {profile} 上，这一份不加入"
     },
     "the classifier settings in this request are not readable: {err}": {
       "reviewed": true,
@@ -3751,18 +3787,6 @@
     "↑/↓ or j/k move · ←/→ or Tab switch pane · Enter apply · d follow the default · r reload · q quit": {
       "reviewed": true,
       "text": "↑/↓ 或 j/k 移动 · ←/→ 或 Tab 切换栏 · Enter 应用 · d 跟随缺省 · r 重载 · q 退出"
-    },
-    "[probe] {provider}/{model}: probe says unavailable — recorded as evidence only, real traffic decides whether to delist": {
-      "reviewed": true,
-      "text": "[probe] {provider}/{model}：探活说不适用——只作为证据记录，摘不摘牌由真实流量决定"
-    },
-    "profile {profile} has no usable candidate for {model} right now; {reason}": {
-      "reviewed": true,
-      "text": "profile {profile} 此刻没有 {model} 的可用候选；{reason}"
-    },
-    "the chain is pinned to profile {profile}, this one does not join": {
-      "reviewed": true,
-      "text": "这条链被钉在 profile {profile} 上，这一份不加入"
     }
   },
   "meta": {

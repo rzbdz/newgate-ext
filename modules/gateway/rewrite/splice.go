@@ -448,6 +448,147 @@ func AppendTopLevelArrayItem(body []byte, arrayKey string, rawVal []byte) ([]byt
 	return out, true, nil
 }
 
+// DropArrayItemBlocks **removes** elements from the sub-array field field (content) of every
+// object element of the top-level array arrayKey that match, keeping every other byte as is.
+// drop receives one block's raw bytes and decides. It returns how many blocks were removed.
+//
+// Why removal exists as a primitive (2026-11-19 field event): every primitive before it could
+// only add or replace, so the answer to "our request contains a block the upstream refuses"
+// was always "write something else in it" - and when the block's content is empty, anything
+// written there is **fabrication**. The live case was Claude Code sending
+// {"type":"thinking","thinking":" ","signature":""} in seven assistant turns of a long
+// session; smt-claude (official Anthropic behind it) answered
+//
+//	400 … thinking: each thinking block must contain non-whitespace thinking
+//
+// The block says nothing, so removing it changes no meaning - writing a placeholder into it
+// would have made the model read reasoning it never produced.
+//
+// Two shape rules, both on the safe side:
+//   - the element or its field is not a shape we understand (not an object, field not an
+//     array): skipped, not an error - the caller treats "unrecognized" as "leave it alone";
+//   - **an array whose elements would all be dropped is left untouched** (returns 0 for it):
+//     content:[] is a shape most upstreams reject outright, so a repair that empties the
+//     array and one that breaks the request are the same thing.
+func DropArrayItemBlocks(body []byte, arrayKey, field string,
+	match func(item []byte) bool, drop func(block []byte) bool) ([]byte, int, error) {
+
+	s, e, err := findTopLevelValue(body, arrayKey)
+	if err != nil {
+		return body, 0, err
+	}
+	arr := body[s:e]
+	spans, ok := arrayItemSpans(arr)
+	if !ok {
+		return body, 0, errNotArray
+	}
+
+	type edit struct {
+		start, end int
+		repl       []byte
+	}
+	var edits []edit
+	dropped := 0
+
+	for _, sp := range spans {
+		item := arr[sp[0]:sp[1]]
+		if len(item) == 0 || item[0] != '{' {
+			continue // not an object: not a shape we handle
+		}
+		if match != nil && !match(item) {
+			continue
+		}
+		cs, ce, err := findTopLevelValue(item, field)
+		if err != nil {
+			continue // no such field
+		}
+		child := item[cs:ce]
+		if len(child) == 0 || child[0] != '[' {
+			continue // the field is a plain string: nothing to drop
+		}
+		childSpans, ok := arrayItemSpans(child)
+		if !ok {
+			continue
+		}
+		keep := make([]bool, len(childSpans))
+		kept, gone := 0, 0
+		for i, csp := range childSpans {
+			if drop != nil && drop(child[csp[0]:csp[1]]) {
+				gone++
+				continue
+			}
+			keep[i] = true
+			kept++
+		}
+		if gone == 0 || kept == 0 {
+			continue // nothing to drop, or dropping would empty the array
+		}
+		edits = append(edits, edit{
+			start: s + sp[0] + cs,
+			end:   s + sp[0] + ce,
+			repl:  rebuildArrayWithout(child, childSpans, keep),
+		})
+		dropped += gone
+	}
+
+	if len(edits) == 0 {
+		return body, 0, nil
+	}
+
+	out := make([]byte, 0, len(body))
+	prev := 0
+	for _, ed := range edits { // arrayItemSpans walks left to right, so edits are ordered
+		out = append(out, body[prev:ed.start]...)
+		out = append(out, ed.repl...)
+		prev = ed.end
+	}
+	out = append(out, body[prev:]...)
+	return out, dropped, nil
+}
+
+// rebuildArrayWithout rebuilds one array from the kept elements, reusing the original
+// separators: `[` + (for each kept element) its own indentation + bytes, `,` between kept
+// ones, + the whitespace that followed the last kept element + `]`.
+//
+// Reusing the original whitespace instead of emitting compact JSON keeps the diff between
+// what the client sent and what went upstream to exactly the dropped block.
+func rebuildArrayWithout(arr []byte, spans [][2]int, keep []bool) []byte {
+	out := make([]byte, 0, len(arr))
+	out = append(out, '[')
+	first := true
+	lastEnd := 1
+	for i, sp := range spans {
+		if !keep[i] {
+			continue
+		}
+		if !first {
+			out = append(out, ',')
+		}
+		lead := sp[0]
+		for lead > 0 && isSpace(arr[lead-1]) {
+			lead--
+		}
+		out = append(out, arr[lead:sp[0]]...)
+		out = append(out, arr[sp[0]:sp[1]]...)
+		first = false
+		lastEnd = sp[1]
+	}
+	trail := lastEnd
+	for trail < len(arr) && isSpace(arr[trail]) {
+		trail++
+	}
+	out = append(out, arr[lastEnd:trail]...)
+	return append(out, ']')
+}
+
+func isSpace(b byte) bool {
+	switch b {
+	case ' ', '\t', '\n', '\r':
+		return true
+	}
+	return false
+}
+
 // ArrayItems cuts a JSON array's raw bytes into the raw bytes of its elements (for read-only
 // checks, e.g. "does this content[] hold a thinking block"). The slices point into the
 // original bytes, no copying.

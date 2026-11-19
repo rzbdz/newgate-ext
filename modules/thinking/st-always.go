@@ -10,7 +10,7 @@ import (
 
 var _ special.Plugin = (*alwaysThinks)(nil)
 
-func Treatments() []special.Plugin { return []special.Plugin{alwaysThinks{}} }
+func Treatments() []special.Plugin { return []special.Plugin{alwaysThinks{}, emptyThinking{}} }
 
 // BestEffortDisableThink: the full semantics of "this call does not want to think", one operation:
 //
