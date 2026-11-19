@@ -363,10 +363,21 @@ func (b *table) openLocked(r *record, rule Rule, now time.Time, reason string) {
 // RecordProbe records the four-tier conclusion of an active
 // probe and returns the grade and whether it is still tripped.
 //
-// A probe is an active, independent health request, so it is **not subject to
-// the threshold**: a bad conclusion delists on the spot, a good one unseals on the
-// spot (even during quarantine, see below). This differs from the real-traffic path
-// -- there a single success proves nothing and a single failure settles nothing.
+// **A bad probe conclusion no longer delists.** It records the grade (which sinks the binding
+// in Rank, so a delisted-for-latency upstream still loses the head) and lets the real-traffic
+// path decide. The older comment here said a probe "is authoritative, so it delists on the
+// spot"; 2026-11-19 showed what that costs. A `newgate probe` swept every binding, smt-claude
+// answered the two probe requests with 「检测到您的客户端存在异常，请使用标准 Claude Code 客户端请求」
+// -- the upstream sniffing for non-standard clients, which a 4-token probe request with no
+// Claude Code fingerprint trips every time -- and all four claude bindings were delisted in one
+// second. The chain head was claude, the user had `newgate fallback off`, and requests silently
+// ran on DeepSeek: the profile was right, the routing was right, and the **evidence** was
+// wrong. A probe asks "is this endpoint reachable"; steering needs "does real traffic fail",
+// and only real traffic can answer that.
+//
+// The asymmetric half stays: a **good** probe conclusion is still authoritative evidence and
+// unseals on the spot (see below) -- that direction is a claim about a request that actually
+// succeeded, and no sniffing can manufacture it.
 func (b *table) RecordProbe(provider, model string, status, contextBytes int,
 	latency, slowAfter time.Duration, probeErr string) (ProbeGrade, bool) {
 	b.mu.Lock()
@@ -374,17 +385,13 @@ func (b *table) RecordProbe(provider, model string, status, contextBytes int,
 	key := bindingKey(provider, model)
 	now := b.now()
 	grade := ProbeFluent
-	reason := ""
 	switch {
 	case status == 200 && latency > slowAfter:
-		grade, reason = ProbeLaggy, i18n.T("probe {latency} exceeded {limit}",
-			i18n.A{"latency": latency.Round(time.Millisecond).String(), "limit": slowAfter.String()})
+		grade = ProbeLaggy
 	case probeErr != "":
-		grade, reason = ProbeUnavailable,
-			i18n.T("probe failed: {err}", i18n.A{"err": probeErr})
+		grade = ProbeUnavailable
 	case status != 200:
-		grade, reason = ProbeUnavailable,
-			i18n.T("probe HTTP {status}", i18n.A{"status": status})
+		grade = ProbeUnavailable
 	case latency >= 3*time.Second:
 		grade = ProbeUsable
 	}
@@ -395,13 +402,13 @@ func (b *table) RecordProbe(provider, model string, status, contextBytes int,
 		b.ranker.observe(key, contextBytes, latency)
 	}
 	r := b.recordLocked(provider, model)
+	b.persistLocked()
 
-	if reason != "" {
-		rule := b.policy.rule(BucketAvailability)
-		r.cooldown = 0 // the probe's conclusion is authoritative: backoff restarts from the baseline
-		b.openLocked(r, rule, now, reason)
-		r.fails = rule.Threshold
-		return grade, true
+	if grade == ProbeUnavailable {
+		// Evidence, not a verdict: the ranker already sank it (a slow/failed probe produces no
+		// useful TTFT sample), and `newgate breaker` shows the grade and the reason. Previous
+		// behaviour (delist on the spot) is what turned one probe sweep into a full outage.
+		return grade, !r.openedAt.IsZero()
 	}
 	// A successful active probe is **authoritative evidence**: it just really got through to this
 	// binding, so close the breaker on the spot -- **without waiting for the quarantine to end**.
@@ -493,11 +500,24 @@ func (b *table) Score(provider, model string, contextBytes int) int {
 
 // Rank encodes the latency tier into the sort key:
 // fluent first, unobserved in the middle, usable last.
+//
+// An **unavailable probe grade sinks the binding to the bottom** on top of that. This is what
+// replaced "a bad probe delists" (2026-11-19): the grade is still evidence, and evidence must
+// still have an effect -- just an ordering effect, which a fingerprint-sniffing upstream cannot
+// turn into an outage, instead of a routing verdict.
 func (b *table) Rank(provider, model string, contextBytes int) int {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.ranker.rank(bindingKey(provider, model), contextBytes)
+	key := bindingKey(provider, model)
+	if p, ok := b.probes[key]; ok && p.Grade == ProbeUnavailable {
+		return unavailableRank
+	}
+	return b.ranker.rank(key, contextBytes)
 }
+
+// unavailableRank sorts below every latency tier the ranker produces (3_000_000 + ms is its
+// worst bucket), so "the probe says unavailable" loses every tie without being a verdict.
+const unavailableRank = 4_000_000
 
 // Snapshot freezes the current state, sorted by provider/model, easy to read and diff.
 func (b *table) Snapshot() []Status {

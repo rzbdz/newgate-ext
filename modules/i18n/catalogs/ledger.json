@@ -1173,6 +1173,12 @@
         "provider"
       ]
     },
+    "[probe] {provider}/{model}: probe says unavailable — recorded as evidence only, real traffic decides whether to delist": {
+      "args": [
+        "model",
+        "provider"
+      ]
+    },
     "`newgate restart` failed: {err}": {},
     "a base URL starts with http:// or https://": {},
     "a binding must be provider/model: {binding}": {
@@ -3095,22 +3101,6 @@
     "previous kept as .prev": {},
     "private key": {},
     "probability": {},
-    "probe HTTP {status}": {
-      "args": [
-        "status"
-      ]
-    },
-    "probe failed: {err}": {
-      "args": [
-        "err"
-      ]
-    },
-    "probe {latency} exceeded {limit}": {
-      "args": [
-        "latency",
-        "limit"
-      ]
-    },
     "probed {n} binding": {
       "args": [
         "n"
@@ -3155,6 +3145,13 @@
       "args": [
         "names",
         "profile"
+      ]
+    },
+    "profile {profile} has no usable candidate for {model} right now; {reason}": {
+      "args": [
+        "model",
+        "profile",
+        "reason"
       ]
     },
     "profile {profile} role {role}: model is empty": {
@@ -3737,6 +3734,11 @@
     },
     "the browser UI: config, breakers, logs, switches (newgate web)": {},
     "the chain head is fixed; fallbacks follow the predicted TTFT of this context": {},
+    "the chain is pinned to profile {profile}, this one does not join": {
+      "args": [
+        "profile"
+      ]
+    },
     "the chain's attempt budget is exhausted — see state.json chain.max_attempts": {},
     "the classifier settings in this request are not readable: {err}": {
       "args": [

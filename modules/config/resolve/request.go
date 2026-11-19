@@ -101,6 +101,11 @@ func ResolveRequest(model string, active string, profiles []*domain.Profile,
 	// for exactly this. Only when it is truly not recognized at all does it return tier == "".
 	ident := o
 	ident.Available, ident.Rank, ident.Disabled, ident.MaxSteps = nil, nil, nil, 0
+	// The pin comes off here too: this pass asks "does any profile of the config bind this
+	// name", and if it does, what comes back is `tried[i]` -- the chain built **under** the pin,
+	// i.e. empty with the "pinned to profile X" skips. That is the right story: the name exists,
+	// this call may not use it.
+	ident.Pinned = ""
 	for i, role := range realNameRoleOrder {
 		steps, _ := BuildChain(role, profiles, provs, ident)
 		if indexOfModel(steps, model) >= 0 {

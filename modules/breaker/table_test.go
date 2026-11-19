@@ -70,7 +70,10 @@ func TestProbeGradesAndContextBuckets(t *testing.T) {
 		t.Fatalf("8s = %s open=%v", grade, open)
 	}
 	if grade, open := b.RecordProbe("relay", "slow", 200, 1,
-		13*time.Second, 12*time.Second, ""); grade != ProbeLaggy || !open {
+		13*time.Second, 12*time.Second, ""); grade != ProbeLaggy || open {
+		// Laggy is a **grade**, not a delisting: same reason as an unavailable one (2026-11-19) --
+		// a probe measures a different request than the one the user will send. It sinks the
+		// binding in Rank, which is what this line is here to pin.
 		t.Fatalf("13s = %s open=%v", grade, open)
 	}
 

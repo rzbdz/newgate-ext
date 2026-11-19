@@ -314,21 +314,40 @@ func TestFailuresDuringIsolationAreNotNewEvidence(t *testing.T) {
 	}
 }
 
-// TestProbeBypassesThreshold: a probe is an active, independent health
-// request, and its conclusion is authoritative -- bad means delist on
-// the spot, good means unseal on the spot (**even during quarantine**).
+// TestProbeBypassesThreshold: a good probe conclusion is authoritative and unseals on the spot
+// (**even during quarantine**).
+//
+// A **bad** conclusion deliberately does not delist any more (2026-11-19): a probe is a 4-token
+// request without the client's fingerprint, and an upstream that sniffs for its own client
+// answers it with an error while real traffic succeeds. That is exactly what happened: one
+// `newgate probe` delisted all four smt-claude bindings and requests kept being served by
+// another profile. The grade is still recorded (the ranker sinks it), but only real traffic
+// delists. Kept below as the first half of the test so the asymmetry is pinned, not implied.
 func TestProbeBypassesThreshold(t *testing.T) {
 	b, advance := clocked()
-	if _, open := b.RecordProbe("p", "m", 503, 1024, time.Second, 12*time.Second, ""); !open {
-		t.Fatal("a failed probe did not drop it on the spot")
+	if grade, open := b.RecordProbe("p", "m", 503, 1024, time.Second, 12*time.Second, ""); grade != ProbeUnavailable || open {
+		t.Fatalf("a failed probe must be recorded as %s and delist nothing, got grade=%s open=%v", ProbeUnavailable, grade, open)
 	}
-	if b.Available("p", "m") {
-		t.Fatal("after a probe dropped it the binding is still usable")
+	if !b.Available("p", "m") {
+		t.Fatal("a probe conclusion delisted the binding -- the 2026-11-19 outage is back " +
+			"(real traffic decides, a probe only reports)")
+	}
+	// The evidence is still visible: the grade sinks it in Rank and `newgate breaker` shows it.
+	if b.Rank("p", "m", 1024) < b.Rank("never-seen", "m", 1024) {
+		t.Error("an unavailable probe grade must not rank better than an unobserved binding")
 	}
 
-	// The scene on 2026-11-04: the user's probe succeeded during quarantine, yet requests
-	// kept getting 404 until the cooldown expired -- the only recovery action available
-	// had become a placebo. A successful active probe must return to the chain immediately.
+	// Now a real trip, then the 2026-11-04 scenario: the user's probe succeeds during quarantine,
+	// yet requests kept getting 404 until the cooldown expired -- the only recovery action
+	// available had become a placebo. A successful active probe must return to the chain
+	// immediately.
+	for i := 0; i < 2; i++ {
+		connFail(b, "p", "m")
+		advance(time.Second)
+	}
+	if b.Available("p", "m") {
+		t.Fatal("two real connection failures did not delist the binding")
+	}
 	advance(30 * time.Second)
 	if grade, open := b.RecordProbe("p", "m", 200, 1024, time.Second, 12*time.Second, ""); grade != ProbeFluent || open {
 		t.Fatalf("a successful probe should unblock immediately: grade=%s open=%v", grade, open)

@@ -276,23 +276,37 @@ func (p *plane) Doc() map[string]json.RawMessage {
 	return map[string]json.RawMessage{"breakers": raw}
 }
 
-// ObserveProbes takes in active probe conclusions. It is **authoritative evidence** (active,
-// controllable, repeatable), so it is not subject to the consecutive-failure threshold:
-// bad means delist on the spot, good means unseal on the spot (even during quarantine).
+// ObserveProbes takes in active probe conclusions.
 //
-// The returned Note is logged by the data plane verbatim: that "at least 60s, or one successful
-// probe" describes the health table's backoff semantics, which only this place knows.
+// **A bad conclusion is recorded, not acted on** (2026-11-19): it sets the grade (the ranker
+// sinks the binding, `newgate breaker` shows the reason) and the *real traffic* path is what
+// delists. Why the change: a probe is a 4-token request with none of the client's fingerprint,
+// and an upstream that sniffs for its own client answers it with an error while real traffic
+// sails through. On 2026-11-19 a single `newgate probe` delisted all four smt-claude bindings
+// that way, and requests kept being served by another profile with `fallback off`.
+//
+// A **good** conclusion is still authoritative and unseals on the spot -- a real success cannot
+// be manufactured by sniffing.
 func (p *plane) ObserveProbes(obs []gwpolicy.ProbeObservation) []gwpolicy.ProbeAck {
 	out := make([]gwpolicy.ProbeAck, 0, len(obs))
 	for _, o := range obs {
 		grade, opened := p.t.RecordProbe(o.Provider, o.Model, o.Status, o.ContextBytes,
 			o.Latency, o.SlowAfter, o.Error)
 		ack := gwpolicy.ProbeAck{Opened: opened}
-		if opened {
+		switch {
+		case opened:
 			ack.Note = i18n.T(
 				"[probe] tripped {provider}/{model}: {grade} (at least 60s, "+
 					"or a successful probe brings it back immediately)",
 				i18n.A{"provider": o.Provider, "model": o.Model, "grade": grade})
+		case grade == ProbeUnavailable:
+			// Say it out loud: the grade is visible in `newgate breaker`, and "the probe failed
+			// but nothing was delisted" is exactly the fact a user needs when they are wondering
+			// why a profile is still being used.
+			ack.Note = i18n.T(
+				"[probe] {provider}/{model}: probe says unavailable — recorded as evidence only, "+
+					"real traffic decides whether to delist",
+				i18n.A{"provider": o.Provider, "model": o.Model})
 		}
 		out = append(out, ack)
 	}

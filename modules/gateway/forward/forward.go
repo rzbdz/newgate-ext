@@ -828,6 +828,30 @@ func (s *Server) forwardCountTokens(w http.ResponseWriter, r *http.Request,
 	return true
 }
 
+// pinnedProfile is the profile this call may not leave: the one named in the URL (`/p/<name>`),
+// or -- before any of this existed -- the chain head whenever fallback is off.
+//
+// The second half is the 2026-11-19 fix. `newgate fallback off` used to mean only "truncate the
+// chain to its head after building it", and that cannot express "do not leave this profile":
+// when every candidate of the head profile was delisted by the health table, the builder walked
+// into the next profile and the truncation happily kept **that** head. The user asked for
+// claude, had fallback off, and got DeepSeek with no error anywhere -- reported on 2026-11-19,
+// and the reason the resolver can only be told about it here: this is the only place that knows
+// both the URL and the switch.
+//
+// It returns "" when neither applies, which the resolver treats as "no pin".
+func pinnedProfile(tgt Target, st *domain.State) string {
+	if tgt.Profile != "" {
+		return tgt.Profile
+	}
+	if gatewaystate.FallbackOff(st) {
+		// The chain head is what `active` is; the caller passes it as Opts.Active, and the
+		// resolver's own head-pinning (Profile.Pinned, a config flag) is a different thing.
+		return st.ActiveFor(tgt.TaskCreate)
+	}
+	return ""
+}
+
 // mainLoopHead is the main-loop tier (normal) chain head (with the full provider record).
 // count_tokens carries no model, so forwarding fills it from here. Uses PrimaryBinding
 // (ignoring circuit breaking): the first in the config is good enough for counting; no fallback.
@@ -1008,6 +1032,7 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 			Available: s.Filters.Admit,
 			Rank:      func(provider, model string) int { return s.Filters.Rank(provider, model, len(body)) },
 			MaxSteps:  st.Chain.Attempts(),
+			Pinned:    pinnedProfile(tgt, st),
 		}
 		var rs []resolve.Step
 		applied := false
@@ -1057,6 +1082,7 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 				Available: s.Filters.Admit,
 				Rank:      func(provider, model string) int { return s.Filters.Rank(provider, model, len(body)) },
 				MaxSteps:  st.Chain.Attempts(),
+				Pinned:    pinnedProfile(tgt, st),
 			})
 		}
 	}
@@ -1136,6 +1162,26 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(steps) == 0 {
 		s.logf("[proxy] %s", i18n.T("#{req} no usable candidate; skipped: {skips}", i18n.A{"req": reqID, "skips": fmtSkips(skips)}))
+		// A pinned call whose profile has nothing usable is **not** "unknown model" and not
+		// "the tier has no candidate": the tier plainly has candidates, they are delisted right
+		// now, and the only way out is the switch that paused the table. Say so -- the 2026-11-19
+		// incident was a user reading "everything is fine, fallback off" while being served by
+		// another profile's model.
+		if pin := pinnedProfile(tgt, st); pin != "" {
+			reason := "run `newgate tier " + tier + "` to see why each candidate was skipped"
+			if gatewaystate.FallbackOff(st) {
+				// Deliberately **not** naming any concrete strategy or switch here: the data plane
+				// must not know policy names (see modules/gateway/direction_test.go). "Some policy
+				// rejected them" plus the pointer at `newgate tier` is the whole truth this layer
+				// owns; which one, and how to turn it off, is the control plane's business.
+				reason = "fallback is off, so this call may not leave profile " + pin +
+					"; `newgate tier " + tier + "` names the policy that skipped each candidate"
+			}
+			s.fail(w, 503, i18n.T(
+				"profile {profile} has no usable candidate for {model} right now; {reason}",
+				i18n.A{"profile": pin, "model": norm, "reason": reason}))
+			return
+		}
 		if tier == "" {
 			s.fail(w, 404, i18n.T(
 				"model {model} is neither a known tier ({tiers}) nor bound in any profile; run `newgate tier` for available bindings",

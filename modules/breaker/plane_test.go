@@ -320,30 +320,41 @@ func TestPlaneDocKeepsTheWireKey(t *testing.T) {
 	}
 }
 
-// TestPlaneObserveProbesIsAuthoritative pins "a probe is authoritative evidence":
-// it is not subject to the consecutive-failure threshold -- a bad conclusion delists
-// on the spot, a good one unseals on the spot (even during quarantine, 2026-11-04).
+// TestPlaneObserveProbesIsAuthoritative pins the **asymmetry** of a probe conclusion, which is
+// the whole point of it being "evidence": a good one unseals on the spot (a real success cannot
+// be faked by an upstream sniffing for its own client), a bad one only records.
+//
+// The bad half used to delist on the spot and that is what broke on 2026-11-19: one
+// `newgate probe` sweep sent a fingerprint-less 4-token request to every binding, smt-claude
+// answered "we detected an anomaly in your client", and all four of its bindings were delisted
+// in one second while real traffic was fine. The assertion below is the regression guard.
 func TestPlaneObserveProbesIsAuthoritative(t *testing.T) {
-	table, _ := clocked()
+	table, clock := clocked()
 	p := &plane{t: table}
 
-	// The threshold is 2, but one failed probe is enough.
 	acks := p.ObserveProbes([]gwpolicy.ProbeObservation{{
 		Provider: "p", Model: "m", Status: 500, Error: "connect refused",
 		SlowAfter: time.Second,
 	}})
-	if len(acks) != 1 || !acks[0].Opened {
-		t.Fatalf("a failed probe should drop it on the spot: %+v", acks)
+	if len(acks) != 1 || acks[0].Opened {
+		t.Fatalf("a failed probe must not delist anything (real traffic decides): %+v", acks)
 	}
-	if !strings.Contains(acks[0].Note, "at least 60s") {
-		t.Errorf("that drop sentence is about the health table's backoff semantics, which only this place knows: %q", acks[0].Note)
+	if ok, _ := p.Admit("p", "m"); !ok {
+		t.Fatal("the probe wrote a verdict anyway -- the 2026-11-19 outage is back")
 	}
-	if ok, _ := p.Admit("p", "m"); ok {
-		t.Error("the probe says unusable, yet the binding is still on the chain")
+	if !strings.Contains(acks[0].Note, "recorded as evidence only") {
+		t.Errorf("a probe that failed without delisting is exactly what the user needs to see; got %q", acks[0].Note)
 	}
 
-	// A good probe -> released on the spot, **without waiting for the
+	// Trip it for real, then a good probe releases it on the spot, **without waiting for the
 	// cooldown to expire** (a user who just probed should be able to use it).
+	for i := 0; i < 2; i++ {
+		p.Judge(gwpolicy.Outcome{Provider: "p", Model: "m", Kind: gwpolicy.ConnectionFailed})
+		clock(time.Second)
+	}
+	if ok, _ := p.Admit("p", "m"); ok {
+		t.Fatal("two real failures should have delisted the binding")
+	}
 	acks = p.ObserveProbes([]gwpolicy.ProbeObservation{{
 		Provider: "p", Model: "m", Status: 200, Latency: 100 * time.Millisecond,
 		SlowAfter: time.Second,

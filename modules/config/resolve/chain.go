@@ -71,6 +71,10 @@ const (
 	SkipDuplicate = "duplicate"
 	// SkipCycle references form a cycle, skipped.
 	SkipCycle = "cycle"
+	// SkipPinned the call is pinned to one profile, so this profile's candidates never join.
+	// Distinct from SkipExcluded (a config flag) and from SkipOther (a pinned *chain head*): here
+	// the pin is about this request, and the user-visible story is "you asked for claude".
+	SkipPinned = "pinned"
 	// SkipOther the catch-all: the display layer's category table has no column
 	// for it (e.g. "chain head pinned, does not fall through" -- that class
 	// has no column of its own today, see skipKindOrder in modules/config).
@@ -100,6 +104,21 @@ type Opts struct {
 	Disabled func(tier, target string) (bool, string)
 	// MaxSteps 0 = unlimited.
 	MaxSteps int
+	// Pinned the chain may not leave this profile. Empty = not pinned.
+	//
+	// Why this is separate from MaxSteps=1 and from the caller's `steps[:1]` truncation: both of
+	// those act on an **already built** chain, so the damage is done by then. The scene
+	// (2026-11-19): the chain head was claude, but a probe had delisted all four of claude's
+	// bindings, so the head candidate was "unavailable" and the builder simply walked on into the
+	// next profile -- the user asked for claude, `newgate fallback off`, and still got DeepSeek,
+	// with every mechanism reporting success. Truncating afterwards cannot help: the head is
+	// already somebody else's. Pinning is the only place the decision can be made, because it is
+	// the only place that knows **which profile** each candidate came from.
+	//
+	// An empty pinned chain is a **legitimate, explainable** result ("every candidate of this
+	// profile is delisted right now"), and the caller must report it as such rather than as
+	// "unknown model" -- which is why it comes back as skips, not as nil.
+	Pinned string
 }
 
 // BuildChain constructs the fallback chain for some key.
@@ -119,6 +138,8 @@ type Opts struct {
 //     it is the chain head (explicit selection wins)
 //   - when the chain head is pinned the chain is only itself
 //     (including its internal list), no falling through
+//   - when Opts.Pinned names a profile, **no other profile contributes a candidate** -- if that
+//     profile has nothing usable the chain is empty, with the skips explaining why
 //   - profiles may be sparse: without this key the whole level is skipped
 //     (with an alias, the alias goes first, see domain.Profile.CandidatesFor)
 //   - a **reference** in the candidates (`@normal`) is expanded
@@ -130,6 +151,9 @@ type Opts struct {
 // second fallback semantics, they only let keys point at each other. See docs/04-configuration.md.
 func BuildChain(key string, profiles []*domain.Profile, provs *domain.Providers, o Opts) ([]Step, []Skip) {
 	ordered, skips := orderProfiles(profiles, o.Active)
+	if o.Pinned != "" {
+		ordered, skips = pinnedOnly(ordered, skips, o.Pinned)
+	}
 	b := &chainBuilder{profiles: ordered, provs: provs, o: o,
 		seen: map[string]bool{}, visiting: map[string]bool{key: true}, skips: skips}
 	b.expand(key)
@@ -309,6 +333,31 @@ func OverrideChain(source string, override domain.Binding, tier string, profiles
 		out = append(out, s)
 	}
 	return out, skips, true
+}
+
+// pinnedOnly narrows an ordered profile list down to the pinned one, recording a skip for
+// every profile that is left out -- "I asked for claude and got DeepSeek" has to be answerable
+// from the skip list alone, otherwise the only evidence is the absence of something.
+//
+// A pinned profile that is not in the config at all yields an empty list *and* no skip (there is
+// no profile to point at); `pinnedProfiles` in the forwarding path handles the same case by
+// returning nil, and both end up as "no usable candidate".
+func pinnedOnly(ordered []*domain.Profile, skips []Skip, pinned string) ([]*domain.Profile, []Skip) {
+	for _, p := range ordered {
+		if p.Name != pinned {
+			continue
+		}
+		for _, other := range ordered {
+			if other.Name == pinned {
+				continue
+			}
+			skips = append(skips, Skip{Profile: other.Name, Kind: SkipPinned,
+				Reason: i18n.T("the chain is pinned to profile {profile}, this one does not join",
+					i18n.A{"profile": pinned})})
+		}
+		return []*domain.Profile{p}, skips
+	}
+	return nil, skips
 }
 
 // orderProfiles the chain head + the rest by (priority, name).

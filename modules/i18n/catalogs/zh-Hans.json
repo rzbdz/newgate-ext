@@ -3751,6 +3751,18 @@
     "↑/↓ or j/k move · ←/→ or Tab switch pane · Enter apply · d follow the default · r reload · q quit": {
       "reviewed": true,
       "text": "↑/↓ 或 j/k 移动 · ←/→ 或 Tab 切换栏 · Enter 应用 · d 跟随缺省 · r 重载 · q 退出"
+    },
+    "[probe] {provider}/{model}: probe says unavailable — recorded as evidence only, real traffic decides whether to delist": {
+      "reviewed": true,
+      "text": "[probe] {provider}/{model}：探活说不适用——只作为证据记录，摘不摘牌由真实流量决定"
+    },
+    "profile {profile} has no usable candidate for {model} right now; {reason}": {
+      "reviewed": true,
+      "text": "profile {profile} 此刻没有 {model} 的可用候选；{reason}"
+    },
+    "the chain is pinned to profile {profile}, this one does not join": {
+      "reviewed": true,
+      "text": "这条链被钉在 profile {profile} 上，这一份不加入"
     }
   },
   "meta": {

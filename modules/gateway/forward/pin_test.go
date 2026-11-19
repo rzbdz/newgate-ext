@@ -47,6 +47,7 @@ func (d denyBinding) Rank(provider, model string, _ int) int { return policy.Neu
 // pinRig is this test's scene: two profiles + two fake upstreams.
 type pinRig struct {
 	srv    *Server
+	dir    string
 	logs   *syncBuffer
 	front  *httptest.Server
 	hitsA  *int64
@@ -109,7 +110,7 @@ func newPinRig(t *testing.T) *pinRig {
 	}
 	front := httptest.NewServer(http.HandlerFunc(srv.handleProxy))
 	t.Cleanup(front.Close)
-	return &pinRig{srv: srv, logs: logs, front: front, hitsA: &hA, hitsDS: &hDS}
+	return &pinRig{srv: srv, dir: dir, logs: logs, front: front, hitsA: &hA, hitsDS: &hDS}
 }
 
 func (r *pinRig) post(t *testing.T, path string) (int, string) {
@@ -143,14 +144,18 @@ func TestUnpinnedKnownModelUnavailableFallsBack(t *testing.T) {
 }
 
 // TestPinnedProfileNeverSwitchesProfile: with ds named, pulling ds's candidate must **not**
-// let a's candidate stand in -- that is exactly the silent swap naming forbids. The 404 must
-// say "the tier was recognized, but it has no usable candidate right now", no longer "this
-// model does not exist".
+// let a's candidate stand in -- that is exactly the silent swap naming forbids.
+//
+// The status is 503, not 404 (changed 2026-11-19): the model exists, the profile exists, and the
+// tier it belongs to exists; what is missing is a **usable** candidate right now, which is a
+// transient upstream condition and the same answer the unpinned path gives for a delisted
+// binding. 404 said "there is nothing here", which is what sent the 2026-11-19 incident's user
+// looking through their config while the real cause sat in the skip list.
 func TestPinnedProfileNeverSwitchesProfile(t *testing.T) {
 	rig := newPinRig(t)
 	code, body := rig.post(t, "/a/claude/p/ds/v1/chat/completions")
-	if code != 404 {
-		t.Fatalf("with ds pinned and no usable candidate for ds it should be 404; got %d %q\n%s", code, body, rig.logs.String())
+	if code != 503 {
+		t.Fatalf("with ds pinned and no usable candidate for ds it should be 503; got %d %q\n%s", code, body, rig.logs.String())
 	}
 	if n := atomic.LoadInt64(rig.hitsA); n != 0 {
 		t.Errorf("ds was pinned yet the upstream of a was hit %d times - the silent profile switch is back", n)
@@ -161,10 +166,60 @@ func TestPinnedProfileNeverSwitchesProfile(t *testing.T) {
 	if strings.Contains(body, "neither a known tier") {
 		t.Errorf("the model is bound to the mid tier of ds, so it must not say 'not in any profile binding': %q", body)
 	}
-	if !strings.Contains(body, "bound to tier mid") {
-		t.Errorf("the 404 should say which tier the model is bound to and why there is no usable candidate: %q", body)
+	if !strings.Contains(body, "profile ds has no usable candidate") {
+		t.Errorf("the error should name the pinned profile and say it has no usable candidate: %q", body)
 	}
 	if !strings.Contains(rig.logs.String(), "circuit open") {
 		t.Errorf("the reason should stay among the skip reasons (never silent); log:\n%s", rig.logs.String())
+	}
+	// The data plane must not name the policy that skipped it (see modules/gateway/direction_test.go);
+	// it points at `newgate tier`, which is where the owner explains itself.
+	if strings.Contains(body, "breaker") {
+		t.Errorf("forward must not name a concrete strategy in its message: %q", body)
+	}
+}
+
+// TestFallbackOffPinsTheChainHead is the 2026-11-19 incident as a test.
+//
+// `newgate fallback off` used to only truncate the chain after building it, so when every
+// candidate of the **head profile** was delisted the builder walked into the next profile and
+// the truncation kept that head: the user asked for claude, had fallback off, and was served by
+// DeepSeek with every mechanism reporting success. Now fallback-off pins the head profile, so
+// the request fails loudly instead of silently changing which subscription pays for it.
+func TestFallbackOffPinsTheChainHead(t *testing.T) {
+	rig := newPinRig(t) // this rig's only profile with a usable mid binding is ds
+	// Flip the global switch on disk: this Server has no Watch, so every request re-reads the
+	// config (see snap) -- which is also why the test can do this mid-flight.
+	writeFile(t, rig.dir, "state.json",
+		`{"default_profile":"ds","chain":{"max_attempts":5},"gateway":{"fallback":false}}`)
+	code, body := rig.post(t, "/a/claude/v1/chat/completions")
+	if code != 503 {
+		t.Fatalf("the head profile has nothing usable and fallback is off, so the call must fail "+
+			"(503) rather than silently run on a's model; got %d %q\n%s", code, body, rig.logs.String())
+	}
+	if n := atomic.LoadInt64(rig.hitsA); n != 0 {
+		t.Errorf("fallback is off, yet another profile's upstream was hit %d times - the silent "+
+			"profile switch is back", n)
+	}
+	if n := atomic.LoadInt64(rig.hitsDS); n != 0 {
+		t.Errorf("a delisted binding must not be hit, got %d times", n)
+	}
+	if !strings.Contains(body, "fallback is off") || !strings.Contains(body, "profile ds") {
+		t.Errorf("the message must say which profile was pinned and why: %q", body)
+	}
+	if !strings.Contains(rig.logs.String(), "circuit open") {
+		t.Errorf("the skip reason must stay in the log (never silent); log:\n%s", rig.logs.String())
+	}
+}
+
+// writeFile writes one config file under dir, creating the parent directory.
+func writeFile(t *testing.T, dir, rel, body string) {
+	t.Helper()
+	p := filepath.Join(dir, rel)
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
