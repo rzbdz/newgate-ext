@@ -59,6 +59,20 @@ func (breakerCommand) Run(host cliapi.Host, _ []string) int { return runBreaker(
 //     threshold. The second section is the visibility added this round -- before, "failed once,
 //     breaker not open yet" did not exist in the snapshot at all, and shape errors only sat in
 //     the metrics counters, so a user seeing "it works but got delisted" could find no cause.
+//
+// isCountedOnly: this binding is not tripped, but the screen still has to say something about
+// it.
+//
+// Three things qualify, and each one was a separate "the user could not see the cause" report:
+// failures below the threshold ("failed once, breaker not open yet" did not exist in the
+// snapshot at all), request-shape errors (never delisted, so only the metrics counter knew),
+// and -- since 2026-11-19 -- **a probe that graded this binding unavailable without delisting
+// it**. That last one is not a flourish: the probe's own note says "recorded as evidence only",
+// and if the evidence does not appear here, the note is a lie.
+func isCountedOnly(b Status) bool {
+	return b.Fails > 0 || b.ShapeSkips > 0 || b.Spared > 0 || b.Grade == ProbeUnavailable
+}
+
 func runBreaker(host cliapi.Host) int {
 	info, ps := controlplane.State()
 	if info == nil {
@@ -77,7 +91,7 @@ func runBreaker(host cliapi.Host) int {
 		switch {
 		case b.Open:
 			open = append(open, b)
-		case b.Fails > 0 || b.ShapeSkips > 0 || b.Spared > 0:
+		case isCountedOnly(b):
 			counted = append(counted, b)
 		}
 	}

@@ -545,7 +545,7 @@ check "OpenAI-dialect requests are not touched by a single byte" "$GOT" "ABSENT"
 sleep 0.5
 check "newgate nothink off: back to the adaptive the client wrote" "$(nk_thinking)" '{"type": "adaptive"}'
 
-echo; echo "== 26. named profile and breaker recovery (the 2026-11-04 scene) =="
+echo; echo "== 26. named profile and breaker recovery (the 2026-11-04 scene, reworked 2026-11-19) =="
 # Scene shape: the global profile is not ds, and the only ds binding bound to deepseek-flash has been
 # tripped, and the client sends the real model name ds injected. Old behavior got all three things wrong:
 #   - the reverse lookup followed the admission filter -> the model was removed from the chain -> 404 "neither a tier nor in any
@@ -554,6 +554,13 @@ echo; echo "== 26. named profile and breaker recovery (the 2026-11-04 scene) =="
 #     someone else's profile, and the truncation leaves a silent profile switch;
 #   - after a successful probe one still had to wait out the 60s isolation before returning to the chain -> the user's only recovery action became a placebo.
 # This section uses an upstream that is **down first, up later** (rev, nothing serving on its port) to verify the three things separately.
+#
+# **A failed probe no longer trips anything** (2026-11-19, e38bba0): a probe is four tokens with no
+# client fingerprint, and an upstream that sniffs for its own client rejects it while real traffic
+# sails through - one `newgate probe` delisted every smt-claude binding that way. A failed probe is
+# therefore recorded as evidence only; the binding is sunk in the ranking (so it is tried last) but
+# stays in the chain until **real traffic** fails. The trip below is produced by real forwarded
+# requests, which is also what the user's own outage looked like.
 check_port_busy() { curl -sf "http://127.0.0.1:$REVIVE_PORT/__mock/requests" >/dev/null 2>&1; }
 if check_port_busy; then
   bad "something is already listening on port $REVIVE_PORT, the premise of this section fails (change NEWGATE_E2E_REVIVE_PORT)"
@@ -561,12 +568,34 @@ else
   ok "the rev upstream is unreachable right now (nothing is listening on port $REVIVE_PORT)"
 fi
 
-# One failed active probe is enough to trip a binding (probes are not bound by the consecutive-failure threshold).
+# A failed probe is evidence, not a verdict: it must show up in the ledger and must not delist.
 "$BIN" probe rev >/dev/null 2>&1 || true
 BRK="$("$BIN" breaker 2>&1)"
 case "$BRK" in
-  *"rev/rev-model"*) ok "the failed probe tripped rev/rev-model on the spot" ;;
+  *"rev/rev-model"*) ok "the failed probe shows up in the breaker ledger" ;;
   *) bad "rev/rev-model not found in the breaker table after the failed probe" ;;
+esac
+case "$BRK" in
+  *"0 tripped"*) ok "the failed probe did not trip anything (real traffic decides)" ;;
+  *) bad "a failed probe delisted a binding - the 2026-11-19 outage is back: $BRK" ;;
+esac
+
+# Trip it for real: forwarded requests to an upstream that refuses connections. Two failures reach
+# the default threshold (2 consecutive / 60s), exactly like the user's own network blip.
+RESETUP
+for _ in 1 2; do
+  curl -s -o /dev/null -X POST "http://127.0.0.1:$PROXY_PORT/a/claude/p/rev/v1/messages" \
+    -H 'Content-Type: application/json' \
+    -d '{"model":"rev-model","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}' || true
+done
+BRK="$("$BIN" breaker 2>&1)"
+case "$BRK" in
+  *"rev/rev-model"*) ok "real forwarded failures tripped rev/rev-model" ;;
+  *) bad "real traffic did not trip rev/rev-model: $BRK" ;;
+esac
+case "$BRK" in
+  *"1 tripped"*) ok "exactly the failed binding is tripped" ;;
+  *) bad "expected exactly 1 tripped binding: $BRK" ;;
 esac
 
 # 1) name rev: when rev has no candidates we **must not** fall back to ds's.
@@ -575,10 +604,10 @@ CODE=$(curl -s -o "$SANDBOX/pin_unavailable.out" -w '%{http_code}' -X POST \
   "http://127.0.0.1:$PROXY_PORT/a/claude/p/rev/v1/messages" \
   -H 'Content-Type: application/json' \
   -d '{"model":"rev-model","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}')
-check "name rev, rev is tripped: 404" "$CODE" "404"
+check "name rev, rev is tripped: 503" "$CODE" "503"
 case "$(cat "$SANDBOX/pin_unavailable.out")" in
-  *"bound to tier mid"*) ok "the 404 recognizes the model's tier (it no longer says the model is in no profile's bindings)" ;;
-  *) bad "the 404 text does not recognize the tier: $(cat "$SANDBOX/pin_unavailable.out")" ;;
+  *"profile rev has no usable candidate"*) ok "the error names the pinned profile and says it has no usable candidate" ;;
+  *) bad "the 503 text does not name the pinned profile: $(cat "$SANDBOX/pin_unavailable.out")" ;;
 esac
 N_UP=$(curl -s "http://127.0.0.1:$UP_PORT/__mock/requests" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')
 check "naming rev did not silently switch to ds's upstream" "$N_UP" "0"
