@@ -2,6 +2,8 @@ package sshtunnel
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/xml"
 	"errors"
 	"io"
 	"net/http"
@@ -49,9 +51,6 @@ func newRemoteUI(t *testing.T) *remoteUI {
 				`<link rel="icon" href="/ui/favicon.svg">`+
 				`<script type="module" src="/ui/assets/index-abc.js"></script>`+
 				`</head><body><div id="app"></div></body></html>`)
-		case "/ui/favicon.svg":
-			w.Header().Set("Content-Type", "image/svg+xml")
-			_, _ = io.WriteString(w, `<svg><g fill="#5b8def"></g></svg>`)
 		case "/ui/api/snapshot":
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = io.WriteString(w, `{"ok":true,"where":"remote"}`)
@@ -414,11 +413,32 @@ func TestTheRemotePageIsMarkedWithItsTarget(t *testing.T) {
 	tg.Label = "snode1"
 	h := newHarness(t, tg)
 
-	if body := h.do("GET", Prefix+"/ds/").Body.String(); !strings.Contains(body, "<title>snode1 · newgate</title>") {
+	body := h.do("GET", Prefix+"/ds/").Body.String()
+	if !strings.Contains(body, "<title>snode1 · newgate</title>") {
 		t.Errorf("the title does not carry the target label:\n%s", body)
 	}
-	icon := h.do("GET", Prefix+"/ds/favicon.svg").Body.String()
-	if strings.Contains(icon, localAccent) || !strings.Contains(icon, accentFor("ds")) {
-		t.Errorf("the favicon was not recolored for the target:\n%s", icon)
+	// The tunnel's own icon is declared **last** (browsers use the last one), inside <head>.
+	icon := `<link rel="icon" type="image/svg+xml" href="` + targetIcon(tg) + `">`
+	if !strings.Contains(body, icon+"</head>") {
+		t.Errorf("the target icon is not the last thing in <head>:\n%s", body)
+	}
+	// Non-HTML bodies are never marked.
+	if got := h.do("GET", Prefix+"/ds/api/snapshot").Body.String(); got != `{"ok":true,"where":"remote"}` {
+		t.Errorf("a JSON body was touched: %s", got)
+	}
+}
+
+func TestTheTargetIconIsAValidSVGWithTheInitial(t *testing.T) {
+	href := targetIcon(Target{ID: "ds", Label: "<snode1>"})
+	raw, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(href, "data:image/svg+xml;base64,"))
+	if err != nil {
+		t.Fatalf("not base64: %v", err)
+	}
+	var x struct{ XMLName xml.Name }
+	if err := xml.Unmarshal(raw, &x); err != nil || x.XMLName.Local != "svg" {
+		t.Fatalf("the icon is not a parseable SVG (browsers draw nothing then): %v\n%s", err, raw)
+	}
+	if !strings.Contains(string(raw), ">&lt;</text>") || !strings.Contains(string(raw), accentFor("ds")) {
+		t.Errorf("the icon lacks the escaped initial or the accent:\n%s", raw)
 	}
 }
