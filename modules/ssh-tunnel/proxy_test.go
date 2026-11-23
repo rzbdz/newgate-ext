@@ -45,10 +45,13 @@ func newRemoteUI(t *testing.T) *remoteUI {
 		switch req.URL.Path {
 		case "/ui/":
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			_, _ = io.WriteString(w, `<!doctype html><html><head>`+
+			_, _ = io.WriteString(w, `<!doctype html><html><head><title>newgate</title>`+
 				`<link rel="icon" href="/ui/favicon.svg">`+
 				`<script type="module" src="/ui/assets/index-abc.js"></script>`+
 				`</head><body><div id="app"></div></body></html>`)
+		case "/ui/favicon.svg":
+			w.Header().Set("Content-Type", "image/svg+xml")
+			_, _ = io.WriteString(w, `<svg><g fill="#5b8def"></g></svg>`)
 		case "/ui/api/snapshot":
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = io.WriteString(w, `{"ok":true,"where":"remote"}`)
@@ -399,5 +402,23 @@ func TestTheRouteFollowsTheConfigWithoutRestart(t *testing.T) {
 	h.loaded = Loaded{Targets: []Target{target("ds")}}
 	if rec := h.do("GET", Prefix+"/ds/api/snapshot"); rec.Code != http.StatusOK {
 		t.Fatalf("after adding a target status %d, want 200", rec.Code)
+	}
+}
+
+// ---------- telling remote tabs apart ----------
+
+func TestTheRemotePageIsMarkedWithItsTarget(t *testing.T) {
+	// The tunneled UI is the same artifact as the local one; without a mark, two tabs
+	// look identical and the user acts on the wrong machine.
+	tg := target("ds")
+	tg.Label = "snode1"
+	h := newHarness(t, tg)
+
+	if body := h.do("GET", Prefix+"/ds/").Body.String(); !strings.Contains(body, "<title>snode1 · newgate</title>") {
+		t.Errorf("the title does not carry the target label:\n%s", body)
+	}
+	icon := h.do("GET", Prefix+"/ds/favicon.svg").Body.String()
+	if strings.Contains(icon, localAccent) || !strings.Contains(icon, accentFor("ds")) {
+		t.Errorf("the favicon was not recolored for the target:\n%s", icon)
 	}
 }

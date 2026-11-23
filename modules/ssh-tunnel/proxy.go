@@ -163,7 +163,9 @@ func (p *proxy) reverseFor(t Target, remote string) *httputil.ReverseProxy {
 			if loc := resp.Header.Get("Location"); loc != "" {
 				resp.Header.Set("Location", rewriteLocation(loc, local))
 			}
-			if !shouldRewrite(resp) {
+			// The favicon is SVG (not in textBodies): recolored per target so tabs differ (see brand.go).
+			favicon := isFavicon(resp)
+			if !favicon && !shouldRewrite(resp) {
 				return nil
 			}
 			body, err := io.ReadAll(resp.Body)
@@ -174,7 +176,15 @@ func (p *proxy) reverseFor(t Target, remote string) *httputil.ReverseProxy {
 				// fine, but is truncated", far worse than a clear error.
 				return err
 			}
-			next := rewritePrefix(body, local)
+			var next []byte
+			if favicon {
+				next = recolorFavicon(body, t.ID)
+			} else {
+				next = rewritePrefix(body, local)
+				if isHTML(resp) {
+					next = labelTitle(next, t.Label)
+				}
+			}
 			resp.Body = io.NopCloser(bytes.NewReader(next))
 			resp.ContentLength = int64(len(next))
 			resp.Header.Set("Content-Length", strconv.Itoa(len(next)))
