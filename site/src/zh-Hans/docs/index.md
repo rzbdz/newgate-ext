@@ -24,7 +24,7 @@
 ## 这一页在这一份装配里意味着什么
 
 这个站点的每一页都在讲**发行版 `newgate-ext` 的默认规格**（`dist.json`）：
-38 个模块，Claude Code / Codex / OpenCode / Hermes 四家客户端，TUI + 浏览器两份界面，
+39 个模块，Claude Code / Codex / OpenCode / Hermes / Gemini CLI 五家客户端，TUI + 浏览器两份界面，
 外加三套网页皮肤（黑 / 白 / Anthropic）、一条穿过 SSH 看远端界面的通道，以及
 `newgate config` 那个首次配置向导。
 

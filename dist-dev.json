@@ -38,6 +38,7 @@
     "theme-anthropic",
     "codex",
     "hermes",
+    "gemini",
     "codex_deepseek",
     "arch-diagram",
     "ssh-tunnel"

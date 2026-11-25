@@ -14,6 +14,34 @@ finished release.
 
 Nothing yet.
 
+## [0.10.0] - 2026-11-25
+
+### Added
+
+- **gemini-cli is a first-class client.** `modules/gemini` registers the
+  descriptor (`GOOGLE_GEMINI_BASE_URL` / `GEMINI_API_KEY` / `GEMINI_MODEL`), the
+  installer (`npm install --global @google/gemini-cli`) and the facts the
+  takeover UI asks for. `newgate on gemini` puts the PATH shim in place; the
+  model slot defaults to `heavy`, and `newgate --set-profile <name> --agent
+  gemini` decides which chain its tiers resolve through.
+- **The gateway speaks the native Gemini API.** `POST
+  /v1beta/models/<model>:generateContent` (and `:streamGenerateContent`,
+  `:countTokens`) carries the model in the path, not in the body. The data plane
+  now reads it from there, routes it like any other model name, and rewrites
+  that same path segment per chain step — so a client that names a tier
+  (`GEMINI_MODEL=heavy`) gets the profile's real model upstream, exactly as with
+  every other client. Streaming is recognized both by action name and `alt=sse`.
+- Native-Gemini upstream calls send `x-goog-api-key` alongside the usual
+  Authorization header, so a real `generativelanguage.googleapis.com` endpoint
+  and an aggregate gateway both authenticate.
+
+### Fixed
+
+- A `/v1beta/...` path no longer loses its `/v1` prefix on the way in. The old
+  `TrimPrefix` turned it into `beta/...`, the model never parsed, and the
+  request 400ed with "no top-level model" on a body that has no model field to
+  begin with.
+
 ## [0.9.1] - 2026-11-18
 
 ### Changed

@@ -696,7 +696,14 @@ func parseTarget(p string) Target {
 				t.Profile, p = rest[:i], rest[i:]
 			}
 		default:
-			t.Suffix = strings.TrimPrefix(p, "/v1")
+			// Trim only a real `/v1` prefix. A bare TrimPrefix would also mangle
+			// `/v1beta/...` (the native Gemini API) into `beta/...` — the model then never
+			// parses, and the request 400s with "no top-level model" on a body that has no
+			// model field to begin with.
+			if p == "/v1" || strings.HasPrefix(p, "/v1/") {
+				p = strings.TrimPrefix(p, "/v1")
+			}
+			t.Suffix = p
 			return t
 		}
 	}
@@ -957,7 +964,14 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// No JSON round trip. Read model out of the raw bytes only, and later replace only that span.
+	//
+	// The native Gemini dialect has no `model` field at all — the model is the path segment
+	// `/v1beta/models/<model>:<action>`. Read it from there instead of rejecting the request.
+	gemCall, isGemini := parseGeminiPath(tgt.Suffix)
 	inModel, ok := rewrite.TopLevelString(body, "model")
+	if (isGemini && !ok) || (isGemini && inModel == "") {
+		inModel, ok = gemCall.Model, true
+	}
 	if !ok || inModel == "" {
 		// Include method and path: for this class of "unrecognized shape" request, without the
 		// path there is no way to tell which client and which endpoint sent it.
@@ -973,6 +987,9 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 	}
 	st := snap.State
 	stream0 := rewrite.TopLevelBool(body, "stream")
+	if isGemini && geminiStreams(gemCall, r.URL.RawQuery) {
+		stream0 = true
+	}
 	reqID := atomic.LoadUint64(&s.requests)
 	// Log on entry -- otherwise "the request never arrived" and "it arrived and is waiting on
 	// the upstream" look the same in the log. req= is the client request body byte count: it is
@@ -1251,15 +1268,25 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 		}
 		// Pure byte surgery: replace only the top-level model value, keep every other byte as is
 		newBody, merr := rewrite.ReplaceTopLevelString(body, "model", a.Binding.Model)
-		if merr != nil {
+		if merr != nil && !isGemini {
 			s.fail(w, 500, i18n.Ef(merr, "rewriting model failed: {err}", nil).Error())
 			return
+		}
+		// Native Gemini: there is no body model to replace — the model is the path segment.
+		// Rewrite **the same span we routed on**, so "the model we resolved" and "the model we
+		// send" cannot drift apart.
+		stepSuffix := suffix
+		if isGemini {
+			if merr != nil {
+				newBody = body // nothing to write back; the path carries the model
+			}
+			stepSuffix = withGeminiModel(suffix, a.Binding.Model)
 		}
 		if hasToolOrigin {
 			candidate := &special.Request{
 				InModel: inModel, Tier: tier, Model: a.Binding.Model,
-				Provider: a.Binding.Provider, BaseURL: a.Provider.Base(suffix),
-				Protocol: a.Provider.Protocol, Path: suffix, Stream: stream,
+				Provider: a.Binding.Provider, BaseURL: a.Provider.Base(stepSuffix),
+				Protocol: a.Provider.Protocol, Path: stepSuffix, Stream: stream,
 				Agent: tgt.TaskCreate, State: st, Quirks: quirk.Default,
 			}
 			if res := special.RebaseToolLoop(newBody, toolOrigin.Provider, toolOrigin.Model,
@@ -1312,9 +1339,9 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 				Provider: a.Binding.Provider,
 				// Report against the base this request will actually use -- for an upstream whose dialects
 				// split (provider.anthropic_url) the plugin must see the real one.
-				BaseURL:  a.Provider.Base(suffix),
+				BaseURL:  a.Provider.Base(stepSuffix),
 				Protocol: a.Provider.Protocol,
-				Path:     suffix,
+				Path:     stepSuffix,
 				Stream:   stream,
 				Agent:    tgt.TaskCreate,
 				State:    st,
@@ -1356,7 +1383,7 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 			egress = special.ClaimEgress(patched, body, pluginOff(st))
 		}
 
-		target := a.Provider.URL(suffix)
+		target := a.Provider.URL(stepSuffix)
 		if r.URL.RawQuery != "" {
 			target += "?" + r.URL.RawQuery
 		}
@@ -1380,6 +1407,13 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Del("Content-Length")
 		setAuth(req.Header, a.Provider)
+		// The native Gemini API authenticates with `x-goog-api-key`, but aggregate gateways
+		// usually accept either. Send both on a Gemini-dialect call: the Authorization header
+		// is already there for the aggregate case, and a real generativelanguage endpoint
+		// ignores the unknown one.
+		if isGemini {
+			req.Header.Set("x-goog-api-key", a.Provider.Key())
+		}
 
 		// Streaming cannot have a total timeout (long responses get cut), but the first-byte wait
 		// must be bounded, or an upstream playing dead hangs forever. ResponseHeaderTimeout
@@ -1567,7 +1601,7 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 		}
 		s.logf("[proxy] %s", i18n.T(
 			"#{req} {route}  {path}  {status}  first byte {ms} ms  stream={stream}  profile={profile}{failover}",
-			i18n.A{"req": reqID, "route": routeStr, "path": suffix, "status": resp.StatusCode,
+			i18n.A{"req": reqID, "route": routeStr, "path": stepSuffix, "status": resp.StatusCode,
 				"ms": time.Since(start).Milliseconds(), "stream": stream, "profile": a.Profile,
 				"failover": map[bool]string{true: i18n.T("  (failover)", nil)}[i > 0]}))
 

@@ -71,6 +71,30 @@ newgate hermes-gateway restart    # 让 Hermes 收尾正在跑的会话，再重
 自己的 YAML 解析器**比一遍「原文件 + 这次改动」与「改完的文件」，对不上就不写。
 `newgate off hermes` 按键还原：接管写过的几格放回原样，你在接管期间改过的别的东西保留。
 
+## Gemini CLI
+
+[Gemini CLI](https://github.com/google-gemini/gemini-cli) 走 PATH shim：它没有可以写
+API 地址的设置项，唯一入口是环境变量（`GOOGLE_GEMINI_BASE_URL`、`GEMINI_API_KEY`），
+模型则按 `--model` → `GEMINI_MODEL` → `settings.model.name` 的顺序取。所以 shim 往
+子进程里注的是：
+
+- `GOOGLE_GEMINI_BASE_URL` = `http://127.0.0.1:<端口>/a/gemini`
+- `GEMINI_API_KEY` = 本地占位（真正的上游 key 由数据面替换）
+- `GEMINI_MODEL` = 槽位当前档位（缺省 `heavy`）
+
+它说的是 **Gemini 原生协议**：模型在路径里（`/v1beta/models/<model>:generateContent`），
+body 里没有 `model` 字段。网关从路径里读模型、按档位选链，再把同一段路径改写成这一步
+真正要发的模型——所以「客户端报档位、newgate 决定真模型」对它是同一套语义。
+
+档位落在哪份 profile 由这家客户端单独的链头决定：
+
+```bash
+newgate --set-profile gemini --agent gemini    # Gemini 系 profile 的档位都绑 smt-gemini
+```
+
+注意别把它指向绑 Claude / GPT 模型的 profile：newgate 不做协议转换，Gemini 方言的请求
+会原样发到那家上游然后被拒。
+
 ## 出问题时
 
 先跑 `newgate doctor`，它会检查配置、provider、端口、接管与模块诊断。

@@ -88,12 +88,22 @@ func IsAnthropicPath(suffix string) bool {
 	return suffix == "/messages" || strings.HasPrefix(suffix, "/messages/")
 }
 
+// IsGeminiPath: is this forwarding suffix the **native Gemini API** —
+// `/v1beta/models/<model>:generateContent` (also `:streamGenerateContent`,
+// `:countTokens`)?
+//
+// Why the path and not the provider's protocol: same rule as IsAnthropicPath. The
+// client decides the dialect; the protocol field only says how to authenticate.
+func IsGeminiPath(suffix string) bool {
+	return strings.HasPrefix(suffix, "/v1beta/")
+}
+
 // Base which upstream base this suffix should be sent to (no trailing slash), without a path.
 func (p Provider) Base(suffix string) string {
 	if p.AnthropicURL != "" && IsAnthropicPath(suffix) {
 		return strings.TrimRight(p.AnthropicURL, "/")
 	}
-	return strings.TrimRight(p.BaseURL, "/")
+	return geminiBase(p.BaseURL, suffix)
 }
 
 // URL the full upstream address for this suffix.
@@ -110,7 +120,22 @@ func (p Provider) URL(suffix string) string {
 		}
 		return b + suffix
 	}
-	return strings.TrimRight(p.BaseURL, "/") + suffix
+	return geminiBase(p.BaseURL, suffix) + suffix
+}
+
+// geminiBase strips the OpenAI-era `/v1` off a base for a Gemini-dialect path.
+//
+// Why: one aggregate gateway serves both dialects from one host — the OpenAI one at
+// `<host>/v1/chat/completions`, the native Gemini one at `<host>/v1beta/models/…`
+// (probed 2026-11-25). Concatenating naively gives `<host>/v1/v1beta/…`, which 404s.
+// A dedicated Gemini base (`https://generativelanguage.googleapis.com`) has no `/v1`
+// and is returned unchanged.
+func geminiBase(base string, suffix string) string {
+	b := strings.TrimRight(base, "/")
+	if !IsGeminiPath(suffix) {
+		return b
+	}
+	return strings.TrimSuffix(b, "/v1")
 }
 
 // Providers is the root object of providers.json;

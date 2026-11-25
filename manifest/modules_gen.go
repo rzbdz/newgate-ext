@@ -28,6 +28,7 @@ import (
 	ext_deepseek "github.com/rzbdz/newgate-ext/modules/deepseek"
 	ext_entry "github.com/rzbdz/newgate-ext/modules/entry"
 	ext_gateway "github.com/rzbdz/newgate-ext/modules/gateway"
+	ext_gemini "github.com/rzbdz/newgate-ext/modules/gemini"
 	ext_glm "github.com/rzbdz/newgate-ext/modules/glm"
 	ext_hello "github.com/rzbdz/newgate-ext/modules/hello"
 	ext_hermes "github.com/rzbdz/newgate-ext/modules/hermes"
@@ -92,6 +93,7 @@ func spec(name string) []modules.Component {
 			ext_serving.New(),
 			ext_glm.New(),
 			ext_opencode.New(),
+			ext_gemini.New(),
 			ext_web_dashboard.New(),
 			ext_config.New(),
 			ext_gateway.New(),
@@ -155,6 +157,7 @@ func spec(name string) []modules.Component {
 			ext_theme_anthropic.New(),
 			ext_codex.New(),
 			ext_hermes.New(),
+			ext_gemini.New(),
 			ext_codex_deepseek.New(),
 			ext_arch_diagram.New(),
 			ext_ssh_tunnel.New(),
@@ -192,6 +195,7 @@ func spec(name string) []modules.Component {
 			ext_opencode.New(),
 			ext_opencodeomo.New(),
 			ext_hermes.New(),
+			ext_gemini.New(),
 			ext_upgrade.New(),
 			ext_self_update.New(),
 			ext_verify.New(),
@@ -234,6 +238,7 @@ func spec(name string) []modules.Component {
 			ext_theme_anthropic.New(),
 			ext_codex.New(),
 			ext_hermes.New(),
+			ext_gemini.New(),
 			ext_codex_deepseek.New(),
 			ext_ssh_tunnel.New(),
 		}

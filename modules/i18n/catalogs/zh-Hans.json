@@ -3787,6 +3787,18 @@
     "↑/↓ or j/k move · ←/→ or Tab switch pane · Enter apply · d follow the default · r reload · q quit": {
       "reviewed": true,
       "text": "↑/↓ 或 j/k 移动 · ←/→ 或 Tab 切换栏 · Enter 应用 · d 跟随缺省 · r 重载 · q 退出"
+    },
+    "the gemini-cli client: install, facts, launch": {
+      "reviewed": true,
+      "text": "gemini-cli 客户端：安装、状态、启动"
+    },
+    "the model gemini-cli runs on; a tier name here means the profile decides the real model, and the data plane rewrites the /v1beta path": {
+      "reviewed": true,
+      "text": "gemini-cli 用的模型；这里写档位名表示由 profile 决定真实模型，数据面会改写 /v1beta 路径"
+    },
+    "gemini-cli speaks the native Gemini API (/v1beta/models/<model>:…); newgate reads the model from that path and rewrites it per chain step": {
+      "reviewed": true,
+      "text": "gemini-cli 说的是 Gemini 原生协议（/v1beta/models/<model>:…）；newgate 从这条路径里读模型，并按转发链的每一步改写它"
     }
   },
   "meta": {
