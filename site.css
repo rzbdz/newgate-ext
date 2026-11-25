@@ -1,0 +1,349 @@
+/* Site styles. One file, hand-written, no build step.
+ *
+ * The palette deliberately uses the same variables as the product UI (modules/web-dashboard/web/src/app.css): the site
+ * embeds real components, and if the colors differed, that block would look pasted on. So those variables are
+ * **written out again** here rather than shared from one file -- sharing would add a build step (or make the site read the product directory),
+ * and the two will be deployed separately in the future (the site on Pages, the product inside the binary). Ten repeated lines of color
+ * buy two build paths that do not depend on each other. Worth it.
+ *
+ * The typography principle matches the product UI's: information density beats whitespace, and motion is out entirely (the site is for reading). */
+
+:root {
+  --bg: #0f1115;
+  --panel: #161a21;
+  --panel-2: #1b2028;
+  --line: #242a34;
+  --ink: #e6e9ef;
+  --dim: #8b93a3;
+  --accent: #5b8def;
+  --ok: #4ea87a;
+  --warn: #d9a441;
+  --danger: #d96a6a;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --radius: 10px;
+  /* Two widths, and the whole site has only these two:
+   *
+   *   --wrap   the content column. Header, footer, hero, demo window all fill it -- media filling the column is the only
+   *            "big" thing on this page; narrow it and it is just a small window.
+   *   --prose  the prose column. Text is narrower than media because it wants 30-45 characters per line; filled to the
+   *            full column it would be 70-80 characters a line, and the eye skips lines when it wraps.
+   *
+   * The point is not the two numbers but that **they share one left axis**: `main.landing` and the footer are both
+   * `--wrap` centered boxes, and the prose column starts at the box's left padding, as does the demo window.
+   * If the prose centered itself (or started its own column) while the window filled the column, the page would show three
+   * unaligned vertical edges at once -- that reads as "unfinished", not as style. */
+  --wrap: 1100px;
+  --prose: 720px;
+
+  /* Which themes this page supports. **Not** for CSS itself (the `@media` below is), but for
+     the browser's own chrome: page scrollbars, the `<pre>` horizontal scrollbar, form controls.
+     Omitting this leaves the default `normal`, which means "always draw light" -- so a dark page ends up with a white
+     scrollbar down its right side, and that is **exactly the most conspicuous piece of browser chrome on the page**.
+
+     Order sets the initial ground: dark first, matching the default of `--bg` below (`dark light`, not
+     `light dark`). Reversed, a dark-theme user sees a ring of light on the first frame -- the render-blocking stylesheet
+     makes it last only an instant, but that is the white-flash bug itself.
+
+     Kept in CSS only, with no `<meta name="color-scheme">`: the two would say the same thing, and this
+     stylesheet is render-blocking (a <link> in head, no media), so it **always** takes effect before the first frame
+     -- all the meta could add is "know the theme even if the stylesheet fails to load", and keeping a second
+     source of truth for that one case is not worth it. */
+  color-scheme: dark light;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f6f7f9;
+    --panel: #fff;
+    --panel-2: #f2f4f7;
+    --line: #e3e6ec;
+    --ink: #1b1f27;
+    --dim: #6b7280;
+  }
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 15px/1.7 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+}
+
+/* The architecture diagram in the prose (see parseImage in tools/sitegen/md.go). **It must not overflow**:
+   the prose column is barely wider than the annotations on the diagram, and once the diagram is wider than the viewport its right side is cut off -- that is far
+   worse than small text. So it follows the column width; legibility comes from **the diagram's own font size** (see the
+   trade-off noted in architecture.svg's header: "after shrinking to 810 those annotations are only ~9px"), not from widening it.
+   `height: auto` must be written: the SVG carries width/height attributes, and without an override it would
+   stretch to 452 high. */
+main img.figure {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 6px 0 18px;
+}
+
+/* Top bar. Sticky because the docs are long, and "switch section" should not require scrolling back to the top first. */
+header.top {
+  position: sticky; top: 0; z-index: 10;
+  display: flex; align-items: center; gap: 14px;
+  padding: 10px 20px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+}
+header.top .brand { color: var(--ink); text-decoration: none; font-family: var(--mono); }
+header.top .spacer { flex: 1; }
+header.top .langs { display: flex; gap: 8px; font-size: 13px; }
+header.top .langs a { color: var(--dim); text-decoration: none; padding: 2px 8px; border-radius: 999px; }
+header.top .langs a.on { color: var(--ink); background: var(--panel-2); }
+/* An untranslated language is drawn grey and **not clickable**: a clickable English that leads to an empty page is worse. */
+header.top .langs .soon { color: var(--dim); opacity: .45; padding: 2px 8px; cursor: not-allowed; }
+
+.shell {
+  display: grid; grid-template-columns: 210px minmax(0, 1fr);
+  gap: 40px;
+  max-width: var(--wrap); margin: 0 auto; padding: 28px 20px 60px;
+}
+nav.side { position: sticky; top: 60px; align-self: start; font-size: 14px; }
+nav.side ul { list-style: none; margin: 0; padding: 0; }
+nav.side li { margin: 1px 0; }
+nav.side a {
+  display: block; padding: 5px 10px; border-radius: 6px;
+  color: var(--dim); text-decoration: none;
+}
+nav.side a:hover { color: var(--ink); background: var(--panel); }
+nav.side li.on a { color: var(--ink); background: var(--panel-2); }
+
+main { min-width: 0; }
+main h1 { font-size: 28px; line-height: 1.3; margin: 4px 0 20px; letter-spacing: .2px; }
+main h2 { font-size: 20px; margin: 36px 0 12px; padding-top: 8px; }
+main h3 { font-size: 16px; margin: 26px 0 8px; color: var(--ink); }
+main p { margin: 12px 0; }
+main a { color: var(--accent); text-decoration: none; }
+main a:hover { text-decoration: underline; }
+main ul, main ol { padding-left: 22px; }
+main li { margin: 4px 0; }
+main hr { border: 0; border-top: 1px solid var(--line); margin: 32px 0; }
+main blockquote {
+  margin: 16px 0; padding: 2px 16px;
+  border-left: 3px solid var(--line); color: var(--dim);
+}
+main strong { color: var(--ink); }
+
+code {
+  font-family: var(--mono); font-size: .9em;
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 5px; padding: 1px 5px;
+}
+pre {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 14px 16px; overflow-x: auto;
+}
+pre code { background: none; border: 0; padding: 0; font-size: 13px; line-height: 1.6; }
+
+table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14px; }
+th, td { border: 1px solid var(--line); padding: 7px 11px; text-align: left; vertical-align: top; }
+th { background: var(--panel); font-weight: 600; }
+
+footer {
+  max-width: var(--wrap); margin: 0 auto; padding: 24px 20px 48px;
+  border-top: 1px solid var(--line);
+  color: var(--dim); font-size: 13px;
+}
+footer p { margin: 6px 0; }
+footer a { color: var(--dim); }
+
+/* ---------------- Landing page ----------------
+ *
+ * The home page is not a docs page: it is a product front. So its own block of styles does not use the docs page's `.shell`
+ * / `nav.side` -- those exist for paging, and the home page has no such job.
+ *
+ * The ground carries a radial gradient (a soft glow under the dark theme), the h1 uses gradient text, the mono lead acts as an eyebrow,
+ * and two CTAs sit below. The demo page is wrapped in a fake browser window, shoulder-aligned.
+ */
+body { background: var(--bg); }
+
+.hero {
+  max-width: var(--wrap); margin: 0 auto;
+  padding: 64px 20px 40px;
+  text-align: center;
+  position: relative;
+}
+/* Background glow: a gradient bloom for the dark theme. Only active under dark (light is enough with the background color alone). */
+@media (prefers-color-scheme: dark) {
+  .hero {
+    background:
+      radial-gradient(560px 320px at 50% 0%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 70%),
+      linear-gradient(var(--bg), var(--bg));
+  }
+}
+.hero .lead {
+  margin: 0 0 14px;
+  font-family: var(--mono); font-size: 13px; color: var(--accent);
+  letter-spacing: 2px; text-transform: uppercase;
+}
+/* The separator in the lead: there should be a pause between the name and the one-liner, but the two weights **must not** turn blue together
+   (in one color the two halves read as a single sentence, when they are "what it is called" and "what it is"). */
+.hero .lead .sep { color: var(--line); margin: 0 10px; }
+.hero h1 {
+  font-size: clamp(34px, 6vw, 58px); line-height: 1.15; margin: 0 auto 16px;
+  max-width: 16em;
+}
+.hero .sub { font-size: 18px; color: var(--dim); margin: 0 auto 28px; max-width: 42em; }
+.hero .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+
+.button {
+  display: inline-block; padding: 11px 22px; border-radius: 999px;
+  font-weight: 600; font-size: 15px; text-decoration: none;
+  transition: transform .08s ease, box-shadow .15s ease;
+}
+.button:active { transform: translateY(1px); }
+.button.primary {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 90%, #fff), var(--accent));
+  color: #fff;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.button.primary:hover { box-shadow: 0 10px 30px color-mix(in srgb, var(--accent) 55%, transparent); }
+.button.ghost {
+  background: var(--panel-2); border: 1px solid var(--line); color: var(--ink);
+}
+.button.ghost:hover { border-color: var(--accent); }
+
+/* Fake browser window: frames the demo page so it is obvious at a glance that "this is an interface you can click". */
+.browser {
+  margin: 56px auto 0; max-width: var(--wrap);
+  text-align: left;
+  border: 1px solid var(--line); border-radius: 14px;
+  background: var(--panel);
+  box-shadow: 0 30px 80px rgba(0,0,0,.4);
+  overflow: hidden;
+}
+.browser-bar {
+  display: flex; align-items: center; gap: 7px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-2);
+  font-family: var(--mono); font-size: 12px; color: var(--dim);
+}
+.browser-bar .dot { width: 11px; height: 11px; border-radius: 50%; background: var(--line); }
+.browser-bar .dot:nth-child(1) { background: #e06c75; }
+.browser-bar .dot:nth-child(2) { background: #d9a441; }
+.browser-bar .dot:nth-child(3) { background: #4ea87a; }
+.browser-bar .addr { margin-left: auto; }
+
+/* The two tabs inside the frame (UI / assembly diagram).
+ *
+ * The shape is a **segmented control**: a row of buttons in a groove, the selected one raised a notch (light fill + thin border).
+ * Same materials as the rest of the site -- same radius, same --line, same monospace. The selected
+ * one uses --bg rather than --accent: the frame already holds a full screen of colorful UI (or a warm image),
+ * and a blue button dropped in would be the loudest thing on the page, when it is only a switch. */
+.browser-tabs { display: flex; gap: 2px; margin-left: 10px; }
+.browser-tabs button {
+  font-family: var(--mono); font-size: 12px;
+  padding: 3px 10px; border: 1px solid transparent; border-radius: 6px;
+  background: transparent; color: var(--dim); cursor: pointer;
+}
+.browser-tabs button:hover { color: var(--ink); }
+.browser-tabs button[aria-selected="true"] {
+  background: var(--bg); border-color: var(--line); color: var(--ink);
+}
+.browser-tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Both tabs are **the same height**: both use the 4:3 scheme (see the iframe rule below), so the frame does not jump when switching.
+ * `[hidden]` must be written explicitly: the assembly-diagram page below gets display:flex, and that rule overrides the browser's
+ * default `[hidden] { display: none }` -- without this line, both would show at once. */
+.browser-pane[hidden] { display: none; }
+.browser-pane[data-pane="arch"] {
+  display: flex; align-items: center; justify-content: center;
+  /* `width: 100%` is not optional: with `aspect-ratio` plus `max-height`, once a block-level element
+     has its height capped, **the width is computed back from the ratio** -- measured, omitting it shrinks the box to 800px (the UI tab is
+     1058px), and switching tabs shrinks the frame on both sides. */
+  width: 100%; aspect-ratio: 4 / 3; max-height: 600px;
+  padding: 0 34px; background: var(--bg);
+}
+.browser-pane[data-pane="arch"] img { display: block; width: 100%; height: auto; }
+/* 4:3, and as a **ratio**, not a height.
+ *
+ * It used to be `height: 640px` (480px on narrow screens), a "number tuned to desktop width":
+ * change the column and narrow the window and the UI inside gets cropped -- it is a 1100×640 frame, and what is
+ * inside a frame is alive. Let the window compute the ratio itself, and the UI always stays whole inside it.
+ *
+ * Why 4:3 and not 16:9: the UI inside is **vertical** (sidebar + a column of cards), so a 16:9
+ * frame would crop the bottom of the cards, which is exactly the part most worth showing.
+ *
+ * `max-height` is a backstop for **very wide** windows: 4:3 at 1100px wide is 825px tall, taller than the viewport
+ * of many laptops, and the first screen would be nothing but this window. Capped at 600px, the width decides the ratio
+ * -- narrow screens still get a strict 4:3 (there neither dimension comes close to the caps). */
+.browser iframe {
+  display: block; width: 100%; aspect-ratio: 4 / 3; max-height: 600px;
+  border: 0; background: var(--bg);
+}
+
+/* A row of small "what it is" tags: binary, zero dependencies, MIT....
+   Deliberately not badge images (the ones in the README are images, and the site has no reason for extra external requests), nor buttons
+   -- they are **statements**, so they are drawn as one grey line with separator dots. */
+.hero .chips {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 18px;
+  list-style: none; margin: 22px 0 0; padding: 0;
+  font-family: var(--mono); font-size: 12px; color: var(--dim);
+}
+.hero .chips li { display: flex; align-items: center; gap: 8px; }
+.hero .chips li::before {
+  content: ""; width: 5px; height: 5px; border-radius: 50%;
+  background: var(--line);
+}
+
+/* Home page body. In two halves:
+ *
+ *   .feat   the numbered section (01...08) -- **one per row, left-aligned**, the backbone of this page;
+ *   the rest  ordinary `## sections` (Fork / Install), laid out like the docs pages.
+ *
+ * Why the backbone is not a grid of cards: each card cell is only a hand's width, and every section here must fit a
+ * paragraph and (often) a command; squeezed into three columns the commands would have to wrap, which reads far worse than one long column.
+ * "One column + a number + a vertical line" is what holds up best at this amount of information.
+ */
+main.landing {
+  max-width: var(--wrap); margin: 0 auto;
+  padding: 8px 20px 40px;
+}
+/* The prose column is narrower than the content column but **sticks to the content column's left padding** -- see the `--prose` block: it must share
+   the same left axis as the demo window above. Centering this column would create a third vertical edge. */
+main.landing > * { max-width: var(--prose); }
+main.landing h2 {
+  font-size: 22px; margin: 40px 0 8px;
+}
+main.landing p { margin: 12px 0; color: var(--ink); }
+main.landing p strong { color: var(--ink); }
+
+/* A section: a vertical line on the left ties "number + heading + text + command" into one unit. */
+main.landing .feat {
+  border-left: 2px solid var(--line);
+  padding: 4px 0 4px 22px;
+  margin: 36px 0;
+}
+main.landing .feat h2 { margin: 0 0 10px; font-size: 21px; }
+/* The number: small, monospace, grey-blue. It **does not add weight** to the heading's tone (the heading's own weight is enough);
+   it only provides a "which step is this" scale. */
+main.landing .feat h2 small {
+  font-family: var(--mono); font-size: 12px; font-weight: 500;
+  color: var(--accent); letter-spacing: 1px;
+  margin-right: 6px;
+}
+main.landing .feat > :last-child { margin-bottom: 0; }
+/* When the first command in a section follows a "lead-in" sentence, do not add another layer of space. */
+main.landing .feat pre { margin: 10px 0; }
+
+@media (max-width: 820px) {
+  .shell { grid-template-columns: 1fr; gap: 18px; }
+  nav.side { position: static; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
+  nav.side ul { display: flex; flex-wrap: wrap; gap: 4px; }
+  /* This used to reset `height: 480px` -- which silently defeated the 4:3 above: when `height` and
+     `aspect-ratio` are both given, the height wins and the ratio no longer participates. Narrow screens are exactly where the
+     ratio must be held (small frame, the UI inside is most easily cropped away entirely), so this rule now does nothing
+     -- the frame's height is computed from its width. */
+  main.landing h2 { font-size: 19px; }
+  main.landing .feat { padding-left: 14px; margin: 28px 0; }
+  main.landing .feat h2 { font-size: 18px; }
+}
