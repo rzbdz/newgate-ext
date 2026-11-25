@@ -75,6 +75,12 @@ func ParseProfileKV(text string) (*domain.Profile, error) {
 			p.Excluded, err = parseBool(val)
 		case key == "pinned":
 			p.Pinned, err = parseBool(val)
+		case key == "visible-agents" || key == "visible_agents":
+			// Whitelist: only these agents may route through this profile. Comma separated.
+			p.VisibleAgents = splitAgents(val)
+		case key == "hidden-agents" || key == "hidden_agents":
+			// Blacklist: these agents never see it. Comma separated; same value shape as above.
+			p.HiddenAgents = splitAgents(val)
 		case key == "window":
 			p.ContextWindow, err = strconv.Atoi(val)
 		case key == "compact":
@@ -107,6 +113,25 @@ func ParseProfileKV(text string) (*domain.Profile, error) {
 		}
 	}
 	return p, nil
+}
+
+// splitAgents parses a comma-separated agent list (`visible-agents=gemini, codex`).
+//
+// Values are kept as written (lowercase ids in this distribution) and duplicates are dropped;
+// an unknown id simply matches nothing, because the config layer does not know the client
+// catalog (and must not: a distribution's client list is not config's knowledge).
+func splitAgents(v string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, item := range strings.Split(v, ",") {
+		item = strings.TrimSpace(item)
+		if item == "" || seen[item] {
+			continue
+		}
+		seen[item] = true
+		out = append(out, item)
+	}
+	return out
 }
 
 func parseBool(v string) (bool, error) {
@@ -171,6 +196,12 @@ func SerializeProfileKV(p *domain.Profile) string {
 	}
 	if p.Pinned {
 		put("pinned", "true")
+	}
+	if len(p.VisibleAgents) > 0 {
+		put("visible-agents", strings.Join(p.VisibleAgents, ", "))
+	}
+	if len(p.HiddenAgents) > 0 {
+		put("hidden-agents", strings.Join(p.HiddenAgents, ", "))
 	}
 	if p.ContextWindow > 0 {
 		put("window", strconv.Itoa(p.ContextWindow))

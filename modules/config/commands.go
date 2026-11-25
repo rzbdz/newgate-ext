@@ -118,6 +118,12 @@ func cmdProfiles() int {
 		if p.Excluded {
 			flags = append(flags, style.Yellow("excluded"))
 		}
+		if len(p.VisibleAgents) > 0 {
+			flags = append(flags, style.Cyan("visible:"+strings.Join(p.VisibleAgents, ",")))
+		}
+		if len(p.HiddenAgents) > 0 {
+			flags = append(flags, style.Yellow("hidden:"+strings.Join(p.HiddenAgents, ",")))
+		}
 		for agent, ap := range st.Active {
 			if ap == p.Name {
 				flags = append(flags, style.Cyan("←"+agent))
@@ -131,7 +137,7 @@ func cmdProfiles() int {
 			style.Dim(p.Description))
 	}
 	fmt.Print(t.String())
-	fmt.Println(style.Hint(i18n.T("pinned stops at the chain head and is never replaced · excluded is only selected explicitly · ←agent that agent uses this profile alone", nil)))
+	fmt.Println(style.Hint(i18n.T("pinned stops at the chain head and is never replaced · excluded is only selected explicitly · visible:/hidden: which agents may route through it · ←agent that agent uses this profile alone", nil)))
 	return 0
 }
 
@@ -194,7 +200,7 @@ type tierView struct {
 // skipLabel on the spot. So "a translation wording change and the summary loses a column"
 // cannot happen: grouping goes by marker, and markers do not change with language.
 var skipKindOrder = []string{
-	resolve.SkipExcluded, resolve.SkipUndefined, resolve.SkipNoKey,
+	resolve.SkipHidden, resolve.SkipExcluded, resolve.SkipUndefined, resolve.SkipNoKey,
 	resolve.SkipUnavailable, resolve.SkipDisabled, resolve.SkipMaxSteps,
 	resolve.SkipDuplicate, resolve.SkipCycle, resolve.SkipOther,
 }
@@ -219,6 +225,8 @@ func skipLabel(kind string) string {
 	switch kind {
 	case resolve.SkipExcluded:
 		return "excluded" // the profile's flag name; a machine marker, never translated
+	case resolve.SkipHidden:
+		return i18n.T("not visible", nil)
 	case resolve.SkipUndefined:
 		return i18n.T("not defined", nil)
 	case resolve.SkipNoKey:

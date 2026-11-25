@@ -184,3 +184,56 @@ func TestKVWinsOverJSON(t *testing.T) {
 		t.Fatalf("the same name should be listed only once: %v %v", names, err)
 	}
 }
+
+// TestAgentVisibilityKV: the whitelist and blacklist are two separate keys, comma separated,
+// and they survive a serialize round trip (the KV form is what users hand-edit).
+func TestAgentVisibilityKV(t *testing.T) {
+	p, err := ParseProfileKV("visible-agents = gemini, codex\nhidden-agents=claude\ndesc = x\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(p.VisibleAgents, ",") != "gemini,codex" {
+		t.Fatalf("visible-agents = %v", p.VisibleAgents)
+	}
+	if strings.Join(p.HiddenAgents, ",") != "claude" {
+		t.Fatalf("hidden-agents = %v", p.HiddenAgents)
+	}
+	out := SerializeProfileKV(p)
+	if !strings.Contains(out, "visible-agents=gemini, codex") ||
+		!strings.Contains(out, "hidden-agents=claude") {
+		t.Fatalf("round trip lost the visibility keys:\n%s", out)
+	}
+	back, err := ParseProfileKV(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(back.VisibleAgents, ",") != "gemini,codex" ||
+		strings.Join(back.HiddenAgents, ",") != "claude" {
+		t.Fatalf("second parse = %v / %v", back.VisibleAgents, back.HiddenAgents)
+	}
+}
+
+func TestVisibleToAgent(t *testing.T) {
+	cases := []struct {
+		p     *domain.Profile
+		agent string
+		want  bool
+	}{
+		{&domain.Profile{}, "gemini", true},
+		{&domain.Profile{}, "", true},
+		{&domain.Profile{VisibleAgents: []string{"gemini"}}, "gemini", true},
+		{&domain.Profile{VisibleAgents: []string{"gemini"}}, "claude", false},
+		{&domain.Profile{HiddenAgents: []string{"gemini"}}, "gemini", false},
+		{&domain.Profile{HiddenAgents: []string{"gemini"}}, "claude", true},
+		// Blacklist subtracts even when the whitelist would allow.
+		{&domain.Profile{VisibleAgents: []string{"gemini"}, HiddenAgents: []string{"gemini"}}, "gemini", false},
+		// No agent = no identity to judge.
+		{&domain.Profile{VisibleAgents: []string{"gemini"}}, "", true},
+		{&domain.Profile{HiddenAgents: []string{"gemini"}}, "", true},
+	}
+	for _, c := range cases {
+		if got := c.p.VisibleToAgent(c.agent); got != c.want {
+			t.Errorf("%+v vs %q: got %v want %v", c.p, c.agent, got, c.want)
+		}
+	}
+}

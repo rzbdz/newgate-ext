@@ -859,6 +859,32 @@ func pinnedProfile(tgt Target, st *domain.State) string {
 	return ""
 }
 
+// pinnedProfileFor is pinnedProfile with one guard: never pin to a profile that is not in the
+// snapshot.
+//
+// Why (2026-11-25): with `newgate fallback off`, a broken (or unreadable) default profile used
+// to pin every chain to a name that did not exist. The resolver then had an empty candidate set
+// and answered "no usable candidate" for every request -- one unparseable file, every agent down.
+// When the named profile is absent, not pinning is the fail-open answer: the chain falls back to
+// whatever profiles did load, and the log shows the skip.
+func pinnedProfileFor(tgt Target, st *domain.State, profiles []*domain.Profile) string {
+	if tgt.Profile != "" {
+		// An explicit /p/<name> is the user's own words. If that profile is missing the resolver
+		// answers with an empty chain and its skip reasons -- never silently serve another profile.
+		return tgt.Profile
+	}
+	name := pinnedProfile(tgt, st) // only the fallback-off chain head can come back here
+	if name == "" {
+		return ""
+	}
+	for _, p := range profiles {
+		if p.Name == name {
+			return name
+		}
+	}
+	return ""
+}
+
 // mainLoopHead is the main-loop tier (normal) chain head (with the full provider record).
 // count_tokens carries no model, so forwarding fills it from here. Uses PrimaryBinding
 // (ignoring circuit breaking): the first in the config is good enough for counting; no fallback.
@@ -1049,7 +1075,7 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 			Available: s.Filters.Admit,
 			Rank:      func(provider, model string) int { return s.Filters.Rank(provider, model, len(body)) },
 			MaxSteps:  st.Chain.Attempts(),
-			Pinned:    pinnedProfile(tgt, st),
+			Pinned:    pinnedProfileFor(tgt, st, profiles),
 		}
 		var rs []resolve.Step
 		applied := false
@@ -1096,10 +1122,11 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 			// "the tool UI shows real model names".
 			steps, skips, tier = resolve.ResolveRequest(norm, active, profiles, snap.Providers, resolve.Opts{
 				Active:    active,
+				Agent:     tgt.TaskCreate,
 				Available: s.Filters.Admit,
 				Rank:      func(provider, model string) int { return s.Filters.Rank(provider, model, len(body)) },
 				MaxSteps:  st.Chain.Attempts(),
-				Pinned:    pinnedProfile(tgt, st),
+				Pinned:    pinnedProfileFor(tgt, st, profiles),
 			})
 		}
 	}

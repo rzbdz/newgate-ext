@@ -3799,6 +3799,42 @@
     "gemini-cli speaks the native Gemini API (/v1beta/models/<model>:…); newgate reads the model from that path and rewrites it per chain step": {
       "reviewed": true,
       "text": "gemini-cli 说的是 Gemini 原生协议（/v1beta/models/<model>:…）；newgate 从这条路径里读模型，并按转发链的每一步改写它"
+    },
+    " — kept the last usable version ({src})": {
+      "reviewed": true,
+      "text": " — 沿用了上一个可用版本（{src}）"
+    },
+    " — this profile is out of every chain until it is fixed": {
+      "reviewed": true,
+      "text": " — 修好之前这份档位不在任何链里"
+    },
+    "Configuration problem — the affected part still serves its last usable version: {err}": {
+      "reviewed": true,
+      "text": "配置有问题——受影响的部分仍在使用上一个可用版本：{err}"
+    },
+    "hidden from agent {agent}": {
+      "reviewed": true,
+      "text": "对 {agent} 隐藏"
+    },
+    "line {line}: unknown key {key} (a typo would be silently ignored, so this errors instead)": {
+      "reviewed": true,
+      "text": "第 {line} 行：未知的键 {key}（拼错若被静默忽略，问题就藏住了，所以这里直接报错）"
+    },
+    "not visible": {
+      "reviewed": true,
+      "text": "不可见"
+    },
+    "only visible to {agents} (this request is for agent {agent})": {
+      "reviewed": true,
+      "text": "只对 {agents} 可见（这个请求来自 {agent}）"
+    },
+    "part of the configuration is broken, everything else is serving: {details}": {
+      "reviewed": true,
+      "text": "部分配置有问题，其余部分照常服务：{details}"
+    },
+    "profile {name} failed to parse: {err}": {
+      "reviewed": true,
+      "text": "档位 {name} 解析失败：{err}"
     }
   },
   "meta": {

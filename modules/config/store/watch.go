@@ -51,6 +51,10 @@ type Watcher struct {
 
 // NewWatcher does one synchronous load immediately, returning
 // an error on failure (problems should be found at start-up).
+//
+// A broken **profile** is not a start-up failure: Load substitutes its last usable version (or
+// leaves it out) and records the problem, and the first Reload/OnError path reports it. Starting
+// with fewer profiles is strictly better than refusing to start every agent.
 func NewWatcher(interval time.Duration) (*Watcher, error) {
 	if interval <= 0 {
 		interval = time.Second
@@ -127,9 +131,17 @@ func (w *Watcher) Reload(force bool) bool {
 	}
 
 	old := w.cur.Load().(*Snapshot)
+	// One broken profile must not cost a running session its chain head: substitute the
+	// previous snapshot's version for every name this load lost (see resilience.go).
+	snap = carryOverProfiles(old, snap)
 	w.cur.Store(snap)
 	w.lastSig = sig
 	atomic.AddInt64(&w.generation, 1)
+	// Report partial failures on the same channel as a failed load. They are not "the config
+	// is fine": the file the user just saved is **not** what is serving, and only this line says so.
+	if len(snap.Problems) > 0 && w.onError != nil {
+		w.onError(problemsError(snap.Problems))
+	}
 	if w.onChange != nil {
 		w.onChange(old, snap)
 	}

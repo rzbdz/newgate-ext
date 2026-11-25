@@ -421,3 +421,63 @@ func TestOverrideChainDedupsWhenOverrideAlreadyInChain(t *testing.T) {
 		t.Error("the override should also take effect when the binding is already in the chain (moved to the front)")
 	}
 }
+
+// ---------- agent visibility (2026-11-25) ----------
+
+func TestVisibleAgentsWhitelist(t *testing.T) {
+	ps := []*domain.Profile{
+		{Name: "base", Priority: prio(10), Roles: map[string]domain.Candidates{"h": one("pA", "m1")}},
+		{Name: "gem", Priority: prio(5), VisibleAgents: []string{"gemini"},
+			Roles: map[string]domain.Candidates{"h": one("pB", "m2")}},
+	}
+	provs := mkProvs("pA", "pB")
+
+	steps, _ := BuildChain("h", ps, provs, Opts{Active: "base", Agent: "claude"})
+	eq(t, names(steps), "base:pA/m1") // gem has higher priority but is not visible to claude
+
+	steps, _ = BuildChain("h", ps, provs, Opts{Active: "base", Agent: "gemini"})
+	eq(t, names(steps), "base:pA/m1", "gem:pB/m2")
+}
+
+func TestHiddenAgentsBlacklist(t *testing.T) {
+	ps := []*domain.Profile{
+		{Name: "gpt", Priority: prio(5), HiddenAgents: []string{"gemini"},
+			Roles: map[string]domain.Candidates{"h": one("pB", "m2")}},
+		{Name: "base", Priority: prio(10), Roles: map[string]domain.Candidates{"h": one("pA", "m1")}},
+	}
+	provs := mkProvs("pA", "pB")
+
+	steps, _ := BuildChain("h", ps, provs, Opts{Active: "base", Agent: "gemini"})
+	eq(t, names(steps), "base:pA/m1")
+
+	steps, _ = BuildChain("h", ps, provs, Opts{Active: "base", Agent: "claude"})
+	eq(t, names(steps), "base:pA/m1", "gpt:pB/m2")
+}
+
+func TestHiddenProfileCannotBeTheHead(t *testing.T) {
+	ps := []*domain.Profile{
+		{Name: "claude", HiddenAgents: []string{"gemini"},
+			Roles: map[string]domain.Candidates{"h": one("pA", "m1")}},
+		{Name: "gem", Priority: prio(20),
+			Roles: map[string]domain.Candidates{"h": one("pB", "m2")}},
+	}
+	provs := mkProvs("pA", "pB")
+
+	// The global default is claude; a gemini request with no per-agent profile must not run on it.
+	steps, skips := BuildChain("h", ps, provs, Opts{Active: "claude", Agent: "gemini"})
+	eq(t, names(steps), "gem:pB/m2")
+	if len(skips) == 0 || skips[0].Kind != SkipHidden {
+		t.Fatalf("want a SkipHidden record for the head, got %+v", skips)
+	}
+}
+
+func TestNoAgentMeansNoFiltering(t *testing.T) {
+	// The bare /v1/... compatible path names no agent: there is no identity to judge, so every
+	// profile stays visible (same answer as before this feature existed).
+	ps := []*domain.Profile{
+		{Name: "gem", VisibleAgents: []string{"gemini"},
+			Roles: map[string]domain.Candidates{"h": one("pB", "m2")}},
+	}
+	steps, _ := BuildChain("h", ps, mkProvs("pB"), Opts{})
+	eq(t, names(steps), "gem:pB/m2")
+}

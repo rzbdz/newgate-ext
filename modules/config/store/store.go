@@ -33,10 +33,19 @@ type Snapshot struct {
 	Providers *domain.Providers
 	Profiles  []*domain.Profile
 	State     *domain.State
+	// Problems are profile files that did not parse. Load never fails because of one: the
+	// profile is replaced by its last usable version when the write history has one (see
+	// resilience.go), and either way the problem is here for the watcher to report — the
+	// failure mode this field exists to kill is "one typo, silently fewer profiles".
+	Problems []Problem
 }
 
 // Load reads a complete snapshot. A broken profile file is skipped rather than failing
 // everything -- one hand-broken file should not stall every agent; doctor reports it.
+//
+// Since 2026-11-25 "skipped" is no longer silent: the last usable version is substituted
+// when the history has one, and every failure lands in Snapshot.Problems. A broken **default**
+// profile used to empty the chain head of every agent while Load still reported success.
 func Load() (*Snapshot, error) {
 	// Module-contributed dynamic role keys (omo's omo-sisyphus / cat-deep ...) are refreshed along
 	// with the snapshot: they are config too -- which keys there are, and which tier each defaults to,
@@ -53,12 +62,21 @@ func Load() (*Snapshot, error) {
 		return nil, err
 	}
 	var ps []*domain.Profile
+	var problems []Problem
 	for _, n := range names {
-		if p, err := LoadProfile(n); err == nil {
+		p, lerr := LoadProfile(n)
+		if lerr == nil {
 			ps = append(ps, p)
+			continue
 		}
+		if b, src := loadBackupProfile(n); b != nil {
+			ps = append(ps, b)
+			problems = append(problems, Problem{Profile: n, Err: lerr, Used: src})
+			continue
+		}
+		problems = append(problems, Problem{Profile: n, Err: lerr})
 	}
-	return &Snapshot{Providers: provs, Profiles: ps, State: LoadState()}, nil
+	return &Snapshot{Providers: provs, Profiles: ps, State: LoadState(), Problems: problems}, nil
 }
 
 // ---------- atomic writes ----------

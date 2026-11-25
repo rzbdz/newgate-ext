@@ -7,6 +7,7 @@ package resolve
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/rzbdz/newgate-ext/modules/config/domain"
 	"github.com/rzbdz/newgate/lib/i18n"
@@ -75,6 +76,12 @@ const (
 	// Distinct from SkipExcluded (a config flag) and from SkipOther (a pinned *chain head*): here
 	// the pin is about this request, and the user-visible story is "you asked for claude".
 	SkipPinned = "pinned"
+	// SkipHidden this profile is not visible to the agent this chain is for (its
+	// visible-agents/hidden-agents declaration). Unlike SkipExcluded this one also applies to
+	// the chain head: "invisible to X" that an explicit /p/<name> can bypass is decoration, and
+	// the failure it prevents (a Gemini body reaching a Claude upstream) is exactly what the
+	// user was trying to rule out.
+	SkipHidden = "hidden"
 	// SkipOther the catch-all: the display layer's category table has no column
 	// for it (e.g. "chain head pinned, does not fall through" -- that class
 	// has no column of its own today, see skipKindOrder in modules/config).
@@ -86,6 +93,11 @@ const (
 type Opts struct {
 	// Active the chain head. Per-agent: different agents can have different chain heads.
 	Active string
+	// Agent the client this chain is being built for ("" = the request names no agent, so
+	// profile visibility is not filtered). It only feeds Profile.VisibleToAgent: a profile can
+	// declare "only this agent sees me" / "these agents never see me", and building a chain that
+	// ignores that is how a Gemini-dialect request used to fall through into a Claude-bound profile.
+	Agent string
 	// Available the availability judgment. When it returns false, the second
 	// value says **why** it cannot be used, and that reason goes into Skip.Reason
 	// verbatim for the user (`newgate tier`'s "why not the one I thought").
@@ -150,7 +162,7 @@ type Opts struct {
 // expanded references) laid out by "profile priority -> list order". References introduce no
 // second fallback semantics, they only let keys point at each other. See docs/04-configuration.md.
 func BuildChain(key string, profiles []*domain.Profile, provs *domain.Providers, o Opts) ([]Step, []Skip) {
-	ordered, skips := orderProfiles(profiles, o.Active)
+	ordered, skips := orderProfiles(profiles, o.Active, o.Agent)
 	if o.Pinned != "" {
 		ordered, skips = pinnedOnly(ordered, skips, o.Pinned)
 	}
@@ -361,13 +373,13 @@ func pinnedOnly(ordered []*domain.Profile, skips []Skip, pinned string) ([]*doma
 }
 
 // orderProfiles the chain head + the rest by (priority, name).
-func orderProfiles(profiles []*domain.Profile, active string) ([]*domain.Profile, []Skip) {
+func orderProfiles(profiles []*domain.Profile, active, agent string) ([]*domain.Profile, []Skip) {
 	var head *domain.Profile
 	var rest []*domain.Profile
 	var skips []Skip
 
 	for _, p := range profiles {
-		if p.Name == active {
+		if p.Name == active && p.VisibleToAgent(agent) {
 			head = p
 			continue
 		}
@@ -381,6 +393,20 @@ func orderProfiles(profiles []*domain.Profile, active string) ([]*domain.Profile
 	})
 
 	var out []*domain.Profile
+	// Visibility is checked **before** the head is used: a head hidden from this agent must not
+	// become the head, or an agent with no per-agent profile would silently run on the global
+	// default -- the exact cross-dialect failure this feature exists to stop. The skip is
+	// reported, so "why is my chain different from the config" has an answer.
+	if active != "" && head == nil {
+		for _, p := range profiles {
+			if p.Name != active {
+				continue
+			}
+			skips = append(skips, Skip{Profile: p.Name, Kind: SkipHidden,
+				Reason: hiddenReason(p, agent)})
+			break
+		}
+	}
 	if head != nil {
 		out = append(out, head) // an explicit pick wins; excluded cannot block the chain head
 		if head.Pinned {
@@ -396,6 +422,11 @@ func orderProfiles(profiles []*domain.Profile, active string) ([]*domain.Profile
 		}
 	}
 	for _, p := range rest {
+		if !p.VisibleToAgent(agent) {
+			skips = append(skips, Skip{Profile: p.Name, Kind: SkipHidden,
+				Reason: hiddenReason(p, agent)})
+			continue
+		}
 		if p.Excluded {
 			skips = append(skips, Skip{Profile: p.Name, Kind: SkipExcluded,
 				Reason: i18n.T("excluded: explicit selection only", nil)})
@@ -404,4 +435,14 @@ func orderProfiles(profiles []*domain.Profile, active string) ([]*domain.Profile
 		out = append(out, p)
 	}
 	return out, skips
+}
+
+// hiddenReason says which declaration kept this profile out, so the user can tell a whitelist
+// from a blacklist without opening the file.
+func hiddenReason(p *domain.Profile, agent string) string {
+	if len(p.VisibleAgents) > 0 {
+		return i18n.T("only visible to {agents} (this request is for agent {agent})",
+			i18n.A{"agents": strings.Join(p.VisibleAgents, ", "), "agent": agent})
+	}
+	return i18n.T("hidden from agent {agent}", i18n.A{"agent": agent})
 }

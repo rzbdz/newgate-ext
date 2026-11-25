@@ -236,9 +236,11 @@ func Serve(filters *policy.Registry, hub porthubapi.Service, listeners servingap
 			i18n.A{"gen": watcher.Generation(), "changes": changes}))
 	})
 	watcher.OnError(func(e error) {
-		// Key point: a bad config does not replace the snapshot. Better to keep running on the
-		// old config than to have one typo take every agent down at once.
-		lg.Printf("[config] %s", i18n.T("New configuration failed to load, still using the last usable configuration: {err}",
+		// Two shapes arrive here: a load that failed outright (the whole old snapshot keeps
+		// serving), and a load that went through with some profiles substituted by their last
+		// usable version (resilience.go). Either way the affected part is unchanged, so the
+		// wording must not claim the new file is in effect.
+		lg.Printf("[config] %s", i18n.T("Configuration problem — the affected part still serves its last usable version: {err}",
 			i18n.A{"err": e}))
 	})
 	watcher.Start()

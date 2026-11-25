@@ -14,6 +14,35 @@ finished release.
 
 Nothing yet.
 
+## [0.10.1rc1] - 2026-11-25
+
+### Added
+
+- **Profiles can be scoped to clients.** A profile's KV accepts
+  `visible-agents=gemini` (whitelist: only these clients see it) and
+  `hidden-agents=gemini` (blacklist: these clients never see it); the JSON form
+  is `visible_agents` / `hidden_agents`. Filtering applies to the chain head as
+  well, so a profile hidden from a client cannot serve it even as the default —
+  an explicit `/p/<name>` is the only way past it, and that is the user's own
+  words. `newgate profiles visible:<agents>` / `hidden:<agents>` sets the lists.
+  A typical use: an upstream that only speaks one dialect stays out of the other
+  clients' chains.
+
+### Fixed
+
+- **One broken profile file no longer stalls the whole system.** When a profile
+  fails to parse, the config layer now substitutes its last usable version —
+  the newest parseable copy from the write history, or the watcher's previous
+  in-memory snapshot — keeps everything else serving, and reports it loudly on
+  the watcher's error channel. With nothing to fall back to, the profile is
+  absent instead of silently swallowed. `fallback off` also no longer pins a
+  chain to a profile that is not in the snapshot, which is what turned a single
+  unknown key in the default profile into "no usable candidate" for every agent
+  while the config layer reported success.
+- The hot-reload log line says "the affected part still serves its last usable
+  version" instead of claiming the new configuration failed wholesale, so a
+  partial problem and a rejected reload no longer read the same.
+
 ## [0.10.0] - 2026-11-25
 
 ### Added

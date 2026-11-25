@@ -96,6 +96,12 @@
         "n"
       ]
     },
+    " — kept the last usable version ({src})": {
+      "args": [
+        "src"
+      ]
+    },
+    " — this profile is out of every chain until it is fixed": {},
     "\"the Responses input[] ends on a function_call_output whose call_id is not ours\" is no longer repaired (no \"continue\" appended), and the upstream misreports such an instruction-less tail as a missing reasoning_text and answers 400": {},
     "\"the last user message holds only tool_result\" is no longer repaired (no \"continue\" appended), and the upstream misreports such an instruction-less tail as a missing reasoning_content and answers 400": {},
     "# to write it: newgate profile kv {name} --write": {
@@ -662,6 +668,11 @@
         "gen"
       ]
     },
+    "Configuration problem — the affected part still serves its last usable version: {err}": {
+      "args": [
+        "err"
+      ]
+    },
     "Configuration reloaded (generation {gen}), no structural change": {
       "args": [
         "gen"
@@ -818,11 +829,6 @@
     "Naked": {},
     "Name for this provider": {},
     "Never sent to the browser: this field arrives empty, and writing a value is the only way to change it.": {},
-    "New configuration failed to load, still using the last usable configuration: {err}": {
-      "args": [
-        "err"
-      ]
-    },
     "Next": {},
     "No catalog for {lang}": {
       "args": [
@@ -2362,6 +2368,11 @@
       ]
     },
     "hermes: show / sync the /model list / restart its messaging gateway": {},
+    "hidden from agent {agent}": {
+      "args": [
+        "agent"
+      ]
+    },
     "host key": {},
     "how it shows up in newgate; letters, digits, - and .": {},
     "how to reach it": {},
@@ -2863,6 +2874,7 @@
     "not set — paste the key here": {},
     "not taken over": {},
     "not taken over — newgate on hermes": {},
+    "not visible": {},
     "note: {msg}": {
       "args": [
         "msg"
@@ -2926,6 +2938,12 @@
     "only if the two dialects live on different bases": {},
     "only look: what would change; nothing is downloaded, replaced or restarted": {},
     "only this action (see --list)": {},
+    "only visible to {agents} (this request is for agent {agent})": {
+      "args": [
+        "agent",
+        "agents"
+      ]
+    },
     "opencode": {},
     "opencode is not installed on this machine — nothing on this card takes effect yet. Install it with `newgate opencode -y`.": {},
     "options": {},
@@ -2960,6 +2978,11 @@
         "path"
       ]
     },
+    "part of the configuration is broken, everything else is serving: {details}": {
+      "args": [
+        "details"
+      ]
+    },
     "partially usable": {},
     "past max attempts": {},
     "past maxAttempts={limit}": {
@@ -2988,7 +3011,7 @@
     },
     "pidfile is rewritten to the real process; status/metrics recover at once, no manual file editing needed": {},
     "pin the binary to a tag, branch or commit (a release if one exists, otherwise built from source); actions without versions are skipped": {},
-    "pinned stops at the chain head and is never replaced · excluded is only selected explicitly · ←agent that agent uses this profile alone": {},
+    "pinned stops at the chain head and is never replaced · excluded is only selected explicitly · visible:/hidden: which agents may route through it · ←agent that agent uses this profile alone": {},
     "pinned: the chain ends here; a failure is reported, not replaced": {},
     "plugin": {},
     "plugin [module[.path]] [on|off] [duration]": {},
@@ -3163,6 +3186,12 @@
     "profile {name} extends {extends}, but this configuration has no such profile": {
       "args": [
         "extends",
+        "name"
+      ]
+    },
+    "profile {name} failed to parse: {err}": {
+      "args": [
+        "err",
         "name"
       ]
     },
@@ -3956,6 +3985,7 @@
     "the pidfile holds no pid": {},
     "the pidfile is unreadable": {},
     "the previous binary does not run: {err}": {},
+    "the previous in-memory snapshot": {},
     "the provider answered with an empty model list": {},
     "the provider does not list models": {},
     "the provider field is not an object: {err}": {},

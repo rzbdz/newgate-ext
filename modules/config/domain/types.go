@@ -183,6 +183,26 @@ type Profile struct {
 	// Fallback the catch-all for every undefined tier in this profile, equivalent to roles["*"].
 	Fallback *Binding `json:"fallback,omitempty"`
 
+	// VisibleAgents / HiddenAgents restrict **which agents may route through this profile**.
+	//
+	// Why (2026-11-25): a profile binds concrete models, and not every client speaks the same
+	// dialect -- a Gemini-dialect request that falls through into a Claude-bound profile reaches
+	// the upstream as a body it cannot read. Before these two fields the only lever was priority
+	// order, which meant "correct today, silently wrong the day someone reorders profiles".
+	//
+	//	VisibleAgents  empty = every agent; non-empty = only these agents (whitelist)
+	//	HiddenAgents   these agents never see it (blacklist)
+	//
+	// Both apply to the **automatic chain**, including the head: a request that names agent X
+	// cannot be routed through a profile hidden from X, even by explicit /p/<name> -- "invisible
+	// to X" has to mean invisible, or the restriction is decoration. A request with **no agent
+	// identity** (the bare /v1/... compatible path) is not filtered: there is nobody to judge.
+	//
+	// Neither is inherited through Extends: same rule as Pinned/Excluded, a variant declares its
+	// own stance (a base hidden from GOP could still be a sensible derived profile).
+	VisibleAgents []string `json:"visible_agents,omitempty"`
+	HiddenAgents  []string `json:"hidden_agents,omitempty"`
+
 	// Extends lets a derived profile write only the differences and
 	// inherit the rest from a base profile. The merge rules are centralized
 	// in MergeFrom, so store and routing do not each interpret inheritance.
@@ -199,6 +219,31 @@ type Profile struct {
 	// -- it has the highest precedence in the client's resolution, does not depend on
 	// account state, and shows as "(from CLAUDE_CODE_AUTO_COMPACT_WINDOW)" in /context.
 	AutoCompactWindow int `json:"auto_compact_window,omitempty"`
+}
+
+// VisibleToAgent reports whether this profile may be used by that agent.
+//
+// An empty agent means "this request names no agent" (the bare /v1/... compatible path): there
+// is no identity to judge, so nothing is filtered. Case is compared as written -- agent ids are
+// lowercase in this distribution, and guessing at `Claude` vs `claude` would only hide a typo.
+func (p *Profile) VisibleToAgent(agent string) bool {
+	if p == nil || agent == "" {
+		return true
+	}
+	for _, a := range p.HiddenAgents {
+		if a == agent {
+			return false
+		}
+	}
+	if len(p.VisibleAgents) == 0 {
+		return true
+	}
+	for _, a := range p.VisibleAgents {
+		if a == agent {
+			return true
+		}
+	}
+	return false
 }
 
 // MergeFrom fills in base's uncovered entries (Extends' merge rules, called when store loads).
